@@ -56,6 +56,10 @@ jobs:
           else
             uv run playwright install chromium
           fi
+      - name: Keyring diagnostics (temporary)
+        if: runner.os == 'Windows'
+        continue-on-error: true
+        run: uv run python scripts/ci/keyring_probe.py
       - name: Tests
         # -v names each test as it starts, so even a hard crash shows where it happened
         run: uv run pytest -v -W default --durations=10
