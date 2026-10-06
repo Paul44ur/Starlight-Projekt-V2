@@ -188,3 +188,65 @@ class AuditLog:
 
     def record(self, action: str, **fields: Any) -> None:
         self._logger.info(action, **fields)
+
+
+def recent_errors(
+    logs_dir: Path, limit: int = 20, include_warnings: bool = True
+) -> list[dict[str, Any]]:
+    """The most recent problems from logs/starlight.log, in plain form: when, how bad,
+    where, what, and the underlying cause. For `starlight logs show` and the chat."""
+    import json
+
+    path = logs_dir / "starlight.log"
+    if not path.is_file():
+        return []
+    wanted = {"error", "critical"} | ({"warning"} if include_warnings else set())
+    out: list[dict[str, Any]] = []
+    for line in path.read_text(encoding="utf-8", errors="replace").splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            entry = json.loads(line)
+        except ValueError:
+            continue
+        if entry.get("level") not in wanted:
+            continue
+        where = str(entry.get("logger", "")).removeprefix("starlight.")
+        for key in ("module", "tool"):
+            if entry.get(key):
+                where = f"{where} ({entry[key]})" if where else str(entry[key])
+                break
+        detail = entry.get("error") or entry.get("reason") or ""
+        cause = ""
+        trace = entry.get("exception")
+        if isinstance(trace, str) and trace.strip():
+            lines = [ln for ln in trace.strip().splitlines() if ln.strip()]
+            cause = lines[-1] if lines else ""
+        out.append(
+            {
+                "time": str(entry.get("timestamp", ""))[:19].replace("T", " "),
+                "level": entry.get("level"),
+                "where": where,
+                "what": str(entry.get("event", "")),
+                "detail": str(detail),
+                "cause": cause,
+            }
+        )
+    return out[-limit:]
+
+
+def format_errors(errors: list[dict[str, Any]]) -> str:
+    """Render recent_errors() as short, readable lines."""
+    if not errors:
+        return "No recent errors or warnings."
+    mark = {"warning": "warn ", "error": "ERROR", "critical": "CRIT "}
+    lines = []
+    for e in errors:
+        head = f"{e['time']}  {mark.get(e['level'], e['level'])}  {e['where']}: {e['what']}"
+        lines.append(head)
+        if e["detail"] and e["detail"] not in e["what"]:
+            lines.append(f"    {e['detail']}")
+        if e["cause"]:
+            lines.append(f"    cause: {e['cause']}")
+    return "\n".join(lines)

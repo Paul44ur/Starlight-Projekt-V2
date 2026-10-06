@@ -125,3 +125,47 @@ async def test_granting_access_always_asks_even_if_auto_approved(project: Paths)
         result = await call(k, "access.set_secret", key="x.key", secret="nope123")
     assert not result.ok and "not confirmed" in str(result.error)
     assert user.questions  # it still asked
+
+
+async def test_recent_errors_are_readable_from_the_chat(
+    paths: Paths, use_module: Callable[[str], Path], write_module: Callable[..., Path]
+) -> None:
+    use_module("access")
+    write_module(
+        "boom",
+        """
+        from starlight.core import Module, tool
+
+        class Mod(Module):
+            @tool
+            def break_it(self) -> str:
+                raise ValueError("the printer caught fire")
+        """,
+    )
+    async with kernel(paths, User()) as k:
+        await k.dispatcher.call("boom.break_it")  # fails, logged with a traceback
+        shown = await k.dispatcher.call("access.recent_errors", {"count": 5})
+    errors = shown.output["errors"]
+    assert any("boom" in e["where"] and "the printer caught fire" in e["cause"] for e in errors), (
+        errors
+    )
+
+
+def test_logs_show_command(paths: Paths, capsys: pytest.CaptureFixture[str]) -> None:
+    import json
+
+    from starlight.cli import main
+
+    (paths.logs).mkdir(exist_ok=True)
+    entry = {
+        "timestamp": "2026-10-06T12:00:00Z",
+        "level": "error",
+        "logger": "starlight.module.x",
+        "event": "tool failed",
+        "tool": "x.do",
+        "exception": "Traceback...\nRuntimeError: nope",
+    }
+    (paths.logs / "starlight.log").write_text(json.dumps(entry) + "\n")
+    assert main(["--home", str(paths.root), "logs", "show"]) == 0
+    out = capsys.readouterr().out
+    assert "ERROR" in out and "x.do" in out and "RuntimeError: nope" in out

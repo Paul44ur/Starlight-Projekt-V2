@@ -491,6 +491,11 @@ def cmd_viewer(paths: Paths, args: argparse.Namespace) -> int:
 
 
 def cmd_logs(paths: Paths, args: argparse.Namespace) -> int:
+    if args.action == "show":
+        from starlight.core.logging import format_errors, recent_errors
+
+        print(format_errors(recent_errors(paths.logs, limit=args.count)))
+        return 0
     from starlight.core.secretscan import scan_logs
 
     vault = Vault(paths.config / "vault_index.yaml")
@@ -651,8 +656,9 @@ def build_parser() -> argparse.ArgumentParser:
 
     sub.add_parser("serve", help="run the core in the background (WhatsApp, watchers)")
     sub.add_parser("viewer", help="the statistics viewer (a separate web app)")
-    logs = sub.add_parser("logs", help="check the logs for leaked secrets")
-    logs.add_argument("action", choices=["scan"])
+    logs = sub.add_parser("logs", help="show recent errors, or check for leaked secrets")
+    logs.add_argument("action", choices=["show", "scan"])
+    logs.add_argument("-n", "--count", type=int, default=20, help="how many recent errors")
     service_cmd = sub.add_parser("service", help="start core and viewer at logon")
     service_cmd.add_argument("action", choices=["install", "uninstall", "start", "stop", "status"])
     service_cmd.add_argument("--print-only", action="store_true", help="only show what it does")

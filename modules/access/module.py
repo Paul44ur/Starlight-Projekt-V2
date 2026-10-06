@@ -115,6 +115,15 @@ class AccessModule(Module):
     # -- overview ------------------------------------------------------------------------
 
     @tool
+    def recent_errors(self, count: int = 10) -> dict[str, Any]:
+        """Show Starlight's own recent errors and warnings in plain language (what went
+        wrong, where, and the underlying cause), so you can see problems from the chat."""
+        from starlight.core.logging import recent_errors
+
+        errors = recent_errors(self.ctx.paths.logs, limit=max(1, min(count, 100)))
+        return {"count": len(errors), "errors": errors}
+
+    @tool
     def status(self) -> dict[str, Any]:
         """Everything Starlight is currently allowed to do and reach: servers, login sites,
         stored secrets (names only) and the permission rules."""
