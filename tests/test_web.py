@@ -20,7 +20,7 @@ import pytest
 
 from starlight.core import Kernel, Paths
 from starlight.core.config import HttpConfig
-from starlight.core.http import PoliteHttp, RobotsDisallowed, SlidingWindowLimiter
+from starlight.core.http import PoliteHttp, RobotsDisallowed, SlidingWindowLimiter, Slot
 from starlight.core.vault import MemoryBackend
 
 CHROMIUM = "/opt/pw-browsers/chromium"
@@ -87,6 +87,31 @@ async def test_research_20_pages_never_more_than_5_per_second(
     assert len(times) == 40  # 20 pages + 20 robots.txt
     assert max_in_any_second(times) <= 5
     assert elapsed >= (40 - 5) / 5 - 0.2  # the cap, not luck, decided the pace
+    assert max_in_any_second(sorted(t for t, _ in hits)) <= 5
+
+
+async def test_a_stall_after_the_permit_does_not_bunch_requests_up() -> None:
+    """Found on CI: requests allowed just before the program stalled went out late, the
+    next ones on time, and the server saw 6 in one second. A request's slot now counts
+    from when it really goes out."""
+    transport, hits = mock_web()
+    http = PoliteHttp(HttpConfig(respect_robots=False), transport=transport)
+    original = http.limiter.acquire
+    allowed = 0
+
+    async def then_stall(until_sent: bool = False) -> Slot:
+        nonlocal allowed
+        slot = await original(until_sent)
+        allowed += 1
+        if allowed <= 5:
+            await asyncio.sleep(0.3)  # allowed, but the program stalls before sending
+        return slot
+
+    http.limiter.acquire = then_stall  # type: ignore[method-assign]
+    urls = [f"https://site{i}.example/page" for i in range(10)]
+    await asyncio.gather(*(http.get(url, use_cache=False) for url in urls))
+    await http.aclose()
+    assert len(hits) == 10
     assert max_in_any_second(sorted(t for t, _ in hits)) <= 5
 
 

@@ -22,9 +22,7 @@ def _llamacpp(options: dict[str, Any]) -> ModelProvider:
 
 register_provider("ollama", lambda options: OllamaProvider(**options), max_tokens=True)
 register_provider("llamacpp", _llamacpp, max_tokens=True)
-register_provider(
-    "openai_compat", lambda options: OpenAICompatProvider(**options), max_tokens=True
-)
+register_provider("openai_compat", lambda options: OpenAICompatProvider(**options), max_tokens=True)
 register_provider("router", RouterProvider.from_options)
 
 __all__ = ["OllamaProvider", "OpenAICompatProvider", "RouterProvider"]
