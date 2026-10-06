@@ -18,6 +18,7 @@ import importlib.machinery
 import importlib.util
 import shutil
 import sys
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from enum import StrEnum
 from pathlib import Path
@@ -67,6 +68,9 @@ class Services:
     ui: UserIO = field(default_factory=NoUser)  # confirmations and questions to you
     stats: Stats | None = None  # metrics for the statistics viewer
     model: ModelProvider | None = None  # the main model (e.g. for vision or summaries)
+    # Model for a role such as "code" or "vision" (falls back to the main model).
+    models: Callable[[str], ModelProvider] | None = None
+    skills: Any = None  # the skill manager (Step 9)
 
 
 @dataclass
@@ -104,6 +108,12 @@ class ModuleContext:
 
     @property
     def model(self) -> ModelProvider | None:
+        return self.services.model
+
+    def model_for(self, role: str) -> ModelProvider | None:
+        """The model the core routes this kind of work to (``roles:`` in the config)."""
+        if self.services.models is not None:
+            return self.services.models(role)
         return self.services.model
 
     async def publish(self, event: str, data: dict[str, Any] | None = None) -> None:

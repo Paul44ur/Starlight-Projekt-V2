@@ -29,6 +29,8 @@ from starlight.core.vault import Vault, VaultError
 from starlight.memory import Memory
 from starlight.models.bench import benchmark
 from starlight.models.serve import ServeError, run_server, serve_command
+from starlight.skills import SkillManager
+from starlight.skills.git import GitError
 
 TEMPLATE = "_template"
 
@@ -80,7 +82,7 @@ class TerminalUI:
 def _kernel(paths: Paths, assume_yes: bool = False, hotkey: bool = False) -> Kernel:
     kernel = Kernel(paths, hotkey=hotkey)
     kernel.set_ui(TerminalUI(assume_yes))
-    kernel.dispatcher.confirmer = make_confirmer(kernel.policy, assume_yes)
+    kernel.set_confirmer(make_confirmer(kernel.policy, assume_yes))
     return kernel
 
 
@@ -356,6 +358,56 @@ def cmd_vault(paths: Paths, args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_skills(paths: Paths, args: argparse.Namespace) -> int:
+    config = load_config(paths)
+    paths.ensure()
+    setup_logging(paths.logs, config.logging.level)
+    skills = SkillManager(paths, config.skills)
+    action, name = args.action, args.name
+    if action != "list" and not name:
+        print(f"skills {action} needs a skill name", file=sys.stderr)
+        return 1
+    try:
+        if action == "list":
+            entries = skills.all()
+            for s in entries:
+                print(f"  {s.name:<28} {s.status:<9} v{s.version:<3} {s.description}")
+            if not entries:
+                print("No skills yet. They are drafted when a task succeeds again.")
+        elif action == "show":
+            skill = skills.get(name)
+            if skill is None:
+                print(f"No skill named '{name}'.", file=sys.stderr)
+                return 1
+            print(skill.to_markdown())
+            if skill.example:
+                print("--- example ---\n" + skill.example)
+            for rel, code in skill.code.items():
+                print(f"--- code/{rel} ---\n{code}")
+        elif action == "approve":
+            skill = skills.approve(name)
+            print(f"{skill.name} v{skill.version} approved; it is used from now on.")
+        elif action == "reject":
+            skill = skills.reject(name)
+            print(f"{skill.name} v{skill.version} rejected; it will not be used.")
+        elif action == "history":
+            for revision, date, message in skills.versions(name):
+                print(f"  {revision}  {date}  {message}")
+        elif action == "rollback":
+            skill = skills.rollback(name, args.revision or None)
+            print(f"{skill.name} restored to v{skill.version} ({skill.status}).")
+        elif action == "promote":
+            target = skills.promote(name, paths.modules)
+            print(
+                f"Module started at {target} (disabled). Turn the steps into tools, then "
+                f"`starlight modules enable {target.name}`."
+            )
+    except (KeyError, FileExistsError, GitError) as exc:
+        print(exc.args[0] if exc.args else str(exc), file=sys.stderr)
+        return 1
+    return 0
+
+
 async def cmd_model(paths: Paths, args: argparse.Namespace) -> int:
     config = load_config(paths)
     if args.action == "serve":
@@ -431,6 +483,16 @@ def build_parser() -> argparse.ArgumentParser:
     vault.add_argument("action", choices=["set", "list", "delete"])
     vault.add_argument("key", nargs="?")
 
+    skills = sub.add_parser(
+        "skills", help="learned skills: list, show, approve, reject, history, rollback, promote"
+    )
+    skills.add_argument(
+        "action",
+        choices=["list", "show", "approve", "reject", "history", "rollback", "promote"],
+    )
+    skills.add_argument("name", nargs="?")
+    skills.add_argument("revision", nargs="?", help="rollback: revision from `history`")
+
     model = sub.add_parser("model", help="the local model: info, serve, bench")
     model.add_argument("action", choices=["info", "serve", "bench"])
     model.add_argument("--runs", type=int, default=3, help="benchmark runs")
@@ -469,6 +531,8 @@ def main(argv: Sequence[str] | None = None) -> int:
                 return asyncio.run(cmd_memory(paths, args))
             case "vault":
                 return cmd_vault(paths, args)
+            case "skills":
+                return cmd_skills(paths, args)
             case "model":
                 return asyncio.run(cmd_model(paths, args))
     except ConfigError as exc:

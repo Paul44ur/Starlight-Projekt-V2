@@ -21,3 +21,6 @@ STOP
 config/vault*
 config/*.secret*
 config/modules_state.yaml
+# Learned skills: versioned separately in data/skills.git
+skills/*
+!skills/.gitkeep

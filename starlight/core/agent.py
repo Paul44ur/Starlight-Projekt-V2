@@ -109,6 +109,7 @@ class Agent:
                 "steps": result.steps,
                 "answer": result.answer,
                 "tools": [r.tool for r in result.tool_results],
+                "tool_results": list(result.tool_results),
             },
         )
         if self.stats is not None:

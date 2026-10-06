@@ -101,16 +101,41 @@ class ToolsConfig(_Strict):
     timeout: float = Field(default=120, gt=0)
 
 
+class SkillsConfig(_Strict):
+    enabled: bool = True
+    auto_draft: bool = True  # draft a skill when the same kind of task succeeds again
+    repeat_threshold: int = Field(default=2, ge=2)
+    max_in_prompt: int = Field(default=2, ge=0)  # approved skills added to a prompt
+    min_score: float = Field(default=0.25, ge=-1, le=1)
+
+
+class StatsConfig(_Strict):
+    retention_days: int = Field(default=30, ge=1)
+    gpu_sample_interval: float = Field(default=30, ge=0)  # 0 = off
+
+
+class ViewerConfig(_Strict):
+    host: str = "127.0.0.1"
+    port: int = 8765
+    refresh_seconds: int = Field(default=5, ge=1)
+
+
 class StarlightConfig(_Strict):
     name: str = "Starlight"
     logging: LoggingConfig = Field(default_factory=LoggingConfig)
     agent: AgentConfig = Field(default_factory=AgentConfig)
     model: ModelConfig = Field(default_factory=ModelConfig)
+    # Specialised models by role, e.g. {code: ..., vision: ...}. A role without an entry
+    # uses the main model.
+    roles: dict[str, ModelConfig] = Field(default_factory=dict)
     memory: MemoryConfig = Field(default_factory=MemoryConfig)
     http: HttpConfig = Field(default_factory=HttpConfig)
     kill_switch: KillSwitchConfig = Field(default_factory=KillSwitchConfig)
     permissions: PermissionsConfig = Field(default_factory=PermissionsConfig)
     tools: ToolsConfig = Field(default_factory=ToolsConfig)
+    skills: SkillsConfig = Field(default_factory=SkillsConfig)
+    stats: StatsConfig = Field(default_factory=StatsConfig)
+    viewer: ViewerConfig = Field(default_factory=ViewerConfig)
 
 
 def read_yaml(path: Path) -> dict[str, Any]:

@@ -1,0 +1,7 @@
+name: code
+version: 0.1.0
+description: Write, test and run code in a sandbox (write, test, fix loop)
+entrypoint: module:CodeModule
+permissions: [confirm]
+dependencies: []
+enabled_by_default: true
