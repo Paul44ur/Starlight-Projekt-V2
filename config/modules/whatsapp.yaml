@@ -1,0 +1,11 @@
+# WhatsApp module (Step 10), official WhatsApp Business Cloud API. Setup steps are in
+# docs/setup-windows.md. Secrets go in the vault:
+#   starlight vault set whatsapp.token          (permanent access token)
+#   starlight vault set whatsapp.app_secret     (app secret: signs webhook deliveries)
+#   starlight vault set whatsapp.verify_token   (any random string; also enter it at Meta)
+owner_number: ""          # your own number, international, e.g. "4917612345678"
+phone_number_id: ""       # the business number's ID from the Meta dashboard
+host: 127.0.0.1           # Cloudflare Tunnel connects here
+port: 8787
+path: /webhook/whatsapp
+allow_resume: false       # /resume from the phone

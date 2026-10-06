@@ -1,0 +1,11 @@
+# Cloudflare Tunnel for the WhatsApp webhook (Step 10). Copy to
+# %USERPROFILE%\.cloudflared\config.yml and fill in your tunnel ID and hostname.
+# Only the webhook path is exposed; every other request gets a 404.
+tunnel: <TUNNEL-ID>
+credentials-file: C:\Users\<you>\.cloudflared\<TUNNEL-ID>.json
+
+ingress:
+  - hostname: starlight.example.com
+    path: ^/webhook/whatsapp$
+    service: http://127.0.0.1:8787
+  - service: http_status:404

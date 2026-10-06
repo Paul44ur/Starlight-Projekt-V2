@@ -28,8 +28,25 @@ _SECRET_KEY = re.compile(
 REDACTED = "***"
 
 
+_SECRET_VALUES: set[str] = set()
+
+
+def add_secret_values(values: Any) -> None:
+    """Known secrets (from the vault): masked wherever they appear in a log line."""
+    _SECRET_VALUES.update(v for v in values if isinstance(v, str) and len(v) >= 6)
+
+
+def _mask_known(text: str) -> str:
+    for secret in _SECRET_VALUES:
+        if secret in text:
+            text = text.replace(secret, REDACTED)
+    return text
+
+
 def redact(value: Any) -> Any:
-    """Mask values whose key looks like a secret, recursively."""
+    """Mask values whose key looks like a secret, and known secret values, recursively."""
+    if isinstance(value, str):
+        return _mask_known(value) if _SECRET_VALUES else value
     if isinstance(value, dict):
         return {
             k: REDACTED if isinstance(k, str) and _SECRET_KEY.search(k) else redact(v)

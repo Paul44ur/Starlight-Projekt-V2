@@ -1,0 +1,379 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Starlight statistics</title>
+<style>
+  :root {
+    color-scheme: light;
+    --page: #f9f9f7;
+    --surface-1: #fcfcfb;
+    --text-primary: #0b0b0b;
+    --text-secondary: #52514e;
+    --text-muted: #898781;
+    --grid: #e1e0d9;
+    --axis: #c3c2b7;
+    --border: rgba(11, 11, 11, 0.10);
+    --series-1: #2a78d6;
+    --series-1-wash: rgba(42, 120, 214, 0.10);
+    --good: #0ca30c;
+    --warning: #fab219;
+    --critical: #d03b3b;
+    --good-text: #006300;
+    --critical-text: #b42828;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:where(:not([data-theme="light"])) {
+      color-scheme: dark;
+      --page: #0d0d0d;
+      --surface-1: #1a1a19;
+      --text-primary: #ffffff;
+      --text-secondary: #c3c2b7;
+      --text-muted: #898781;
+      --grid: #2c2c2a;
+      --axis: #383835;
+      --border: rgba(255, 255, 255, 0.10);
+      --series-1: #3987e5;
+      --series-1-wash: rgba(57, 135, 229, 0.12);
+      --good-text: #0ca30c;
+      --critical-text: #e66767;
+    }
+  }
+  :root[data-theme="dark"] {
+    color-scheme: dark;
+    --page: #0d0d0d;
+    --surface-1: #1a1a19;
+    --text-primary: #ffffff;
+    --text-secondary: #c3c2b7;
+    --text-muted: #898781;
+    --grid: #2c2c2a;
+    --axis: #383835;
+    --border: rgba(255, 255, 255, 0.10);
+    --series-1: #3987e5;
+    --series-1-wash: rgba(57, 135, 229, 0.12);
+    --good-text: #0ca30c;
+    --critical-text: #e66767;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--page);
+    color: var(--text-primary);
+    font: 14px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif;
+  }
+  main { max-width: 1180px; margin: 0 auto; padding: 20px 16px 48px; }
+  header { display: flex; flex-wrap: wrap; align-items: center; gap: 12px 20px; margin-bottom: 16px; }
+  h1 { font-size: 20px; font-weight: 600; margin: 0; }
+  .status { display: inline-flex; align-items: center; gap: 8px; padding: 4px 12px;
+            border: 1px solid var(--border); border-radius: 999px; background: var(--surface-1);
+            color: var(--text-secondary); }
+  .status svg { flex: none; }
+  .status strong { color: var(--text-primary); font-weight: 600; }
+  .filters { margin-left: auto; display: flex; gap: 4px; flex-wrap: wrap; }
+  .filters button { font: inherit; color: var(--text-secondary); background: transparent;
+                    border: 1px solid var(--border); border-radius: 8px; padding: 4px 10px;
+                    cursor: pointer; }
+  .filters button[aria-pressed="true"] { color: var(--text-primary); background: var(--surface-1);
+                                         font-weight: 600; }
+  .tiles { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr));
+           gap: 12px; margin-bottom: 16px; }
+  .tile, .card { background: var(--surface-1); border: 1px solid var(--border); border-radius: 12px; }
+  .tile { padding: 12px 14px; }
+  .tile .label { color: var(--text-secondary); font-size: 13px; }
+  .tile .value { font-size: 26px; font-weight: 600; margin-top: 2px; }
+  .tile .note { color: var(--text-muted); font-size: 12px; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(340px, 1fr)); gap: 12px; }
+  @media (max-width: 420px) { .grid { grid-template-columns: 1fr; } }
+  .card { padding: 14px 14px 10px; min-width: 0; }
+  .card h2 { font-size: 14px; font-weight: 600; margin: 0; }
+  .card .sub { color: var(--text-muted); font-size: 12px; margin: 2px 0 8px; }
+  .chart { position: relative; height: 190px; }
+  .chart svg { display: block; width: 100%; height: 100%; overflow: visible; }
+  .empty { height: 100%; display: grid; place-items: center; color: var(--text-muted); }
+  .tick { fill: var(--text-muted); font-size: 11px; font-variant-numeric: tabular-nums; }
+  .ref-label { fill: var(--text-secondary); font-size: 11px; }
+  details { margin-top: 6px; color: var(--text-secondary); font-size: 12px; }
+  summary { cursor: pointer; }
+  table { border-collapse: collapse; width: 100%; margin-top: 6px; font-variant-numeric: tabular-nums; }
+  th, td { text-align: left; padding: 3px 6px; border-bottom: 1px solid var(--grid); }
+  td.num, th.num { text-align: right; }
+  .tooltip { position: fixed; pointer-events: none; z-index: 10; background: var(--surface-1);
+             color: var(--text-primary); border: 1px solid var(--border); border-radius: 8px;
+             padding: 6px 10px; font-size: 12px; box-shadow: 0 4px 16px rgba(0,0,0,0.12);
+             display: none; white-space: nowrap; }
+  .tooltip .t { color: var(--text-secondary); }
+  .errors { list-style: none; margin: 0; padding: 0; }
+  .errors li { display: flex; gap: 8px; align-items: center; padding: 5px 0;
+               border-bottom: 1px solid var(--grid); color: var(--text-secondary); }
+  .errors time { color: var(--text-muted); font-variant-numeric: tabular-nums; }
+  .wide { grid-column: 1 / -1; }
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <h1>Starlight statistics</h1>
+    <span class="status" id="status" role="status"></span>
+    <div class="filters" role="group" aria-label="Time range">
+      <button data-minutes="60" aria-pressed="true">Last hour</button>
+      <button data-minutes="1440" aria-pressed="false">Last 24 hours</button>
+      <button data-minutes="10080" aria-pressed="false">Last 7 days</button>
+    </div>
+  </header>
+
+  <section class="tiles" id="tiles" aria-label="Key figures"></section>
+
+  <section class="grid">
+    <article class="card"><h2>Tokens per second</h2><p class="sub">Model generation speed</p>
+      <div class="chart" id="c-tps"></div><details><summary>Show data</summary><div id="t-tps"></div></details></article>
+    <article class="card"><h2>Web requests per second</h2><p class="sub">Busiest second in each interval; the cap is 5</p>
+      <div class="chart" id="c-web"></div><details><summary>Show data</summary><div id="t-web"></div></details></article>
+    <article class="card"><h2>GPU use</h2><p class="sub">Percent busy</p>
+      <div class="chart" id="c-gpu"></div><details><summary>Show data</summary><div id="t-gpu"></div></details></article>
+    <article class="card"><h2>VRAM in use</h2><p class="sub" id="vram-sub">Gigabytes</p>
+      <div class="chart" id="c-vram"></div><details><summary>Show data</summary><div id="t-vram"></div></details></article>
+    <article class="card"><h2>Tasks completed</h2><p class="sub">Per interval</p>
+      <div class="chart" id="c-tasks"></div><details><summary>Show data</summary><div id="t-tasks"></div></details></article>
+    <article class="card"><h2>Tool calls per module</h2><p class="sub">In the selected range</p>
+      <div class="chart" id="c-modules"></div><details><summary>Show data</summary><div id="t-modules"></div></details></article>
+    <article class="card wide"><h2>Recent errors</h2><p class="sub">Failed tool calls and other errors</p>
+      <ul class="errors" id="errors"></ul></article>
+  </section>
+</main>
+<div class="tooltip" id="tooltip"></div>
+
+<script>
+const REFRESH = __REFRESH__;
+let minutes = 60;
+let last = null;
+const NS = "http://www.w3.org/2000/svg";
+const tip = document.getElementById("tooltip");
+
+const ICONS = {
+  running: '<svg width="14" height="14" viewBox="0 0 14 14" aria-hidden="true"><circle cx="7" cy="7" r="6" fill="var(--good)"/><path d="M4 7.2l2 2 4-4.4" stroke="#fff" stroke-width="1.8" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>',
+  stopped: '<svg width="14" height="14" viewBox="0 0 14 14" aria-hidden="true"><circle cx="7" cy="7" r="6" fill="var(--critical)"/><rect x="4.5" y="4.5" width="5" height="5" rx="1" fill="#fff"/></svg>',
+  offline: '<svg width="14" height="14" viewBox="0 0 14 14" aria-hidden="true"><circle cx="7" cy="7" r="6" fill="var(--warning)"/><rect x="6.2" y="3.5" width="1.6" height="4.5" rx=".8" fill="#0b0b0b"/><circle cx="7" cy="10.2" r="1" fill="#0b0b0b"/></svg>',
+  error: '<svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true"><circle cx="6" cy="6" r="5.5" fill="var(--critical)"/><path d="M4 4l4 4M8 4l-4 4" stroke="#fff" stroke-width="1.5" stroke-linecap="round"/></svg>',
+};
+
+function el(tag, attrs = {}, parent) {
+  const node = document.createElementNS(NS, tag);
+  for (const [k, v] of Object.entries(attrs)) node.setAttribute(k, v);
+  if (parent) parent.appendChild(node);
+  return node;
+}
+function compact(v, digits = 1) {
+  if (v == null || isNaN(v)) return "–";
+  const a = Math.abs(v);
+  if (a >= 1e9) return (v / 1e9).toFixed(digits) + "B";
+  if (a >= 1e6) return (v / 1e6).toFixed(digits) + "M";
+  if (a >= 1e4) return (v / 1e3).toFixed(digits) + "K";
+  return Number.isInteger(v) ? v.toLocaleString() : v.toLocaleString(undefined, {maximumFractionDigits: 2});
+}
+function timeLabel(ts) {
+  const d = new Date(ts * 1000);
+  return minutes > 1440
+    ? d.toLocaleDateString(undefined, {weekday: "short", day: "numeric"}) + " " + d.toLocaleTimeString([], {hour: "2-digit", minute: "2-digit"})
+    : d.toLocaleTimeString([], {hour: "2-digit", minute: "2-digit"});
+}
+function niceMax(v) {
+  if (!(v > 0)) return 1;
+  const p = Math.pow(10, Math.floor(Math.log10(v)));
+  for (const m of [1, 2, 2.5, 5, 10]) if (m * p >= v) return m * p;
+  return 10 * p;
+}
+function showTip(html, x, y) {
+  tip.innerHTML = html;
+  tip.style.display = "block";
+  const w = tip.offsetWidth, h = tip.offsetHeight;
+  tip.style.left = Math.min(window.innerWidth - w - 8, Math.max(8, x + 12)) + "px";
+  tip.style.top = Math.max(8, y - h - 12) + "px";
+}
+function hideTip() { tip.style.display = "none"; }
+
+function frame(container, yMax, opts) {
+  container.innerHTML = "";
+  const W = container.clientWidth || 320, H = container.clientHeight || 190;
+  const m = {l: 40, r: 12, t: 10, b: 22};
+  const svg = el("svg", {viewBox: `0 0 ${W} ${H}`, role: "img", "aria-label": opts.label}, container);
+  const iw = W - m.l - m.r, ih = H - m.t - m.b;
+  for (let i = 0; i <= 4; i++) {
+    const v = yMax * i / 4, y = m.t + ih - ih * i / 4;
+    el("line", {x1: m.l, x2: W - m.r, y1: y, y2: y, stroke: i === 0 ? "var(--axis)" : "var(--grid)", "stroke-width": 1}, svg);
+    const t = el("text", {x: m.l - 6, y: y + 4, "text-anchor": "end", class: "tick"}, svg);
+    t.textContent = compact(v);
+  }
+  return {svg, W, H, m, iw, ih};
+}
+function xTicks(f, t0, t1) {
+  for (let i = 0; i < 3; i++) {
+    const ts = t0 + (t1 - t0) * i / 2;
+    const x = f.m.l + f.iw * i / 2;
+    const t = el("text", {x, y: f.H - 4, "text-anchor": i === 0 ? "start" : i === 2 ? "end" : "middle", class: "tick"}, f.svg);
+    t.textContent = timeLabel(ts);
+  }
+}
+function empty(container, text = "No data yet") {
+  container.innerHTML = `<div class="empty">${text}</div>`;
+}
+function table(id, headers, rows) {
+  const node = document.getElementById(id);
+  if (!rows.length) { node.textContent = "No data yet."; return; }
+  node.innerHTML = "<table><thead><tr>" + headers.map((h, i) => `<th class="${i ? "num" : ""}">${h}</th>`).join("") +
+    "</tr></thead><tbody>" + rows.map(r => "<tr>" + r.map((c, i) => `<td class="${i ? "num" : ""}">${c}</td>`).join("") + "</tr>").join("") + "</tbody></table>";
+}
+
+function lineChart(id, points, opts) {
+  const c = document.getElementById(id);
+  if (!points.length) return empty(c);
+  const t0 = last.now - minutes * 60, t1 = last.now;
+  const yMax = opts.yMax || niceMax(Math.max(...points.map(p => p[1])) * 1.1);
+  const f = frame(c, yMax, opts);
+  const x = ts => f.m.l + f.iw * (ts - t0) / (t1 - t0);
+  const y = v => f.m.t + f.ih - f.ih * Math.min(v, yMax) / yMax;
+  const d = points.map((p, i) => (i ? "L" : "M") + x(p[0]).toFixed(1) + " " + y(p[1]).toFixed(1)).join(" ");
+  el("path", {d: d + ` L${x(points.at(-1)[0]).toFixed(1)} ${y(0)} L${x(points[0][0]).toFixed(1)} ${y(0)} Z`, fill: "var(--series-1-wash)"}, f.svg);
+  el("path", {d, fill: "none", stroke: "var(--series-1)", "stroke-width": 2, "stroke-linejoin": "round", "stroke-linecap": "round"}, f.svg);
+  const end = points.at(-1);
+  el("circle", {cx: x(end[0]), cy: y(end[1]), r: 4, fill: "var(--series-1)", stroke: "var(--surface-1)", "stroke-width": 2}, f.svg);
+  xTicks(f, t0, t1);
+  const cross = el("line", {y1: f.m.t, y2: f.m.t + f.ih, stroke: "var(--axis)", "stroke-width": 1, visibility: "hidden"}, f.svg);
+  const dot = el("circle", {r: 4, fill: "var(--series-1)", stroke: "var(--surface-1)", "stroke-width": 2, visibility: "hidden"}, f.svg);
+  const hit = el("rect", {x: f.m.l, y: f.m.t, width: f.iw, height: f.ih, fill: "transparent"}, f.svg);
+  hit.addEventListener("pointermove", ev => {
+    const box = f.svg.getBoundingClientRect();
+    const px = (ev.clientX - box.left) * f.W / box.width;
+    let best = points[0];
+    for (const p of points) if (Math.abs(x(p[0]) - px) < Math.abs(x(best[0]) - px)) best = p;
+    cross.setAttribute("x1", x(best[0])); cross.setAttribute("x2", x(best[0]));
+    dot.setAttribute("cx", x(best[0])); dot.setAttribute("cy", y(best[1]));
+    cross.setAttribute("visibility", "visible"); dot.setAttribute("visibility", "visible");
+    showTip(`<div class="t">${timeLabel(best[0])}</div><strong>${compact(best[1], 2)}</strong> ${opts.unit}`, ev.clientX, ev.clientY);
+  });
+  hit.addEventListener("pointerleave", () => { cross.setAttribute("visibility", "hidden"); dot.setAttribute("visibility", "hidden"); hideTip(); });
+}
+
+function columnChart(id, points, opts) {
+  const c = document.getElementById(id);
+  if (!points.length) return empty(c);
+  const t0 = last.now - minutes * 60, t1 = last.now, bucket = last.bucket_seconds;
+  const top = Math.max(...points.map(p => p[1]), opts.ref || 0);
+  // counts get whole-number ticks: a maximum divisible by the 4 grid steps
+  const yMax = opts.integer ? Math.max(4, Math.ceil(top * 1.1 / 4) * 4) : niceMax(top * 1.1);
+  const f = frame(c, yMax, opts);
+  const slots = Math.max(1, Math.round((t1 - t0) / bucket));
+  const band = f.iw / slots;
+  const bw = Math.max(2, Math.min(24, band - 2));
+  const y = v => f.m.t + f.ih - f.ih * v / yMax;
+  for (const p of points) {
+    const xc = f.m.l + f.iw * (p[0] + bucket / 2 - t0) / (t1 - t0);
+    const h = Math.max(1, f.ih * p[1] / yMax), r = Math.min(4, bw / 2, h);
+    const x0 = xc - bw / 2, yTop = y(p[1]), yb = f.m.t + f.ih;
+    el("path", {d: `M${x0} ${yb} V${yTop + r} Q${x0} ${yTop} ${x0 + r} ${yTop} H${x0 + bw - r} Q${x0 + bw} ${yTop} ${x0 + bw} ${yTop + r} V${yb} Z`, fill: "var(--series-1)"}, f.svg);
+    const hit = el("rect", {x: xc - Math.max(band, 10) / 2, y: f.m.t, width: Math.max(band, 10), height: f.ih, fill: "transparent"}, f.svg);
+    const unit = typeof opts.unit === "function" ? opts.unit(p[1]) : opts.unit;
+    hit.addEventListener("pointermove", ev => showTip(`<div class="t">${timeLabel(p[0])}</div><strong>${compact(p[1], 2)}</strong> ${unit}`, ev.clientX, ev.clientY));
+    hit.addEventListener("pointerleave", hideTip);
+  }
+  if (opts.ref) {
+    const yr = y(opts.ref);
+    el("line", {x1: f.m.l, x2: f.W - f.m.r, y1: yr, y2: yr, stroke: "var(--text-muted)", "stroke-width": 1}, f.svg);
+    const t = el("text", {x: f.W - f.m.r, y: yr - 4, "text-anchor": "end", class: "ref-label"}, f.svg);
+    t.textContent = opts.refLabel;
+  }
+  xTicks(f, t0, t1);
+}
+
+function barList(id, items) {
+  const c = document.getElementById(id);
+  if (!items.length) return empty(c);
+  c.innerHTML = "";
+  const W = c.clientWidth || 320, rowH = 26, H = Math.max(c.clientHeight, items.length * rowH);
+  const svg = el("svg", {viewBox: `0 0 ${W} ${H}`, role: "img", "aria-label": "Tool calls per module"}, c);
+  const labelW = 90, valueW = 48, max = Math.max(...items.map(i => i.calls));
+  items.slice(0, 7).forEach((item, i) => {
+    const yc = i * rowH + rowH / 2;
+    const name = el("text", {x: 0, y: yc + 4, class: "tick"}, svg);
+    name.textContent = item.module;
+    const w = Math.max(2, (W - labelW - valueW) * item.calls / max), bh = 14, x0 = labelW, r = Math.min(4, w / 2);
+    el("path", {d: `M${x0} ${yc - bh / 2} H${x0 + w - r} Q${x0 + w} ${yc - bh / 2} ${x0 + w} ${yc - bh / 2 + r} V${yc + bh / 2 - r} Q${x0 + w} ${yc + bh / 2} ${x0 + w - r} ${yc + bh / 2} H${x0} Z`, fill: "var(--series-1)"}, svg);
+    const v = el("text", {x: x0 + w + 6, y: yc + 4, class: "tick"}, svg);
+    v.textContent = compact(item.calls);
+    const hit = el("rect", {x: 0, y: i * rowH, width: W, height: rowH, fill: "transparent"}, svg);
+    hit.addEventListener("pointermove", ev => showTip(`<div class="t">${item.module}</div><strong>${compact(item.calls)}</strong> tool calls`, ev.clientX, ev.clientY));
+    hit.addEventListener("pointerleave", hideTip);
+  });
+}
+
+function tile(label, value, note = "") {
+  return `<div class="tile"><div class="label">${label}</div><div class="value">${value}</div>${note ? `<div class="note">${note}</div>` : ""}</div>`;
+}
+function gb(bytes) { return bytes == null ? "–" : (bytes / 2 ** 30).toFixed(1) + " GB"; }
+
+function render() {
+  const s = last;
+  const state = s.core.state;
+  const text = {running: "Core running", stopped: "AI stopped by the kill switch", offline: "Core not running"}[state];
+  const extra = state === "stopped" && s.core.reason ? ` · ${s.core.reason}` : "";
+  document.getElementById("status").innerHTML = `${ICONS[state]}<strong>${text}</strong>${extra}`;
+
+  const L = s.latest, T = s.totals;
+  const vram = L.vram_used_bytes != null ? gb(L.vram_used_bytes) + (L.vram_total_bytes ? ` of ${gb(L.vram_total_bytes)}` : "") : "–";
+  const skills = s.skills || {};
+  const benchNote = L.bench_tokens_per_second ? `benchmark ${compact(L.bench_tokens_per_second)} tok/s` +
+    (L.bench_gpu_fraction != null ? `, ${Math.round(L.bench_gpu_fraction * 100)}% on GPU` : "") : "";
+  document.getElementById("tiles").innerHTML = [
+    tile("Tasks completed", compact(T.tasks), T.whatsapp_received ? `${T.whatsapp_received} from WhatsApp` : ""),
+    tile("Tool calls", compact(T.tool_calls)),
+    tile("Errors", compact(T.errors)),
+    tile("Web requests", compact(T.web_requests), `peak ${T.peak_web_requests_per_second} in one second (cap 5)`),
+    tile("Tokens per second", L.tokens_per_second != null ? L.tokens_per_second.toFixed(1) : "–", benchNote),
+    tile("GPU use", L.gpu_utilization_percent != null ? Math.round(L.gpu_utilization_percent) + "%" : "–", `VRAM ${vram}`),
+    tile("Memory", L.memory_entries != null ? compact(L.memory_entries) : "–", "files in the Memory folder"),
+    tile("Skills learned", compact(skills.approved || 0), `${skills.draft || 0} drafts waiting`),
+  ].join("");
+
+  const S = s.series;
+  lineChart("c-tps", S.tokens_per_second, {unit: "tokens/s", label: "Tokens per second over time"});
+  columnChart("c-web", S.web_requests_peak_per_second, {unit: n => (n === 1 ? "request" : "requests") + " in the busiest second", label: "Web requests in the busiest second per interval", ref: 5, refLabel: "cap 5/s", integer: true});
+  lineChart("c-gpu", S.gpu_utilization_percent, {unit: "%", yMax: 100, label: "GPU use over time"});
+  lineChart("c-vram", S.vram_used_gb, {unit: "GB", yMax: L.vram_total_bytes ? niceMax(L.vram_total_bytes / 2 ** 30) : 0, label: "VRAM in use over time"});
+  columnChart("c-tasks", S.tasks, {unit: "tasks", label: "Tasks completed per interval", integer: true});
+  barList("c-modules", s.tool_calls_by_module);
+
+  const rows = pts => pts.map(p => [timeLabel(p[0]), compact(p[1], 2)]).reverse();
+  table("t-tps", ["Time", "Tokens/s"], rows(S.tokens_per_second));
+  table("t-web", ["Time", "Busiest second"], rows(S.web_requests_peak_per_second));
+  table("t-gpu", ["Time", "GPU %"], rows(S.gpu_utilization_percent));
+  table("t-vram", ["Time", "GB"], rows(S.vram_used_gb));
+  table("t-tasks", ["Time", "Tasks"], rows(S.tasks));
+  table("t-modules", ["Module", "Calls"], s.tool_calls_by_module.map(m => [m.module, compact(m.calls)]));
+
+  const errors = document.getElementById("errors");
+  errors.innerHTML = s.recent_errors.length
+    ? s.recent_errors.map(e => `<li>${ICONS.error}<time>${timeLabel(e.ts)}</time><span>${e.what}</span></li>`).join("")
+    : `<li>No errors in this range.</li>`;
+}
+
+async function load() {
+  try {
+    const response = await fetch(`/api/summary?minutes=${minutes}`);
+    last = await response.json();
+    render();
+  } catch (err) {
+    document.getElementById("status").innerHTML = `${ICONS.offline}<strong>Viewer cannot read the statistics</strong>`;
+  }
+}
+document.querySelectorAll(".filters button").forEach(button => button.addEventListener("click", () => {
+  minutes = Number(button.dataset.minutes);
+  document.querySelectorAll(".filters button").forEach(b => b.setAttribute("aria-pressed", String(b === button)));
+  load();
+}));
+let resizeTimer;
+window.addEventListener("resize", () => { clearTimeout(resizeTimer); resizeTimer = setTimeout(() => last && render(), 150); });
+load();
+setInterval(load, REFRESH);
+</script>
+</body>
+</html>

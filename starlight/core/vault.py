@@ -107,6 +107,9 @@ class Vault:
             raise VaultError("key names use lowercase letters, digits, '.', '_' and '-'")
         self.backend.set(key, value)
         self._write_index([*self.names(), key])
+        from starlight.core.logging import add_secret_values
+
+        add_secret_values([value])
 
     def delete(self, key: str) -> None:
         self.backend.delete(key)

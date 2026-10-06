@@ -139,6 +139,8 @@ class Agent:
                 raise
             except Exception as exc:  # model server down, bad response ...
                 self._log.exception("model call failed", provider=self.provider.name)
+                if self.stats is not None:
+                    self.stats.record("errors", source="model")
                 result.answer = (
                     f"The model ({self.provider.name}) is not available: "
                     f"{type(exc).__name__}: {exc}. Is the model server running? "

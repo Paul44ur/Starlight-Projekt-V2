@@ -16,23 +16,25 @@ remove or disable without touching the core.
 | 6 | Web: search, scraping (max 5 req/s) and logins | done |
 | 7 | Network: ping and interact with servers | done |
 | 8 | Desktop: read the screen, emulate input | done |
-| 9 | Writing code and learning skills | |
-| 10 | WhatsApp, statistics viewer and hardening | |
+| 9 | Writing code and learning skills | done |
+| 10 | WhatsApp, statistics viewer and hardening | done |
 
-Steps 4 to 8 are tested with mock servers, a local SSH server, a real headless browser
-and fake screens. What needs your PC (GPU speed, Windows UI Automation, your accounts and
-servers) is in [docs/setup-windows.md](docs/setup-windows.md).
+Everything is tested with mock servers, a local SSH server, a real headless browser, a
+real sandbox process and fake screens. What needs your PC (GPU speed, Windows UI
+Automation, Docker, your accounts, servers and WhatsApp number) is in
+[docs/setup-windows.md](docs/setup-windows.md).
 
 ## Quick start (Windows 11 or Linux)
 
-Install [uv](https://docs.astral.sh/uv/), then:
-
-```bash
-uv sync --extra all                 # Python 3.12 venv + every optional module dependency
-uv run playwright install chromium  # headless browser for JavaScript pages and logins
-uv run starlight --version
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts\install.ps1    # Linux: bash scripts/install.sh
 uv run starlight run                # interactive session; /help lists commands
+uv run starlight viewer             # statistics at http://127.0.0.1:8765
 ```
+
+The installer sets up [uv](https://docs.astral.sh/uv/), Python 3.12, every module's
+dependencies and the headless browser. Add `-Service` (`--service`) to start the core and
+the viewer at logon.
 
 Out of the box the model is a test stand-in (`model.provider: echo`): it echoes text, and
 `!module.tool {json}` calls a tool directly. Switch to your GPU model in
@@ -56,6 +58,11 @@ starlight> Hello, Paul!
 | `starlight model info / serve / bench` | show model config, start the model server, measure tokens/s and VRAM |
 | `starlight memory list / show / add / search / forget / export / reindex` | the Memory folder |
 | `starlight vault set / list / delete KEY` | secrets in the Windows Credential Manager (OS keyring) |
+| `starlight skills list / show / approve / reject / history / rollback / promote` | learned skills |
+| `starlight serve` | the core in the background: WhatsApp webhook, watchers, kill hotkey |
+| `starlight viewer` | the statistics viewer, a separate app (keeps working when the AI is stopped) |
+| `starlight service install / uninstall / status` | start core and viewer at logon |
+| `starlight logs scan` | check every log file for leaked secrets |
 
 ## What each step added
 
@@ -97,6 +104,29 @@ a screen corner triggers the kill switch, typing stops between two characters wh
 hotkey is pressed, keys are released on a kill, a red banner shows while Starlight has
 control, and screenshots stay in memory and only go to a model on this computer.
 
+**Step 9, code and skills.** The core routes code work to a coding model
+(`roles: code:`). `code.write_code` writes a program with tests, runs the tests in the
+sandbox, feeds errors back and retries a few times, then reports; `code.run_python` runs a
+snippet. Both ask first. The sandbox is a Docker container (no network, read-only, capped
+memory/CPU/processes, no privileges) when Docker runs, otherwise a separate process with a
+time limit and audit hooks that block network, the vault, Starlight's private folders and
+starting programs. When the same kind of task succeeds again, the model drafts a skill
+(`skills/<name>/SKILL.md`, with the tested code). Drafts are never used; approved skills
+are added to matching prompts. Every change is committed to `data/skills.git`, so
+`starlight skills rollback` undoes a bad one, and `promote` turns a skill into a module.
+
+**Step 10, WhatsApp, viewer, hardening.** The `whatsapp` module uses the official
+WhatsApp Business Cloud API: a webhook on this computer behind a Cloudflare Tunnel that
+exposes only that path, Meta's signature checked on every delivery, and only your own
+number accepted. Text becomes a task and the answer comes back; confirmations are asked
+on the phone (reply yes/no); `/kill` stops everything, `/status` reports; server alerts
+and new draft skills are sent to you. The statistics viewer is a separate web app that
+reads `data/stats.db` read-only: tasks, tool calls per module, errors, web requests (with
+the busiest second against the 5/s cap), tokens per second, GPU use, VRAM, memory size
+and skills, plus Prometheus metrics at `/metrics`. Hardening: end-to-end tests per
+module, a test that the kill switch stops every tool of every module, a load test of the
+5 requests/s cap, vault values masked in every log line, and `starlight logs scan`.
+
 ## Layout
 
 ```
@@ -104,9 +134,14 @@ starlight/core/     kernel, agent loop, dispatcher, events, config, logging, kil
                     context (summaries), http (rate limits), vault, stats, ui
 starlight/models/   Ollama, llama.cpp, router, serve, bench
 starlight/memory/   Memory folder, embeddings, vector index
+starlight/skills/   skill drafting, approval, git history
+starlight/sandbox/  Docker and process sandboxes for generated code
+starlight/viewer/   the statistics viewer (separate app)
 starlight/browser.py, text.py   headless browser and HTML-to-text helpers for modules
 starlight/cli.py    the `starlight` command
-modules/            hello, web, login, network, desktop (+ _template)
+modules/            hello, web, login, network, desktop, code, whatsapp (+ _template)
+skills/             skills it learns (one folder each)
+scripts/            install.ps1, install.sh
 memory/             what the AI learns (one Markdown file per fact)
 config/             starlight.yaml, servers.yaml, modules/<name>.yaml
 logs/               starlight.log, audit.log, modules/<name>.log (JSON, rotated)

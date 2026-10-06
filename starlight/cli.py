@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import contextlib
 import getpass
 import json
 import re
@@ -408,6 +409,68 @@ def cmd_skills(paths: Paths, args: argparse.Namespace) -> int:
     return 0
 
 
+async def cmd_serve(paths: Paths, args: argparse.Namespace) -> int:
+    """The core in the background: modules (WhatsApp webhook, watchers), kill hotkey,
+    no terminal. Questions go to the channel a request came from."""
+    import signal
+
+    stop = asyncio.Event()
+    loop = asyncio.get_running_loop()
+    for sig in (signal.SIGTERM, signal.SIGINT):
+        with contextlib.suppress(NotImplementedError, RuntimeError):  # Windows
+            loop.add_signal_handler(sig, stop.set)
+    async with Kernel(paths, hotkey=True) as kernel:
+        print(f"Starlight core running from {paths.root}. Stop with Ctrl+C.", flush=True)
+        if kernel.kill_switch.engaged:
+            print(f"Note: the kill switch is engaged ({kernel.kill_switch.reason}).")
+        await stop.wait()
+    return 0
+
+
+def cmd_viewer(paths: Paths, args: argparse.Namespace) -> int:
+    from starlight.viewer.app import run
+
+    config = load_config(paths)
+    print(f"Statistics viewer on http://{config.viewer.host}:{config.viewer.port}", flush=True)
+    run(paths)
+    return 0
+
+
+def cmd_logs(paths: Paths, args: argparse.Namespace) -> int:
+    from starlight.core.secretscan import scan_logs
+
+    vault = Vault(paths.config / "vault_index.yaml")
+    try:
+        secrets = [v for k in vault.names() if (v := vault.get(k))]
+    except Exception:
+        secrets = []
+        print("(vault not readable: checking patterns only)", file=sys.stderr)
+    findings = scan_logs(paths.logs, secrets)
+    for finding in findings:
+        print(f"  {finding.file.relative_to(paths.root)}:{finding.line}  {finding.kind}")
+    if findings:
+        print(
+            f"{len(findings)} possible secret(s) in the logs. Delete those log files and "
+            "rotate the affected secrets."
+        )
+        return 1
+    print("No secrets found in the logs.")
+    return 0
+
+
+def cmd_service(paths: Paths, args: argparse.Namespace) -> int:
+    from starlight import service
+
+    service_plan = service.plan(paths.root, args.action)
+    for path, content in service_plan.files.items():
+        print(f"# {path}\n{content}")
+    for command in service_plan.commands:
+        print("$ " + " ".join(command))
+    if args.print_only:
+        return 0
+    return service.apply(service_plan)
+
+
 async def cmd_model(paths: Paths, args: argparse.Namespace) -> int:
     config = load_config(paths)
     if args.action == "serve":
@@ -493,6 +556,14 @@ def build_parser() -> argparse.ArgumentParser:
     skills.add_argument("name", nargs="?")
     skills.add_argument("revision", nargs="?", help="rollback: revision from `history`")
 
+    sub.add_parser("serve", help="run the core in the background (WhatsApp, watchers)")
+    sub.add_parser("viewer", help="the statistics viewer (a separate web app)")
+    logs = sub.add_parser("logs", help="check the logs for leaked secrets")
+    logs.add_argument("action", choices=["scan"])
+    service_cmd = sub.add_parser("service", help="start core and viewer at logon")
+    service_cmd.add_argument("action", choices=["install", "uninstall", "status"])
+    service_cmd.add_argument("--print-only", action="store_true", help="only show what it does")
+
     model = sub.add_parser("model", help="the local model: info, serve, bench")
     model.add_argument("action", choices=["info", "serve", "bench"])
     model.add_argument("--runs", type=int, default=3, help="benchmark runs")
@@ -531,6 +602,14 @@ def main(argv: Sequence[str] | None = None) -> int:
                 return asyncio.run(cmd_memory(paths, args))
             case "vault":
                 return cmd_vault(paths, args)
+            case "serve":
+                return asyncio.run(cmd_serve(paths, args))
+            case "viewer":
+                return cmd_viewer(paths, args)
+            case "logs":
+                return cmd_logs(paths, args)
+            case "service":
+                return cmd_service(paths, args)
             case "skills":
                 return cmd_skills(paths, args)
             case "model":

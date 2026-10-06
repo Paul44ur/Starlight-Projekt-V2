@@ -148,8 +148,16 @@ async def test_kill_hotkey_stops_typing_halfway(desktop_project: Paths) -> None:
     fake = FakeDesktop()
     async with Kernel(desktop_project, provider=provider, ui=Yes()) as kernel:
         install(kernel, fake)
-        # the hotkey listener runs in its own thread, like pynput's
-        threading.Timer(0.15, kernel.kill_switch.trigger, args=("hotkey <ctrl>+<alt>+k",)).start()
+
+        # the hotkey listener runs in its own thread, like pynput's: press it once typing
+        # has visibly started
+        def press_hotkey_midway() -> None:
+            deadline = time.monotonic() + 10
+            while len(fake.text) < 5 and time.monotonic() < deadline:
+                time.sleep(0.005)
+            kernel.kill_switch.trigger("hotkey <ctrl>+<alt>+k", source="hotkey")
+
+        threading.Thread(target=press_hotkey_midway, daemon=True).start()
         result = await kernel.ask("type a long sentence")
         time.sleep(0.05)  # the typing thread notices at its next character
         assert result.stopped

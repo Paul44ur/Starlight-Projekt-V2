@@ -18,7 +18,13 @@ from starlight.core.dispatcher import Confirmer, Dispatcher
 from starlight.core.events import Event, EventBus
 from starlight.core.http import PoliteHttp
 from starlight.core.killswitch import KillSwitch
-from starlight.core.logging import AuditLog, get_logger, setup_logging, shutdown_logging
+from starlight.core.logging import (
+    AuditLog,
+    add_secret_values,
+    get_logger,
+    setup_logging,
+    shutdown_logging,
+)
 from starlight.core.model import Message, ModelProvider, TokenCallback, create_provider
 from starlight.core.modules import ModuleManager, Services
 from starlight.core.paths import Paths
@@ -178,8 +184,8 @@ class Kernel:
             self.bus.subscribe("task.completed", self._learn_skill, owner="skills")
         self.bus.subscribe("message.received", self._on_message, owner="core")
         self.stats.prune(self.config.stats.retention_days)
-        if self.config.stats.gpu_sample_interval > 0:
-            self._spawn(self._sample_gpu(), "gpu-sampler")
+        self._spawn(self._heartbeat(), "gpu-heartbeat")
+        self._protect_secrets()
         await self._warmup()
         await self.modules.load_all()
         self.audit.record(
@@ -264,21 +270,35 @@ class Kernel:
                 await reply(result.answer)
             except Exception:
                 self.log.exception("message handling failed", source=event.source)
+                self.stats.record("errors", source=event.source)
                 await reply("Sorry, that failed. The details are in the Starlight logs.")
             finally:
                 current_ui.reset(token)
 
         self._spawn(handle(), f"message-{event.source}")
 
-    async def _sample_gpu(self) -> None:
-        """GPU use and VRAM for the statistics viewer."""
+    def _protect_secrets(self) -> None:
+        """Mask the vault's values wherever they would appear in a log line."""
+        try:
+            values = [self.vault.get(key) for key in self.vault.names()]
+        except Exception as exc:  # no keyring on this machine
+            self.log.warning("vault unavailable", error=str(exc))
+            return
+        add_secret_values(v for v in values if v)
+
+    async def _heartbeat(self) -> None:
+        """Tells the statistics viewer the core is running; samples GPU use and VRAM."""
         from starlight.models.bench import gpu_status
 
+        interval = self.config.stats.gpu_sample_interval
         while True:
-            try:
-                status = await asyncio.to_thread(gpu_status)
-            except Exception:
-                status = None
+            self.stats.record("core.heartbeat")
+            status = None
+            if interval > 0:
+                try:
+                    status = await asyncio.to_thread(gpu_status)
+                except Exception:
+                    status = None
             if status:
                 if status.get("used_bytes") is not None:
                     self.stats.record("gpu.vram_used_bytes", status["used_bytes"])
@@ -286,7 +306,7 @@ class Kernel:
                     self.stats.record("gpu.vram_total_bytes", status["total_bytes"])
                 if status.get("utilization") is not None:
                     self.stats.record("gpu.utilization_percent", status["utilization"])
-            await asyncio.sleep(self.config.stats.gpu_sample_interval)
+            await asyncio.sleep(min(interval, 30) if interval > 0 else 30)
 
     async def ask(
         self,
@@ -339,6 +359,7 @@ class Kernel:
                 await close()
         self.memory.close()
         self.audit.record("core.stopped")
+        self.stats.record("core.stopped")  # the viewer shows "not running" at once
         self.log.info("core stopped")
         self.stats.close()
         shutdown_logging()

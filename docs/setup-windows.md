@@ -108,3 +108,51 @@ Then ask: "Is my server up and what is its disk usage?"
 
 **Stopping it:** Ctrl+Alt+K, moving the mouse into any screen corner, or
 `uv run starlight kill` from another terminal. Then `uv run starlight resume`.
+
+## 7. Code and skills (Step 9)
+
+1. Install **Docker Desktop** so generated code runs in a container. Without Docker,
+   Starlight uses a restricted separate process, which stops mistakes but is not a
+   security boundary.
+2. Optional coding model: `ollama pull qwen2.5-coder:14b-instruct-q4_K_M` and the
+   `roles: code:` block in `config/starlight.yaml`.
+3. Ask: "Write me a small script that renames my photos by date." The code is tested in
+   the sandbox and saved under `data/modules/code/projects/`.
+4. When the same kind of task works a second time, you get a draft skill:
+   `uv run starlight skills list`, `skills show <name>`, `skills approve <name>`.
+   A skill that turns out bad: `skills rollback <name>`.
+
+## 8. WhatsApp (Step 10)
+
+You need a Meta developer account, a WhatsApp Business app and a phone number for it
+(a second number, not the one on your phone's WhatsApp).
+
+1. At developers.facebook.com create an app of type *Business*, add *WhatsApp*, register
+   the business number and note its **phone number ID**. Create a **permanent access
+   token** (System User in Business Settings) and note the **app secret**.
+2. Store the secrets:
+   ```powershell
+   uv run starlight vault set whatsapp.token
+   uv run starlight vault set whatsapp.app_secret
+   uv run starlight vault set whatsapp.verify_token    # any long random string
+   ```
+3. In `config/modules/whatsapp.yaml` set `owner_number` (your own number) and
+   `phone_number_id`.
+4. Expose only the webhook with a **Cloudflare Tunnel**: install `cloudflared`, create a
+   tunnel, and use `config/cloudflared.example.yml` as its config (it routes only
+   `/webhook/whatsapp` and answers everything else with 404). Run `cloudflared tunnel run`.
+5. In the Meta dashboard set the webhook URL to
+   `https://<your-hostname>/webhook/whatsapp`, the verify token from step 2, and
+   subscribe to `messages`.
+6. Start the core: `uv run starlight serve` (or `starlight service install`). Send
+   "hello" from your phone. `/kill` stops everything; `/status` reports.
+
+## 9. Statistics viewer and background start (Step 10)
+
+- `uv run starlight viewer`, then open http://127.0.0.1:8765. It only reads
+  `data/stats.db`, so it keeps working when the AI is stopped. Prometheus or Grafana can
+  scrape http://127.0.0.1:8765/metrics.
+- `uv run starlight service install` creates two Task Scheduler tasks that start the core
+  and the viewer when you log in. (Not a Windows service: services cannot see or control
+  your desktop.) `service status` and `service uninstall` manage them.
+- Now and then: `uv run starlight logs scan` checks the logs for leaked secrets.
