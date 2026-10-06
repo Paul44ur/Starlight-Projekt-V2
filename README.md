@@ -90,7 +90,7 @@ Starlight will download and set up, inside C:\Starlight:
    - uv, Python 3.12 and Starlight's packages      ~1.3 GB
    - the Chromium browser for web pages and logins ~0.3 GB
    - the llama.cpp model server (vulkan)         ~0.2 GB
-   - the model Qwen2.5-14B-Instruct-Q4_K_M.gguf      8.4 GB
+   - the model Qwen2.5-14B_Uncensored_Instruct-Q4_K_M.gguf 8.4 GB
    Needed: about 10.2 GB. Free on this drive: 250.0 GB.
 Continue? [Y/n]
 ```
