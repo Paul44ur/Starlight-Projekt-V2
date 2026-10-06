@@ -247,10 +247,11 @@ def site() -> Iterator[str]:
 @pytest.fixture
 def chromium(monkeypatch: pytest.MonkeyPatch) -> None:
     pytest.importorskip("playwright")
-    if not os.environ.get("STARLIGHT_CHROMIUM"):
-        if not Path(CHROMIUM).exists():
-            pytest.skip("no Chromium for Playwright")
-        monkeypatch.setenv("STARLIGHT_CHROMIUM", CHROMIUM)
+    if os.environ.get("STARLIGHT_CHROMIUM") or os.environ.get("CI"):
+        return  # CI: the browser `playwright install chromium` put in place
+    if not Path(CHROMIUM).exists():
+        pytest.skip("no Chromium for Playwright")
+    monkeypatch.setenv("STARLIGHT_CHROMIUM", CHROMIUM)
 
 
 class FakeUser:

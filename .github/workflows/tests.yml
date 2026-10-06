@@ -1,0 +1,60 @@
+# Lint, type checks (as Linux and as Windows) and the full test suite on Linux and Windows.
+# The Windows job exercises what cannot be tested elsewhere: file locks, log rotation while
+# another process holds a file, starting without a console, the Startup shortcut script.
+name: Tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: tests-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          python-version: "3.12"
+          enable-cache: true
+      - run: uv sync --locked --extra all
+      - run: uv run ruff check .
+      - run: uv run ruff format --check .
+      - name: mypy (Linux)
+        run: uv run mypy && uv run mypy modules
+      - name: mypy (as Windows)
+        run: uv run mypy --platform win32 && uv run mypy --platform win32 modules
+
+  test:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          python-version: "3.12"
+          enable-cache: true
+      - run: uv sync --locked --extra all
+      - name: Browser for the web and login tests
+        shell: bash
+        run: |
+          if [ "$RUNNER_OS" = "Linux" ]; then
+            uv run playwright install --with-deps chromium
+          else
+            uv run playwright install chromium
+          fi
+      - name: Tests
+        run: uv run pytest -q -W default --durations=10

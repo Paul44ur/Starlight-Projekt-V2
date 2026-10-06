@@ -53,7 +53,7 @@ def _hook(event: str, args: tuple[object, ...]) -> None:
         raise PermissionError("sandbox: that path is outside the sandbox")
 
 
-if _settings.get("memory_mb") and os.name == "posix":
+if _settings.get("memory_mb") and sys.platform != "win32":
     import resource
 
     _limit = int(_settings["memory_mb"]) * 2**20  # set here, before any user code runs

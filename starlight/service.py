@@ -144,8 +144,8 @@ def apply(service_plan: Plan) -> int:
     for command in service_plan.commands:
         code = code or subprocess.run(command, check=False).returncode
     flags = 0
-    if sys.platform == "win32":
-        flags = subprocess.DETACHED_PROCESS | subprocess.CREATE_NEW_PROCESS_GROUP  # type: ignore[attr-defined]
+    if sys.platform == "win32":  # checked per platform by mypy, so no ignore needed
+        flags = subprocess.DETACHED_PROCESS | subprocess.CREATE_NEW_PROCESS_GROUP
     for command in service_plan.spawn:
         subprocess.Popen(
             command,
