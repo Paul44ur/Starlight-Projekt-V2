@@ -159,7 +159,7 @@ async def test_kill_hotkey_stops_typing_halfway(desktop_project: Paths) -> None:
             deadline = time.monotonic() + 10
             while len(fake.text) < 5 and time.monotonic() < deadline:
                 time.sleep(0.005)
-            kernel.kill_switch.trigger("hotkey <ctrl>+<alt>+k", source="hotkey")
+            kernel.kill_switch.trigger("hotkey <ctrl>+<alt>+j", source="hotkey")
 
         threading.Thread(target=press_hotkey_midway, daemon=True).start()
         result = await kernel.ask("type a long sentence")

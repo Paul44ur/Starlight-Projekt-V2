@@ -122,7 +122,7 @@ Then ask: "Is my server up and what is its disk usage?"
    allow that tool for the rest of the session, or add `desktop.*` to
    `permissions.auto_approve` once you trust it.
 
-**Stopping it:** Ctrl+Alt+K, moving the mouse into any screen corner, or
+**Stopping it:** Ctrl+Alt+J, moving the mouse into any screen corner, or
 `uv run starlight kill` from another terminal. Then `uv run starlight resume`.
 
 ## 7. Code and skills (Step 9)

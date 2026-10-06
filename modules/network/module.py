@@ -31,7 +31,7 @@ import httpx
 from pydantic import BaseModel, Field, ValidationError, field_validator
 
 from starlight.core import Module, ModuleContext, Permission, ToolError, tool
-from starlight.core.config import ConfigError, read_yaml
+from starlight.core.config import ConfigError, read_yaml, write_yaml_config
 
 from .readonly import is_read_only
 
@@ -159,6 +159,51 @@ class NetworkModule(Module):
             }
             for n, s in sorted(self._servers().items())
         ]
+
+    SERVERS_HEADER = (
+        "# Servers Starlight may touch (Step 7). Anything not listed here is refused.\n"
+        "# Starlight edits this from the chat (network.allow / network.forget); you may also\n"
+        "# edit it by hand (two spaces per level, no tabs). SSH keys go in the vault."
+    )
+
+    def _write_servers(self, servers: dict[str, Server]) -> None:
+        data = {"servers": {n: s.model_dump(exclude_none=True) for n, s in servers.items()}}
+        write_yaml_config(self.servers_file(), data, self.SERVERS_HEADER)
+
+    @tool(permission=Permission.CONFIRM)
+    def allow(
+        self,
+        host: str,
+        name: str = "",
+        description: str = "",
+        ports: list[int] | None = None,
+        http: str = "",
+    ) -> dict[str, Any]:
+        """Allow Starlight to reach a server or host, by adding it to the allow-list
+        (servers.yaml). Use this when the user asks to access, ping or scan a host that is
+        not listed yet. host is an IP or hostname. Asks the user first."""
+        host = host.strip()
+        if not host:
+            raise ToolError("give a host (an IP address or hostname)")
+        key = name.strip() or re.sub(r"[^a-z0-9]+", "-", host.lower()).strip("-") or "server"
+        servers = self._servers()
+        server = Server(host=host, description=description.strip(), ports=ports or [])
+        if http.strip():
+            server.http = http.strip()
+        servers[key] = server
+        self._write_servers(servers)
+        self.ctx.logger.info("server allowed", name=key, host=host)
+        return {"allowed": key, "host": host, "note": f"Starlight may now reach {key} ({host})."}
+
+    @tool(permission=Permission.CONFIRM)
+    def forget(self, name: str) -> dict[str, Any]:
+        """Remove a server from the allow-list so Starlight can no longer reach it."""
+        servers = self._servers()
+        key, _ = self._server(name)  # accepts the name or the host
+        servers.pop(key, None)
+        self._write_servers(servers)
+        self.ctx.logger.info("server forgotten", name=key)
+        return {"forgot": key}
 
     @tool
     async def ping(self, server: str) -> dict[str, Any]:

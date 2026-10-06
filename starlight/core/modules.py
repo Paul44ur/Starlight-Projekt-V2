@@ -39,7 +39,7 @@ from starlight.core.logging import AuditLog, get_logger, module_logger
 from starlight.core.model import ModelProvider
 from starlight.core.output import resolve_output_folder
 from starlight.core.paths import Paths
-from starlight.core.permissions import Permission
+from starlight.core.permissions import Permission, PermissionPolicy
 from starlight.core.stats import Stats
 from starlight.core.tools import Tool, collect_tools
 from starlight.core.ui import NoUser, UserIO
@@ -84,6 +84,7 @@ class Services:
     models: Callable[[str], ModelProvider] | None = None
     skills: Any = None  # the skill manager (Step 9)
     output_dir: Path | None = None  # where files made for the user go (output.folder)
+    policy: PermissionPolicy | None = None  # the running permission rules (access module)
     # This process runs the background parts (webhook, watchers). False while another
     # Starlight core does; the event "core.primary" announces a takeover.
     primary: bool = True
@@ -125,6 +126,12 @@ class ModuleContext:
     @property
     def model(self) -> ModelProvider | None:
         return self.services.model
+
+    @property
+    def policy(self) -> PermissionPolicy:
+        if self.services.policy is None:
+            raise RuntimeError("no permission policy configured")
+        return self.services.policy
 
     @property
     def output_dir(self) -> Path:

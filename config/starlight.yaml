@@ -108,7 +108,7 @@ viewer:
   refresh_seconds: 5
 
 kill_switch:
-  hotkey: "<ctrl>+<alt>+k"   # needs the optional "hotkey" extra (pynput)
+  hotkey: "<ctrl>+<alt>+j"   # emergency stop, works anywhere; needs the "hotkey" extra (pynput)
   stop_file: data/STOP
   poll_interval: 0.2
 

@@ -79,7 +79,7 @@ class Config(BaseModel):
     failsafe: bool = True  # mouse in a screen corner = kill switch
     failsafe_margin: int = 2
     indicator: bool = True
-    hotkey_label: str = "Ctrl+Alt+K"
+    hotkey_label: str = "Ctrl+Alt+J"
 
 
 def start_app(command: list[str]) -> subprocess.Popen[bytes]:

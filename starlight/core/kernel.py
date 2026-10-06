@@ -146,6 +146,7 @@ class Kernel:
             models=self.model_for,
             skills=self.skills,
             output_dir=resolve_output_folder(self.config.output.folder, self.paths.root),
+            policy=self.policy,
         )
         self.modules = ModuleManager(
             self.paths, self.dispatcher, self.bus, self.kill_switch, self.audit, self.services

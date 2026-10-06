@@ -86,7 +86,7 @@ class HttpConfig(_Strict):
 
 
 class KillSwitchConfig(_Strict):
-    hotkey: str | None = "<ctrl>+<alt>+k"
+    hotkey: str | None = "<ctrl>+<alt>+j"
     stop_file: str = "data/STOP"
     poll_interval: float = Field(default=0.2, gt=0)
 
@@ -174,6 +174,31 @@ def deep_merge(base: dict[str, Any], extra: dict[str, Any]) -> dict[str, Any]:
         else:
             merged[key] = value
     return merged
+
+
+def write_yaml_config(path: Path, data: dict[str, Any], header: str = "") -> None:
+    """Write a config file as a comment header plus YAML. Used when Starlight edits its own
+    config from the chat, so the user never has to open the file."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    body = yaml.safe_dump(data, sort_keys=True, allow_unicode=True, default_flow_style=False)
+    text = (header.rstrip() + "\n\n" if header else "") + body
+    tmp = path.with_name(f".{path.name}.tmp")
+    tmp.write_text(text, encoding="utf-8")
+    tmp.replace(path)
+
+
+def update_local_config(paths: Paths, updates: dict[str, Any]) -> None:
+    """Merge ``updates`` into config/starlight.local.yaml (your own overlay, applied over
+    starlight.yaml). Only the given keys change; the rest of the file is kept."""
+    overlay = paths.config / "starlight.local.yaml"
+    current = read_yaml(overlay)
+    merged = deep_merge(current, updates)
+    write_yaml_config(
+        overlay,
+        merged,
+        "# Your own settings, merged over config/starlight.yaml (this file wins).\n"
+        "# Starlight writes here when you change settings from the chat; safe to edit by hand.",
+    )
 
 
 def load_config(paths: Paths) -> StarlightConfig:

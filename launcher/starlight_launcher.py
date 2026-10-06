@@ -768,7 +768,7 @@ def start(settings: Settings, ui: Ui, uv: Path, ask: str | None) -> int:
         if ask is not None:
             result = subprocess.run(starlight(uv, "ask", "-y", ask), cwd=settings.root, check=False)
             return result.returncode
-        ui.say("Kill switch: Ctrl+Alt+K, a screen corner, or /kill. Leave with /quit.\n")
+        ui.say("Kill switch: Ctrl+Alt+J, a screen corner, or /kill. Leave with /quit.\n")
         return subprocess.run(starlight(uv, "run"), cwd=settings.root, check=False).returncode
     finally:
         group.stop()

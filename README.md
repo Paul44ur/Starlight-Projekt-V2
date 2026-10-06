@@ -116,7 +116,7 @@ Starlight loads the model onto your graphics card, opens the statistics viewer a
 http://127.0.0.1:8765 and starts the chat:
 
 ```
-Kill switch: Ctrl+Alt+K, a screen corner, or /kill. Leave with /quit.
+Kill switch: Ctrl+Alt+J, a screen corner, or /kill. Leave with /quit.
 
 you> What can you do?
 starlight> ...
@@ -250,7 +250,7 @@ Allow? [y]es / [n]o / [a]lways this session:
 
 **Stopping it.** Any of these stops everything at once, including typing in the middle of
 a word:
-- press **Ctrl+Alt+K**;
+- press **Ctrl+Alt+J**;
 - move the mouse into any **corner of the screen**;
 - type `/kill`;
 - run `starlight kill` in another window;
@@ -388,7 +388,7 @@ Another program uses that port. Start with `--port 8081`, or add `"port": 8081` 
 </details>
 
 <details>
-<summary><b>Ctrl+Alt+K does nothing</b></summary>
+<summary><b>Ctrl+Alt+J does nothing</b></summary>
 
 The hotkey only works in a normal desktop session. The screen corners, `/kill` and
 `starlight kill` always work.
