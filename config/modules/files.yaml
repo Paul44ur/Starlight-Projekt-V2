@@ -1,0 +1,8 @@
+# Files Starlight makes for you (modules/files). Where they go is `output.folder` in
+# config/starlight.yaml: by default the "Starlight" folder in your Documents.
+# Saving there needs no question; anywhere else Starlight asks you first.
+
+ask_before_replacing: true   # replacing an existing file asks first, also in that folder
+trusted_folders: []          # more folders that need no question, e.g. ["D:/Work/Reports"]
+max_file_mb: 10              # largest file it saves or reads
+max_read_chars: 40000        # longer files are cut off when read

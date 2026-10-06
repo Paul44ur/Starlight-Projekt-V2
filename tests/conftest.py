@@ -52,6 +52,15 @@ async def kernel(paths: Paths) -> AsyncIterator[Kernel]:
 
 
 @pytest.fixture(autouse=True)
+def documents(tmp_path_factory: pytest.TempPathFactory, monkeypatch: pytest.MonkeyPatch) -> Path:
+    """A stand-in for the user's Documents folder, where Starlight saves the files it
+    makes: tests never write into the real one."""
+    folder = tmp_path_factory.mktemp("Documents").resolve()
+    monkeypatch.setattr("starlight.core.output.documents_folder", lambda: folder)
+    return folder
+
+
+@pytest.fixture(autouse=True)
 def _close_logs() -> object:
     yield
     shutdown_logging()

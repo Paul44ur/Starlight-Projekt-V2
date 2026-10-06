@@ -69,7 +69,7 @@ def write_code_call() -> ModelResponse:
     )
 
 
-async def test_script_written_tested_fixed_and_learned(project: Paths) -> None:
+async def test_script_written_tested_fixed_and_learned(project: Paths, documents: Path) -> None:
     provider = ScriptedProvider(write_code_call(), BUGGY, FIXED, "Here is word_count.")
     ui = Yes()
     async with Kernel(project, provider=provider, ui=ui) as kernel:
@@ -81,6 +81,8 @@ async def test_script_written_tested_fixed_and_learned(project: Paths) -> None:
         assert output["sandbox"] == "process"
         assert "ALL TESTS PASSED" in output["test_output"]
         assert Path(output["saved_to"], "main.py").read_text().endswith("split())\n")
+        # saved where the user finds it: Documents/Starlight/code/<task>
+        assert Path(output["saved_to"]).parent == documents / "Starlight" / "code"
         # the error from attempt 1 was fed back to the model
         assert "AssertionError" in provider.calls[2][-1].content  # type: ignore[attr-defined]
         assert kernel.skills.all() == []  # once is not a pattern yet
@@ -90,8 +92,11 @@ async def test_script_written_tested_fixed_and_learned(project: Paths) -> None:
             ModelResponse(FIXED),
             ModelResponse("Done again."),
         ]
-        await kernel.ask("Count the words in a text for me, as a script")
+        second = await kernel.ask("Count the words in a text for me, as a script")
         await kernel.drain()
+        # the same task again gets its own folder: the first program is not overwritten
+        assert second.tool_results[0].output["saved_to"] == output["saved_to"] + "-2"
+        assert Path(output["saved_to"], "main.py").read_text().endswith("split())\n")
 
     [skill] = SkillManager(project).all()
     assert skill.status == "draft"  # never used before you approve it

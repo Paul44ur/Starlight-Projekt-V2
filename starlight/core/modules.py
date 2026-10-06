@@ -37,6 +37,7 @@ from starlight.core.http import PoliteHttp
 from starlight.core.killswitch import KillSwitch
 from starlight.core.logging import AuditLog, get_logger, module_logger
 from starlight.core.model import ModelProvider
+from starlight.core.output import resolve_output_folder
 from starlight.core.paths import Paths
 from starlight.core.permissions import Permission
 from starlight.core.stats import Stats
@@ -82,6 +83,7 @@ class Services:
     # Model for a role such as "code" or "vision" (falls back to the main model).
     models: Callable[[str], ModelProvider] | None = None
     skills: Any = None  # the skill manager (Step 9)
+    output_dir: Path | None = None  # where files made for the user go (output.folder)
     # This process runs the background parts (webhook, watchers). False while another
     # Starlight core does; the event "core.primary" announces a takeover.
     primary: bool = True
@@ -123,6 +125,14 @@ class ModuleContext:
     @property
     def model(self) -> ModelProvider | None:
         return self.services.model
+
+    @property
+    def output_dir(self) -> Path:
+        """Where to save files made for the user: ``output.folder``, by default the
+        "Starlight" folder in their Documents. Created when something is first saved."""
+        if self.services.output_dir is not None:
+            return self.services.output_dir
+        return resolve_output_folder("", self.paths.root)
 
     def model_for(self, role: str) -> ModelProvider | None:
         """The model the core routes this kind of work to (``roles:`` in the config)."""

@@ -114,6 +114,12 @@ class StatsConfig(_Strict):
     gpu_sample_interval: float = Field(default=30, ge=0)  # 0 = off
 
 
+class OutputConfig(_Strict):
+    # Where Starlight saves files it makes for you (letters, notes, tables, code).
+    # Empty: a "Starlight" folder in your Documents. Never Starlight's own folder.
+    folder: str = ""
+
+
 class ViewerConfig(_Strict):
     host: str = "127.0.0.1"
     port: int = 8765
@@ -136,6 +142,7 @@ class StarlightConfig(_Strict):
     skills: SkillsConfig = Field(default_factory=SkillsConfig)
     stats: StatsConfig = Field(default_factory=StatsConfig)
     viewer: ViewerConfig = Field(default_factory=ViewerConfig)
+    output: OutputConfig = Field(default_factory=OutputConfig)
 
 
 def read_yaml(path: Path) -> dict[str, Any]:

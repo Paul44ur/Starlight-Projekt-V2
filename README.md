@@ -28,6 +28,7 @@ and answer you on WhatsApp. Anything risky asks you first, and one key press sto
 | **Use the web** | Searches, reads pages and logs in to your accounts. It makes at most 5 requests per second and respects robots.txt. |
 | **Check your servers** | Pings your servers, checks disk space and services over SSH, and alerts you when one goes down. |
 | **Use your desktop** | Reads the screen, then clicks and types for you, with a red banner on screen while it does. |
+| **Save files** | Saves letters, notes, tables (CSV) and web pages it makes for you in `Documents\Starlight`. |
 | **Write code** | Writes small programs, tests them in a sandbox and fixes them until the tests pass. |
 | **Learn skills** | Turns tasks that worked into reusable skills, but only after you approve them. |
 | **Answer on WhatsApp** | Lets you send tasks from your phone and stop everything with `/kill`. |
@@ -199,7 +200,8 @@ then connect a model as in [docs/setup-windows.md](docs/setup-windows.md#2-the-m
 Your `memory`, `skills`, `data`, `logs`, `models` and `tools` folders and your
 `config\starlight.local.yaml` aren't part of the download, so they stay as they are. Keep
 a copy of any changes you made to the other files in `config`, because those files are
-overwritten.
+overwritten. Files Starlight saved for you are in `Documents\Starlight`, outside the
+Starlight folder, so updates never touch them.
 
 ### Uninstalling
 
@@ -208,7 +210,8 @@ overwritten.
 2. Delete the Starlight folder.
 
 Passwords and keys you stored are in the Windows Credential Manager under "starlight".
-Remove them there, or with `starlight vault delete <key>` before deleting the folder.
+Remove them there, or with `starlight vault delete <key>` before deleting the folder. Files
+Starlight saved for you stay in `Documents\Starlight` until you delete that folder too.
 
 ---
 
@@ -221,6 +224,7 @@ you> Remember that my home server is called nas01.
 you> Is nas01 up, and how full is its disk?
 you> Search the web for the latest llama.cpp release and summarize the changes.
 you> Write a script that renames the photos in C:\Photos by the date they were taken.
+you> Write a cover letter for the job at the bakery and save it as a file.
 you> Open Notepad and type a shopping list: milk, bread, coffee.
 ```
 
@@ -261,6 +265,23 @@ model speed, GPU use and memory size.
 **Memory.** Everything Starlight remembers is a text file in the `memory` folder. Open,
 correct or delete any of them; Starlight picks up the change.
 
+**Files.** Ask Starlight to save what it made ("save it as a file", "make a CSV of
+that"), and it saves it in the **Starlight** folder in your Documents, then tells you
+where:
+- **No question in that folder.** Saving there just happens. Programs it writes go
+  into its `code` subfolder.
+- **Never overwritten silently.** A second `letter.txt` becomes `letter (2).txt`, and
+  replacing a file asks you first.
+- **Elsewhere, it asks.** "Save it on my Desktop" works, but Starlight asks first and
+  shows the full path.
+- **Text formats only.** It saves `.txt`, `.md`, `.csv`, `.html`, code and similar. For a
+  Word document, ask for `.html`: Word opens it, and you can save it as `.docx` there.
+  For a spreadsheet, ask for `.csv`: Excel opens it.
+
+To use another folder, set `output: folder:` in `config\starlight.local.yaml`. Folders
+where it may save without asking go under `trusted_folders` in
+`config\modules\files.yaml`.
+
 ## Optional extras
 
 Each of these is set up once. The step-by-step instructions are in
@@ -289,6 +310,10 @@ Each of these is set up once. The step-by-step instructions are in
   `starlight logs scan` checks for leaks.
 - **Servers are on an allow-list.** Starlight only talks to servers you listed.
   Read-only commands such as `df` and `uptime` run freely; anything else asks first.
+- **Files stay where you expect.** Starlight saves on its own only into its folder in
+  your Documents. Anywhere else, and replacing an existing file, it asks first. Its own
+  install folder, which holds its settings and data, is off-limits, so it can't change
+  its own permissions.
 - **Everything is logged.** Every action Starlight takes is recorded in
   `logs\audit.log`.
 

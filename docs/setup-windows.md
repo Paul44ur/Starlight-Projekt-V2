@@ -132,7 +132,7 @@ Then ask: "Is my server up and what is its disk usage?"
 2. Optional coding model: `ollama pull qwen2.5-coder:14b-instruct-q4_K_M` and the
    `roles: code:` block in `config/starlight.yaml`.
 3. Ask: "Write me a small script that renames my photos by date." The code is tested in
-   the sandbox and saved under `data/modules/code/projects/`.
+   the sandbox and saved in `Documents\Starlight\code\` (see section 10).
 4. When the same kind of task works a second time, you get a draft skill:
    `uv run starlight skills list`, `skills show <name>`, `skills approve <name>`.
    A skill that turns out bad: `skills rollback <name>`.
@@ -180,3 +180,34 @@ You need a Meta developer account, a WhatsApp Business app and a phone number fo
 - `starlight kill` and `starlight resume` work from any terminal and affect every running
   Starlight process.
 - Now and then: `uv run starlight logs scan` checks the logs for leaked secrets.
+
+## 10. Where Starlight saves files
+
+When you ask for something as a file ("save the letter", "make a CSV of the prices"),
+Starlight saves it in the **Starlight** folder in your Documents and tells you the path.
+It uses the real Documents folder, also when OneDrive has moved it.
+
+- Saving into that folder needs no question. A name that is taken gets a number
+  (`letter (2).txt`); replacing a file asks first.
+- Anywhere else, Starlight asks first and shows the full path.
+- Its own install folder (settings, data, memory, logs) is off-limits, also for reading.
+- Text formats only (`.txt`, `.md`, `.csv`, `.html`, code ...). Word opens `.html` files;
+  Excel opens `.csv` files. CSV files get a byte-order mark so Excel shows umlauts
+  correctly.
+
+Another folder, in `config\starlight.local.yaml`:
+
+```yaml
+output:
+  folder: D:/Starlight files
+```
+
+Folders where saving needs no question, and the other options, are in
+`config\modules\files.yaml`:
+
+```yaml
+ask_before_replacing: true          # false: replace files in the folder without asking
+trusted_folders: ["D:/Work/Reports"]
+```
+
+`uv run starlight status` shows the folder in use.

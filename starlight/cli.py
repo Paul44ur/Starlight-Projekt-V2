@@ -25,6 +25,7 @@ from starlight.core.killswitch import KillSwitch
 from starlight.core.logging import setup_logging
 from starlight.core.model import create_provider
 from starlight.core.modules import NAME_PATTERN, ModuleState, discover
+from starlight.core.output import resolve_output_folder
 from starlight.core.paths import Paths
 from starlight.core.permissions import PermissionPolicy
 from starlight.core.stats import Stats
@@ -237,6 +238,7 @@ def cmd_status(paths: Paths, args: argparse.Namespace) -> int:
     switch = _kill_switch(paths)
     print(f"Starlight {__version__}")
     print(f"  home:         {paths.root}")
+    print(f"  saves files:  {resolve_output_folder(config.output.folder, paths.root)}")
     print(f"  model:        {config.model.provider}")
     kill_state = f"ENGAGED ({switch.reason})" if switch.engaged else "off"
     print(f"  kill switch:  {kill_state}")

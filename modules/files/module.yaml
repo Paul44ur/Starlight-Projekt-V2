@@ -1,0 +1,9 @@
+name: files
+version: 0.1.0
+description: Save files Starlight makes for you (letters, notes, tables, code) and read them back
+entrypoint: module:FilesModule
+# Saving in your Starlight folder needs no question; anywhere else, and replacing a file,
+# asks you first (the tools ask themselves, so the permission here is "safe").
+permissions: [safe]
+dependencies: []
+enabled_by_default: true

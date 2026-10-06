@@ -7,6 +7,7 @@
 * write, test, fix: the model writes code and tests, the tests run, errors go back to the
   model, a limited number of times, then it reports
 * running code needs your confirmation until you allow it
+* a program whose tests pass is saved in your Starlight folder, under code/<task>
 """
 
 from __future__ import annotations
@@ -81,7 +82,6 @@ class CodeModule(Module):
             image=self.config.docker_image,
             memory_mb=self.config.memory_mb,
         )
-        self.projects = ctx.data_dir / "projects"
         ctx.kill_switch.add_cleanup(self.sandbox.kill_all, owner=ctx.name)
         ctx.logger.info("sandbox ready", backend=self.sandbox.name)
 
@@ -168,8 +168,14 @@ class CodeModule(Module):
         }
 
     def _save(self, task: str, files: dict[str, str]) -> Path:
-        folder = self.projects / slugify(task, 40)
-        folder.mkdir(parents=True, exist_ok=True)
+        """Into the Starlight folder (Documents/Starlight/code/<task>); the same task again
+        gets its own folder (<task>-2), so a working version is never overwritten."""
+        base = self.ctx.output_dir / "code"
+        slug = slugify(task, 40)
+        folder, number = base / slug, 2
+        while folder.exists():
+            folder, number = base / f"{slug}-{number}", number + 1
+        folder.mkdir(parents=True)
         for name, content in files.items():
             target = (folder / name).resolve()
             if target.is_relative_to(folder.resolve()):

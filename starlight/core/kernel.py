@@ -28,6 +28,7 @@ from starlight.core.logging import (
 )
 from starlight.core.model import Message, ModelProvider, TokenCallback, create_provider
 from starlight.core.modules import ModuleManager, Services
+from starlight.core.output import resolve_output_folder
 from starlight.core.paths import Paths
 from starlight.core.permissions import PermissionPolicy
 from starlight.core.stats import Stats
@@ -144,6 +145,7 @@ class Kernel:
             model=self.provider,
             models=self.model_for,
             skills=self.skills,
+            output_dir=resolve_output_folder(self.config.output.folder, self.paths.root),
         )
         self.modules = ModuleManager(
             self.paths, self.dispatcher, self.bus, self.kill_switch, self.audit, self.services
