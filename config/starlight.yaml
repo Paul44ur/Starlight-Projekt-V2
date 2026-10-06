@@ -1,0 +1,93 @@
+# Starlight V2 global configuration. Validated on start-up (starlight/core/config.py).
+name: Starlight
+
+logging:
+  level: INFO
+  max_bytes: 5000000   # rotate each log file at ~5 MB
+  backups: 5
+
+agent:
+  max_steps: 8
+  system_prompt: >-
+    You are Starlight, a local assistant. Use the available tools when they help,
+    and answer briefly.
+
+# --- Step 4: the local model -------------------------------------------------------
+# "echo" is a built-in test stand-in so everything runs without a model.
+# For your RX 9060 XT (16 GB), use one of the blocks below. See docs/setup-windows.md.
+model:
+  provider: echo
+  options: {}
+  context_window: 32768   # tokens; older turns are summarized beyond this
+  reserve_tokens: 4096    # kept free for the answer
+  keep_recent: 8          # recent messages never summarized
+  stream: true            # answers appear while they are generated
+  warmup: true            # load the model into VRAM at start-up
+
+# Ollama (simplest):
+#
+# model:
+#   provider: ollama
+#   options:
+#     model: qwen2.5:14b-instruct-q4_K_M   # ~9 GB + ~3 GB q8 KV cache at 32k
+#     keep_alive: -1                        # never unload between requests
+#     num_gpu: 999                          # every layer on the GPU
+#   server:
+#     flash_attention: true
+#     kv_cache_type: q8_0
+#
+# llama.cpp (llama-server, Vulkan build for AMD on Windows):
+#
+# model:
+#   provider: llamacpp
+#   options:
+#     base_url: http://127.0.0.1:8080/v1
+#   server:
+#     binary: C:/llama.cpp/llama-server.exe
+#     model_path: C:/models/Qwen2.5-14B-Instruct-Q4_K_M.gguf
+#
+# Small fast model for simple requests, large one for reasoning:
+#
+# model:
+#   provider: router
+#   options:
+#     fast: {provider: ollama, options: {model: "qwen2.5:3b-instruct"}}
+#     main: {provider: ollama, options: {model: "qwen2.5:14b-instruct-q4_K_M"}}
+
+# --- Step 5: memory ----------------------------------------------------------------
+memory:
+  enabled: true
+  embedder:
+    provider: hash        # built in, matches shared words. On the GPU via Ollama:
+    # provider: ollama    #   ollama pull nomic-embed-text   (finds meaning, not just words)
+    # model: nomic-embed-text
+  top_k: 5                # memories added to each prompt
+  min_score: 0.2
+  merge_threshold: 0.92   # this similar to an existing memory = update it, not a new file
+  auto_extract: true      # after each task the model picks what is worth keeping
+
+# --- Step 6: polite web access, shared by every module ------------------------------
+http:
+  max_requests_per_second: 5   # in any one-second window, across all modules
+  per_domain_interval: 1.0     # seconds between requests to the same site
+  respect_robots: true
+  cache_ttl: 3600              # seconds a fetched page is reused
+  max_retries: 3               # on HTTP 429 / 503, honouring Retry-After
+
+kill_switch:
+  hotkey: "<ctrl>+<alt>+k"   # needs the optional "hotkey" extra (pynput)
+  stop_file: data/STOP
+  poll_interval: 0.2
+
+permissions:
+  # Glob patterns on tool names such as "hello.*" or "web.login".
+  # auto_approve: run without asking; confirm: always ask; blocked: never run.
+  # Example: let Starlight type and click without asking, but never run SSH commands:
+  #   auto_approve: ["desktop.*"]
+  #   blocked: ["network.ssh_run"]
+  auto_approve: []
+  confirm: []
+  blocked: []
+
+tools:
+  timeout: 120   # seconds before a tool call is aborted

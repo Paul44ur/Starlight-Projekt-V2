@@ -1,0 +1,11 @@
+# Login module (Step 6). Credentials go in the vault, never here:
+#   starlight vault set login.<site>.username
+#   starlight vault set login.<site>.password
+sites: {}
+#  github:
+#    url: https://github.com/login
+#    username_selector: "#login_field"
+#    password_selector: "#password"
+#    submit_selector: "input[type=submit]"
+#    success_selector: "meta[name=user-login]:not([content=''])"
+#    otp_selector: "#app_totp"

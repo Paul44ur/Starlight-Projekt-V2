@@ -1,0 +1,4 @@
+# Network module (Step 7). Servers it may touch are listed in config/servers.yaml.
+timeout: 5
+watch: false          # ping every server on a schedule and alert when one goes down
+watch_interval: 60

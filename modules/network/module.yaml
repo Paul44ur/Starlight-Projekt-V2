@@ -1,0 +1,7 @@
+name: network
+version: 0.1.0
+description: Ping, check and talk to your own servers (allow-list in config/servers.yaml)
+entrypoint: module:NetworkModule
+permissions: [confirm]
+dependencies: []
+enabled_by_default: true

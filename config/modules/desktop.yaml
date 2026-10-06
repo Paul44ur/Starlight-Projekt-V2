@@ -1,0 +1,15 @@
+# Desktop module (Step 8).
+indicator: true          # red banner while Starlight controls mouse and keyboard
+failsafe: true           # mouse into a screen corner = kill switch
+typing_interval: 0.03
+ocr_languages: eng       # eng+deu after installing the German Tesseract data
+# ocr_command: C:/Program Files/Tesseract-OCR/tesseract.exe
+apps:                    # programs launch_app may start
+  notepad: [notepad.exe]
+  calculator: [calc.exe]
+  explorer: [explorer.exe]
+  paint: [mspaint.exe]
+# Vision model for describe_screen / locate. Must run on this computer.
+# vision:
+#   provider: ollama
+#   options: {model: "qwen2.5vl:7b", base_url: "http://127.0.0.1:11434"}

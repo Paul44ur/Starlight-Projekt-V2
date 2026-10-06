@@ -1,0 +1,156 @@
+"""OpenAI-compatible chat API, as served by llama.cpp's ``llama-server``.
+
+Start llama-server with every layer on the GPU, flash attention and a q8 KV cache
+(``starlight model serve`` prints and runs this command for you):
+
+    llama-server -m model.gguf -ngl 999 -fa on -c 32768 \\
+        --cache-type-k q8_0 --cache-type-v q8_0 --jinja --port 8080
+
+``--jinja`` enables tool calling. llama-server keeps the model loaded and reuses the
+cached prompt prefix (system prompt + tool list) between requests.
+"""
+
+from __future__ import annotations
+
+import json
+import time
+from typing import Any
+
+import httpx
+
+from starlight.core.model import Message, ModelResponse, TokenCallback, ToolCall
+from starlight.models.common import function_tools, openai_messages, tool_call
+
+
+class OpenAICompatProvider:
+    supports_streaming = True
+
+    def __init__(
+        self,
+        model: str = "local",
+        base_url: str = "http://127.0.0.1:8080/v1",
+        api_key: str | None = None,
+        temperature: float = 0.3,
+        max_tokens: int | None = None,
+        timeout: float = 600.0,
+        stream: bool = True,
+        extra: dict[str, Any] | None = None,
+        name: str = "llamacpp",
+        transport: httpx.AsyncBaseTransport | None = None,
+    ) -> None:
+        self.name = name
+        self.model = model
+        self.base_url = base_url.rstrip("/")
+        self.temperature = temperature
+        self.max_tokens = max_tokens
+        self.stream = stream
+        # cache_prompt: llama-server reuses the KV cache for the shared prompt prefix.
+        self.extra = {"cache_prompt": True, **(extra or {})}
+        headers = {"Authorization": f"Bearer {api_key}"} if api_key else {}
+        self._client = httpx.AsyncClient(
+            timeout=httpx.Timeout(timeout, connect=10.0), headers=headers, transport=transport
+        )
+
+    def _body(
+        self, messages: list[Message], tools: list[dict[str, Any]], stream: bool
+    ) -> dict[str, Any]:
+        body: dict[str, Any] = {
+            "model": self.model,
+            "messages": openai_messages(messages),
+            "temperature": self.temperature,
+            "stream": stream,
+            **self.extra,
+        }
+        if tools:
+            body["tools"] = function_tools(tools)
+        if self.max_tokens:
+            body["max_tokens"] = self.max_tokens
+        if stream:
+            body["stream_options"] = {"include_usage": True}
+        return body
+
+    async def chat(
+        self,
+        messages: list[Message],
+        tools: list[dict[str, Any]],
+        on_token: TokenCallback | None = None,
+    ) -> ModelResponse:
+        started = time.perf_counter()
+        stream = self.stream and on_token is not None
+        url = f"{self.base_url}/chat/completions"
+        body = self._body(messages, tools, stream)
+        if not stream:
+            response = await self._client.post(url, json=body)
+            response.raise_for_status()
+            result = self._parse(response.json())
+        else:
+            result = await self._stream(url, body, on_token)
+        result.usage.setdefault("duration_s", round(time.perf_counter() - started, 3))
+        result.usage.setdefault("model", self.model)
+        return result
+
+    def _parse(self, data: dict[str, Any]) -> ModelResponse:
+        message = data["choices"][0]["message"]
+        calls = [
+            tool_call(c["function"]["name"], c["function"].get("arguments"), c.get("id"))
+            for c in message.get("tool_calls") or []
+        ]
+        return ModelResponse(message.get("content") or "", calls, _usage(data))
+
+    async def _stream(
+        self, url: str, body: dict[str, Any], on_token: TokenCallback | None
+    ) -> ModelResponse:
+        text: list[str] = []
+        calls: dict[int, dict[str, str]] = {}
+        usage: dict[str, Any] = {}
+        async with self._client.stream("POST", url, json=body) as response:
+            response.raise_for_status()
+            async for line in response.aiter_lines():
+                if not line.startswith("data:"):
+                    continue
+                payload = line[5:].strip()
+                if payload == "[DONE]":
+                    break
+                chunk = json.loads(payload)
+                usage.update(_usage(chunk))
+                for choice in chunk.get("choices") or []:
+                    delta = choice.get("delta") or {}
+                    if delta.get("content"):
+                        text.append(delta["content"])
+                        if on_token is not None:
+                            on_token(delta["content"])
+                    for part in delta.get("tool_calls") or []:
+                        slot = calls.setdefault(
+                            part.get("index", 0), {"id": "", "name": "", "arguments": ""}
+                        )
+                        slot["id"] = part.get("id") or slot["id"]
+                        function = part.get("function") or {}
+                        slot["name"] += function.get("name") or ""
+                        slot["arguments"] += function.get("arguments") or ""
+        tool_calls: list[ToolCall] = [
+            tool_call(c["name"], c["arguments"], c["id"] or None) for _, c in sorted(calls.items())
+        ]
+        return ModelResponse("".join(text), tool_calls, usage)
+
+    async def warmup(self) -> None:
+        """llama-server loads the model at start; just check it is up."""
+        root = self.base_url.removesuffix("/v1")
+        response = await self._client.get(f"{root}/health")
+        response.raise_for_status()
+
+    async def aclose(self) -> None:
+        await self._client.aclose()
+
+
+def _usage(data: dict[str, Any]) -> dict[str, Any]:
+    usage: dict[str, Any] = {}
+    if data.get("usage"):
+        usage["prompt_tokens"] = data["usage"].get("prompt_tokens")
+        usage["completion_tokens"] = data["usage"].get("completion_tokens")
+    timings = data.get("timings")  # llama-server extension
+    if timings:
+        usage["tokens_per_second"] = round(timings.get("predicted_per_second") or 0, 2)
+        usage["prompt_tokens_per_second"] = round(timings.get("prompt_per_second") or 0, 2)
+        usage.setdefault("completion_tokens", timings.get("predicted_n"))
+        usage.setdefault("prompt_tokens", timings.get("prompt_n"))
+    return {k: v for k, v in usage.items() if v is not None}
