@@ -6,6 +6,8 @@ import argparse
 import asyncio
 import contextlib
 import io
+import os
+import shutil
 import subprocess
 import sys
 import textwrap
@@ -26,7 +28,9 @@ from starlight.core.vault import MemoryBackend, Vault, VaultError
 from starlight.models.router import RouterProvider
 from starlight.sandbox import ProcessSandbox
 from starlight.viewer import StatsReader
-from tests.conftest import ModuleWriter
+from tests.conftest import REPO, ModuleWriter
+
+INDICATOR = REPO / "modules" / "desktop" / "indicator.py"
 
 
 async def test_resume_from_another_terminal_releases_the_running_core(kernel: Kernel) -> None:
@@ -320,3 +324,73 @@ def test_docker_in_windows_containers_mode_is_not_used() -> None:
             )
         with mock.patch.object(sandbox.subprocess, "run", return_value=docker_info("linux")):
             assert sandbox.docker_available()
+
+
+BANNER_CHILD = """
+import gc, importlib.util, sys, threading, time
+from starlight.core.banner import banner
+
+def indicator_module():  # a module reload imports the file again
+    spec = importlib.util.spec_from_file_location("indicator", sys.argv[1])
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+first = indicator_module().Indicator(True, linger=0.05)
+first.hide(immediately=True)  # the kill switch, with nothing on screen
+first.close()
+assert banner()._thread is None, "hiding alone opened a window"
+for round in range(3):
+    indicator = indicator_module().Indicator(True, hotkey=f"Ctrl+Alt+{round}", linger=0.05)
+    indicator.show()
+    time.sleep(0.5)
+    if not banner().available:
+        print("NO DISPLAY")
+        sys.exit(0)
+    indicator.hide()
+    time.sleep(0.3)
+    indicator.close()
+    del indicator
+    gc.collect()  # in the main thread, as anywhere else in Starlight
+threads = [t for t in threading.enumerate() if t.name == "banner"]
+assert len(threads) == 1, threads
+print("OK")
+"""
+
+
+def test_banner_survives_reloads_and_garbage_collection(tmp_path: Path) -> None:
+    """Windows CI died mid-run with "Tcl_AsyncDelete: async handler deleted by the wrong
+    thread": the desktop banner's Tk window sat in a reference cycle, and the garbage
+    collector freed it from another thread, which makes Tcl abort the process. Starting
+    a second Tk window in a new thread afterwards crashed as well. It runs in a child
+    process, so a crash fails this test instead of ending the test run."""
+    pytest.importorskip("tkinter")
+    env = dict(os.environ)
+    xvfb = None
+    if sys.platform != "win32" and sys.platform != "darwin" and not env.get("DISPLAY"):
+        if not shutil.which("Xvfb"):
+            pytest.skip("no display and no Xvfb")
+        env["DISPLAY"] = ":78"
+        xvfb = subprocess.Popen(
+            ["Xvfb", ":78", "-screen", "0", "1024x768x24"],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+        time.sleep(0.8)
+    try:
+        result = subprocess.run(
+            [sys.executable, "-X", "faulthandler", "-c", BANNER_CHILD, str(INDICATOR)],
+            capture_output=True,
+            text=True,
+            timeout=60,
+            env=env,
+            cwd=tmp_path,
+        )
+    finally:
+        if xvfb is not None:
+            xvfb.terminate()
+            xvfb.wait()
+    output = result.stdout + result.stderr
+    if "NO DISPLAY" in output:
+        pytest.skip("no display")
+    assert result.returncode == 0 and "OK" in output, output[-3000:]

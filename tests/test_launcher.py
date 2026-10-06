@@ -166,17 +166,71 @@ def test_pick_llama_asset() -> None:
                 "browser_download_url": "u2",
                 "digest": "sha256:" + "cd" * 32,
             },
-            {"name": "llama-b9000-bin-ubuntu-x64.zip", "browser_download_url": "u3"},
+            {"name": "llama-b9000-bin-ubuntu-x64.tar.gz", "browser_download_url": "u3"},
             {"name": "llama-b9000-bin-ubuntu-vulkan-x64.zip", "browser_download_url": "u4"},
         ]
     }
     if os.name == "nt":
         assert L.pick_llama_asset(release, "vulkan") == ("u2", "cd" * 32)
     else:
-        assert L.pick_llama_asset(release, "cpu") == ("u3", None)
-        assert L.pick_llama_asset(release, "vulkan") == ("u4", None)
+        assert L.pick_llama_asset(release, "cpu") == ("u3", None)  # the new .tar.gz naming
+        assert L.pick_llama_asset(release, "vulkan") == ("u4", None)  # the old .zip naming
     with pytest.raises(L.LauncherError, match="found: llama-b9000"):
         L.pick_llama_asset({"assets": release["assets"][:1]}, "vulkan")
+
+
+def _settings(tmp_path: Path, release: str = "latest") -> Any:
+    return L.Settings(root=tmp_path, variant="cpu", llama_release=release)
+
+
+def test_resolve_llama_follows_nightly_tag(
+    server: str, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """llama.cpp's "latest" release only holds nightly-tag.txt; the programs are in the
+    b#### build release it names."""
+    monkeypatch.setattr(L, "LLAMA_API", f"{server}/api")
+    monkeypatch.setattr(L, "LLAMA_RELEASES", f"{server}/releases")
+    name = f"llama-b7000-{L.llama_asset_names('cpu')[0]}"
+    pointer = {"name": "nightly-tag.txt", "browser_download_url": f"{server}/files/tag.txt"}
+    Files.files["/api/latest"] = json.dumps({"tag_name": "v1.0.0", "assets": [pointer]}).encode()
+    Files.files["/files/tag.txt"] = b"b7000\n"
+    Files.files["/api/tags/b7000"] = json.dumps(
+        {"assets": [{"name": name, "browser_download_url": "u", "digest": "sha256:" + "e" * 64}]}
+    ).encode()
+    assert L.resolve_llama(_settings(tmp_path)) == ("u", "e" * 64)
+
+    # A release that still has the programs itself needs no pointer.
+    Files.files["/api/tags/b6000"] = json.dumps(
+        {"assets": [{"name": name.replace("b7000", "b6000"), "browser_download_url": "v"}]}
+    ).encode()
+    assert L.resolve_llama(_settings(tmp_path, "b6000")) == ("v", None)
+
+    # Neither programs nor a pointer: a clear message, not a crash.
+    Files.files["/api/tags/v0.9.0"] = json.dumps({"assets": []}).encode()
+    with pytest.raises(L.LauncherError, match=r"no llama\.cpp download"):
+        L.resolve_llama(_settings(tmp_path, "v0.9.0"))
+
+
+def test_resolve_llama_without_the_api(
+    server: str, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """GitHub's API blocked or rate-limited: the release pages give the same answer."""
+    monkeypatch.setattr(L, "LLAMA_API", f"{server}/api")  # nothing there: HTTP 404
+    monkeypatch.setattr(L, "LLAMA_RELEASES", f"{server}/releases")
+    suffix = L.llama_asset_names("cpu")[0]
+    Files.files["/releases/latest/download/nightly-tag.txt"] = b"b7000\n"
+    assert L.resolve_llama(_settings(tmp_path)) == (
+        f"{server}/releases/download/b7000/llama-b7000-{suffix}",
+        None,
+    )
+    # An older "latest" without nightly-tag.txt: its own tag, from the redirect.
+    del Files.files["/releases/latest/download/nightly-tag.txt"]
+    Files.redirects["/releases/latest"] = (f"{server}/releases/tag/b6000", {})
+    Files.files["/releases/tag/b6000"] = b"<html>"
+    assert L.resolve_llama(_settings(tmp_path)) == (
+        f"{server}/releases/download/b6000/llama-b6000-{suffix}",
+        None,
+    )
 
 
 def test_extract_member_flattens_folders(tmp_path: Path) -> None:
@@ -298,20 +352,21 @@ def test_full_setup_and_start(server: str, tmp_path: Path) -> None:
     Files.files[f"/uv/{L.uv_asset()}.sha256"] = (
         f"{hashlib.sha256(uv_bytes).hexdigest()}  {L.uv_asset()}\n".encode()
     )
-    llama_zip = io.BytesIO()
-    with zipfile.ZipFile(llama_zip, "w") as zf:
-        zf.writestr("build/bin/llama-server", FAKE_LLAMA_SERVER.format(python=sys.executable))
-    Files.files["/llama/latest"] = json.dumps(
-        {
-            "assets": [
-                {
-                    "name": f"llama-b1-{L.llama_asset_name('cpu')}",
-                    "browser_download_url": f"{server}/llama/llama.zip",
-                }
-            ]
-        }
+    llama_tar = io.BytesIO()
+    with tarfile.open(fileobj=llama_tar, mode="w:gz") as tf:
+        script = FAKE_LLAMA_SERVER.format(python=sys.executable).encode()
+        info = tarfile.TarInfo("llama-b1/llama-server")
+        info.size, info.mode = len(script), 0o755
+        tf.addfile(info, io.BytesIO(script))
+    llama_name = f"llama-b1-{L.llama_asset_names('cpu')[0]}"
+    Files.files["/llama/latest"] = json.dumps(  # like llama.cpp today: only a pointer
+        {"assets": [{"name": "nightly-tag.txt", "browser_download_url": f"{server}/llama/tag.txt"}]}
     ).encode()
-    Files.files["/llama/llama.zip"] = llama_zip.getvalue()
+    Files.files["/llama/tag.txt"] = b"b1\n"
+    Files.files["/llama/tags/b1"] = json.dumps(
+        {"assets": [{"name": llama_name, "browser_download_url": f"{server}/llama/{llama_name}"}]}
+    ).encode()
+    Files.files[f"/llama/{llama_name}"] = llama_tar.getvalue()
     model = os.urandom(200_000)
     Files.files["/model/tiny.gguf"] = model
     Files.redirects["/hf/tiny.gguf"] = (

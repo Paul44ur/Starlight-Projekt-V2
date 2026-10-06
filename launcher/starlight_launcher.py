@@ -365,16 +365,18 @@ def ensure_uv(settings: Settings, ui: Ui) -> Path:
     return binary
 
 
-def llama_asset_name(variant: str) -> str:
-    """The part of the llama.cpp release file name for this computer and build."""
+def llama_asset_names(variant: str) -> tuple[str, ...]:
+    """The end of the llama.cpp release file name for this computer and build, newest
+    naming first (the Linux builds moved from .zip to .tar.gz)."""
     if os.name == "nt":
-        return f"bin-win-{variant}-x64.zip"
-    return "bin-ubuntu-x64.zip" if variant == "cpu" else f"bin-ubuntu-{variant}-x64.zip"
+        return (f"bin-win-{variant}-x64.zip",)
+    stem = "bin-ubuntu-x64" if variant == "cpu" else f"bin-ubuntu-{variant}-x64"
+    return (f"{stem}.tar.gz", f"{stem}.zip")
 
 
 def pick_llama_asset(release: dict[str, Any], variant: str) -> tuple[str, str | None]:
     """(download URL, SHA-256 or None) of the right file in a GitHub release."""
-    wanted = llama_asset_name(variant)
+    wanted = llama_asset_names(variant)
     for asset in release.get("assets") or []:
         name = str(asset.get("name", ""))
         if name.startswith("llama-") and name.endswith(wanted):
@@ -382,23 +384,58 @@ def pick_llama_asset(release: dict[str, Any], variant: str) -> tuple[str, str | 
             sha = digest.removeprefix("sha256:") if digest.startswith("sha256:") else None
             return str(asset["browser_download_url"]), sha
     names = ", ".join(str(a.get("name")) for a in release.get("assets") or [])
-    raise LauncherError(f"no llama.cpp download matching *{wanted} (found: {names or 'none'})")
+    raise LauncherError(f"no llama.cpp download matching *{wanted[0]} (found: {names or 'none'})")
+
+
+def _read_text(url: str, token: str | None = None) -> str:
+    with urllib.request.urlopen(_request(url, token), timeout=30) as response:
+        return str(response.read().decode("utf-8", "replace"))
+
+
+def _nightly_tag(text: str) -> str | None:
+    tag = text.strip()
+    return tag if re.fullmatch(r"[A-Za-z0-9._-]{1,64}", tag) else None
 
 
 def resolve_llama(settings: Settings) -> tuple[str, str | None]:
     """Ask GitHub's API for the release; if that is blocked or rate-limited, fall back
-    to the release page and the known file naming."""
-    tag = settings.llama_release
-    api = f"{LLAMA_API}/latest" if tag == "latest" else f"{LLAMA_API}/tags/{tag}"
+    to the release page and the known file naming.
+
+    llama.cpp's versioned releases (the one GitHub calls "latest") carry no programs,
+    only nightly-tag.txt: the name of the b#### build release that has them."""
+    tag, token = settings.llama_release, settings.github_token
     try:
-        with urllib.request.urlopen(_request(api, settings.github_token), timeout=30) as r:
-            return pick_llama_asset(json.loads(r.read()), settings.variant)
+        api = f"{LLAMA_API}/latest" if tag == "latest" else f"{LLAMA_API}/tags/{tag}"
+        release = json.loads(_read_text(api, token))
+        try:
+            return pick_llama_asset(release, settings.variant)
+        except LauncherError:
+            pointer = next(
+                (a for a in release.get("assets") or [] if a.get("name") == "nightly-tag.txt"),
+                None,
+            )
+            if pointer is None:
+                raise
+            nightly = _nightly_tag(_read_text(str(pointer["browser_download_url"])))
+            if nightly is None:
+                raise
+            build = json.loads(_read_text(f"{LLAMA_API}/tags/{nightly}", token))
+            return pick_llama_asset(build, settings.variant)
     except (urllib.error.URLError, TimeoutError, ValueError):
         pass
-    if tag == "latest":
+    folder = "latest/download" if tag == "latest" else f"download/{tag}"
+    try:
+        nightly = _nightly_tag(_read_text(f"{LLAMA_RELEASES}/{folder}/nightly-tag.txt"))
+    except urllib.error.HTTPError as exc:
+        if exc.code != 404:
+            raise
+        nightly = None
+    if nightly:
+        tag = nightly
+    elif tag == "latest":  # an older release that has the programs itself
         with urllib.request.urlopen(_request(f"{LLAMA_RELEASES}/latest"), timeout=30) as r:
             tag = r.geturl().rstrip("/").split("/")[-1]
-    name = f"llama-{tag}-{llama_asset_name(settings.variant)}"
+    name = f"llama-{tag}-{llama_asset_names(settings.variant)[0]}"
     return f"{LLAMA_RELEASES}/download/{tag}/{name}", None
 
 
@@ -777,6 +814,10 @@ def main(argv: list[str] | None = None) -> int:
         return code
     except LauncherError as exc:
         ui.say(f"\nStarlight could not start: {exc}")
+        return 1
+    except (urllib.error.URLError, TimeoutError) as exc:
+        ui.say(f"\nStarlight could not start: network problem ({exc}). Check the internet")
+        ui.say("connection and start again; finished downloads are kept.")
         return 1
     except KeyboardInterrupt:
         ui.say("\nStopped.")
