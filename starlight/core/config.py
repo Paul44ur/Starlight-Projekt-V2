@@ -119,6 +119,11 @@ class StatsConfig(_Strict):
     gpu_sample_interval: float = Field(default=30, ge=0)  # 0 = off
 
 
+class WebConfig(_Strict):
+    host: str = "127.0.0.1"  # local only; the chat can run actions, keep it off the network
+    port: int = 8700
+
+
 class OutputConfig(_Strict):
     # Where Starlight saves files it makes for you (letters, notes, tables, code).
     # Empty: a "Starlight" folder in your Documents. Never Starlight's own folder.
@@ -147,6 +152,7 @@ class StarlightConfig(_Strict):
     skills: SkillsConfig = Field(default_factory=SkillsConfig)
     stats: StatsConfig = Field(default_factory=StatsConfig)
     viewer: ViewerConfig = Field(default_factory=ViewerConfig)
+    web: WebConfig = Field(default_factory=WebConfig)
     output: OutputConfig = Field(default_factory=OutputConfig)
 
 

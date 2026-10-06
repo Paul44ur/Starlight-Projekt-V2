@@ -492,6 +492,15 @@ def cmd_viewer(paths: Paths, args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_web(paths: Paths, args: argparse.Namespace) -> int:
+    from starlight.web.app import run
+
+    config = load_config(paths)
+    print(f"Starlight chat on http://{config.web.host}:{config.web.port}", flush=True)
+    run(paths)
+    return 0
+
+
 def cmd_logs(paths: Paths, args: argparse.Namespace) -> int:
     if args.action == "show":
         from starlight.core.logging import format_errors, recent_errors
@@ -658,6 +667,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     sub.add_parser("serve", help="run the core in the background (WhatsApp, watchers)")
     sub.add_parser("viewer", help="the statistics viewer (a separate web app)")
+    sub.add_parser("web", help="a browser chat page for Starlight (local only)")
     logs = sub.add_parser("logs", help="show recent errors, or check for leaked secrets")
     logs.add_argument("action", choices=["show", "scan"])
     logs.add_argument("-n", "--count", type=int, default=20, help="how many recent errors")
@@ -708,6 +718,8 @@ def main(argv: Sequence[str] | None = None) -> int:
                 return asyncio.run(cmd_serve(paths, args))
             case "viewer":
                 return cmd_viewer(paths, args)
+            case "web":
+                return cmd_web(paths, args)
             case "logs":
                 return cmd_logs(paths, args)
             case "service":

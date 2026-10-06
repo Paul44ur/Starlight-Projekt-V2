@@ -107,6 +107,11 @@ viewer:
   port: 8765
   refresh_seconds: 5
 
+# The web chat (starlight web). Local only: it runs the assistant, keep it off the network.
+web:
+  host: 127.0.0.1
+  port: 8700
+
 kill_switch:
   hotkey: "<ctrl>+<alt>+j"   # emergency stop, works anywhere; needs the "hotkey" extra (pynput)
   stop_file: data/STOP
