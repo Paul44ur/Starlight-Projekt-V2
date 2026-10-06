@@ -1,0 +1,114 @@
+# Writing a module
+
+A module is a folder in `modules/`. The core finds it at start-up; you never edit the core.
+
+## 1. Create it from the template
+
+```bash
+starlight modules new weather
+```
+
+This copies `modules/_template/` to `modules/weather/` and renames the class.
+
+```
+modules/weather/
+  module.yaml   manifest
+  module.py     code
+  __init__.py
+  README.md
+```
+
+## 2. The manifest (`module.yaml`)
+
+```yaml
+name: weather              # must match the folder name: lowercase, digits, _
+version: 0.1.0
+description: Current weather for a city
+entrypoint: module:WeatherModule   # file:class
+permissions: [safe]        # the highest permission any of its tools needs
+dependencies: []           # modules that must load first
+enabled_by_default: true
+```
+
+## 3. The code (`module.py`)
+
+```python
+from typing import ClassVar
+
+from pydantic import BaseModel
+
+from starlight.core import Event, Module, ModuleContext, Permission, tool
+
+
+class Config(BaseModel):          # read from config/modules/weather.yaml
+    units: str = "metric"
+
+
+class WeatherModule(Module):
+    Config = Config
+    subscriptions: ClassVar[list[str]] = ["task.completed"]
+
+    async def setup(self, ctx: ModuleContext) -> None:
+        self.config: Config = ctx.config
+
+    @tool
+    async def current(self, city: str) -> str:
+        """Current weather for a city."""   # the AI sees this description
+        ...
+
+    @tool(permission=Permission.CONFIRM)
+    def subscribe(self, city: str) -> str:
+        """Send a daily forecast. Asks you first."""
+        ...
+
+    async def on_event(self, event: Event) -> None:
+        ...
+
+    async def shutdown(self) -> None:
+        ...
+```
+
+The interface:
+
+| Method | When it runs |
+| --- | --- |
+| `setup(ctx)` | once, after loading |
+| `@tool` methods | when the AI calls them. Type hints become the argument schema, the docstring becomes the description |
+| `on_event(event)` | for each event matching `subscriptions` (glob patterns like `web.*`) |
+| `shutdown()` | on disable, reload and core shutdown |
+
+`ctx` gives you:
+
+- `ctx.config`: your validated config
+- `ctx.logger`: writes to `logs/modules/<name>.log` and the main log
+- `ctx.publish(name, data)`: send an event. Modules never call each other directly
+- `ctx.kill_switch`: call `ctx.kill_switch.check()` inside long loops, and register
+  `ctx.kill_switch.add_cleanup(fn, owner=ctx.name)` for anything that must be released
+  on a kill (keyboard, mouse, browser sessions)
+- `ctx.data_dir`: `data/modules/<name>/`, your own storage
+
+## 4. Permissions
+
+Tag each tool:
+
+- `Permission.SAFE`: runs without asking
+- `Permission.CONFIRM`: asks you first (logins, input emulation, running code, changing servers)
+- `Permission.BLOCKED`: never runs
+
+You can override tags in `config/starlight.yaml` under `permissions:` with glob patterns
+(`auto_approve`, `confirm`, `blocked`). In `starlight run`, answering `a` approves a tool
+for the rest of the session.
+
+## 5. Try it
+
+```bash
+starlight tools                                   # is your tool listed?
+starlight ask '!weather.current {"city": "Wien"}' # call it directly (echo provider)
+starlight modules disable weather
+starlight modules enable weather
+```
+
+In `starlight run`, `/reload weather` hot-reloads your code without restarting.
+
+If your module raises an exception in `setup`, a tool or `on_event`, the error goes to the
+logs and the module (or that one call) fails. The core and the other modules keep running.

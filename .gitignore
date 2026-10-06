@@ -1,0 +1,23 @@
+__pycache__/
+*.py[cod]
+.venv/
+.mypy_cache/
+.pytest_cache/
+.ruff_cache/
+dist/
+build/
+*.egg-info/
+
+# Runtime data: kept out of git, folders kept with .gitkeep
+logs/*
+!logs/.gitkeep
+data/*
+!data/.gitkeep
+memory/*
+!memory/.gitkeep
+STOP
+
+# Secrets
+config/vault*
+config/*.secret*
+config/modules_state.yaml

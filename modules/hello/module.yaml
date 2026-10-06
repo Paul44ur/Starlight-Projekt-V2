@@ -1,0 +1,10 @@
+# Module manifest. `name` must match the folder name.
+name: hello
+version: 0.1.0
+description: Example module made from the template (greet, shout)
+entrypoint: module:HelloModule
+# Highest permission any tool here needs: safe, confirm or blocked (documentation for you).
+permissions: [safe]
+# Other modules that must be loaded first.
+dependencies: []
+enabled_by_default: true

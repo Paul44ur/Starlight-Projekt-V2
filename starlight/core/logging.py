@@ -1,0 +1,147 @@
+"""Structured JSON logs with rotation, in three places:
+
+* ``logs/starlight.log``: everything (core and modules)
+* ``logs/modules/<name>.log``: one module only
+* ``logs/audit.log``: every action the AI takes, and every kill-switch trigger
+"""
+
+from __future__ import annotations
+
+import logging
+import re
+from logging.handlers import RotatingFileHandler
+from pathlib import Path
+from typing import Any
+
+import structlog
+from structlog.typing import EventDict, WrappedLogger
+
+ROOT_LOGGER = "starlight"
+AUDIT_LOGGER = "starlight.audit"
+MODULE_PREFIX = "starlight.module."
+
+_SECRET_KEY = re.compile(
+    r"(^|[_-])(pass(word)?|passwd|secret|token|api[_-]?key|cookies?|credentials?"
+    r"|authorization|private[_-]?key)($|[_-])",
+    re.IGNORECASE,
+)
+REDACTED = "***"
+
+
+def redact(value: Any) -> Any:
+    """Mask values whose key looks like a secret, recursively."""
+    if isinstance(value, dict):
+        return {
+            k: REDACTED if isinstance(k, str) and _SECRET_KEY.search(k) else redact(v)
+            for k, v in value.items()
+        }
+    if isinstance(value, list | tuple):
+        return [redact(v) for v in value]
+    return value
+
+
+def _redact_processor(_: WrappedLogger, __: str, event_dict: EventDict) -> EventDict:
+    return redact(event_dict)  # type: ignore[no-any-return]
+
+
+class _State:
+    logs_dir: Path | None = None
+    max_bytes: int = 5_000_000
+    backups: int = 5
+    handlers: dict[str, logging.Handler] = {}  # noqa: RUF012
+
+
+def _formatter() -> logging.Formatter:
+    shared: list[Any] = [
+        structlog.stdlib.add_log_level,
+        structlog.stdlib.add_logger_name,
+        structlog.processors.TimeStamper(fmt="iso", utc=True),
+    ]
+    return structlog.stdlib.ProcessorFormatter(
+        foreign_pre_chain=shared,
+        processors=[
+            structlog.stdlib.ProcessorFormatter.remove_processors_meta,
+            structlog.processors.format_exc_info,
+            structlog.processors.JSONRenderer(default=str),
+        ],
+    )
+
+
+def _file_handler(path: Path) -> logging.Handler:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    handler = RotatingFileHandler(
+        path, maxBytes=_State.max_bytes, backupCount=_State.backups, encoding="utf-8"
+    )
+    handler.setFormatter(_formatter())
+    return handler
+
+
+def _attach(logger_name: str, path: Path, propagate: bool) -> None:
+    logger = logging.getLogger(logger_name)
+    old = _State.handlers.pop(logger_name, None)
+    if old is not None:
+        logger.removeHandler(old)
+        old.close()
+    handler = _file_handler(path)
+    logger.addHandler(handler)
+    logger.propagate = propagate
+    _State.handlers[logger_name] = handler
+
+
+def setup_logging(
+    logs_dir: Path, level: str = "INFO", max_bytes: int = 5_000_000, backups: int = 5
+) -> None:
+    """Configure logging. Safe to call again (e.g. in tests): old handlers are closed."""
+    shutdown_logging()
+    _State.logs_dir = logs_dir
+    _State.max_bytes = max_bytes
+    _State.backups = backups
+
+    structlog.configure(
+        processors=[
+            structlog.contextvars.merge_contextvars,
+            structlog.stdlib.add_log_level,
+            structlog.stdlib.add_logger_name,
+            structlog.processors.TimeStamper(fmt="iso", utc=True),
+            _redact_processor,
+            structlog.stdlib.ProcessorFormatter.wrap_for_formatter,
+        ],
+        logger_factory=structlog.stdlib.LoggerFactory(),
+        wrapper_class=structlog.stdlib.BoundLogger,
+        cache_logger_on_first_use=False,
+    )
+    logging.getLogger(ROOT_LOGGER).setLevel(level.upper())
+    _attach(ROOT_LOGGER, logs_dir / "starlight.log", propagate=False)
+    _attach(AUDIT_LOGGER, logs_dir / "audit.log", propagate=False)
+    logging.getLogger(AUDIT_LOGGER).setLevel(logging.INFO)
+
+
+def shutdown_logging() -> None:
+    for name, handler in list(_State.handlers.items()):
+        logging.getLogger(name).removeHandler(handler)
+        handler.close()
+    _State.handlers.clear()
+
+
+def get_logger(name: str = "core", **context: Any) -> structlog.stdlib.BoundLogger:
+    logger: structlog.stdlib.BoundLogger = structlog.get_logger(f"{ROOT_LOGGER}.{name}")
+    return logger.bind(**context) if context else logger
+
+
+def module_logger(module: str) -> structlog.stdlib.BoundLogger:
+    """Logger for a module; writes to logs/modules/<module>.log and the main log."""
+    name = MODULE_PREFIX + module
+    if _State.logs_dir is not None and name not in _State.handlers:
+        _attach(name, _State.logs_dir / "modules" / f"{module}.log", propagate=True)
+    logger: structlog.stdlib.BoundLogger = structlog.get_logger(name)
+    return logger.bind(module=module)
+
+
+class AuditLog:
+    """Append-only record of actions the AI takes. Secrets are redacted."""
+
+    def __init__(self) -> None:
+        self._logger: structlog.stdlib.BoundLogger = structlog.get_logger(AUDIT_LOGGER)
+
+    def record(self, action: str, **fields: Any) -> None:
+        self._logger.info(action, **fields)

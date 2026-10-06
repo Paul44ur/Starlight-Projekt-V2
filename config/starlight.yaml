@@ -1,0 +1,33 @@
+# Starlight V2 global configuration. Validated on start-up (starlight/core/config.py).
+name: Starlight
+
+logging:
+  level: INFO
+  max_bytes: 5000000   # rotate each log file at ~5 MB
+  backups: 5
+
+agent:
+  max_steps: 8
+  system_prompt: >-
+    You are Starlight, a local assistant. Use the available tools when they help,
+    and answer briefly.
+
+model:
+  # "echo" is a built-in test provider. Step 4 adds llama.cpp / Ollama providers.
+  provider: echo
+  options: {}
+
+kill_switch:
+  hotkey: "<ctrl>+<alt>+k"   # needs the optional "hotkey" extra (pynput)
+  stop_file: data/STOP
+  poll_interval: 0.2
+
+permissions:
+  # Glob patterns on tool names such as "hello.*" or "web.login".
+  # auto_approve: run without asking; confirm: always ask; blocked: never run.
+  auto_approve: []
+  confirm: []
+  blocked: []
+
+tools:
+  timeout: 120   # seconds before a tool call is aborted
