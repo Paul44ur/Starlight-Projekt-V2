@@ -40,7 +40,7 @@ from pydantic import BaseModel
 from starlight.core import Event, Module, ModuleContext, Permission, tool
 
 
-class Config(BaseModel):          # read from config/modules/weather.yaml
+class Config(BaseModel):  # read from config/modules/weather.yaml
     units: str = "metric"
 
 
@@ -53,7 +53,7 @@ class WeatherModule(Module):
 
     @tool
     async def current(self, city: str) -> str:
-        """Current weather for a city."""   # the AI sees this description
+        """Current weather for a city."""  # the AI sees this description
         ...
 
     @tool(permission=Permission.CONFIRM)
@@ -61,11 +61,9 @@ class WeatherModule(Module):
         """Send a daily forecast. Asks you first."""
         ...
 
-    async def on_event(self, event: Event) -> None:
-        ...
+    async def on_event(self, event: Event) -> None: ...
 
-    async def shutdown(self) -> None:
-        ...
+    async def shutdown(self) -> None: ...
 ```
 
 The interface:
