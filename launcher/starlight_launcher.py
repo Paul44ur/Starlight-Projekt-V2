@@ -45,8 +45,8 @@ LLAMA_RELEASES = "https://github.com/ggml-org/llama.cpp/releases"
 
 # 16 GB VRAM: a 14B model at Q4_K_M (~9 GB) plus a 32k context with q8 KV cache.
 DEFAULT_MODEL_URL = (
-    "https://huggingface.co/bartowski/Qwen2.5-14B-Instruct-GGUF/resolve/main/"
-    "Qwen2.5-14B-Instruct-Q4_K_M.gguf"
+    "https://huggingface.co/bartowski/Qwen2.5-14B_Uncensored_Instruct-GGUF/resolve/main/"
+    "Qwen2.5-14B_Uncensored_Instruct-Q4_K_M.gguf"
 )
 GB = 1024**3
 MB = 1024**2

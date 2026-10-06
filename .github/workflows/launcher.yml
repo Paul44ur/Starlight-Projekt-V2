@@ -33,6 +33,11 @@ jobs:
           --specpath build/pyinstaller launcher/starlight_launcher.py
       - name: Starlight.exe starts
         run: dist\Starlight.exe --version
+      - name: The default model link works and has a checksum
+        run: >
+          uv run --no-project python -c "import sys; sys.path.insert(0, 'launcher');
+          import starlight_launcher as L; r = L.probe(L.DEFAULT_MODEL_URL); print(L.DEFAULT_MODEL_URL, r);
+          assert r.size and r.size > 5e9 and r.sha256, 'default model link is broken'"
       - name: End to end on a clean checkout (CPU build, small model)
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

@@ -11,9 +11,10 @@ on your PATH: install it once with `winget install astral-sh.uv`, or type
 ## The short way: Starlight.exe
 
 Double-click `Starlight.exe` in the Starlight folder. It does sections 1 and 2 below for
-you (llama.cpp Vulkan build plus Qwen2.5-14B) and offers Tesseract from section 6. What it
-downloads lands in `tools\` and `models\` inside the Starlight folder. The sections below
-are for doing it by hand, or for the parts it does not cover (WhatsApp, servers, Docker).
+you (llama.cpp Vulkan build plus Qwen2.5-14B Uncensored Instruct) and offers Tesseract
+from section 6. What it downloads lands in `tools\` and `models\` inside the Starlight
+folder. The sections below are for doing it by hand, or for the parts it does not cover
+(WhatsApp, servers, Docker).
 
 ## 1. Starlight itself
 
