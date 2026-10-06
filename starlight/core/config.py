@@ -83,6 +83,11 @@ class HttpConfig(_Strict):
     max_retries: int = Field(default=3, ge=0)
     backoff_base: float = Field(default=2.0, gt=0)
     max_retry_after: float = Field(default=120, ge=0)
+    # Protection against a hostile or broken server flooding this machine:
+    max_response_bytes: int = Field(default=10_000_000, ge=1024)  # stop reading a huge body
+    max_redirects: int = Field(default=10, ge=0)  # no endless redirect chains
+    max_connections: int = Field(default=20, ge=1)  # cap simultaneous connections
+    max_total_seconds: float = Field(default=60, gt=0)  # hard ceiling on one request
 
 
 class KillSwitchConfig(_Strict):

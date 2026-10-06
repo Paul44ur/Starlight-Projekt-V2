@@ -20,7 +20,7 @@ import pytest
 
 from starlight.core import Kernel, Paths
 from starlight.core.config import HttpConfig
-from starlight.core.http import PoliteHttp, RobotsDisallowed, SlidingWindowLimiter, Slot
+from starlight.core.http import HttpError, PoliteHttp, RobotsDisallowed, SlidingWindowLimiter, Slot
 from starlight.core.vault import MemoryBackend
 
 CHROMIUM = "/opt/pw-browsers/chromium"
@@ -128,6 +128,38 @@ async def test_sliding_window_never_bursts_past_the_cap() -> None:
     for i in range(5, len(stamps)):
         # stamps are taken after acquire() returns, so allow for scheduling delay
         assert stamps[i] - stamps[i - 5] >= 0.5 - 0.05
+
+
+async def test_a_huge_response_is_capped_not_read_whole() -> None:
+    """A server that returns gigabytes must not fill memory: the body is capped."""
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/robots.txt":
+            return httpx.Response(404)
+        return httpx.Response(200, content=b"A" * 5_000_000)  # 5 MB
+
+    http = PoliteHttp(
+        HttpConfig(respect_robots=False, max_response_bytes=10_000),
+        transport=httpx.MockTransport(handler),
+    )
+    response = await http.get("https://big.example/file")
+    await http.aclose()
+    assert len(response.text) == 10_000 and response.truncated  # only the cap was read
+
+
+async def test_a_redirect_loop_is_stopped() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/robots.txt":
+            return httpx.Response(404)
+        return httpx.Response(302, headers={"Location": "https://loop.example/go"})
+
+    http = PoliteHttp(
+        HttpConfig(respect_robots=False, max_redirects=3),
+        transport=httpx.MockTransport(handler),
+    )
+    with pytest.raises(HttpError):
+        await http.get("https://loop.example/go")
+    await http.aclose()
 
 
 async def test_robots_crawl_delay_cache_and_per_domain() -> None:

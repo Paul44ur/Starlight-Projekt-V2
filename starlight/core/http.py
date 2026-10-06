@@ -51,6 +51,7 @@ class HttpResponse:
     text: str
     from_cache: bool = False
     elapsed_ms: float = 0.0
+    truncated: bool = False  # the body was longer than max_response_bytes and was cut off
 
     @property
     def ok(self) -> bool:
@@ -189,6 +190,8 @@ class PoliteHttp:
             transport=transport,
             timeout=self.config.timeout,
             follow_redirects=True,
+            max_redirects=self.config.max_redirects,
+            limits=httpx.Limits(max_connections=self.config.max_connections),
             headers={"User-Agent": self.config.user_agent},
             event_hooks={"request": [self._leaving]},
         )
@@ -291,6 +294,19 @@ class PoliteHttp:
 
     # -- requests ----------------------------------------------------------------------
 
+    async def _read_capped(self, response: httpx.Response) -> tuple[bytes, bool]:
+        """Read the body, but never more than max_response_bytes. Counts decompressed
+        bytes, so a gzip bomb is stopped too."""
+        cap = self.config.max_response_bytes
+        chunks: list[bytes] = []
+        total = 0
+        async for chunk in response.aiter_bytes():
+            chunks.append(chunk)
+            total += len(chunk)
+            if total >= cap:
+                return b"".join(chunks)[:cap], True
+        return b"".join(chunks), False
+
     async def _send(
         self, method: str, url: str, host: _Host, delay: float, **kwargs: Any
     ) -> HttpResponse:
@@ -300,18 +316,30 @@ class PoliteHttp:
             started = time.perf_counter()
             sending = _sending.set(slot)
             try:
-                response = await self._client.request(method, url, **kwargs)
+                async with self._client.stream(method, url, **kwargs) as response:
+                    if slot is not None:
+                        slot.sent()
+                    body, truncated = await asyncio.wait_for(
+                        self._read_capped(response), self.config.max_total_seconds
+                    )
+                    status, headers = response.status_code, dict(response.headers)
+                    final_url, encoding = str(response.url), response.encoding or "utf-8"
+            except TimeoutError as exc:
+                raise HttpError(
+                    f"{url}: took longer than {self.config.max_total_seconds:.0f}s"
+                ) from exc
             finally:
                 _sending.reset(sending)
                 if slot is not None:
                     slot.sent()  # failed before it went out: free the slot from now
         elapsed = round((time.perf_counter() - started) * 1000, 1)
         return HttpResponse(
-            str(response.url),
-            response.status_code,
-            dict(response.headers),
-            response.text,
+            final_url,
+            status,
+            headers,
+            body.decode(encoding, errors="replace"),
             elapsed_ms=elapsed,
+            truncated=truncated,
         )
 
     async def request(
