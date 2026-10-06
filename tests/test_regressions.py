@@ -9,6 +9,7 @@ import io
 import subprocess
 import sys
 import textwrap
+import threading
 import time
 from collections.abc import Callable
 from pathlib import Path
@@ -45,6 +46,22 @@ async def test_kill_switch_holds_when_the_stop_file_cannot_be_written(tmp_path: 
     assert switch.engaged  # no file, but this process must still stay stopped
     switch.reset()
     assert not switch.engaged
+
+
+async def test_kill_from_another_thread_keeps_its_reason(tmp_path: Path) -> None:
+    """The failsafe and the hotkey fire from their own threads while the watcher polls the
+    STOP file; the watcher used to win and record "STOP file present" (CI caught it)."""
+    for i in range(100):
+        switch = KillSwitch(tmp_path / f"STOP{i}")
+        watcher = asyncio.create_task(switch.watch(interval=0))
+        await asyncio.sleep(0)
+        thread = threading.Thread(target=switch.trigger, args=("failsafe: corner", "failsafe"))
+        thread.start()
+        while thread.is_alive():
+            await asyncio.sleep(0)
+        watcher.cancel()
+        assert switch.reason == "failsafe: corner"
+        assert (tmp_path / f"STOP{i}").read_text(encoding="utf-8").strip() == "failsafe: corner"
 
 
 async def test_core_starts_and_answers_when_the_embedding_model_is_down(paths: Paths) -> None:
@@ -284,3 +301,22 @@ def test_vault_explains_the_windows_size_limit(tmp_path: Path) -> None:
             vault.set("ssh.big", "x" * 3200)  # e.g. an RSA 4096 key
         vault.set("ssh.small", "x" * 400)  # an ed25519 key fits
     assert vault.get("ssh.small") == "x" * 400
+
+
+def test_docker_in_windows_containers_mode_is_not_used() -> None:
+    """Docker Desktop switched to Windows containers cannot run the Python image; the code
+    module must fall back to the process sandbox instead of failing every run (CI caught it
+    on a Windows runner)."""
+    from starlight import sandbox
+
+    def docker_info(os_type: str) -> subprocess.CompletedProcess[str]:
+        return subprocess.CompletedProcess(["docker", "info"], 0, stdout=f"{os_type}\n")
+
+    with mock.patch.object(sandbox.shutil, "which", return_value="docker"):
+        with mock.patch.object(sandbox.subprocess, "run", return_value=docker_info("windows")):
+            assert not sandbox.docker_available()
+            assert isinstance(
+                sandbox.create_sandbox("auto", Path("w"), deny=[]), sandbox.ProcessSandbox
+            )
+        with mock.patch.object(sandbox.subprocess, "run", return_value=docker_info("linux")):
+            assert sandbox.docker_available()

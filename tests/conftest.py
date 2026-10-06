@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import gc
 import shutil
 import textwrap
 from collections.abc import AsyncIterator, Callable
@@ -54,6 +55,9 @@ async def kernel(paths: Paths) -> AsyncIterator[Kernel]:
 def _close_logs() -> object:
     yield
     shutdown_logging()
+    # Collect each test's garbage right away: a bad finalizer (e.g. a native handle freed
+    # at the wrong time) then fails in the test that created it, not in a later one.
+    gc.collect()
 
 
 def read_audit(paths: Paths) -> list[str]:

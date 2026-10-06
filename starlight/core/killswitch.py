@@ -17,7 +17,9 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import inspect
+import os
 import threading
+import time
 from collections.abc import Awaitable, Callable, Iterator
 from pathlib import Path
 from typing import Any
@@ -84,12 +86,36 @@ class KillSwitch:
 
     def trigger(self, reason: str = "manual", source: str = "api") -> None:
         """Engage the switch from any thread: write the STOP file, cancel, clean up."""
-        try:
-            self.stop_file.parent.mkdir(parents=True, exist_ok=True)
-            self.stop_file.write_text(f"{reason}\n", encoding="utf-8")
-        except OSError as exc:  # still stop this process; only reset() releases it then
-            self._log.error("could not write the STOP file", error=str(exc))
-        self._fire(reason, source)
+        # Claim first, then write: the watcher must not see the new file and fire a second
+        # time with a generic reason before this one is recorded.
+        with self._lock:
+            if self._fired:
+                return
+            self._fired = True
+            self._reason = reason
+        if self._write_stop_file(reason):
+            with self._lock:
+                self._file_backed = self._fired
+        # else: still stop this process; only reset() releases it then
+        self._announce(reason, source)
+
+    def _write_stop_file(self, reason: str) -> bool:
+        """Atomically, so other processes never read a half-written file. On Windows a
+        reader holding the file open can briefly block the replace: retry a few times."""
+        temp = self.stop_file.with_name(f"{self.stop_file.name}.{os.getpid()}.tmp")
+        for attempt in range(5):
+            try:
+                self.stop_file.parent.mkdir(parents=True, exist_ok=True)
+                temp.write_text(f"{reason}\n", encoding="utf-8")
+                os.replace(temp, self.stop_file)
+                return True
+            except OSError as exc:
+                if attempt == 4:
+                    self._log.error("could not write the STOP file", error=str(exc))
+                time.sleep(0.02)
+        with contextlib.suppress(OSError):
+            temp.unlink()
+        return False
 
     def reset(self) -> None:
         """Disengage. Removes the STOP file."""
@@ -125,12 +151,17 @@ class KillSwitch:
             self._tasks.discard(task)
 
     def _fire(self, reason: str, source: str) -> None:
+        """Engaged by a STOP file that appeared (another process, or `starlight kill`)."""
         with self._lock:
             if self._fired:
                 return
             self._fired = True
             self._file_backed = self.stop_file.exists()
             self._reason = reason
+        self._announce(reason, source)
+
+    def _announce(self, reason: str, source: str) -> None:
+        """Audit, then cancel running work and run cleanups (on the event loop's thread)."""
         self._audit.record("killswitch.triggered", reason=reason, source=source)
         self._log.warning("kill switch triggered", reason=reason, source=source)
 

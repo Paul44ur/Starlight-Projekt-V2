@@ -255,13 +255,21 @@ class DockerSandbox:
 
 
 def docker_available(docker: str = "docker") -> bool:
+    """Docker is running *and* runs Linux containers (Docker Desktop on Windows can be
+    switched to Windows containers, which cannot run the Python image)."""
     if shutil.which(docker) is None:
         return False
     try:
-        result = subprocess.run([docker, "info"], capture_output=True, timeout=10, check=False)
+        result = subprocess.run(
+            [docker, "info", "--format", "{{.OSType}}"],
+            capture_output=True,
+            text=True,
+            timeout=15,
+            check=False,
+        )
     except (OSError, subprocess.SubprocessError):
         return False
-    return result.returncode == 0
+    return result.returncode == 0 and result.stdout.strip() == "linux"
 
 
 def create_sandbox(

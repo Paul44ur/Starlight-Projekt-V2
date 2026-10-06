@@ -57,4 +57,5 @@ jobs:
             uv run playwright install chromium
           fi
       - name: Tests
-        run: uv run pytest -q -W default --durations=10
+        # -v names each test as it starts, so even a hard crash shows where it happened
+        run: uv run pytest -v -W default --durations=10
