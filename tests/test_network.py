@@ -43,6 +43,7 @@ def http_port() -> Iterator[int]:
     threading.Thread(target=server.serve_forever, daemon=True).start()
     yield server.server_address[1]
     server.shutdown()
+    server.server_close()
 
 
 class SshServer:

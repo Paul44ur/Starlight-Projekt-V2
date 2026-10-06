@@ -90,10 +90,12 @@ List them in `config/servers.yaml`. Put the SSH private key in the vault, or poi
 `key_file` at it:
 
 ```powershell
-Get-Content $HOME\.ssh\id_ed25519 | uv run starlight vault set ssh.homeserver
+Get-Content -Raw $HOME\.ssh\id_ed25519 | uv run starlight vault set ssh.homeserver
 ```
 
-Make sure the server's host key is in `~/.ssh/known_hosts` (connect once with `ssh`).
+Use an ed25519 key: the Windows Credential Manager holds at most 1280 characters, too
+little for an RSA 4096 key (for those, set `key_file` instead). Make sure the server's
+host key is in `~/.ssh/known_hosts` (connect once with `ssh`).
 Then ask: "Is my server up and what is its disk usage?"
 
 ## 6. Screen and input (Step 8)
@@ -152,7 +154,16 @@ You need a Meta developer account, a WhatsApp Business app and a phone number fo
 - `uv run starlight viewer`, then open http://127.0.0.1:8765. It only reads
   `data/stats.db`, so it keeps working when the AI is stopped. Prometheus or Grafana can
   scrape http://127.0.0.1:8765/metrics.
-- `uv run starlight service install` creates two Task Scheduler tasks that start the core
-  and the viewer when you log in. (Not a Windows service: services cannot see or control
-  your desktop.) `service status` and `service uninstall` manage them.
+- `uv run starlight service install` puts two shortcuts in your Startup folder that
+  start the core and the viewer (without console windows) when you log in, and starts
+  them now. No administrator rights needed. (Not a Windows service: services cannot see
+  or control your desktop.) `service stop` asks both to shut down cleanly,
+  `service start` starts them again, `service status` shows what runs, and
+  `service uninstall` stops them and removes the shortcuts. Messages from a start
+  without a console go to `logs/console.log`.
+- `starlight run` works while the background core runs: it answers in your terminal, and
+  the background core keeps the WhatsApp webhook and the server watcher (only one process
+  runs those). If the background core stops, a running `starlight run` takes them over.
+- `starlight kill` and `starlight resume` work from any terminal and affect every running
+  Starlight process.
 - Now and then: `uv run starlight logs scan` checks the logs for leaked secrets.

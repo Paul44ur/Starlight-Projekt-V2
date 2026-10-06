@@ -9,10 +9,13 @@ import getpass
 import json
 import re
 import shutil
+import subprocess
 import sys
 from collections.abc import Sequence
 from pathlib import Path
 from typing import Any
+
+import httpx
 
 from starlight import __version__
 from starlight.core.config import ConfigError, load_config
@@ -142,7 +145,8 @@ async def cmd_run(paths: Paths, args: argparse.Namespace) -> int:
                 print(token, end="", flush=True)
 
             result = await kernel.ask(line, keep_history=True, on_token=on_token)
-            if streamed and "".join(streamed).strip() == result.answer.strip():
+            # Streaming showed the answer (after any text from earlier tool steps).
+            if streamed and "".join(streamed).strip().endswith(result.answer.strip()):
                 print()
             else:
                 if streamed:
@@ -344,7 +348,8 @@ def cmd_vault(paths: Paths, args: argparse.Namespace) -> int:
             if sys.stdin.isatty():
                 value = getpass.getpass(f"Value for {args.key} (hidden): ")
             else:
-                value = sys.stdin.read().rstrip("\n")  # e.g. a key file piped in
+                # e.g. a key file piped in; PowerShell adds Windows line endings
+                value = sys.stdin.read().replace("\r\n", "\n").rstrip("\n")
             if not value:
                 print("Empty value, nothing stored.", file=sys.stderr)
                 return 1
@@ -419,11 +424,20 @@ async def cmd_serve(paths: Paths, args: argparse.Namespace) -> int:
     for sig in (signal.SIGTERM, signal.SIGINT):
         with contextlib.suppress(NotImplementedError, RuntimeError):  # Windows
             loop.add_signal_handler(sig, stop.set)
+    from starlight.service import shutdown_file
+
+    request = shutdown_file(paths.data, "core")
+    request.unlink(missing_ok=True)  # a stale request must not stop this start
     async with Kernel(paths, hotkey=True) as kernel:
         print(f"Starlight core running from {paths.root}. Stop with Ctrl+C.", flush=True)
         if kernel.kill_switch.engaged:
             print(f"Note: the kill switch is engaged ({kernel.kill_switch.reason}).")
-        await stop.wait()
+        while not stop.is_set():  # `starlight service stop` asks via the request file
+            if request.exists():
+                request.unlink(missing_ok=True)
+                break
+            with contextlib.suppress(TimeoutError):
+                await asyncio.wait_for(stop.wait(), 1.0)
     return 0
 
 
@@ -460,15 +474,41 @@ def cmd_logs(paths: Paths, args: argparse.Namespace) -> int:
 
 def cmd_service(paths: Paths, args: argparse.Namespace) -> int:
     from starlight import service
+    from starlight.core.corelock import core_running
 
-    service_plan = service.plan(paths.root, args.action)
+    if args.action == "status":
+        config = load_config(paths)
+        core = core_running(paths.data / "core.lock")
+        url = f"http://{config.viewer.host}:{config.viewer.port}/api/summary"
+        try:
+            viewer = httpx.get(url, timeout=3).status_code == 200
+        except httpx.HTTPError:
+            viewer = False
+        print(f"  core:    {'running' if core else 'not running'}")
+        print(f"  viewer:  {'running at ' + url.rsplit('/api', 1)[0] if viewer else 'not running'}")
+        if sys.platform == "win32":
+            links = sorted(service.startup_folder().glob("Starlight *.lnk"))
+            print(f"  autostart: {', '.join(p.stem for p in links) or 'off'}")
+        else:
+            subprocess.run(
+                ["systemctl", "--user", "is-enabled", "starlight-core.service"], check=False
+            )
+        return 0
+    service_plan = service.plan(paths.root, args.action, paths.data)
     for path, content in service_plan.files.items():
-        print(f"# {path}\n{content}")
+        print(f"# write {path}" + (f"\n{content}" if content.strip() != "stop" else ""))
+    for path in service_plan.remove:
+        print(f"# remove {path}")
     for command in service_plan.commands:
         print("$ " + " ".join(command))
+    for command in service_plan.spawn:
+        print("$ (background) " + " ".join(command))
     if args.print_only:
         return 0
-    return service.apply(service_plan)
+    code = service.apply(service_plan)
+    if args.action == "stop":
+        print("Asked the core and the viewer to stop; they exit within a few seconds.")
+    return code
 
 
 async def cmd_model(paths: Paths, args: argparse.Namespace) -> int:
@@ -508,6 +548,19 @@ async def cmd_model(paths: Paths, args: argparse.Namespace) -> int:
 
 
 # -- entry point -------------------------------------------------------------------------
+
+
+def _ensure_console(paths: Paths) -> None:
+    """Started without a console (pythonw.exe at logon), Python has no stdout/stderr and
+    anything that writes to them crashes (uvicorn does). Send them to logs/console.log."""
+    if sys.stdout is not None and sys.stderr is not None:
+        return
+    paths.logs.mkdir(parents=True, exist_ok=True)
+    stream = open(paths.logs / "console.log", "a", encoding="utf-8", buffering=1)  # noqa: SIM115
+    if sys.stdout is None:
+        sys.stdout = stream
+    if sys.stderr is None:
+        sys.stderr = stream
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -561,7 +614,7 @@ def build_parser() -> argparse.ArgumentParser:
     logs = sub.add_parser("logs", help="check the logs for leaked secrets")
     logs.add_argument("action", choices=["scan"])
     service_cmd = sub.add_parser("service", help="start core and viewer at logon")
-    service_cmd.add_argument("action", choices=["install", "uninstall", "status"])
+    service_cmd.add_argument("action", choices=["install", "uninstall", "start", "stop", "status"])
     service_cmd.add_argument("--print-only", action="store_true", help="only show what it does")
 
     model = sub.add_parser("model", help="the local model: info, serve, bench")
@@ -582,6 +635,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     if args.command == "vault" and args.action != "list" and not args.key:
         parser.error(f"vault {args.action} needs a key name")
     paths = Paths.discover(args.home)
+    _ensure_console(paths)
     try:
         match args.command:
             case "ask":

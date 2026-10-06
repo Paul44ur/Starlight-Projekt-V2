@@ -77,6 +77,15 @@ def _safe_files(root: Path, files: dict[str, str]) -> None:
         target.write_text(content, encoding="utf-8")
 
 
+def python_command(command: list[str]) -> list[str]:
+    """`pytest -q` and `python3 x.py` as the sandbox runs them."""
+    if command and command[0] in ("pytest", "py.test"):
+        return ["python", "-m", "pytest", *command[1:]]
+    if command and command[0] in ("python3", "py"):
+        return ["python", *command[1:]]
+    return command
+
+
 def _tail(data: bytes, limit: int = 20000) -> str:
     return data.decode(errors="replace")[-limit:]
 
@@ -103,20 +112,18 @@ class ProcessSandbox:
             "PYTHONDONTWRITEBYTECODE": "1",
             "PYTHONIOENCODING": "utf-8",
             "STARLIGHT_SANDBOX": json.dumps(
-                {"deny": self.deny, "network": network, "workdir": str(folder)}
+                {
+                    "deny": self.deny,
+                    "network": network,
+                    "workdir": str(folder),
+                    "memory_mb": self.memory_mb,
+                }
             ),
         }
         for key in ("SYSTEMROOT", "SYSTEMDRIVE", "WINDIR", "COMSPEC"):  # Windows needs these
             if key in os.environ:
                 env[key] = os.environ[key]
         return env
-
-    def _limits(self) -> None:  # pragma: no cover - runs in the child on POSIX
-        import resource
-
-        limit = self.memory_mb * 2**20
-        resource.setrlimit(resource.RLIMIT_AS, (limit, limit))
-        resource.setrlimit(resource.RLIMIT_NPROC, (64, 64))
 
     async def run(
         self,
@@ -125,6 +132,7 @@ class ProcessSandbox:
         timeout: float = 60.0,
         network: bool = False,
     ) -> RunResult:
+        command = python_command(command)
         if not command or command[0] not in ("python", "python3"):
             raise ValueError("the process sandbox only runs Python (use Docker for more)")
         folder = self.work_root / uuid.uuid4().hex[:12]
@@ -141,7 +149,6 @@ class ProcessSandbox:
                 stdin=asyncio.subprocess.DEVNULL,
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
-                preexec_fn=self._limits if os.name == "posix" else None,
             )
             self._procs.add(proc)
             timed_out = False
@@ -198,15 +205,19 @@ class DockerSandbox:
         folder = self.work_root / uuid.uuid4().hex[:12]
         folder.mkdir(parents=True)
         name = f"starlight-{folder.name}"
+        command = python_command(command)
         try:
             _safe_files(folder, files)
+            if os.name == "posix":  # the container's unprivileged user must write here
+                for path in [folder, *folder.rglob("*")]:
+                    path.chmod(0o777 if path.is_dir() else 0o666)
             argv = [
                 self.docker, "run", "--rm", "--name", name,
                 "--network", "bridge" if network else "none",
                 "--memory", f"{self.memory_mb}m", "--cpus", str(self.cpus),
                 "--pids-limit", "128", "--read-only", "--tmpfs", "/tmp:rw,size=256m",
                 "--cap-drop", "ALL", "--security-opt", "no-new-privileges",
-                "--user", "65534:65534", "-e", "HOME=/tmp",
+                "--user", "65534:65534", "-e", "HOME=/tmp", "-e", "PYTHONDONTWRITEBYTECODE=1",
                 "-v", f"{folder.resolve()}:/work", "-w", "/work",
                 self.image, *command,
             ]  # fmt: skip

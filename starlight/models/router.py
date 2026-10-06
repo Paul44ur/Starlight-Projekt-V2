@@ -7,6 +7,7 @@ the large model. Every later step of the same request stays on the model chosen 
 
 from __future__ import annotations
 
+from contextvars import ContextVar
 from typing import Any
 
 from starlight.core.config import ModelConfig
@@ -19,6 +20,11 @@ CLASSIFY_PROMPT = (
 )
 
 
+# The choice for the request being handled now. Each request (terminal, WhatsApp ...) runs
+# in its own task and so has its own value: two requests at once never swap models.
+_choice: ContextVar[ModelProvider | None] = ContextVar("router_choice", default=None)
+
+
 class RouterProvider:
     name = "router"
 
@@ -26,7 +32,6 @@ class RouterProvider:
         self.fast = fast
         self.main = main
         self.max_simple_chars = max_simple_chars
-        self._current: ModelProvider = main
         self.supports_streaming = getattr(main, "supports_streaming", False) and getattr(
             fast, "supports_streaming", False
         )
@@ -56,9 +61,10 @@ class RouterProvider:
         tools: list[dict[str, Any]],
         on_token: TokenCallback | None = None,
     ) -> ModelResponse:
-        if messages and messages[-1].role == "user":  # a new request: choose a model
-            self._current = await self.classify(messages[-1].content)
-        provider = self._current
+        provider = _choice.get()
+        if provider is None or (messages and messages[-1].role == "user"):
+            provider = await self.classify(messages[-1].content) if messages else self.main
+            _choice.set(provider)  # later steps of this request stay on it
         if on_token is not None and getattr(provider, "supports_streaming", False):
             response = await provider.chat(messages, tools, on_token=on_token)  # type: ignore[call-arg]
         else:

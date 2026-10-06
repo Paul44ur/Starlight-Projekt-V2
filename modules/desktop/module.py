@@ -33,6 +33,7 @@ from pydantic import BaseModel, Field
 from starlight.core import Message, Module, ModuleContext, Permission, tool
 from starlight.core.config import ModelConfig
 from starlight.core.model import ModelProvider, create_provider
+from starlight.core.modules import keep_running
 
 from .backends import (
     Box,
@@ -260,8 +261,13 @@ class DesktopModule(Module):
             "change": round(ratio, 4),
         }
         if expect_text:
-            text = boxes_to_text(self.ocr.boxes(after))
-            result["verified"] = expect_text.lower() in text.lower()
+            try:
+                text = boxes_to_text(self.ocr.boxes(after))
+            except DesktopUnavailable as exc:  # the action itself worked: do not report it
+                result["verified"] = None  # as failed, or the AI would do it again
+                result["note"] = f"could not check the text: {exc}"
+            else:
+                result["verified"] = expect_text.lower() in text.lower()
         del before, after  # screenshots are not kept
         return result
 
@@ -350,7 +356,8 @@ class DesktopModule(Module):
             raise ValueError(f"'{name}' is not an allowed app ({', '.join(self.config.apps)})")
         self.ctx.kill_switch.check()
         before = self.screen.capture()
-        subprocess.Popen(command)
+        process = subprocess.Popen(command)  # only allow-listed commands
+        keep_running(process)
         time.sleep(max(1.5, self.config.settle))
         ratio = change_ratio(before, self.screen.capture())
         return {"started": name, "screen_changed": ratio > 0.0005, "change": round(ratio, 4)}

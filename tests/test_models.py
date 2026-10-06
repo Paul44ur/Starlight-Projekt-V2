@@ -294,6 +294,7 @@ async def test_benchmark_records_stats() -> None:
     assert report["tokens_per_second"] == 42.0
     assert report["full_gpu_offload"] is True
     assert stats.query("model.bench.tokens_per_second")[0][1] == 42.0
+    stats.close()
 
 
 async def test_model_server_down_is_a_clear_answer(paths: Paths) -> None:

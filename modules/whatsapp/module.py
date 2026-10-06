@@ -111,10 +111,16 @@ class WhatsAppModule(Module):
         self._handlers: set[asyncio.Task[Any]] = set()
         for pattern in self.config.notify:
             ctx.bus.subscribe(pattern, self._forward, owner=ctx.name)
+        ctx.bus.subscribe("core.primary", self._on_primary, owner=ctx.name)
         if not (self.owner and self.config.phone_number_id):
             ctx.logger.info("whatsapp not configured; set owner_number and phone_number_id")
             return
-        await self._start_server()
+        if ctx.services.primary:  # otherwise the running background core serves it
+            await self._start_server()
+
+    async def _on_primary(self, event: Event) -> None:
+        if self.configured and self._server_task is None:
+            await self._start_server()
 
     @property
     def configured(self) -> bool:
@@ -150,7 +156,7 @@ class WhatsAppModule(Module):
 
         config = uvicorn.Config(
             self.app, host=self.config.host, port=self.config.port, log_level="warning",
-            access_log=False,
+            access_log=False, log_config=None,
         )  # fmt: skip
         self._server = uvicorn.Server(config)
         self._server.install_signal_handlers = lambda: None  # the core owns Ctrl+C

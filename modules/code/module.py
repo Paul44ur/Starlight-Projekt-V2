@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import json
 import re
+import shlex
 from pathlib import Path
 from typing import Any, Literal
 
@@ -139,7 +140,7 @@ class CodeModule(Module):
                 "python test_main.py" if "test_main.py" in solution["files"] else "python main.py"
             )
             run = await self.sandbox.run(
-                solution["files"], command.split(), self.config.timeout, allowed
+                solution["files"], shlex.split(command), self.config.timeout, allowed
             )
             history.append({"attempt": attempt, "ok": run.ok, "exit_code": run.exit_code})
             if self.ctx.stats is not None:

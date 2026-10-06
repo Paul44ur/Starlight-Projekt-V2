@@ -277,17 +277,24 @@ async def test_logs_never_hold_secrets(paths: Paths, capsys: pytest.CaptureFixtu
 
 
 def test_service_files(tmp_path: Path) -> None:
-    root = Path("C:/Starlight")
-    windows = windows_plan(root, "install")
-    create = [c for c in windows.commands if "/Create" in c]
-    assert len(create) == 2 and all("ONLOGON" in c for c in create)
-    assert any("serve" in c[c.index("/TR") + 1] for c in create)
-    assert windows_plan(root, "uninstall").commands[-1][:2] == ["schtasks", "/Delete"]
+    root = Path("C:/Users/O'Brien/Starlight")  # an apostrophe must not break the script
+    data = tmp_path / "data"
+    startup = tmp_path / "Startup"
+    install = windows_plan(root, "install", data, folder=startup)
+    scripts = [c[-1] for c in install.commands]
+    assert len(scripts) == 2 and all("CreateShortcut" in s for s in scripts)
+    assert "O''Brien" in scripts[0]  # quoted for PowerShell
+    assert not any("schtasks" in " ".join(c) for c in install.commands)  # no admin needed
+    assert [c[-1] for c in install.spawn] == ["serve", "viewer"]
+    uninstall = windows_plan(root, "uninstall", data, folder=startup)
+    assert startup / "Starlight core.lnk" in uninstall.remove
+    assert set(uninstall.files) == {data / "SHUTDOWN.core", data / "SHUTDOWN.viewer"}
 
-    linux = linux_plan(tmp_path, "install", unit_dir=tmp_path / "units")
+    linux = linux_plan(tmp_path, "install", data, unit_dir=tmp_path / "units")
     unit = linux.files[tmp_path / "units" / "starlight-core.service"]
     assert f"--home {tmp_path} serve" in unit and "Restart=on-failure" in unit
     assert ["systemctl", "--user", "enable", "--now", "starlight-viewer.service"] in linux.commands
+    assert linux_plan(tmp_path, "stop", data).commands[0][:3] == ["systemctl", "--user", "stop"]
 
 
 def test_install_scripts_exist() -> None:

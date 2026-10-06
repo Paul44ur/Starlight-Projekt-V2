@@ -242,10 +242,38 @@ def create_app(paths: Paths | None = None) -> Any:
 
 
 def run(paths: Paths | None = None) -> None:
+    import asyncio
+
     import uvicorn
+
+    from starlight.service import shutdown_file
 
     paths = paths or Paths.discover()
     config = load_config(paths)
-    uvicorn.run(
-        create_app(paths), host=config.viewer.host, port=config.viewer.port, log_level="warning"
+    server = uvicorn.Server(
+        uvicorn.Config(
+            create_app(paths),
+            host=config.viewer.host,
+            port=config.viewer.port,
+            log_level="warning",
+            log_config=None,  # keep Starlight's logging; works without a console too
+        )
     )
+    request = shutdown_file(paths.data, "viewer")
+    request.unlink(missing_ok=True)
+
+    async def watch_for_stop() -> None:  # `starlight service stop`
+        while not server.should_exit:
+            if request.exists():
+                request.unlink(missing_ok=True)
+                server.should_exit = True
+            await asyncio.sleep(1)
+
+    async def main() -> None:
+        watcher = asyncio.create_task(watch_for_stop())
+        try:
+            await server.serve()
+        finally:
+            watcher.cancel()
+
+    asyncio.run(main())

@@ -9,12 +9,15 @@ from __future__ import annotations
 
 import contextlib
 import re
+import sys
 from pathlib import Path
 from typing import Protocol
 
 import yaml
 
 SERVICE = "starlight"
+# Credential Manager stores at most 2560 bytes per secret, as UTF-16: 1280 characters.
+WINDOWS_MAX_CHARS = 1280
 KEY_PATTERN = re.compile(r"^[a-z0-9][a-z0-9_.-]*$")
 
 
@@ -105,6 +108,12 @@ class Vault:
     def set(self, key: str, value: str) -> None:
         if not KEY_PATTERN.match(key):
             raise VaultError("key names use lowercase letters, digits, '.', '_' and '-'")
+        if sys.platform == "win32" and len(value) > WINDOWS_MAX_CHARS:
+            raise VaultError(
+                f"too long for the Windows Credential Manager ({len(value)} characters, "
+                f"limit {WINDOWS_MAX_CHARS}). For an SSH key use an ed25519 key, or point "
+                "`key_file` in servers.yaml at the key file instead."
+            )
         self.backend.set(key, value)
         self._write_index([*self.names(), key])
         from starlight.core.logging import add_secret_values

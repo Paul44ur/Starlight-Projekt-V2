@@ -14,6 +14,7 @@ import httpx
 from starlight.core.agent import Agent, AgentResult
 from starlight.core.config import StarlightConfig, load_config
 from starlight.core.context import SUMMARY_PREFIX, ContextManager
+from starlight.core.corelock import CoreLock
 from starlight.core.dispatcher import Confirmer, Dispatcher
 from starlight.core.events import Event, EventBus
 from starlight.core.http import PoliteHttp
@@ -58,6 +59,8 @@ def channel_confirmer(fallback: Confirmer) -> Confirmer:
 
 
 class Kernel:
+    takeover_interval = 10.0  # seconds between tries to take over the background parts
+
     def __init__(
         self,
         paths: Paths | None = None,
@@ -131,7 +134,9 @@ class Kernel:
         )
         self.agent.enrichers.append(self.memory.enrich)
         self.agent.enrichers.append(self.skills.enrich)
+        self.core_lock = CoreLock(self.paths.data / "core.lock")
         self.services = Services(
+            primary=False,
             http=self.http,
             vault=self.vault,
             ui=self.ui,
@@ -168,6 +173,10 @@ class Kernel:
         return self._role_models[role]
 
     async def start(self) -> None:
+        # First: is this the process that runs the webhook, watchers and heartbeat?
+        self.services.primary = self.core_lock.acquire()
+        if not self.services.primary:
+            self.log.info("another Starlight core runs the webhook and watchers")
         self._watcher = asyncio.create_task(
             self.kill_switch.watch(self.config.kill_switch.poll_interval), name="kill-switch-watch"
         )
@@ -176,7 +185,13 @@ class Kernel:
         if self.config.memory.enabled:
             for tool in self.memory.tools():
                 self.dispatcher.register(tool)
-            await self.memory.sync(force=True)
+            try:
+                await self.memory.sync(force=True)
+            except Exception as exc:  # e.g. the embedding model is not running yet
+                self.log.warning(
+                    "memory index not ready; recall is off until the embedder answers",
+                    error=f"{type(exc).__name__}: {exc}",
+                )
             self.bus.subscribe("task.completed", self._after_task, owner="memory")
         if self.config.skills.enabled:
             for tool in self.skills.tools():
@@ -209,11 +224,14 @@ class Kernel:
     async def _on_summary(self, summary: str) -> None:
         await self.bus.publish("conversation.summarized", {"summary": summary})
         if self.config.memory.enabled:
-            await self.memory.save_summary(summary)
+            try:
+                await self.memory.save_summary(summary)
+            except Exception:  # the summary still goes into the prompt
+                self.log.exception("could not save the summary to memory")
 
     async def _after_task(self, event: Event) -> None:
         """Let the model pick what to keep, in the background so the answer is not delayed."""
-        if self.kill_switch.engaged:
+        if self.kill_switch.engaged or getattr(self.provider, "stand_in", False):
             return
 
         async def extract() -> None:
@@ -235,7 +253,7 @@ class Kernel:
         return task
 
     async def _learn_skill(self, event: Event) -> None:
-        if self.kill_switch.engaged:
+        if self.kill_switch.engaged or getattr(self.provider, "stand_in", False):
             return
 
         async def learn() -> None:
@@ -287,11 +305,19 @@ class Kernel:
         add_secret_values(v for v in values if v)
 
     async def _heartbeat(self) -> None:
-        """Tells the statistics viewer the core is running; samples GPU use and VRAM."""
+        """The primary core tells the viewer it is running and samples GPU use and VRAM.
+        A secondary core waits and takes over when the primary one exits."""
         from starlight.models.bench import gpu_status
 
         interval = self.config.stats.gpu_sample_interval
         while True:
+            if not self.services.primary:
+                if not self.core_lock.acquire():
+                    await asyncio.sleep(self.takeover_interval)
+                    continue
+                self.services.primary = True
+                self.log.info("this process now runs the background parts")
+                await self.bus.publish("core.primary")
             self.stats.record("core.heartbeat")
             status = None
             if interval > 0:
@@ -359,7 +385,9 @@ class Kernel:
                 await close()
         self.memory.close()
         self.audit.record("core.stopped")
-        self.stats.record("core.stopped")  # the viewer shows "not running" at once
+        if self.services.primary:
+            self.stats.record("core.stopped")  # the viewer shows "not running" at once
+        self.core_lock.release()
         self.log.info("core stopped")
         self.stats.close()
         shutdown_logging()

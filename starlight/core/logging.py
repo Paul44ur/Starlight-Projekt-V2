@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import logging
 import re
+import time
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
 from typing import Any
@@ -84,9 +85,34 @@ def _formatter() -> logging.Formatter:
     )
 
 
+class SafeRotatingFileHandler(RotatingFileHandler):
+    """Rotation that never loses lines. On Windows another Starlight process (the
+    background core, a CLI command) may hold the file open, so renaming it fails; then
+    keep writing to the current file and try again a minute later."""
+
+    retry_after = 60.0
+
+    def __init__(self, *args: Any, **kwargs: Any) -> None:
+        super().__init__(*args, **kwargs)
+        self._next_try = 0.0
+
+    def shouldRollover(self, record: logging.LogRecord) -> int:
+        if time.monotonic() < self._next_try:
+            return 0
+        return super().shouldRollover(record)
+
+    def doRollover(self) -> None:
+        try:
+            super().doRollover()
+        except OSError:
+            self._next_try = time.monotonic() + self.retry_after
+            if self.stream is None:
+                self.stream = self._open()  # back to appending to the current file
+
+
 def _file_handler(path: Path) -> logging.Handler:
     path.parent.mkdir(parents=True, exist_ok=True)
-    handler = RotatingFileHandler(
+    handler = SafeRotatingFileHandler(
         path, maxBytes=_State.max_bytes, backupCount=_State.backups, encoding="utf-8"
     )
     handler.setFormatter(_formatter())

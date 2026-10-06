@@ -61,7 +61,7 @@ starlight> Hello, Paul!
 | `starlight skills list / show / approve / reject / history / rollback / promote` | learned skills |
 | `starlight serve` | the core in the background: WhatsApp webhook, watchers, kill hotkey |
 | `starlight viewer` | the statistics viewer, a separate app (keeps working when the AI is stopped) |
-| `starlight service install / uninstall / status` | start core and viewer at logon |
+| `starlight service install / uninstall / start / stop / status` | core and viewer in the background, started at logon |
 | `starlight logs scan` | check every log file for leaked secrets |
 
 ## What each step added

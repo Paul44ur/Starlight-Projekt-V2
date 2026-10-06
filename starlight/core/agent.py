@@ -76,7 +76,15 @@ class Agent:
                 self.kill_switch.check()
                 messages = [Message("system", self.config.system_prompt)]
                 for enrich in self.enrichers:
-                    extra = await enrich(request)
+                    try:
+                        extra = await enrich(request)
+                    except (KillSwitchEngaged, asyncio.CancelledError):
+                        raise
+                    except Exception as exc:  # e.g. the embedding model is down
+                        log.warning("context lookup skipped", error=f"{type(exc).__name__}: {exc}")
+                        if self.stats is not None:
+                            self.stats.record("errors", source="enricher")
+                        continue
                     if extra:
                         messages.append(Message("system", extra))
                 messages += [*(history or []), Message("user", request, images=images or [])]

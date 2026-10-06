@@ -27,7 +27,7 @@ uv run starlight status
 uv run starlight logs scan
 
 if ($Service) {
-    Write-Host "Starting core and viewer at logon (Task Scheduler)..."
+    Write-Host "Starting core and viewer now and at every logon (Startup folder)..."
     uv run starlight service install
 }
 Write-Host ""
