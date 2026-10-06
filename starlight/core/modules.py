@@ -12,12 +12,15 @@ A crash in a module is caught and logged; it never takes down the core.
 
 from __future__ import annotations
 
+import asyncio
 import contextlib
 import importlib
 import importlib.machinery
 import importlib.util
 import shutil
+import subprocess
 import sys
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from enum import StrEnum
 from pathlib import Path
@@ -46,6 +49,15 @@ PACKAGE_ROOT = "starlight_modules"
 NAME_PATTERN = r"^[a-z][a-z0-9_]*$"
 
 
+# Programs a module starts for you (e.g. Notepad) keep running when the module reloads or
+# Starlight stops; their handles live here, outside any module, for the whole process.
+_KEPT: list[subprocess.Popen[bytes]] = []
+
+
+def keep_running(process: subprocess.Popen[bytes]) -> None:
+    _KEPT[:] = [p for p in _KEPT if p.poll() is None] + [process]
+
+
 class ModuleManifest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -67,6 +79,12 @@ class Services:
     ui: UserIO = field(default_factory=NoUser)  # confirmations and questions to you
     stats: Stats | None = None  # metrics for the statistics viewer
     model: ModelProvider | None = None  # the main model (e.g. for vision or summaries)
+    # Model for a role such as "code" or "vision" (falls back to the main model).
+    models: Callable[[str], ModelProvider] | None = None
+    skills: Any = None  # the skill manager (Step 9)
+    # This process runs the background parts (webhook, watchers). False while another
+    # Starlight core does; the event "core.primary" announces a takeover.
+    primary: bool = True
 
 
 @dataclass
@@ -104,6 +122,12 @@ class ModuleContext:
 
     @property
     def model(self) -> ModelProvider | None:
+        return self.services.model
+
+    def model_for(self, role: str) -> ModelProvider | None:
+        """The model the core routes this kind of work to (``roles:`` in the config)."""
+        if self.services.models is not None:
+            return self.services.models(role)
         return self.services.model
 
     async def publish(self, event: str, data: dict[str, Any] | None = None) -> None:
@@ -275,6 +299,7 @@ class ModuleManager:
         self.state = ModuleState(paths.module_state_file)
         self.records: dict[str, ModuleRecord] = {}
         self.errors: dict[str, str] = {}
+        self._lock = asyncio.Lock()
         self._log = get_logger("modules")
 
     def rescan(self) -> None:
@@ -313,26 +338,39 @@ class ModuleManager:
         return order
 
     async def load_all(self) -> None:
-        self.rescan()
-        for name in self.load_order():
-            record = self.records[name]
-            if record.status is ModuleStatus.LOADED:
-                continue
-            if self.state.is_enabled(record.manifest):
-                await self.load(name)
+        async with self._lock:
+            self.rescan()
+            for name in self.load_order():
+                record = self.records[name]
+                if record.status is ModuleStatus.LOADED:
+                    continue
+                if self.state.is_enabled(record.manifest):
+                    await self._load(name)
 
     async def sync_state(self) -> None:
         """Apply enable/disable changes made from another process (`starlight modules ...`)."""
-        self.rescan()
-        for name in self.load_order():
-            record = self.records[name]
-            wanted = self.state.is_enabled(record.manifest)
-            if wanted and record.status is not ModuleStatus.LOADED:
-                await self.load(name)
-            elif not wanted and record.status is ModuleStatus.LOADED:
-                await self.unload(name)
+        async with self._lock:
+            self.rescan()
+            for name in self.load_order():
+                record = self.records[name]
+                wanted = self.state.is_enabled(record.manifest)
+                if wanted and record.status is not ModuleStatus.LOADED:
+                    await self._load(name)
+                elif not wanted and record.status is ModuleStatus.LOADED:
+                    await self._unload(name)
+
+    # Public entry points take the lock: two requests at once (terminal and WhatsApp)
+    # must never load or unload the same module twice.
 
     async def load(self, name: str) -> ModuleRecord:
+        async with self._lock:
+            return await self._load(name)
+
+    async def unload(self, name: str) -> None:
+        async with self._lock:
+            await self._unload(name)
+
+    async def _load(self, name: str) -> ModuleRecord:
         record = self.records.get(name)
         if record is None:
             self.rescan()
@@ -394,12 +432,12 @@ class ModuleManager:
         self._log.error("module not loaded", module=record.manifest.name, error=error)
         return record
 
-    async def unload(self, name: str) -> None:
+    async def _unload(self, name: str) -> None:
         record = self.records.get(name)
         if record is None or record.status is not ModuleStatus.LOADED:
             return
         for other in self.dependents(name):
-            await self.unload(other)
+            await self._unload(other)
         self.dispatcher.unregister_module(name)
         self.bus.unsubscribe_owner(name)
         self.kill_switch.remove_cleanups(name)
@@ -418,17 +456,20 @@ class ModuleManager:
 
     async def reload(self, name: str) -> ModuleRecord:
         """Hot-reload: unload, re-read manifest and code, load again."""
-        await self.unload(name)
-        self.rescan()
-        return await self.load(name)
+        async with self._lock:
+            await self._unload(name)
+            self.rescan()
+            return await self._load(name)
 
     async def enable(self, name: str) -> ModuleRecord:
-        self.state.set(name, True)
-        return await self.load(name)
+        async with self._lock:
+            self.state.set(name, True)
+            return await self._load(name)
 
     async def disable(self, name: str) -> None:
-        self.state.set(name, False)
-        await self.unload(name)
+        async with self._lock:
+            self.state.set(name, False)
+            await self._unload(name)
 
     def dependents(self, name: str) -> list[str]:
         return [
@@ -438,6 +479,7 @@ class ModuleManager:
         ]
 
     async def unload_all(self) -> None:
-        for name in reversed(self.load_order()):
-            with contextlib.suppress(Exception):
-                await self.unload(name)
+        async with self._lock:
+            for name in reversed(self.load_order()):
+                with contextlib.suppress(Exception):
+                    await self._unload(name)

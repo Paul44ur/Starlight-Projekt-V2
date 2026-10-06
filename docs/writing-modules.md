@@ -93,6 +93,8 @@ The interface:
   `await ctx.ui.ask("2FA code?")`, `await ctx.ui.notify("...")`
 - `ctx.stats`: metrics for the statistics viewer: `ctx.stats.record("mymodule.items", 3)`
 - `ctx.model`: the main model, e.g. to summarize something inside a tool
+- `ctx.model_for("code")`: the model the core routes a kind of work to (`roles:` in the
+  config), falling back to the main model
 
 For a headless browser, use `starlight.browser.Browser(ctx.http)`: its requests count
 against the same limits.

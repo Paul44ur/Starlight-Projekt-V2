@@ -14,18 +14,25 @@ import httpx
 from starlight.core.agent import Agent, AgentResult
 from starlight.core.config import StarlightConfig, load_config
 from starlight.core.context import SUMMARY_PREFIX, ContextManager
+from starlight.core.corelock import CoreLock
 from starlight.core.dispatcher import Confirmer, Dispatcher
 from starlight.core.events import Event, EventBus
 from starlight.core.http import PoliteHttp
 from starlight.core.killswitch import KillSwitch
-from starlight.core.logging import AuditLog, get_logger, setup_logging, shutdown_logging
+from starlight.core.logging import (
+    AuditLog,
+    add_secret_values,
+    get_logger,
+    setup_logging,
+    shutdown_logging,
+)
 from starlight.core.model import Message, ModelProvider, TokenCallback, create_provider
 from starlight.core.modules import ModuleManager, Services
 from starlight.core.paths import Paths
 from starlight.core.permissions import PermissionPolicy
 from starlight.core.stats import Stats
 from starlight.core.tools import Tool
-from starlight.core.ui import NoUser, UserIO
+from starlight.core.ui import ContextualUI, NoUser, UserIO, current_ui
 from starlight.core.vault import Vault, VaultBackend
 
 
@@ -38,7 +45,22 @@ def confirmer_for(ui: UserIO, policy: PermissionPolicy) -> Confirmer:
     return confirm
 
 
+def channel_confirmer(fallback: Confirmer) -> Confirmer:
+    """Requests from another channel (WhatsApp) are confirmed there; terminal requests use
+    the terminal's own confirmation (with 'always')."""
+
+    async def confirm(tool: Tool, args: dict[str, Any]) -> bool:
+        ui = current_ui.get()
+        if ui is not None:
+            return await ui.confirm(f"Run {tool.qualified_name} with {args}?")
+        return await fallback(tool, args)
+
+    return confirm
+
+
 class Kernel:
+    takeover_interval = 10.0  # seconds between tries to take over the background parts
+
     def __init__(
         self,
         paths: Paths | None = None,
@@ -63,7 +85,7 @@ class Kernel:
         self.audit = AuditLog()
         self.stats = Stats(self.paths.stats_db)
         self.bus = EventBus()
-        self.ui: UserIO = ui or NoUser()
+        self.ui = ContextualUI(ui or NoUser())
         self.kill_switch = KillSwitch(
             self.paths.root / self.config.kill_switch.stop_file, self.audit
         )
@@ -73,7 +95,7 @@ class Kernel:
             self.policy,
             self.bus,
             self.audit,
-            confirmer=confirmer or confirmer_for(self.ui, self.policy),
+            confirmer=channel_confirmer(confirmer or confirmer_for(self.ui.default, self.policy)),
             timeout=self.config.tools.timeout,
             stats=self.stats,
         )
@@ -87,9 +109,18 @@ class Kernel:
         )
         self.vault = Vault(self.paths.config / "vault_index.yaml", vault_backend)
 
-        from starlight.memory import Memory  # memory builds on the core, not the reverse
+        from starlight.memory import Memory  # memory and skills build on the core
+        from starlight.skills import SkillManager
 
         self.memory = Memory(self.paths, self.config.memory, self.provider, self.stats)
+        self._role_models: dict[str, ModelProvider] = {}
+        self.skills = SkillManager(
+            self.paths,
+            self.config.skills,
+            getattr(self.provider, "summarizer", self.provider),
+            self.memory.index.embedder,
+            self.stats,
+        )
         self.context = ContextManager(self.provider, self.config.model, self._on_summary)
         self.agent = Agent(
             self.provider,
@@ -102,8 +133,17 @@ class Kernel:
             stats=self.stats,
         )
         self.agent.enrichers.append(self.memory.enrich)
+        self.agent.enrichers.append(self.skills.enrich)
+        self.core_lock = CoreLock(self.paths.data / "core.lock")
         self.services = Services(
-            http=self.http, vault=self.vault, ui=self.ui, stats=self.stats, model=self.provider
+            primary=False,
+            http=self.http,
+            vault=self.vault,
+            ui=self.ui,
+            stats=self.stats,
+            model=self.provider,
+            models=self.model_for,
+            skills=self.skills,
         )
         self.modules = ModuleManager(
             self.paths, self.dispatcher, self.bus, self.kill_switch, self.audit, self.services
@@ -115,11 +155,28 @@ class Kernel:
         self.hotkey_active = False
 
     def set_ui(self, ui: UserIO) -> None:
-        self.ui = ui
-        self.services.ui = ui
-        self.dispatcher.confirmer = confirmer_for(ui, self.policy)
+        """The default interface (the terminal); other channels set theirs per request."""
+        self.ui.default = ui
+        self.dispatcher.confirmer = channel_confirmer(confirmer_for(ui, self.policy))
+
+    def set_confirmer(self, confirmer: Confirmer) -> None:
+        """Replace the terminal's tool confirmation (other channels still ask themselves)."""
+        self.dispatcher.confirmer = channel_confirmer(confirmer)
+
+    def model_for(self, role: str) -> ModelProvider:
+        """The model for a kind of work (``roles:`` in the config), else the main model."""
+        config = self.config.roles.get(role)
+        if config is None:
+            return self.provider
+        if role not in self._role_models:
+            self._role_models[role] = create_provider(config)
+        return self._role_models[role]
 
     async def start(self) -> None:
+        # First: is this the process that runs the webhook, watchers and heartbeat?
+        self.services.primary = self.core_lock.acquire()
+        if not self.services.primary:
+            self.log.info("another Starlight core runs the webhook and watchers")
         self._watcher = asyncio.create_task(
             self.kill_switch.watch(self.config.kill_switch.poll_interval), name="kill-switch-watch"
         )
@@ -128,8 +185,22 @@ class Kernel:
         if self.config.memory.enabled:
             for tool in self.memory.tools():
                 self.dispatcher.register(tool)
-            await self.memory.sync(force=True)
+            try:
+                await self.memory.sync(force=True)
+            except Exception as exc:  # e.g. the embedding model is not running yet
+                self.log.warning(
+                    "memory index not ready; recall is off until the embedder answers",
+                    error=f"{type(exc).__name__}: {exc}",
+                )
             self.bus.subscribe("task.completed", self._after_task, owner="memory")
+        if self.config.skills.enabled:
+            for tool in self.skills.tools():
+                self.dispatcher.register(tool)
+            self.bus.subscribe("task.completed", self._learn_skill, owner="skills")
+        self.bus.subscribe("message.received", self._on_message, owner="core")
+        self.stats.prune(self.config.stats.retention_days)
+        self._spawn(self._heartbeat(), "gpu-heartbeat")
+        self._protect_secrets()
         await self._warmup()
         await self.modules.load_all()
         self.audit.record(
@@ -153,11 +224,14 @@ class Kernel:
     async def _on_summary(self, summary: str) -> None:
         await self.bus.publish("conversation.summarized", {"summary": summary})
         if self.config.memory.enabled:
-            await self.memory.save_summary(summary)
+            try:
+                await self.memory.save_summary(summary)
+            except Exception:  # the summary still goes into the prompt
+                self.log.exception("could not save the summary to memory")
 
     async def _after_task(self, event: Event) -> None:
         """Let the model pick what to keep, in the background so the answer is not delayed."""
-        if self.kill_switch.engaged:
+        if self.kill_switch.engaged or getattr(self.provider, "stand_in", False):
             return
 
         async def extract() -> None:
@@ -170,9 +244,95 @@ class Kernel:
             except Exception:
                 self.log.exception("memory extraction failed")
 
-        task = asyncio.create_task(extract(), name="memory-extract")
+        self._spawn(extract(), "memory-extract")
+
+    def _spawn(self, coro: Any, name: str) -> asyncio.Task[Any]:
+        task = asyncio.create_task(coro, name=name)
         self._background.add(task)
         task.add_done_callback(self._background.discard)
+        return task
+
+    async def _learn_skill(self, event: Event) -> None:
+        if self.kill_switch.engaged or getattr(self.provider, "stand_in", False):
+            return
+
+        async def learn() -> None:
+            try:
+                skill = await self.skills.on_task(event.data)
+            except Exception:
+                self.log.exception("skill drafting failed")
+                return
+            if skill is not None:
+                await self.bus.publish("skill.drafted", {"skill": skill.name})
+                await self.ui.notify(
+                    f"New draft skill '{skill.name}'. Review it with "
+                    f"`starlight skills show {skill.name}` and approve with "
+                    f"`starlight skills approve {skill.name}`."
+                )
+
+        self._spawn(learn(), "skill-draft")
+
+    async def _on_message(self, event: Event) -> None:
+        """A request from another channel (e.g. WhatsApp): run it with that channel's
+        interface and send the answer back through ``reply``."""
+        text = str(event.data.get("text", "")).strip()
+        reply = event.data.get("reply")
+        ui = event.data.get("ui")
+        if not text or reply is None:
+            return
+
+        async def handle() -> None:
+            token = current_ui.set(ui)
+            try:
+                result = await self.ask(text)
+                await reply(result.answer)
+            except Exception:
+                self.log.exception("message handling failed", source=event.source)
+                self.stats.record("errors", source=event.source)
+                await reply("Sorry, that failed. The details are in the Starlight logs.")
+            finally:
+                current_ui.reset(token)
+
+        self._spawn(handle(), f"message-{event.source}")
+
+    def _protect_secrets(self) -> None:
+        """Mask the vault's values wherever they would appear in a log line."""
+        try:
+            values = [self.vault.get(key) for key in self.vault.names()]
+        except Exception as exc:  # no keyring on this machine
+            self.log.warning("vault unavailable", error=str(exc))
+            return
+        add_secret_values(v for v in values if v)
+
+    async def _heartbeat(self) -> None:
+        """The primary core tells the viewer it is running and samples GPU use and VRAM.
+        A secondary core waits and takes over when the primary one exits."""
+        from starlight.models.bench import gpu_status
+
+        interval = self.config.stats.gpu_sample_interval
+        while True:
+            if not self.services.primary:
+                if not self.core_lock.acquire():
+                    await asyncio.sleep(self.takeover_interval)
+                    continue
+                self.services.primary = True
+                self.log.info("this process now runs the background parts")
+                await self.bus.publish("core.primary")
+            self.stats.record("core.heartbeat")
+            status = None
+            if interval > 0:
+                try:
+                    status = await asyncio.to_thread(gpu_status)
+                except Exception:
+                    status = None
+            if status:
+                if status.get("used_bytes") is not None:
+                    self.stats.record("gpu.vram_used_bytes", status["used_bytes"])
+                if status.get("total_bytes"):
+                    self.stats.record("gpu.vram_total_bytes", status["total_bytes"])
+                if status.get("utilization") is not None:
+                    self.stats.record("gpu.utilization_percent", status["utilization"])
+            await asyncio.sleep(min(interval, 30) if interval > 0 else 30)
 
     async def ask(
         self,
@@ -197,15 +357,21 @@ class Kernel:
         return result
 
     async def drain(self, timeout: float = 30.0) -> None:
-        """Wait for background work (memory writing) to finish."""
-        if self._background:
-            await asyncio.wait(list(self._background), timeout=timeout)
+        """Wait for background work (memory writing, skill drafting) to finish."""
+        pending = [t for t in self._background if not t.get_name().startswith("gpu-")]
+        if pending:
+            await asyncio.wait(pending, timeout=timeout)
 
     async def stop(self) -> None:
         await self.bus.publish("core.stopping")
-        await self.drain()
+        await self.drain(timeout=10)
         for task in list(self._background):
             task.cancel()
+        for provider in self._role_models.values():
+            close_role = getattr(provider, "aclose", None)
+            if close_role is not None:
+                with contextlib.suppress(Exception):
+                    await close_role()
         await self.modules.unload_all()
         self.kill_switch.stop_hotkey()
         if self._watcher is not None:
@@ -219,6 +385,9 @@ class Kernel:
                 await close()
         self.memory.close()
         self.audit.record("core.stopped")
+        if self.services.primary:
+            self.stats.record("core.stopped")  # the viewer shows "not running" at once
+        self.core_lock.release()
         self.log.info("core stopped")
         self.stats.close()
         shutdown_logging()

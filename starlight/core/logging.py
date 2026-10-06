@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import logging
 import re
+import time
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
 from typing import Any
@@ -28,8 +29,25 @@ _SECRET_KEY = re.compile(
 REDACTED = "***"
 
 
+_SECRET_VALUES: set[str] = set()
+
+
+def add_secret_values(values: Any) -> None:
+    """Known secrets (from the vault): masked wherever they appear in a log line."""
+    _SECRET_VALUES.update(v for v in values if isinstance(v, str) and len(v) >= 6)
+
+
+def _mask_known(text: str) -> str:
+    for secret in _SECRET_VALUES:
+        if secret in text:
+            text = text.replace(secret, REDACTED)
+    return text
+
+
 def redact(value: Any) -> Any:
-    """Mask values whose key looks like a secret, recursively."""
+    """Mask values whose key looks like a secret, and known secret values, recursively."""
+    if isinstance(value, str):
+        return _mask_known(value) if _SECRET_VALUES else value
     if isinstance(value, dict):
         return {
             k: REDACTED if isinstance(k, str) and _SECRET_KEY.search(k) else redact(v)
@@ -67,9 +85,34 @@ def _formatter() -> logging.Formatter:
     )
 
 
+class SafeRotatingFileHandler(RotatingFileHandler):
+    """Rotation that never loses lines. On Windows another Starlight process (the
+    background core, a CLI command) may hold the file open, so renaming it fails; then
+    keep writing to the current file and try again a minute later."""
+
+    retry_after = 60.0
+
+    def __init__(self, *args: Any, **kwargs: Any) -> None:
+        super().__init__(*args, **kwargs)
+        self._next_try = 0.0
+
+    def shouldRollover(self, record: logging.LogRecord) -> int:
+        if time.monotonic() < self._next_try:
+            return 0
+        return super().shouldRollover(record)
+
+    def doRollover(self) -> None:
+        try:
+            super().doRollover()
+        except OSError:
+            self._next_try = time.monotonic() + self.retry_after
+            if self.stream is None:
+                self.stream = self._open()  # back to appending to the current file
+
+
 def _file_handler(path: Path) -> logging.Handler:
     path.parent.mkdir(parents=True, exist_ok=True)
-    handler = RotatingFileHandler(
+    handler = SafeRotatingFileHandler(
         path, maxBytes=_State.max_bytes, backupCount=_State.backups, encoding="utf-8"
     )
     handler.setFormatter(_formatter())

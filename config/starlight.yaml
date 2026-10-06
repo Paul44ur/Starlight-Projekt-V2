@@ -54,6 +54,15 @@ model:
 #     fast: {provider: ollama, options: {model: "qwen2.5:3b-instruct"}}
 #     main: {provider: ollama, options: {model: "qwen2.5:14b-instruct-q4_K_M"}}
 
+# Specialised models by role. Without an entry, the main model does the work.
+roles: {}
+#  code:      # Step 9: code is written by a coding-tuned model
+#    provider: ollama
+#    options: {model: "qwen2.5-coder:14b-instruct-q4_K_M"}
+#  vision:    # Step 8: describe_screen / locate (or set it in config/modules/desktop.yaml)
+#    provider: ollama
+#    options: {model: "qwen2.5vl:7b"}
+
 # --- Step 5: memory ----------------------------------------------------------------
 memory:
   enabled: true
@@ -73,6 +82,22 @@ http:
   respect_robots: true
   cache_ttl: 3600              # seconds a fetched page is reused
   max_retries: 3               # on HTTP 429 / 503, honouring Retry-After
+
+# --- Step 9: skills ------------------------------------------------------------------
+skills:
+  enabled: true
+  auto_draft: true       # a task that succeeds again the same way becomes a draft skill
+  repeat_threshold: 2
+  max_in_prompt: 2       # approved skills added to a matching prompt
+
+# --- Step 10: statistics ------------------------------------------------------------
+stats:
+  retention_days: 30
+  gpu_sample_interval: 30   # seconds; 0 = off
+viewer:
+  host: 127.0.0.1
+  port: 8765
+  refresh_seconds: 5
 
 kill_switch:
   hotkey: "<ctrl>+<alt>+k"   # needs the optional "hotkey" extra (pynput)

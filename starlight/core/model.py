@@ -69,6 +69,7 @@ class EchoProvider:
     """
 
     name = "echo"
+    stand_in = True  # not a real model: nothing is learned from its answers
 
     async def chat(self, messages: list[Message], tools: list[dict[str, Any]]) -> ModelResponse:
         last = messages[-1]

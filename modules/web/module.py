@@ -26,6 +26,13 @@ JS_HINTS = (
 )
 
 
+TEXT_TYPES = ("text/", "json", "xml", "javascript", "csv", "yaml")
+
+
+def is_text(content_type: str) -> bool:
+    return any(marker in content_type for marker in TEXT_TYPES)
+
+
 class Config(BaseModel):
     search_backend: Literal["searxng", "brave"] = "searxng"
     searxng_url: str = "http://127.0.0.1:8888"  # your local SearXNG instance
@@ -102,7 +109,15 @@ class WebModule(Module):
             return {"url": url, "error": str(exc)}
         if not response.ok:
             return {"url": url, "status": response.status, "error": f"HTTP {response.status}"}
-        content_type = response.headers.get("content-type", "")
+        content_type = response.headers.get("content-type", "").lower()
+        if content_type and not is_text(content_type):
+            return {  # PDFs, images, archives: never hand binary to the model
+                "url": response.url,
+                "status": response.status,
+                "content_type": content_type.split(";")[0],
+                "bytes": len(response.text.encode(errors="replace")),
+                "note": "not a text page; content not shown",
+            }
         if "html" not in content_type and content_type:
             return {
                 "url": response.url,

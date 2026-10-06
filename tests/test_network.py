@@ -43,6 +43,7 @@ def http_port() -> Iterator[int]:
     threading.Thread(target=server.serve_forever, daemon=True).start()
     yield server.server_address[1]
     server.shutdown()
+    server.server_close()
 
 
 class SshServer:
@@ -195,6 +196,11 @@ async def test_watcher_alerts_when_a_server_goes_down(
         kernel.bus.subscribe("network.*", events.append)
         module = kernel.modules.records["network"].instance
         assert (await module.check_all()) == {"homeserver": True}  # type: ignore[union-attr]
+
+        async def no_ping_answer(host: str) -> dict[str, Any]:  # the whole host is gone
+            return {"up": False, "method": "icmp"}
+
+        module._ping = no_ping_answer  # type: ignore[union-attr]
         ssh.close()
         await ssh.server.wait_closed()
         assert (await module.check_all()) == {"homeserver": False}  # type: ignore[union-attr]

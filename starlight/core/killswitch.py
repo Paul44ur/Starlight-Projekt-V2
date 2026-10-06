@@ -7,7 +7,9 @@ Layers:
 
 On trigger, running tasks are cancelled, cleanup callbacks registered by modules run
 (release keyboard and mouse, close browser sessions), and the reason goes to the audit log.
-The switch stays engaged until ``starlight resume`` (or ``reset()``).
+The STOP file is the source of truth across processes: the switch stays engaged until the
+file is removed (``starlight resume`` from any terminal, ``/resume``, or ``reset()``), and
+every running process then releases on its own.
 """
 
 from __future__ import annotations
@@ -15,7 +17,9 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import inspect
+import os
 import threading
+import time
 from collections.abc import Awaitable, Callable, Iterator
 from pathlib import Path
 from typing import Any
@@ -35,6 +39,7 @@ class KillSwitch:
         self._audit = audit or AuditLog()
         self._log = get_logger("killswitch")
         self._fired = False
+        self._file_backed = False  # the STOP file was written/seen when the switch fired
         self._reason: str | None = None
         self._cleanups: dict[str, list[Cleanup]] = {}
         self._tasks: set[asyncio.Task[Any]] = set()
@@ -47,7 +52,20 @@ class KillSwitch:
 
     @property
     def engaged(self) -> bool:
+        self._sync()
         return self._fired or self.stop_file.exists()
+
+    def _sync(self) -> None:
+        """Another process removed the STOP file (`starlight resume`): release here too."""
+        if self._fired and self._file_backed and not self.stop_file.exists():
+            with self._lock:
+                if not (self._fired and self._file_backed):
+                    return
+                self._fired = False
+                self._file_backed = False
+                self._reason = None
+            self._audit.record("killswitch.reset", source="stop_file_removed")
+            self._log.info("kill switch released (STOP file removed)")
 
     @property
     def reason(self) -> str | None:
@@ -59,6 +77,7 @@ class KillSwitch:
 
     def check(self) -> None:
         """Raise KillSwitchEngaged if the switch is engaged. Call before every action."""
+        self._sync()
         if self._fired:
             raise KillSwitchEngaged(self._reason or "kill switch engaged")
         if self.stop_file.exists():
@@ -67,9 +86,36 @@ class KillSwitch:
 
     def trigger(self, reason: str = "manual", source: str = "api") -> None:
         """Engage the switch from any thread: write the STOP file, cancel, clean up."""
-        self.stop_file.parent.mkdir(parents=True, exist_ok=True)
-        self.stop_file.write_text(f"{reason}\n", encoding="utf-8")
-        self._fire(reason, source)
+        # Claim first, then write: the watcher must not see the new file and fire a second
+        # time with a generic reason before this one is recorded.
+        with self._lock:
+            if self._fired:
+                return
+            self._fired = True
+            self._reason = reason
+        if self._write_stop_file(reason):
+            with self._lock:
+                self._file_backed = self._fired
+        # else: still stop this process; only reset() releases it then
+        self._announce(reason, source)
+
+    def _write_stop_file(self, reason: str) -> bool:
+        """Atomically, so other processes never read a half-written file. On Windows a
+        reader holding the file open can briefly block the replace: retry a few times."""
+        temp = self.stop_file.with_name(f"{self.stop_file.name}.{os.getpid()}.tmp")
+        for attempt in range(5):
+            try:
+                self.stop_file.parent.mkdir(parents=True, exist_ok=True)
+                temp.write_text(f"{reason}\n", encoding="utf-8")
+                os.replace(temp, self.stop_file)
+                return True
+            except OSError as exc:
+                if attempt == 4:
+                    self._log.error("could not write the STOP file", error=str(exc))
+                time.sleep(0.02)
+        with contextlib.suppress(OSError):
+            temp.unlink()
+        return False
 
     def reset(self) -> None:
         """Disengage. Removes the STOP file."""
@@ -77,6 +123,7 @@ class KillSwitch:
             self.stop_file.unlink()
         with self._lock:
             self._fired = False
+            self._file_backed = False
             self._reason = None
         self._audit.record("killswitch.reset")
         self._log.info("kill switch reset")
@@ -104,11 +151,17 @@ class KillSwitch:
             self._tasks.discard(task)
 
     def _fire(self, reason: str, source: str) -> None:
+        """Engaged by a STOP file that appeared (another process, or `starlight kill`)."""
         with self._lock:
             if self._fired:
                 return
             self._fired = True
+            self._file_backed = self.stop_file.exists()
             self._reason = reason
+        self._announce(reason, source)
+
+    def _announce(self, reason: str, source: str) -> None:
+        """Audit, then cancel running work and run cleanups (on the event loop's thread)."""
         self._audit.record("killswitch.triggered", reason=reason, source=source)
         self._log.warning("kill switch triggered", reason=reason, source=source)
 
@@ -143,6 +196,7 @@ class KillSwitch:
         """Poll for the STOP file so `starlight kill` from another terminal stops a run."""
         self._loop = asyncio.get_running_loop()
         while True:
+            self._sync()
             if not self._fired and self.stop_file.exists():
                 self._fire(self.reason or "STOP file present", source="stop_file")
             await asyncio.sleep(interval)

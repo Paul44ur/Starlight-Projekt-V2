@@ -1,140 +1,401 @@
-# Starlight V2
+# Starlight
 
-A local AI assistant built as a small Python core plus plug-in modules. Every capability
-(web, WhatsApp, screen, input, servers, code) is a folder in `modules/` that you can add,
-remove or disable without touching the core.
+**A private AI assistant that runs entirely on your own PC.**
 
-## Status
+Starlight uses a language model on your own graphics card, with no account, no
+subscription and no token limits. It remembers what you tell it and can browse the web.
+It can check your servers, read the screen, use mouse and keyboard, write and test code,
+and answer you on WhatsApp. Anything risky asks you first, and one key press stops it.
 
-| Step | | Status |
-| --- | --- | --- |
-| 1 | Foundations and project layout | done |
-| 2 | Core kernel, logging and kill switch | done (WhatsApp `/kill` comes with Step 10) |
-| 3 | Module system | done |
-| 4 | Local model on the GPU | done: Ollama and llama.cpp providers, router, summarizing, streaming, benchmark |
-| 5 | Memory and the Memory folder | done |
-| 6 | Web: search, scraping (max 5 req/s) and logins | done |
-| 7 | Network: ping and interact with servers | done |
-| 8 | Desktop: read the screen, emulate input | done |
-| 9 | Writing code and learning skills | |
-| 10 | WhatsApp, statistics viewer and hardening | |
+- [What it can do](#what-it-can-do)
+- [What you need](#what-you-need)
+- [Installation](#installation)
+- [Using Starlight](#using-starlight)
+- [Optional extras](#optional-extras)
+- [Safety and privacy](#safety-and-privacy)
+- [Troubleshooting](#troubleshooting)
+- [Command reference](#command-reference)
+- [For developers](#for-developers)
 
-Steps 4 to 8 are tested with mock servers, a local SSH server, a real headless browser
-and fake screens. What needs your PC (GPU speed, Windows UI Automation, your accounts and
-servers) is in [docs/setup-windows.md](docs/setup-windows.md).
+---
 
-## Quick start (Windows 11 or Linux)
+## What it can do
 
-Install [uv](https://docs.astral.sh/uv/), then:
-
-```bash
-uv sync --extra all                 # Python 3.12 venv + every optional module dependency
-uv run playwright install chromium  # headless browser for JavaScript pages and logins
-uv run starlight --version
-uv run starlight run                # interactive session; /help lists commands
-```
-
-Out of the box the model is a test stand-in (`model.provider: echo`): it echoes text, and
-`!module.tool {json}` calls a tool directly. Switch to your GPU model in
-`config/starlight.yaml` (see [docs/setup-windows.md](docs/setup-windows.md)).
-
-```
-you> !hello.greet {"name": "Paul"}
-starlight> Hello, Paul!
-```
-
-## Commands
-
-| Command | |
+| Feature | What it does |
 | --- | --- |
-| `starlight run` | interactive session, kill hotkey active, answers stream in |
-| `starlight ask "..."` | one request, prints the answer (`-y` approves confirmations) |
-| `starlight kill [reason]` / `resume` | engage / release the kill switch |
-| `starlight status` | config, kill switch and module overview |
-| `starlight tools` | tools the AI can call, with their permission |
-| `starlight modules list / enable / disable / new NAME` | manage modules |
-| `starlight model info / serve / bench` | show model config, start the model server, measure tokens/s and VRAM |
-| `starlight memory list / show / add / search / forget / export / reindex` | the Memory folder |
-| `starlight vault set / list / delete KEY` | secrets in the Windows Credential Manager (OS keyring) |
+| **Chat with a local model** | Runs a model such as Qwen2.5-14B on your GPU. Long conversations are summarized, not cut off. |
+| **Remember** | Keeps what it learns as plain text files in the `memory` folder. You can read, edit or delete them. |
+| **Use the web** | Searches, reads pages and logs in to your accounts. It makes at most 5 requests per second and respects robots.txt. |
+| **Check your servers** | Pings your servers, checks disk space and services over SSH, and alerts you when one goes down. |
+| **Use your desktop** | Reads the screen, then clicks and types for you, with a red banner on screen while it does. |
+| **Write code** | Writes small programs, tests them in a sandbox and fixes them until the tests pass. |
+| **Learn skills** | Turns tasks that worked into reusable skills, but only after you approve them. |
+| **Answer on WhatsApp** | Lets you send tasks from your phone and stop everything with `/kill`. |
+| **Show statistics** | Shows tasks, errors, model speed and GPU use in a separate viewer in your browser. |
 
-## What each step added
+## What you need
 
-**Step 4, local model.** `ModelProvider` implementations for Ollama (native API: keep-alive,
-all layers on the GPU, VRAM report) and llama.cpp's `llama-server` (OpenAI-compatible,
-prompt-prefix caching). Both do tool calling, streaming and images. `router` sends simple
-requests to a small fast model and the rest to the large one. When a conversation outgrows
-the context window, older turns are summarized (by the fast model when routing) instead of
-cut off, and the summary is saved to `memory/conversations/`. `starlight model serve`
-starts the server with full GPU offload, flash attention and a q8 KV cache;
-`starlight model bench` records tokens/s, time to first token and VRAM in `data/stats.db`.
+| Requirement | Details |
+| --- | --- |
+| **Computer** | Windows 11, 64-bit (Windows 10 should work but is untested). Linux works too, see [Linux](#linux). |
+| **Graphics card** | AMD, NVIDIA or Intel, with an up-to-date driver. The default model needs **16 GB of video memory** (e.g. an RX 9060 XT 16 GB). With less, choose a [smaller model](#a-different-model). Without one it runs on the CPU, but slowly. |
+| **Disk space** | About **12 GB** free: ~2 GB for the programs and ~9 GB for the model. |
+| **Internet** | For the first setup and for web features. |
 
-**Step 5, memory.** One Markdown file per fact in `memory/` with a small header (topic,
-source, date, confidence). A vector index (embeddings cached in SQLite, rebuilt from the
-folder, so editing or deleting a file by hand just works) feeds the most relevant memories
-into each prompt. After each task the model picks what is worth keeping; a fact on an
-existing topic updates that file instead of adding a new one. Tools: `memory.remember`,
-`memory.recall`, `memory.forget` (asks first).
+Nothing has to be installed beforehand, and no administrator rights are needed.
 
-**Step 6, web.** One shared HTTP client for every module: at most 5 requests in any
-one-second window (a sliding window, so bursts can never exceed it), 1 per second per
-site, robots.txt and crawl-delay, back-off on 429/503 with Retry-After, and a page cache.
-The headless browser counts each of its requests against the same cap. `web.search`
-(SearXNG or Brave), `web.fetch`, `web.fetch_many`, `web.links`. The `login` module fills
-login forms with credentials from the vault, asks you for 2FA codes, asks before the first
-login to each site and saves the session so later visits skip the login.
+---
 
-**Step 7, network.** `config/servers.yaml` is the allow-list; anything else is refused.
-Ping, TCP port, DNS and HTTP checks with latency recorded for statistics; SSH (keys from
-the vault), HTTP/REST, TCP and WebSocket. Read-only SSH commands (`df`, `uptime`,
-`systemctl status`, ...) run freely; anything that could change the server asks first.
-An optional watcher alerts you when a server goes down.
+## Installation
 
-**Step 8, desktop.** Screenshots (mss), OCR (Tesseract), a local vision model to describe
-the screen and locate buttons, mouse and keyboard (pynput), and Windows UI Automation to
-click controls by name. Every action takes a new screenshot afterwards to confirm the
-screen changed (and, with `expect_text`, that the right text appeared). Safety: a mouse in
-a screen corner triggers the kill switch, typing stops between two characters when the
-hotkey is pressed, keys are released on a kill, a red banner shows while Starlight has
-control, and screenshots stay in memory and only go to a model on this computer.
+### 1. Download
 
-## Layout
+Open the [Releases page](https://github.com/Paul44ur/Starlight-Projekt-V2/releases) and
+download `Starlight-<version>-windows.zip`. It contains the Starlight folder with
+`Starlight.exe` already inside.
+
+> [!NOTE]
+> **No release yet?** Download the code with the green **Code** button, then
+> **Download ZIP**. Then get `Starlight.exe`:
+> 1. Open [Actions → Launcher](https://github.com/Paul44ur/Starlight-Projekt-V2/actions/workflows/launcher.yml).
+> 2. Open the newest green run.
+> 3. Download the **Starlight-windows** file at the bottom.
+> 4. Unzip it.
+
+### 2. Unpack
+
+Unpack the zip into a folder of your own, for example `C:\Starlight`.
+
+- **Avoid `C:\Program Files`.** Starlight needs to write inside its folder, and Program
+  Files needs administrator rights.
+- **Avoid OneDrive folders such as Desktop or Documents.** OneDrive would try to upload
+  the 9 GB model.
+
+If you downloaded the two files separately, put `Starlight.exe` into the unpacked folder,
+next to `pyproject.toml`.
+
+### 3. Start Starlight.exe
+
+Double-click `Starlight.exe`.
+
+Windows may show **"Windows protected your PC"**, because the program isn't signed yet.
+Click **More info**, then **Run anyway**. You only need to do this once.
+
+### 4. Let it set everything up
+
+The first start lists what it will download and asks once:
 
 ```
-starlight/core/     kernel, agent loop, dispatcher, events, config, logging, kill switch,
-                    context (summaries), http (rate limits), vault, stats, ui
-starlight/models/   Ollama, llama.cpp, router, serve, bench
-starlight/memory/   Memory folder, embeddings, vector index
-starlight/browser.py, text.py   headless browser and HTML-to-text helpers for modules
-starlight/cli.py    the `starlight` command
-modules/            hello, web, login, network, desktop (+ _template)
-memory/             what the AI learns (one Markdown file per fact)
-config/             starlight.yaml, servers.yaml, modules/<name>.yaml
-logs/               starlight.log, audit.log, modules/<name>.log (JSON, rotated)
-data/               stats.db, caches, sessions, STOP file
+Starlight will download and set up, inside C:\Starlight:
+   - uv, Python 3.12 and Starlight's packages      ~1.3 GB
+   - the Chromium browser for web pages and logins ~0.3 GB
+   - the llama.cpp model server (vulkan)         ~0.2 GB
+   - the model Qwen2.5-14B-Instruct-Q4_K_M.gguf      8.4 GB
+   Needed: about 10.2 GB. Free on this drive: 250.0 GB.
+Continue? [Y/n]
 ```
 
-## How a request flows
+Press **Enter**. How long this takes depends on your internet connection, mostly for the
+model.
+- Everything goes into the Starlight folder, in `tools`, `models` and `.venv`. Nothing is
+  installed into Windows.
+- If the download is interrupted, start `Starlight.exe` again. It continues where it
+  stopped.
+- Every download that publishes a checksum is checked against it.
 
-1. Relevant memories are recalled and added to the prompt.
-2. `Agent.run()` sends the conversation and the tool list to the model (summarizing old
-   turns first if the context is full).
-3. Each tool call goes through the one `Dispatcher`: kill switch, permissions
-   (safe / confirm / blocked), argument validation, timeout, audit log, statistics.
-4. Results go back to the model until it answers. Afterwards, the model picks what to
-   remember.
+At the end it offers **Tesseract**, which lets Starlight read text on the screen. This
+one is a normal Windows installer and asks for administrator approval. You can say no
+and add it later.
 
-## Writing modules
+### 5. Chat
 
-See [docs/writing-modules.md](docs/writing-modules.md):
+Starlight loads the model onto your graphics card, opens the statistics viewer at
+http://127.0.0.1:8765 and starts the chat:
+
+```
+Kill switch: Ctrl+Alt+K, a screen corner, or /kill. Leave with /quit.
+
+you> What can you do?
+starlight> ...
+```
+
+That's it. **Next time, just double-click `Starlight.exe` again.** It skips the
+downloads and goes straight to loading the model. Type `/quit` or close the window to stop. Closing
+the window also stops the model server and the viewer.
+
+### Options
+
+Run `Starlight.exe --help` in a terminal to see every option. The most useful ones:
+
+| Option | What it does |
+| --- | --- |
+| `--model-url <link>` | Use another model (a direct download link to a `.gguf` file). |
+| `--context 16384` | A smaller context window: uses less video memory. |
+| `--variant cpu` | Run without a graphics card (slow). |
+| `--no-viewer` | Don't start the statistics viewer. |
+| `--update` | Download the newest uv and llama.cpp again. |
+| `--setup-only` | Download and set up, then exit without starting. |
+
+To use options every time, put them into `config\launcher.json`, for example:
+
+```json
+{ "context": 16384, "viewer": false }
+```
+
+#### A different model
+
+Any GGUF model with tool calling works, such as Qwen2.5 or Llama 3.1 Instruct. As a rule
+of thumb:
+
+| Video memory | Model size at Q4_K_M |
+| --- | --- |
+| 16 GB | up to 14B (the default) |
+| 8–12 GB | 7B to 8B |
+| 6 GB or less | 3B, or `--variant cpu` |
+
+On [Hugging Face](https://huggingface.co), open the model's *Files* tab, copy the
+download link of the `.gguf` file and start `Starlight.exe --model-url <link>`. Or put
+`"model_url": "<link>"` into `config\launcher.json`.
+
+### Other ways to install
+
+<details>
+<summary><b>Manual installation on Windows (PowerShell)</b></summary>
+
+For running the model with Ollama, or setting things up yourself:
+
+```powershell
+cd C:\Starlight
+powershell -ExecutionPolicy Bypass -File scripts\install.ps1    # add -Service to start at logon
+uv run starlight run
+```
+
+The script installs [uv](https://docs.astral.sh/uv/) with winget, then Python 3.12,
+Starlight's packages and the browser. Out of the box Starlight uses a test model that
+only echoes text. Connect your real model as described in
+[docs/setup-windows.md, section 2](docs/setup-windows.md#2-the-model-on-the-gpu-step-4).
+</details>
+
+<details id="linux">
+<summary><b>Linux</b></summary>
+
+The launcher works on Linux too. It needs Python 3.10 or newer:
 
 ```bash
-starlight modules new weather   # copy the template, then edit modules/weather/module.py
+cd Starlight
+python3 launcher/starlight_launcher.py          # same as Starlight.exe; --help for options
 ```
 
-## Development
+Or install by hand with `bash scripts/install.sh` (add `--service` to start at logon),
+then connect a model as in [docs/setup-windows.md](docs/setup-windows.md#2-the-model-on-the-gpu-step-4).
+</details>
 
-```bash
-uv run pytest
-uv run ruff check . && uv run ruff format --check .
-uv run mypy && uv run mypy modules
+### Updating
+
+1. Download the new version.
+2. Unpack it over your Starlight folder.
+3. Start `Starlight.exe`. It installs whatever changed.
+
+Your `memory`, `skills`, `data`, `logs`, `models` and `tools` folders and your
+`config\starlight.local.yaml` aren't part of the download, so they stay as they are. Keep
+a copy of any changes you made to the other files in `config`, because those files are
+overwritten.
+
+### Uninstalling
+
+1. If you turned on starting at logon, run `starlight service uninstall` first (see
+   [Command reference](#command-reference) for how to run commands).
+2. Delete the Starlight folder.
+
+Passwords and keys you stored are in the Windows Credential Manager under "starlight".
+Remove them there, or with `starlight vault delete <key>` before deleting the folder.
+
+---
+
+## Using Starlight
+
+Just write what you want, for example:
+
 ```
+you> Remember that my home server is called nas01.
+you> Is nas01 up, and how full is its disk?
+you> Search the web for the latest llama.cpp release and summarize the changes.
+you> Write a script that renames the photos in C:\Photos by the date they were taken.
+you> Open Notepad and type a shopping list: milk, bread, coffee.
+```
+
+Some of these need a [one-time setup](#optional-extras), for example servers and web
+search.
+
+**When Starlight asks first.** Actions that could change something ask before they run:
+typing, clicking, running code, commands that change a server, and deleting a memory:
+
+```
+Starlight wants to run desktop.type_text({"text": "milk, bread, coffee"})
+Allow? [y]es / [n]o / [a]lways this session:
+```
+
+**Stopping it.** Any of these stops everything at once, including typing in the middle of
+a word:
+- press **Ctrl+Alt+K**;
+- move the mouse into any **corner of the screen**;
+- type `/kill`;
+- run `starlight kill` in another window;
+- send `/kill` on WhatsApp.
+
+Continue with `/resume`.
+
+**Chat commands.** `/help` lists them all. The main ones:
+
+| Command | What it does |
+| --- | --- |
+| `/clear` | Start a new conversation. |
+| `/tools` | Show what Starlight can use. |
+| `/modules` | Show which modules are on or off. |
+| `/kill`, `/resume` | Stop everything, and continue. |
+| `/quit` | Leave. |
+
+**Statistics.** Open http://127.0.0.1:8765 while Starlight runs. It shows tasks, errors,
+model speed, GPU use and memory size.
+
+**Memory.** Everything Starlight remembers is a text file in the `memory` folder. Open,
+correct or delete any of them; Starlight picks up the change.
+
+## Optional extras
+
+Each of these is set up once. The step-by-step instructions are in
+[docs/setup-windows.md](docs/setup-windows.md).
+
+| Extra | What it needs |
+| --- | --- |
+| [Web search](docs/setup-windows.md#4-web-search-and-logins-step-6) | A local SearXNG (Docker) or a Brave Search API key. Reading web pages works without it. |
+| [Logins to your accounts](docs/setup-windows.md#4-web-search-and-logins-step-6) | The site's login form in `config\modules\login.yaml`, and your password in the vault. |
+| [Your servers](docs/setup-windows.md#5-your-servers-step-7) | A list in `config\servers.yaml`, and an SSH key. |
+| [Reading the screen](docs/setup-windows.md#6-screen-and-input-step-8) | Tesseract (offered during setup). Optionally a vision model. |
+| [Safer code sandbox](docs/setup-windows.md#7-code-and-skills-step-9) | Docker Desktop. Without it, code runs in a restricted separate process. |
+| [Skill history](docs/setup-windows.md#7-code-and-skills-step-9) | [Git for Windows](https://git-scm.com/download/win), so you can undo a bad skill. |
+| [WhatsApp](docs/setup-windows.md#8-whatsapp-step-10) | A WhatsApp Business account with its own phone number, and a Cloudflare Tunnel. |
+| [Start at logon](docs/setup-windows.md#9-statistics-viewer-and-background-start-step-10) | `starlight service install`. No administrator rights needed. |
+
+## Safety and privacy
+
+- **Everything runs on your PC.** The model, your conversations, your memory and
+  screenshots never leave it. Only web pages you ask for, and WhatsApp if you set it up,
+  use the internet.
+- **You decide what runs.** Every action is *allowed*, *asks first* or *blocked*. You can
+  change this in `config\starlight.yaml` under `permissions`.
+- **Passwords stay out of files.** Passwords and keys are kept in the Windows Credential
+  Manager, never in config files. They are hidden in every log line, and
+  `starlight logs scan` checks for leaks.
+- **Servers are on an allow-list.** Starlight only talks to servers you listed.
+  Read-only commands such as `df` and `uptime` run freely; anything else asks first.
+- **Everything is logged.** Every action Starlight takes is recorded in
+  `logs\audit.log`.
+
+## Troubleshooting
+
+<details>
+<summary><b>"No Starlight folder found"</b></summary>
+
+`Starlight.exe` must be inside the Starlight folder, next to `pyproject.toml`. Move it
+there and start it again.
+</details>
+
+<details>
+<summary><b>Windows or the antivirus blocks Starlight.exe</b></summary>
+
+The exe isn't code-signed yet. In the SmartScreen window click **More info**, then
+**Run anyway**. If your antivirus quarantined it, restore it and allow it.
+</details>
+
+<details>
+<summary><b>"not enough free disk space"</b></summary>
+
+Free up space on that drive, or move the Starlight folder to another drive. Downloads
+that already finished are kept.
+</details>
+
+<details>
+<summary><b>A download stopped, or "network problem"</b></summary>
+
+Start `Starlight.exe` again. Finished downloads are kept, and an interrupted download
+continues where it stopped.
+</details>
+
+<details>
+<summary><b>"the model server stopped" or "did not become ready"</b></summary>
+
+The last lines of `logs\llama-server.log` are shown, and they usually say why:
+- **Out of memory:** use a smaller model or a smaller context, e.g. `--context 16384`.
+- **No usable GPU:** update your graphics driver (AMD Adrenalin, NVIDIA or Intel). The
+  Vulkan support comes with the driver. As a last resort, use `--variant cpu`.
+</details>
+
+<details>
+<summary><b>Answers are slow</b></summary>
+
+Check that the model runs on the graphics card. `logs\llama-server.log` should name
+your GPU, and the statistics viewer shows tokens per second. A model that doesn't fit
+into video memory is much slower: choose a smaller one.
+</details>
+
+<details>
+<summary><b>"something already listens on port 8080"</b></summary>
+
+Another program uses that port. Start with `--port 8081`, or add `"port": 8081` to
+`config\launcher.json`.
+</details>
+
+<details>
+<summary><b>Ctrl+Alt+K does nothing</b></summary>
+
+The hotkey only works in a normal desktop session. The screen corners, `/kill` and
+`starlight kill` always work.
+</details>
+
+<details>
+<summary><b>"uv" is not recognized</b></summary>
+
+`Starlight.exe` uses its own copy of uv in `tools\uv`. See
+[Command reference](#command-reference) for how to run commands.
+</details>
+
+## Command reference
+
+Open PowerShell in the Starlight folder and type the commands with `uv run` in front,
+for example `uv run starlight status`.
+
+If you installed with `Starlight.exe`, uv isn't on your PATH. Either install it once with
+`winget install astral-sh.uv`, or use its full path, for example
+`tools\uv\uv.exe run starlight status`.
+
+| Command | What it does |
+| --- | --- |
+| `starlight run` | The chat (what `Starlight.exe` opens). |
+| `starlight ask "..."` | One request: prints the answer and exits (`-y` approves everything). |
+| `starlight kill [reason]` / `resume` | Stop everything, and continue. Works from any window. |
+| `starlight status` | Settings, kill switch and modules at a glance. |
+| `starlight tools` | Everything Starlight can use, and whether it asks first. |
+| `starlight modules list / enable / disable` | Turn modules on and off. |
+| `starlight model info / serve / bench` | The model: settings, start its server, measure its speed. |
+| `starlight memory list / search / add / forget` | What Starlight remembers. |
+| `starlight vault set / list / delete KEY` | Passwords and keys, in the Windows Credential Manager. |
+| `starlight skills list / show / approve / reject / rollback` | Learned skills. |
+| `starlight serve` | Run in the background: WhatsApp, server alerts, kill hotkey. |
+| `starlight viewer` | The statistics viewer on its own. |
+| `starlight service install / start / stop / status / uninstall` | Start Starlight and the viewer at logon. |
+| `starlight logs scan` | Check the logs for leaked passwords. |
+
+## For developers
+
+- [docs/architecture.md](docs/architecture.md): how a request flows, the folder layout,
+  and what each step of the build plan added.
+- [docs/writing-modules.md](docs/writing-modules.md): add your own module
+  (`starlight modules new <name>`).
+- Tests and checks:
+
+  ```bash
+  uv run pytest
+  uv run ruff check . && uv run ruff format --check .
+  uv run mypy && uv run mypy modules
+  ```

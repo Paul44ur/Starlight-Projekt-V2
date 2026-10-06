@@ -101,7 +101,8 @@ async def test_sliding_window_never_bursts_past_the_cap() -> None:
     await asyncio.gather(*(go() for _ in range(17)))
     stamps.sort()
     for i in range(5, len(stamps)):
-        assert stamps[i] - stamps[i - 5] >= 0.5 - 0.01
+        # stamps are taken after acquire() returns, so allow for scheduling delay
+        assert stamps[i] - stamps[i - 5] >= 0.5 - 0.05
 
 
 async def test_robots_crawl_delay_cache_and_per_domain() -> None:
@@ -115,7 +116,7 @@ async def test_robots_crawl_delay_cache_and_per_domain() -> None:
     await http.aclose()
     assert first.ok and second.ok and cached.from_cache
     page_hits = [t for t, url in hits if "robots" not in url]
-    assert page_hits[1] - page_hits[0] >= 1.0 - 0.01  # crawl-delay honoured
+    assert page_hits[1] - page_hits[0] >= 1.0 - 0.05  # crawl-delay honoured
     assert sum("robots.txt" in url for _, url in hits) == 1  # fetched once
 
 
@@ -240,15 +241,17 @@ def site() -> Iterator[str]:
     thread.start()
     yield f"http://127.0.0.1:{server.server_address[1]}"
     server.shutdown()
+    server.server_close()
 
 
 @pytest.fixture
 def chromium(monkeypatch: pytest.MonkeyPatch) -> None:
     pytest.importorskip("playwright")
-    if not os.environ.get("STARLIGHT_CHROMIUM"):
-        if not Path(CHROMIUM).exists():
-            pytest.skip("no Chromium for Playwright")
-        monkeypatch.setenv("STARLIGHT_CHROMIUM", CHROMIUM)
+    if os.environ.get("STARLIGHT_CHROMIUM") or os.environ.get("CI"):
+        return  # CI: the browser `playwright install chromium` put in place
+    if not Path(CHROMIUM).exists():
+        pytest.skip("no Chromium for Playwright")
+    monkeypatch.setenv("STARLIGHT_CHROMIUM", CHROMIUM)
 
 
 class FakeUser:

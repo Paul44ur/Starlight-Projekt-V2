@@ -41,6 +41,13 @@ class Stats:
         with self._lock:
             self._db.execute("INSERT INTO metrics VALUES (?, ?, ?, ?)", row)
 
+    def prune(self, retention_days: int) -> int:
+        """Delete data points older than ``retention_days``."""
+        cutoff = time.time() - retention_days * 86400
+        with self._lock:
+            cursor = self._db.execute("DELETE FROM metrics WHERE ts < ?", (cutoff,))
+        return cursor.rowcount
+
     def query(
         self, name: str, since: float = 0.0, limit: int = 1000
     ) -> list[tuple[float, float, dict[str, Any]]]:

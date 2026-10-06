@@ -76,7 +76,15 @@ class Agent:
                 self.kill_switch.check()
                 messages = [Message("system", self.config.system_prompt)]
                 for enrich in self.enrichers:
-                    extra = await enrich(request)
+                    try:
+                        extra = await enrich(request)
+                    except (KillSwitchEngaged, asyncio.CancelledError):
+                        raise
+                    except Exception as exc:  # e.g. the embedding model is down
+                        log.warning("context lookup skipped", error=f"{type(exc).__name__}: {exc}")
+                        if self.stats is not None:
+                            self.stats.record("errors", source="enricher")
+                        continue
                     if extra:
                         messages.append(Message("system", extra))
                 messages += [*(history or []), Message("user", request, images=images or [])]
@@ -109,6 +117,7 @@ class Agent:
                 "steps": result.steps,
                 "answer": result.answer,
                 "tools": [r.tool for r in result.tool_results],
+                "tool_results": list(result.tool_results),
             },
         )
         if self.stats is not None:
@@ -138,6 +147,8 @@ class Agent:
                 raise
             except Exception as exc:  # model server down, bad response ...
                 self._log.exception("model call failed", provider=self.provider.name)
+                if self.stats is not None:
+                    self.stats.record("errors", source="model")
                 result.answer = (
                     f"The model ({self.provider.name}) is not available: "
                     f"{type(exc).__name__}: {exc}. Is the model server running? "

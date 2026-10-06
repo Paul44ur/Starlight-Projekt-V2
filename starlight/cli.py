@@ -4,14 +4,18 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import contextlib
 import getpass
 import json
 import re
 import shutil
+import subprocess
 import sys
 from collections.abc import Sequence
 from pathlib import Path
 from typing import Any
+
+import httpx
 
 from starlight import __version__
 from starlight.core.config import ConfigError, load_config
@@ -29,6 +33,8 @@ from starlight.core.vault import Vault, VaultError
 from starlight.memory import Memory
 from starlight.models.bench import benchmark
 from starlight.models.serve import ServeError, run_server, serve_command
+from starlight.skills import SkillManager
+from starlight.skills.git import GitError
 
 TEMPLATE = "_template"
 
@@ -80,7 +86,7 @@ class TerminalUI:
 def _kernel(paths: Paths, assume_yes: bool = False, hotkey: bool = False) -> Kernel:
     kernel = Kernel(paths, hotkey=hotkey)
     kernel.set_ui(TerminalUI(assume_yes))
-    kernel.dispatcher.confirmer = make_confirmer(kernel.policy, assume_yes)
+    kernel.set_confirmer(make_confirmer(kernel.policy, assume_yes))
     return kernel
 
 
@@ -139,7 +145,8 @@ async def cmd_run(paths: Paths, args: argparse.Namespace) -> int:
                 print(token, end="", flush=True)
 
             result = await kernel.ask(line, keep_history=True, on_token=on_token)
-            if streamed and "".join(streamed).strip() == result.answer.strip():
+            # Streaming showed the answer (after any text from earlier tool steps).
+            if streamed and "".join(streamed).strip().endswith(result.answer.strip()):
                 print()
             else:
                 if streamed:
@@ -341,7 +348,8 @@ def cmd_vault(paths: Paths, args: argparse.Namespace) -> int:
             if sys.stdin.isatty():
                 value = getpass.getpass(f"Value for {args.key} (hidden): ")
             else:
-                value = sys.stdin.read().rstrip("\n")  # e.g. a key file piped in
+                # e.g. a key file piped in; PowerShell adds Windows line endings
+                value = sys.stdin.read().replace("\r\n", "\n").rstrip("\n")
             if not value:
                 print("Empty value, nothing stored.", file=sys.stderr)
                 return 1
@@ -354,6 +362,153 @@ def cmd_vault(paths: Paths, args: argparse.Namespace) -> int:
         print(str(exc), file=sys.stderr)
         return 1
     return 0
+
+
+def cmd_skills(paths: Paths, args: argparse.Namespace) -> int:
+    config = load_config(paths)
+    paths.ensure()
+    setup_logging(paths.logs, config.logging.level)
+    skills = SkillManager(paths, config.skills)
+    action, name = args.action, args.name
+    if action != "list" and not name:
+        print(f"skills {action} needs a skill name", file=sys.stderr)
+        return 1
+    try:
+        if action == "list":
+            entries = skills.all()
+            for s in entries:
+                print(f"  {s.name:<28} {s.status:<9} v{s.version:<3} {s.description}")
+            if not entries:
+                print("No skills yet. They are drafted when a task succeeds again.")
+        elif action == "show":
+            skill = skills.get(name)
+            if skill is None:
+                print(f"No skill named '{name}'.", file=sys.stderr)
+                return 1
+            print(skill.to_markdown())
+            if skill.example:
+                print("--- example ---\n" + skill.example)
+            for rel, code in skill.code.items():
+                print(f"--- code/{rel} ---\n{code}")
+        elif action == "approve":
+            skill = skills.approve(name)
+            print(f"{skill.name} v{skill.version} approved; it is used from now on.")
+        elif action == "reject":
+            skill = skills.reject(name)
+            print(f"{skill.name} v{skill.version} rejected; it will not be used.")
+        elif action == "history":
+            for revision, date, message in skills.versions(name):
+                print(f"  {revision}  {date}  {message}")
+        elif action == "rollback":
+            skill = skills.rollback(name, args.revision or None)
+            print(f"{skill.name} restored to v{skill.version} ({skill.status}).")
+        elif action == "promote":
+            target = skills.promote(name, paths.modules)
+            print(
+                f"Module started at {target} (disabled). Turn the steps into tools, then "
+                f"`starlight modules enable {target.name}`."
+            )
+    except (KeyError, FileExistsError, GitError) as exc:
+        print(exc.args[0] if exc.args else str(exc), file=sys.stderr)
+        return 1
+    return 0
+
+
+async def cmd_serve(paths: Paths, args: argparse.Namespace) -> int:
+    """The core in the background: modules (WhatsApp webhook, watchers), kill hotkey,
+    no terminal. Questions go to the channel a request came from."""
+    import signal
+
+    stop = asyncio.Event()
+    loop = asyncio.get_running_loop()
+    for sig in (signal.SIGTERM, signal.SIGINT):
+        with contextlib.suppress(NotImplementedError, RuntimeError):  # Windows
+            loop.add_signal_handler(sig, stop.set)
+    from starlight.service import shutdown_file
+
+    request = shutdown_file(paths.data, "core")
+    request.unlink(missing_ok=True)  # a stale request must not stop this start
+    async with Kernel(paths, hotkey=True) as kernel:
+        print(f"Starlight core running from {paths.root}. Stop with Ctrl+C.", flush=True)
+        if kernel.kill_switch.engaged:
+            print(f"Note: the kill switch is engaged ({kernel.kill_switch.reason}).")
+        while not stop.is_set():  # `starlight service stop` asks via the request file
+            if request.exists():
+                request.unlink(missing_ok=True)
+                break
+            with contextlib.suppress(TimeoutError):
+                await asyncio.wait_for(stop.wait(), 1.0)
+    return 0
+
+
+def cmd_viewer(paths: Paths, args: argparse.Namespace) -> int:
+    from starlight.viewer.app import run
+
+    config = load_config(paths)
+    print(f"Statistics viewer on http://{config.viewer.host}:{config.viewer.port}", flush=True)
+    run(paths)
+    return 0
+
+
+def cmd_logs(paths: Paths, args: argparse.Namespace) -> int:
+    from starlight.core.secretscan import scan_logs
+
+    vault = Vault(paths.config / "vault_index.yaml")
+    try:
+        secrets = [v for k in vault.names() if (v := vault.get(k))]
+    except Exception:
+        secrets = []
+        print("(vault not readable: checking patterns only)", file=sys.stderr)
+    findings = scan_logs(paths.logs, secrets)
+    for finding in findings:
+        print(f"  {finding.file.relative_to(paths.root)}:{finding.line}  {finding.kind}")
+    if findings:
+        print(
+            f"{len(findings)} possible secret(s) in the logs. Delete those log files and "
+            "rotate the affected secrets."
+        )
+        return 1
+    print("No secrets found in the logs.")
+    return 0
+
+
+def cmd_service(paths: Paths, args: argparse.Namespace) -> int:
+    from starlight import service
+    from starlight.core.corelock import core_running
+
+    if args.action == "status":
+        config = load_config(paths)
+        core = core_running(paths.data / "core.lock")
+        url = f"http://{config.viewer.host}:{config.viewer.port}/api/summary"
+        try:
+            viewer = httpx.get(url, timeout=3).status_code == 200
+        except httpx.HTTPError:
+            viewer = False
+        print(f"  core:    {'running' if core else 'not running'}")
+        print(f"  viewer:  {'running at ' + url.rsplit('/api', 1)[0] if viewer else 'not running'}")
+        if sys.platform == "win32":
+            links = sorted(service.startup_folder().glob("Starlight *.lnk"))
+            print(f"  autostart: {', '.join(p.stem for p in links) or 'off'}")
+        else:
+            subprocess.run(
+                ["systemctl", "--user", "is-enabled", "starlight-core.service"], check=False
+            )
+        return 0
+    service_plan = service.plan(paths.root, args.action, paths.data)
+    for path, content in service_plan.files.items():
+        print(f"# write {path}" + (f"\n{content}" if content.strip() != "stop" else ""))
+    for path in service_plan.remove:
+        print(f"# remove {path}")
+    for command in service_plan.commands:
+        print("$ " + " ".join(command))
+    for command in service_plan.spawn:
+        print("$ (background) " + " ".join(command))
+    if args.print_only:
+        return 0
+    code = service.apply(service_plan)
+    if args.action == "stop":
+        print("Asked the core and the viewer to stop; they exit within a few seconds.")
+    return code
 
 
 async def cmd_model(paths: Paths, args: argparse.Namespace) -> int:
@@ -395,6 +550,19 @@ async def cmd_model(paths: Paths, args: argparse.Namespace) -> int:
 # -- entry point -------------------------------------------------------------------------
 
 
+def _ensure_console(paths: Paths) -> None:
+    """Started without a console (pythonw.exe at logon), Python has no stdout/stderr and
+    anything that writes to them crashes (uvicorn does). Send them to logs/console.log."""
+    if sys.stdout is not None and sys.stderr is not None:
+        return
+    paths.logs.mkdir(parents=True, exist_ok=True)
+    stream = open(paths.logs / "console.log", "a", encoding="utf-8", buffering=1)  # noqa: SIM115
+    if sys.stdout is None:
+        sys.stdout = stream
+    if sys.stderr is None:
+        sys.stderr = stream
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="starlight", description="Starlight V2 local assistant")
     parser.add_argument("--version", action="version", version=f"starlight {__version__}")
@@ -431,6 +599,24 @@ def build_parser() -> argparse.ArgumentParser:
     vault.add_argument("action", choices=["set", "list", "delete"])
     vault.add_argument("key", nargs="?")
 
+    skills = sub.add_parser(
+        "skills", help="learned skills: list, show, approve, reject, history, rollback, promote"
+    )
+    skills.add_argument(
+        "action",
+        choices=["list", "show", "approve", "reject", "history", "rollback", "promote"],
+    )
+    skills.add_argument("name", nargs="?")
+    skills.add_argument("revision", nargs="?", help="rollback: revision from `history`")
+
+    sub.add_parser("serve", help="run the core in the background (WhatsApp, watchers)")
+    sub.add_parser("viewer", help="the statistics viewer (a separate web app)")
+    logs = sub.add_parser("logs", help="check the logs for leaked secrets")
+    logs.add_argument("action", choices=["scan"])
+    service_cmd = sub.add_parser("service", help="start core and viewer at logon")
+    service_cmd.add_argument("action", choices=["install", "uninstall", "start", "stop", "status"])
+    service_cmd.add_argument("--print-only", action="store_true", help="only show what it does")
+
     model = sub.add_parser("model", help="the local model: info, serve, bench")
     model.add_argument("action", choices=["info", "serve", "bench"])
     model.add_argument("--runs", type=int, default=3, help="benchmark runs")
@@ -449,6 +635,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     if args.command == "vault" and args.action != "list" and not args.key:
         parser.error(f"vault {args.action} needs a key name")
     paths = Paths.discover(args.home)
+    _ensure_console(paths)
     try:
         match args.command:
             case "ask":
@@ -469,6 +656,16 @@ def main(argv: Sequence[str] | None = None) -> int:
                 return asyncio.run(cmd_memory(paths, args))
             case "vault":
                 return cmd_vault(paths, args)
+            case "serve":
+                return asyncio.run(cmd_serve(paths, args))
+            case "viewer":
+                return cmd_viewer(paths, args)
+            case "logs":
+                return cmd_logs(paths, args)
+            case "service":
+                return cmd_service(paths, args)
+            case "skills":
+                return cmd_skills(paths, args)
             case "model":
                 return asyncio.run(cmd_model(paths, args))
     except ConfigError as exc:

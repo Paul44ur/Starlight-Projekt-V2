@@ -32,33 +32,63 @@ def _run(cmd: list[str], timeout: float = 10.0) -> str | None:
         return None
 
 
-def gpu_memory() -> dict[str, Any] | None:
-    """VRAM in use, from whichever tool this machine has. None if unknown."""
-    out = _run(["rocm-smi", "--showmeminfo", "vram", "--json"])
+def _numbers(row: str) -> list[float]:
+    return [float(v) for v in re.findall(r'"([\d.]+)"', row)]
+
+
+def gpu_status() -> dict[str, Any] | None:
+    """VRAM in use (and total, and utilization in %, where known), from whichever tool
+    this machine has: rocm-smi, nvidia-smi or the Windows performance counters."""
+    out = _run(["rocm-smi", "--showuse", "--showmeminfo", "vram", "--json"])
     if out:
         try:
             for card in json.loads(out).values():
-                used = int(card.get("VRAM Total Used Memory (B)", 0))
-                total = int(card.get("VRAM Total Memory (B)", 0))
-                return {"source": "rocm-smi", "used_bytes": used, "total_bytes": total}
+                use = card.get("GPU use (%)")
+                return {
+                    "source": "rocm-smi",
+                    "used_bytes": int(card.get("VRAM Total Used Memory (B)", 0)),
+                    "total_bytes": int(card.get("VRAM Total Memory (B)", 0)),
+                    "utilization": float(use) if use is not None else None,
+                }
         except (ValueError, AttributeError):
             pass
     out = _run(
-        ["nvidia-smi", "--query-gpu=memory.used,memory.total", "--format=csv,noheader,nounits"]
+        [
+            "nvidia-smi",
+            "--query-gpu=memory.used,memory.total,utilization.gpu",
+            "--format=csv,noheader,nounits",
+        ]
     )
     if out:
-        used, total = (int(x) for x in out.splitlines()[0].split(","))
-        return {"source": "nvidia-smi", "used_bytes": used * 2**20, "total_bytes": total * 2**20}
+        used, total, util = (float(x) for x in out.splitlines()[0].split(","))
+        return {
+            "source": "nvidia-smi",
+            "used_bytes": int(used * 2**20),
+            "total_bytes": int(total * 2**20),
+            "utilization": util,
+        }
     if sys.platform == "win32":
         # Windows performance counters work for AMD, NVIDIA and Intel GPUs.
-        out = _run(["typeperf", r"\GPU Adapter Memory(*)\Dedicated Usage", "-sc", "1"])
+        out = _run([
+            "typeperf", r"\GPU Adapter Memory(*)\Dedicated Usage",
+            r"\GPU Engine(*engtype_3D)\Utilization Percentage", "-sc", "1",
+        ])  # fmt: skip
         if out:
-            rows = [r for r in out.splitlines() if r.startswith('"') and "/" in r[:12]]
-            if rows:
-                values = [float(v) for v in re.findall(r'"([\d.]+)"', rows[-1])]
-                if values:
-                    return {"source": "typeperf", "used_bytes": int(max(values))}
+            rows = [r for r in out.splitlines() if r.startswith('"')]
+            if len(rows) >= 2:
+                header = re.findall(r'"([^"]*)"', rows[0])[1:]
+                values = _numbers(rows[-1])
+                memory = [v for h, v in zip(header, values, strict=False) if "Memory" in h]
+                engine = [v for h, v in zip(header, values, strict=False) if "Engine" in h]
+                return {
+                    "source": "typeperf",
+                    "used_bytes": int(max(memory)) if memory else None,
+                    "utilization": round(min(100.0, sum(engine)), 1) if engine else None,
+                }
     return None
+
+
+gpu_memory = gpu_status  # older name
 
 
 async def benchmark(
@@ -106,12 +136,12 @@ async def benchmark(
             report["model_vram"] = None
     fraction = (report.get("model_vram") or {}).get("gpu_fraction")
     report["full_gpu_offload"] = None if fraction is None else fraction >= 0.999
-    report["gpu_memory"] = await asyncio.to_thread(gpu_memory)
+    report["gpu_memory"] = await asyncio.to_thread(gpu_status)
 
     if stats is not None:
         for key in ("ttft_s", "tokens_per_second"):
             stats.record(f"model.bench.{key}", report[key], provider=provider.name)
-        if report["gpu_memory"]:
+        if report["gpu_memory"] and report["gpu_memory"].get("used_bytes") is not None:
             stats.record("gpu.vram_used_bytes", report["gpu_memory"]["used_bytes"])
         if fraction is not None:
             stats.record("model.bench.gpu_fraction", fraction, provider=provider.name)

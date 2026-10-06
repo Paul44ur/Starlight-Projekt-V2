@@ -101,16 +101,41 @@ class ToolsConfig(_Strict):
     timeout: float = Field(default=120, gt=0)
 
 
+class SkillsConfig(_Strict):
+    enabled: bool = True
+    auto_draft: bool = True  # draft a skill when the same kind of task succeeds again
+    repeat_threshold: int = Field(default=2, ge=2)
+    max_in_prompt: int = Field(default=2, ge=0)  # approved skills added to a prompt
+    min_score: float = Field(default=0.25, ge=-1, le=1)
+
+
+class StatsConfig(_Strict):
+    retention_days: int = Field(default=30, ge=1)
+    gpu_sample_interval: float = Field(default=30, ge=0)  # 0 = off
+
+
+class ViewerConfig(_Strict):
+    host: str = "127.0.0.1"
+    port: int = 8765
+    refresh_seconds: int = Field(default=5, ge=1)
+
+
 class StarlightConfig(_Strict):
     name: str = "Starlight"
     logging: LoggingConfig = Field(default_factory=LoggingConfig)
     agent: AgentConfig = Field(default_factory=AgentConfig)
     model: ModelConfig = Field(default_factory=ModelConfig)
+    # Specialised models by role, e.g. {code: ..., vision: ...}. A role without an entry
+    # uses the main model.
+    roles: dict[str, ModelConfig] = Field(default_factory=dict)
     memory: MemoryConfig = Field(default_factory=MemoryConfig)
     http: HttpConfig = Field(default_factory=HttpConfig)
     kill_switch: KillSwitchConfig = Field(default_factory=KillSwitchConfig)
     permissions: PermissionsConfig = Field(default_factory=PermissionsConfig)
     tools: ToolsConfig = Field(default_factory=ToolsConfig)
+    skills: SkillsConfig = Field(default_factory=SkillsConfig)
+    stats: StatsConfig = Field(default_factory=StatsConfig)
+    viewer: ViewerConfig = Field(default_factory=ViewerConfig)
 
 
 def read_yaml(path: Path) -> dict[str, Any]:
@@ -127,12 +152,37 @@ def read_yaml(path: Path) -> dict[str, Any]:
     return data
 
 
+# Merged over config/starlight.yaml, in this order (later wins):
+#   starlight.launcher.yaml  written by Starlight.exe (model server, model file)
+#   starlight.local.yaml     your own changes, never touched by any tool
+OVERLAYS = ("starlight.launcher.yaml", "starlight.local.yaml")
+
+
+def deep_merge(base: dict[str, Any], extra: dict[str, Any]) -> dict[str, Any]:
+    """Nested mappings merge key by key; anything else in ``extra`` replaces ``base``."""
+    merged = dict(base)
+    for key, value in extra.items():
+        if isinstance(value, dict) and isinstance(merged.get(key), dict):
+            merged[key] = deep_merge(merged[key], value)
+        else:
+            merged[key] = value
+    return merged
+
+
 def load_config(paths: Paths) -> StarlightConfig:
-    """Load config/starlight.yaml. A missing file means all defaults."""
+    """Load config/starlight.yaml plus its overlays. Missing files mean defaults."""
+    data = read_yaml(paths.config_file)
+    used = [paths.config_file]
+    for name in OVERLAYS:
+        overlay = paths.config / name
+        if overlay.is_file():
+            data = deep_merge(data, read_yaml(overlay))
+            used.append(overlay)
     try:
-        return StarlightConfig.model_validate(read_yaml(paths.config_file))
+        return StarlightConfig.model_validate(data)
     except ValidationError as exc:
-        raise ConfigError(f"{paths.config_file}:\n{exc}") from exc
+        files = " + ".join(str(p) for p in used)
+        raise ConfigError(f"{files}:\n{exc}") from exc
 
 
 def load_module_config[T: BaseModel](

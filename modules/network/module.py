@@ -82,7 +82,12 @@ class NetworkModule(Module):
         self._up: dict[str, bool] = {}
         self._watcher: asyncio.Task[None] | None = None
         ctx.kill_switch.add_cleanup(self._close_ssh, owner=ctx.name)
-        if self.config.watch:
+        ctx.bus.subscribe("core.primary", self._on_primary, owner=ctx.name)
+        if self.config.watch and ctx.services.primary:  # one watcher, not one per process
+            self._watcher = asyncio.create_task(self._watch(), name="network-watch")
+
+    async def _on_primary(self, event: Any) -> None:
+        if self.config.watch and self._watcher is None:
             self._watcher = asyncio.create_task(self._watch(), name="network-watch")
 
     async def shutdown(self) -> None:
