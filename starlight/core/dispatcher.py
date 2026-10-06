@@ -16,6 +16,7 @@ from starlight.core.events import EventBus
 from starlight.core.killswitch import KillSwitch, KillSwitchEngaged
 from starlight.core.logging import AuditLog, get_logger, redact
 from starlight.core.permissions import Permission, PermissionPolicy
+from starlight.core.stats import Stats
 from starlight.core.tools import Tool
 
 type Confirmer = Callable[[Tool, dict[str, Any]], Awaitable[bool]]
@@ -49,7 +50,9 @@ class Dispatcher:
         audit: AuditLog | None = None,
         confirmer: Confirmer | None = None,
         timeout: float = 120.0,
+        stats: Stats | None = None,
     ) -> None:
+        self.stats = stats
         self.kill_switch = kill_switch
         self.policy = policy
         self.bus = bus
@@ -139,6 +142,11 @@ class Dispatcher:
         return self._finish(result, request_id)
 
     def _finish(self, result: ToolResult, request_id: str | None) -> ToolResult:
+        if self.stats is not None:
+            module = result.tool.split(".", 1)[0]
+            self.stats.record("tool.calls", 1, module=module, tool=result.tool, ok=result.ok)
+            if result.duration_ms:
+                self.stats.record("tool.duration_ms", result.duration_ms, tool=result.tool)
         self.audit.record(
             "tool.result",
             tool=result.tool,

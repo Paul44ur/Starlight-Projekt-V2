@@ -1,0 +1,7 @@
+name: login
+version: 0.1.0
+description: Log in to your own accounts with credentials from the vault (Playwright)
+entrypoint: module:LoginModule
+permissions: [confirm]
+dependencies: []
+enabled_by_default: true

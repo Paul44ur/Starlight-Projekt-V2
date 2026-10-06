@@ -1,0 +1,5 @@
+# Web module (Step 6). All requests share the limits under `http:` in starlight.yaml.
+search_backend: searxng            # or brave (API key: starlight vault set web.brave_api_key)
+searxng_url: http://127.0.0.1:8888 # local SearXNG with JSON output enabled
+max_chars: 8000                    # page text handed to the model
+browser_fallback: true             # headless browser for pages that need JavaScript

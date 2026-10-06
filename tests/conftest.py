@@ -63,3 +63,37 @@ def read_audit(paths: Paths) -> list[str]:
     if not file.exists():
         return []
     return [json.loads(line)["event"] for line in file.read_text().splitlines()]
+
+
+@pytest.fixture
+def use_module(paths: Paths) -> Callable[[str], Path]:
+    """Copy one of the real modules from the repository into the test project."""
+
+    def copy(name: str) -> Path:
+        target = paths.modules / name
+        shutil.copytree(
+            REPO / "modules" / name, target, ignore=shutil.ignore_patterns("__pycache__")
+        )
+        return target
+
+    return copy
+
+
+class ScriptedProvider:
+    """Plays back a list of responses and records what it was sent."""
+
+    name = "scripted"
+
+    def __init__(self, *responses: object) -> None:
+        from starlight.core.model import ModelResponse
+
+        self.responses = [
+            r if isinstance(r, ModelResponse) else ModelResponse(content=str(r)) for r in responses
+        ]
+        self.calls: list[list[object]] = []
+
+    async def chat(self, messages: list[object], tools: list[dict[str, object]]) -> object:
+        from starlight.core.model import ModelResponse
+
+        self.calls.append(list(messages))
+        return self.responses.pop(0) if self.responses else ModelResponse(content="done")

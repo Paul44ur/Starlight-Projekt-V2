@@ -37,7 +37,7 @@ GOOD = """
 
 async def test_template_is_not_loaded(kernel: Kernel) -> None:
     assert "_template" not in kernel.modules.records
-    assert kernel.dispatcher.tools() == []
+    assert [t.module for t in kernel.dispatcher.tools()] == ["memory"] * 3
 
 
 async def test_module_tools_config_and_events(paths: Paths, write_module: ModuleWriter) -> None:
@@ -80,7 +80,8 @@ async def test_crashing_module_does_not_take_down_core(
             assert records[name].status is ModuleStatus.FAILED, name
         assert "setup bug" in (records["broken_setup"].error or "")
         assert "bad_manifest" in kernel.modules.errors
-        assert [t.qualified_name for t in kernel.dispatcher.tools()] == ["good.crash", "good.say"]
+        module_tools = [t.qualified_name for t in kernel.dispatcher.tools() if t.module != "memory"]
+        assert module_tools == ["good.crash", "good.say"]
 
 
 async def test_dependencies(paths: Paths, write_module: ModuleWriter) -> None:

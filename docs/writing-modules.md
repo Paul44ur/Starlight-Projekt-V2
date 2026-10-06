@@ -84,6 +84,18 @@ The interface:
   `ctx.kill_switch.add_cleanup(fn, owner=ctx.name)` for anything that must be released
   on a kill (keyboard, mouse, browser sessions)
 - `ctx.data_dir`: `data/modules/<name>/`, your own storage
+- `ctx.http`: the shared polite HTTP client. Use it for every web request so the global
+  limit (5 requests per second), robots.txt, back-off and caching apply:
+  `await ctx.http.get(url)`
+- `ctx.vault`: secrets from the OS keyring, e.g. `ctx.vault.require("mymodule.api_key")`.
+  Never log or return them
+- `ctx.ui`: ask you something while a task runs: `await ctx.ui.confirm("...")`,
+  `await ctx.ui.ask("2FA code?")`, `await ctx.ui.notify("...")`
+- `ctx.stats`: metrics for the statistics viewer: `ctx.stats.record("mymodule.items", 3)`
+- `ctx.model`: the main model, e.g. to summarize something inside a tool
+
+For a headless browser, use `starlight.browser.Browser(ctx.http)`: its requests count
+against the same limits.
 
 ## 4. Permissions
 

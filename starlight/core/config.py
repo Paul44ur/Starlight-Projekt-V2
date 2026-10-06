@@ -30,9 +30,59 @@ class AgentConfig(_Strict):
     system_prompt: str = "You are Starlight, a local assistant."
 
 
+class ServerConfig(_Strict):
+    """How `starlight model serve` starts the model server."""
+
+    binary: str = ""  # path to llama-server(.exe) or ollama(.exe); default: from PATH
+    model_path: str = ""  # .gguf file, llama.cpp only
+    host: str = "127.0.0.1"
+    port: int = 0  # 0: 8080 for llama.cpp, 11434 for Ollama
+    gpu_layers: int = 999  # 999: every layer on the GPU
+    flash_attention: bool = True
+    kv_cache_type: str = "q8_0"  # quantized KV cache: longer context in the same VRAM
+    parallel: int = 1
+    extra_args: list[str] = Field(default_factory=list)
+
+
 class ModelConfig(_Strict):
     provider: str = "echo"
     options: dict[str, Any] = Field(default_factory=dict)
+    context_window: int = Field(default=32768, ge=1024)
+    # Tokens kept free for the answer; older turns are summarized beyond this.
+    reserve_tokens: int = Field(default=4096, ge=256)
+    # Recent messages never summarized away.
+    keep_recent: int = Field(default=8, ge=2)
+    stream: bool = True
+    warmup: bool = True  # load the model into VRAM at start-up
+    server: ServerConfig = Field(default_factory=ServerConfig)
+
+
+class EmbedderConfig(_Strict):
+    provider: str = "hash"  # hash (built-in, no model), ollama or openai_compat
+    model: str = ""
+    base_url: str = ""
+    dimensions: int = Field(default=512, ge=16)
+
+
+class MemoryConfig(_Strict):
+    enabled: bool = True
+    embedder: EmbedderConfig = Field(default_factory=EmbedderConfig)
+    top_k: int = Field(default=5, ge=0)
+    min_score: float = Field(default=0.2, ge=-1, le=1)
+    merge_threshold: float = Field(default=0.92, ge=0, le=1)
+    auto_extract: bool = True
+
+
+class HttpConfig(_Strict):
+    max_requests_per_second: int = Field(default=5, ge=1)
+    per_domain_interval: float = Field(default=1.0, ge=0)
+    respect_robots: bool = True
+    user_agent: str = "StarlightBot/0.1 (+local assistant)"
+    timeout: float = Field(default=20, gt=0)
+    cache_ttl: float = Field(default=3600, ge=0)
+    max_retries: int = Field(default=3, ge=0)
+    backoff_base: float = Field(default=2.0, gt=0)
+    max_retry_after: float = Field(default=120, ge=0)
 
 
 class KillSwitchConfig(_Strict):
@@ -56,6 +106,8 @@ class StarlightConfig(_Strict):
     logging: LoggingConfig = Field(default_factory=LoggingConfig)
     agent: AgentConfig = Field(default_factory=AgentConfig)
     model: ModelConfig = Field(default_factory=ModelConfig)
+    memory: MemoryConfig = Field(default_factory=MemoryConfig)
+    http: HttpConfig = Field(default_factory=HttpConfig)
     kill_switch: KillSwitchConfig = Field(default_factory=KillSwitchConfig)
     permissions: PermissionsConfig = Field(default_factory=PermissionsConfig)
     tools: ToolsConfig = Field(default_factory=ToolsConfig)

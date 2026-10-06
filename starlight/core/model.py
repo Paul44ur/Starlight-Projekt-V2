@@ -28,17 +28,31 @@ class Message:
     tool_calls: list[ToolCall] = field(default_factory=list)
     tool_call_id: str | None = None
     name: str | None = None
+    images: list[bytes] = field(default_factory=list)  # PNG/JPEG, for vision models
 
 
 @dataclass
 class ModelResponse:
+    """``usage`` keys when known: prompt_tokens, completion_tokens, tokens_per_second,
+    prompt_tokens_per_second, duration_s, model."""
+
     content: str = ""
     tool_calls: list[ToolCall] = field(default_factory=list)
     usage: dict[str, Any] = field(default_factory=dict)
 
 
+type TokenCallback = Callable[[str], None]
+
+
 @runtime_checkable
 class ModelProvider(Protocol):
+    """The core's only view of a model. Providers may also define:
+
+    * ``supports_streaming = True`` and accept ``on_token=`` in ``chat()``
+    * ``async warmup()`` to load the model into VRAM at start-up
+    * ``async aclose()`` to release connections
+    """
+
     name: str
 
     async def chat(self, messages: list[Message], tools: list[dict[str, Any]]) -> ModelResponse:
@@ -84,6 +98,8 @@ def register_provider(name: str, factory: ProviderFactory) -> None:
 
 
 def create_provider(config: ModelConfig) -> ModelProvider:
+    import starlight.models  # noqa: F401  (registers the built-in GPU providers)
+
     try:
         factory = _PROVIDERS[config.provider]
     except KeyError:

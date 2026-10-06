@@ -30,11 +30,16 @@ from pydantic import BaseModel, ConfigDict, Field, ValidationError
 from starlight.core.config import ConfigError, load_module_config, read_yaml
 from starlight.core.dispatcher import Dispatcher
 from starlight.core.events import Event, EventBus
+from starlight.core.http import PoliteHttp
 from starlight.core.killswitch import KillSwitch
 from starlight.core.logging import AuditLog, get_logger, module_logger
+from starlight.core.model import ModelProvider
 from starlight.core.paths import Paths
 from starlight.core.permissions import Permission
+from starlight.core.stats import Stats
 from starlight.core.tools import Tool, collect_tools
+from starlight.core.ui import NoUser, UserIO
+from starlight.core.vault import Vault
 
 MANIFEST = "module.yaml"
 PACKAGE_ROOT = "starlight_modules"
@@ -54,6 +59,17 @@ class ModuleManifest(BaseModel):
 
 
 @dataclass
+class Services:
+    """Shared core services handed to every module."""
+
+    http: PoliteHttp | None = None  # every web request goes through this (rate limits)
+    vault: Vault | None = None  # secrets
+    ui: UserIO = field(default_factory=NoUser)  # confirmations and questions to you
+    stats: Stats | None = None  # metrics for the statistics viewer
+    model: ModelProvider | None = None  # the main model (e.g. for vision or summaries)
+
+
+@dataclass
 class ModuleContext:
     """What a module gets from the core. Modules talk to each other only through ``bus``."""
 
@@ -64,6 +80,31 @@ class ModuleContext:
     kill_switch: KillSwitch
     paths: Paths
     data_dir: Path
+    services: Services = field(default_factory=Services)
+
+    @property
+    def http(self) -> PoliteHttp:
+        if self.services.http is None:
+            raise RuntimeError("no HTTP client configured")
+        return self.services.http
+
+    @property
+    def vault(self) -> Vault:
+        if self.services.vault is None:
+            raise RuntimeError("no vault configured")
+        return self.services.vault
+
+    @property
+    def ui(self) -> UserIO:
+        return self.services.ui
+
+    @property
+    def stats(self) -> Stats | None:
+        return self.services.stats
+
+    @property
+    def model(self) -> ModelProvider | None:
+        return self.services.model
 
     async def publish(self, event: str, data: dict[str, Any] | None = None) -> None:
         await self.bus.publish(event, data, source=self.name)
@@ -223,7 +264,9 @@ class ModuleManager:
         bus: EventBus,
         kill_switch: KillSwitch,
         audit: AuditLog | None = None,
+        services: Services | None = None,
     ) -> None:
+        self.services = services or Services()
         self.paths = paths
         self.dispatcher = dispatcher
         self.bus = bus
@@ -318,7 +361,7 @@ class ModuleManager:
             data_dir = self.paths.module_data(name)
             data_dir.mkdir(parents=True, exist_ok=True)
             instance.ctx = ModuleContext(
-                name, config, log, self.bus, self.kill_switch, self.paths, data_dir
+                name, config, log, self.bus, self.kill_switch, self.paths, data_dir, self.services
             )
             await instance.setup(instance.ctx)
             tools = instance.tools()

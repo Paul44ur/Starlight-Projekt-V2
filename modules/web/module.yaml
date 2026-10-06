@@ -1,0 +1,7 @@
+name: web
+version: 0.1.0
+description: Web search and polite page fetching (max 5 requests/s, robots.txt, caching)
+entrypoint: module:WebModule
+permissions: [safe]
+dependencies: []
+enabled_by_default: true

@@ -5,6 +5,10 @@ description = "Starlight V2: a local, modular AI assistant"
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
+    "beautifulsoup4>=4.12",
+    "httpx>=0.27",
+    "keyring>=25.0",
+    "numpy>=1.26",
     "pydantic>=2.7",
     "pyyaml>=6.0",
     "structlog>=24.1",
@@ -13,6 +17,19 @@ dependencies = [
 [project.optional-dependencies]
 # Global kill-switch hotkey (Ctrl+Alt+K). Works on Windows and Linux desktops.
 hotkey = ["pynput>=1.7"]
+# Step 6: pages that need JavaScript, and logins
+browser = ["playwright>=1.48"]
+# Step 7: SSH and WebSocket
+network = ["asyncssh>=2.14", "websockets>=13.0"]
+# Step 8: screen reading and input emulation
+desktop = [
+    "mss>=9.0",
+    "pillow>=10.0",
+    "pynput>=1.7",
+    "pytesseract>=0.3.10",
+    "uiautomation>=2.0.18; sys_platform == 'win32'",
+]
+all = ["starlight[hotkey,browser,network,desktop]"]
 
 [project.scripts]
 starlight = "starlight.cli:main"
@@ -46,7 +63,7 @@ strict = true
 packages = ["starlight"]
 
 [[tool.mypy.overrides]]
-module = ["pynput", "pynput.*"]
+module = ["pynput", "pynput.*", "mss", "mss.*", "pytesseract", "uiautomation", "keyring", "keyring.*"]
 ignore_missing_imports = true
 
 [tool.pytest.ini_options]
