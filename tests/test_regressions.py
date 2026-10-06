@@ -497,7 +497,8 @@ def test_run_says_when_the_kill_switch_is_still_on(
     assert main(["--home", home, "kill", "REPL /kill"]) == 0
     monkeypatch.setattr("sys.stdin", io.StringIO("/quit\n"))
     assert main(["--home", home, "run"]) == 0
-    assert "kill switch is still ON (REPL /kill)" in capsys.readouterr().out
+    out = capsys.readouterr().out
+    assert "kill switch" in out and "ON" in out and "REPL /kill" in out and "resume" in out
 
 
 async def test_refusals_and_config_errors_are_reported_for_what_they_are(

@@ -39,6 +39,7 @@ from starlight.models.bench import benchmark
 from starlight.models.serve import ServeError, run_server, serve_command
 from starlight.skills import SkillManager
 from starlight.skills.git import GitError
+from starlight.tui import ChatView
 
 TEMPLATE = "_template"
 
@@ -143,104 +144,105 @@ async def _ask(kernel: Kernel, line: str, on_token: TokenCallback) -> AgentResul
             signal.signal(signal.SIGINT, previous)
 
 
+HELP = """\
+**Commands**
+
+- `/tools` - what Starlight can do
+- `/modules` - which modules are on
+- `/reload NAME` / `/enable NAME` / `/disable NAME` - manage a module
+- `/kill [REASON]` / `/resume` - stop everything, and continue
+- `/clear` - forget this conversation
+- `/quit` - leave
+- `!module.tool {json}` - call a tool directly (test model)
+"""
+
+
 async def cmd_run(paths: Paths, args: argparse.Namespace) -> int:
-    async with _kernel(paths, assume_yes=args.yes, hotkey=True) as kernel:
-        print(f"Starlight {__version__}. Type /help for commands, /quit to exit.")
-        print("Ctrl+C stops an answer while it is being written.")
-        if kernel.kill_switch.engaged:
-            print(
-                f"The kill switch is still ON ({kernel.kill_switch.reason}): nothing will "
-                "run until you type /resume."
-            )
+    view = ChatView(assume_yes=args.yes)
+    kernel = Kernel(paths, hotkey=True)
+    kernel.set_ui(view)
+    kernel.set_confirmer(view.permission_confirmer(kernel.policy))
+    async with kernel:
         hotkey = kernel.config.kill_switch.hotkey
-        if kernel.hotkey_active:
-            print(f"Kill hotkey: {hotkey}")
-        elif hotkey:
-            print(
-                "Kill hotkey inactive (needs the 'hotkey' extra and a desktop session). "
-                "/kill and `starlight kill` still work."
-            )
+        info = {
+            "home": str(paths.root),
+            "model": kernel.config.model.provider,
+            "saves files": str(resolve_output_folder(kernel.config.output.folder, paths.root)),
+        }
+        if kernel.kill_switch.engaged:
+            info["kill switch"] = f"ON - {kernel.kill_switch.reason} (type /resume)"
+        elif not kernel.hotkey_active and hotkey:
+            info["hotkey"] = "inactive (needs the 'hotkey' extra and a desktop)"
+        view.banner(__version__, info, hotkey)
         while True:
             try:
-                line = (await asyncio.to_thread(console.read_request, "you> ")).strip()
+                line = view.read()
             except (EOFError, KeyboardInterrupt):
                 print()
                 break
             if not line:
                 continue
             if line.startswith("/"):
-                if await _repl_command(kernel, line):
+                if await _repl_command(kernel, line, view):
                     break
                 continue
             streamed: list[str] = []
+            emit = view.on_token()
 
-            def on_token(token: str, streamed: list[str] = streamed) -> None:
-                if not streamed:
-                    print("starlight> ", end="", flush=True)
+            def on_token(token: str, streamed: list[str] = streamed, emit: Any = emit) -> None:
                 streamed.append(token)
-                print(token, end="", flush=True)
+                emit(token)
 
             result = await _ask(kernel, line, on_token)
             if result is None:
-                print("\n[Stopped. Ask something else, or /quit to leave.]")
+                view.end_answer(bool(streamed))
+                view.info("[Stopped. Ask something else, or /quit to leave.]")
                 continue
-            # Streaming showed the answer (after any text from earlier tool steps).
+            # Streaming already showed the answer (after any text from earlier tool steps).
             if streamed and "".join(streamed).strip().endswith(result.answer.strip()):
-                print()
+                view.end_answer(True)
             else:
-                if streamed:
-                    print()
-                print(f"starlight> {result.answer}")
+                view.end_answer(bool(streamed))
+                view.answer(result.answer)
             if result.stopped:
-                print("Kill switch is engaged. Type /resume to continue.")
+                view.info("Kill switch is engaged. Type /resume to continue.")
     return 0
 
 
-async def _repl_command(kernel: Kernel, line: str) -> bool:
+async def _repl_command(kernel: Kernel, line: str, view: ChatView) -> bool:
     """Handle a /command. Returns True to quit."""
     command, _, rest = line[1:].partition(" ")
     rest = rest.strip()
     if command in ("quit", "exit"):
         return True
     if command == "help":
-        print(
-            "/tools            list tools\n"
-            "/modules          list modules\n"
-            "/reload NAME      hot-reload a module\n"
-            "/enable NAME      enable a module\n"
-            "/disable NAME     disable a module\n"
-            "/kill [REASON]    engage the kill switch\n"
-            "/resume           release the kill switch\n"
-            "/clear            forget this conversation\n"
-            "/quit             exit\n"
-            "!module.tool {json}   call a tool directly (echo provider)"
-        )
+        view.help(HELP)
     elif command == "tools":
-        _print_tools(kernel.dispatcher.tools())
+        view.tools(kernel.dispatcher.tools())
     elif command == "modules":
         for name, record in sorted(kernel.modules.records.items()):
-            print(f"  {name:<16} {record.status.value:<9} {record.error or ''}")
+            view.info(f"  {name:<16} {record.status.value:<9} {record.error or ''}")
     elif command in ("reload", "enable", "disable") and rest:
         try:
             if command == "disable":
                 await kernel.modules.disable(rest)
-                print(f"{rest}: disabled")
+                view.info(f"{rest}: disabled")
             else:
                 op = kernel.modules.reload if command == "reload" else kernel.modules.enable
                 record = await op(rest)
-                print(f"{rest}: {record.status.value} {record.error or ''}")
+                view.info(f"{rest}: {record.status.value} {record.error or ''}")
         except KeyError as exc:
-            print(exc.args[0])
+            view.error(str(exc.args[0]))
     elif command == "kill":
         kernel.kill_switch.trigger(rest or "REPL /kill", source="cli")
-        print("Kill switch engaged.")
+        view.info("Kill switch engaged.")
     elif command == "resume":
         kernel.kill_switch.reset()
-        print("Kill switch released.")
+        view.info("Kill switch released.")
     elif command == "clear":
         kernel.history = []
     else:
-        print(f"Unknown command: /{command}. Try /help.")
+        view.error(f"Unknown command: /{command}. Try /help.")
     return False
 
 
