@@ -1,7 +1,12 @@
 # Setting up Starlight on your PC
 
 For Windows 11 with an AMD RX 9060 XT (16 GB VRAM). Each section is optional: skip what
-you do not use yet.
+you do not use yet. To install Starlight itself, follow the
+[installation guide in the README](../README.md#installation) first.
+
+The commands below start with `uv run`. If you installed with `Starlight.exe`, uv is not
+on your PATH: install it once with `winget install astral-sh.uv`, or type
+`tools\uv\uv.exe run` instead of `uv run`.
 
 ## The short way: Starlight.exe
 
