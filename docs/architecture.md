@@ -22,11 +22,14 @@ starlight/models/   Ollama, llama.cpp, router, serve, bench
 starlight/memory/   Memory folder, embeddings, vector index
 starlight/skills/   skill drafting, approval, git history
 starlight/sandbox/  Docker and process sandboxes for generated code
-starlight/viewer/   the statistics viewer (separate app)
+starlight/viewer/   the statistics viewer (separate, read-only app)
+starlight/web/      the local web chat (FastAPI + a WebSocket chat page)
 launcher/           the source of Starlight.exe (standard library only)
 starlight/browser.py, text.py   headless browser and HTML-to-text helpers for modules
+starlight/tui.py    the colored terminal chat (rich), with a plain fallback
 starlight/cli.py    the `starlight` command
-modules/            hello, web, login, network, desktop, code, files, whatsapp (+ _template)
+modules/            hello, web, login, network, recon, desktop, code, files, access,
+                    whatsapp (+ _template)
 skills/             skills it learns (one folder each)
 scripts/            install.ps1, install.sh
 memory/             what the AI learns (one Markdown file per fact)

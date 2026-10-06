@@ -29,6 +29,7 @@ import subprocess
 import sys
 import tarfile
 import tempfile
+import threading
 import time
 import urllib.error
 import urllib.request
@@ -50,6 +51,7 @@ DEFAULT_MODEL_URL = (
     "Qwen2.5-14B_Uncensored_Instruct-Q4_K_M.gguf"
 )
 GB = 1024**3
+WEB_PORT = 8700  # the local web chat (matches config web.port)
 MB = 1024**2
 
 
@@ -69,6 +71,7 @@ class Settings:
     llama_release: str = "latest"  # or a tag such as "b6500"
     port: int = 8080
     viewer: bool = True
+    web: bool = True  # open the browser chat; False: the terminal chat
     use_model: bool = True  # False: Starlight's built-in test model, nothing downloaded
     assume_yes: bool = False
     update: bool = False
@@ -122,6 +125,7 @@ def load_settings(args: argparse.Namespace) -> Settings:
                     "llama_release",
                     "port",
                     "viewer",
+                    "web",
                     "tesseract",
                 ):
                     setattr(settings, key, value)
@@ -132,6 +136,8 @@ def load_settings(args: argparse.Namespace) -> Settings:
         if value is not None:
             setattr(settings, key, value)
     settings.viewer = settings.viewer and not args.no_viewer
+    if args.terminal:
+        settings.web = False
     settings.use_model = not args.no_model
     settings.assume_yes = args.yes
     settings.update = args.update
@@ -768,10 +774,23 @@ def start(settings: Settings, ui: Ui, uv: Path, ask: str | None) -> int:
         if ask is not None:
             result = subprocess.run(starlight(uv, "ask", "-y", ask), cwd=settings.root, check=False)
             return result.returncode
+        if settings.web:
+            url = f"http://127.0.0.1:{WEB_PORT}"
+            ui.say(f"\nOpening the chat in your browser: {url}")
+            ui.say("Close this window (or press Ctrl+C) to stop everything.\n")
+            threading.Timer(2.5, _open_browser, args=(url,)).start()
+            return subprocess.run(starlight(uv, "web"), cwd=settings.root, check=False).returncode
         ui.say("Kill switch: Ctrl+Alt+J, a screen corner, or /kill. Leave with /quit.\n")
         return subprocess.run(starlight(uv, "run"), cwd=settings.root, check=False).returncode
     finally:
         group.stop()
+
+
+def _open_browser(url: str) -> None:
+    with contextlib.suppress(Exception):
+        import webbrowser
+
+        webbrowser.open(url)
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -789,6 +808,9 @@ def build_parser() -> argparse.ArgumentParser:
         help="use Starlight's built-in test model; download no model",
     )
     parser.add_argument("--no-viewer", action="store_true", help="do not start the viewer")
+    parser.add_argument(
+        "--terminal", action="store_true", help="chat in this window instead of the browser"
+    )
     parser.add_argument("--tesseract", action="store_true", help="install Tesseract OCR")
     parser.add_argument("--model-url", help="GGUF model to use (a direct download link)")
     parser.add_argument("--context", type=int, help="context window in tokens")
