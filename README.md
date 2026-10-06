@@ -24,7 +24,36 @@ real sandbox process and fake screens. What needs your PC (GPU speed, Windows UI
 Automation, Docker, your accounts, servers and WhatsApp number) is in
 [docs/setup-windows.md](docs/setup-windows.md).
 
-## Quick start (Windows 11 or Linux)
+## Easiest start: Starlight.exe (Windows)
+
+Put `Starlight.exe` into the Starlight folder and double-click it. The first time, it
+shows what it will download and how much disk space that needs, asks once, then sets up
+everything inside the Starlight folder, with no administrator rights needed:
+
+| What | Size |
+| --- | --- |
+| uv, Python 3.12 and Starlight's packages | ~1.3 GB |
+| Chromium (web pages and logins) | ~0.3 GB |
+| llama.cpp model server, Vulkan build (AMD, NVIDIA, Intel GPUs) | ~0.2 GB |
+| the model, Qwen2.5-14B-Instruct Q4_K_M (fits 16 GB VRAM) | ~9 GB |
+
+Then it starts the model server on your GPU, the statistics viewer
+(http://127.0.0.1:8765) and the chat. Closing the window stops everything it started.
+Interrupted downloads resume, and every download with a published SHA-256 checksum is
+verified. Tesseract (screen reading) is offered, never installed without asking.
+
+Get `Starlight.exe` from the latest release, or from the *Launcher* workflow run on GitHub
+(Actions, artifact *Starlight-windows*). It is not code-signed yet, so Windows SmartScreen
+may say "Windows protected your PC": choose *More info*, then *Run anyway*.
+
+Options: `Starlight.exe --help`. For example `--model-url <link to a .gguf>` for another
+model, `--variant cpu` without a GPU, `--update` for new versions of uv and llama.cpp,
+`--setup-only`. Defaults you want every time go into `config/launcher.json`, e.g.
+`{"model_url": "...", "context": 16384}`. The launcher writes the model settings to
+`config/starlight.launcher.yaml`; your own changes go into `config/starlight.local.yaml`,
+which always wins.
+
+## Quick start without the launcher (Windows 11 or Linux)
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File scripts\install.ps1    # Linux: bash scripts/install.sh
@@ -137,6 +166,7 @@ starlight/memory/   Memory folder, embeddings, vector index
 starlight/skills/   skill drafting, approval, git history
 starlight/sandbox/  Docker and process sandboxes for generated code
 starlight/viewer/   the statistics viewer (separate app)
+launcher/           the source of Starlight.exe (standard library only)
 starlight/browser.py, text.py   headless browser and HTML-to-text helpers for modules
 starlight/cli.py    the `starlight` command
 modules/            hello, web, login, network, desktop, code, whatsapp (+ _template)

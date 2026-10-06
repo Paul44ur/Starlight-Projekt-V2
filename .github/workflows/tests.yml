@@ -33,6 +33,10 @@ jobs:
         run: uv run mypy && uv run mypy modules
       - name: mypy (as Windows)
         run: uv run mypy --platform win32 && uv run mypy --platform win32 modules
+      - name: mypy (launcher, both platforms)
+        run: >
+          uv run mypy --strict launcher/starlight_launcher.py &&
+          uv run mypy --strict --platform win32 launcher/starlight_launcher.py
 
   test:
     strategy:

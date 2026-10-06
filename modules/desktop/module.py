@@ -20,6 +20,7 @@ import ipaddress
 import json
 import re
 import subprocess
+import sys
 import threading
 import time
 from collections.abc import Iterator
@@ -79,6 +80,18 @@ class Config(BaseModel):
     failsafe_margin: int = 2
     indicator: bool = True
     hotkey_label: str = "Ctrl+Alt+K"
+
+
+def start_app(command: list[str]) -> subprocess.Popen[bytes]:
+    """Start an allow-listed app so it outlives Starlight. Started from Starlight.exe, the
+    core runs in a Windows job that ends with the launcher; the app breaks away from it."""
+    if sys.platform == "win32":
+        breakaway = 0x01000000  # CREATE_BREAKAWAY_FROM_JOB
+        try:
+            return subprocess.Popen(command, creationflags=breakaway)
+        except OSError:  # the job does not allow breaking away
+            pass
+    return subprocess.Popen(command)
 
 
 def is_local_url(url: str, allow_lan: bool = False) -> bool:
@@ -356,8 +369,7 @@ class DesktopModule(Module):
             raise ValueError(f"'{name}' is not an allowed app ({', '.join(self.config.apps)})")
         self.ctx.kill_switch.check()
         before = self.screen.capture()
-        process = subprocess.Popen(command)  # only allow-listed commands
-        keep_running(process)
+        keep_running(start_app(command))
         time.sleep(max(1.5, self.config.settle))
         ratio = change_ratio(before, self.screen.capture())
         return {"started": name, "screen_changed": ratio > 0.0005, "change": round(ratio, 4)}

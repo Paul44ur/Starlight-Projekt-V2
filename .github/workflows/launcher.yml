@@ -1,0 +1,80 @@
+# Builds Starlight.exe (the launcher) and tests it end to end on a clean Windows machine:
+# it downloads uv, Python, Chromium, the llama.cpp model server and a small model, then
+# asks the AI a question. On a version tag (v...) it publishes a release with the exe.
+name: Launcher
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: launcher-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: windows-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          python-version: "3.12"
+      - name: Build Starlight.exe
+        run: >
+          uvx --python 3.12 pyinstaller --onefile --console --clean --noconfirm
+          --name Starlight --distpath dist --workpath build/pyinstaller
+          --specpath build/pyinstaller launcher/starlight_launcher.py
+      - name: Starlight.exe starts
+        run: dist\Starlight.exe --version
+      - name: End to end on a clean checkout (CPU build, small model)
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          Copy-Item dist\Starlight.exe .
+          .\Starlight.exe --yes --variant cpu --no-viewer --context 16384 `
+            --model-url https://huggingface.co/Qwen/Qwen2.5-0.5B-Instruct-GGUF/resolve/main/qwen2.5-0.5b-instruct-q4_k_m.gguf `
+            --ask "Do not use any tools. Reply with one short friendly sentence." `
+            | Tee-Object -FilePath launcher-output.txt
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          if (Select-String -Path launcher-output.txt -Pattern "is not available") {
+            throw "the model server did not answer"
+          }
+      - name: Model server log
+        if: always()
+        run: if (Test-Path logs\llama-server.log) { Get-Content logs\llama-server.log -Tail 80 }
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Starlight-windows
+          path: dist/Starlight.exe
+          if-no-files-found: error
+
+  release:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: Starlight-windows
+          path: dist
+      - name: Package Starlight with Starlight.exe
+        run: |
+          name="Starlight-${GITHUB_REF_NAME}-windows.zip"
+          git archive --format=zip --prefix=Starlight/ -o "$name" HEAD
+          mkdir -p pkg/Starlight && cp dist/Starlight.exe pkg/Starlight/
+          (cd pkg && zip -q "../$name" Starlight/Starlight.exe)
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            Starlight-*-windows.zip
+            dist/Starlight.exe

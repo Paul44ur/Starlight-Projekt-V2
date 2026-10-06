@@ -152,12 +152,37 @@ def read_yaml(path: Path) -> dict[str, Any]:
     return data
 
 
+# Merged over config/starlight.yaml, in this order (later wins):
+#   starlight.launcher.yaml  written by Starlight.exe (model server, model file)
+#   starlight.local.yaml     your own changes, never touched by any tool
+OVERLAYS = ("starlight.launcher.yaml", "starlight.local.yaml")
+
+
+def deep_merge(base: dict[str, Any], extra: dict[str, Any]) -> dict[str, Any]:
+    """Nested mappings merge key by key; anything else in ``extra`` replaces ``base``."""
+    merged = dict(base)
+    for key, value in extra.items():
+        if isinstance(value, dict) and isinstance(merged.get(key), dict):
+            merged[key] = deep_merge(merged[key], value)
+        else:
+            merged[key] = value
+    return merged
+
+
 def load_config(paths: Paths) -> StarlightConfig:
-    """Load config/starlight.yaml. A missing file means all defaults."""
+    """Load config/starlight.yaml plus its overlays. Missing files mean defaults."""
+    data = read_yaml(paths.config_file)
+    used = [paths.config_file]
+    for name in OVERLAYS:
+        overlay = paths.config / name
+        if overlay.is_file():
+            data = deep_merge(data, read_yaml(overlay))
+            used.append(overlay)
     try:
-        return StarlightConfig.model_validate(read_yaml(paths.config_file))
+        return StarlightConfig.model_validate(data)
     except ValidationError as exc:
-        raise ConfigError(f"{paths.config_file}:\n{exc}") from exc
+        files = " + ".join(str(p) for p in used)
+        raise ConfigError(f"{files}:\n{exc}") from exc
 
 
 def load_module_config[T: BaseModel](

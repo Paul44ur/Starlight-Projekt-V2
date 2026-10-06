@@ -3,6 +3,13 @@
 For Windows 11 with an AMD RX 9060 XT (16 GB VRAM). Each section is optional: skip what
 you do not use yet.
 
+## The short way: Starlight.exe
+
+Double-click `Starlight.exe` in the Starlight folder. It does sections 1 and 2 below for
+you (llama.cpp Vulkan build plus Qwen2.5-14B) and offers Tesseract from section 6. What it
+downloads lands in `tools\` and `models\` inside the Starlight folder. The sections below
+are for doing it by hand, or for the parts it does not cover (WhatsApp, servers, Docker).
+
 ## 1. Starlight itself
 
 ```powershell
