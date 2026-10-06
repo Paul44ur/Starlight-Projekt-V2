@@ -28,7 +28,7 @@ from typing import Any
 from pydantic import BaseModel, Field
 
 from starlight.browser import Browser
-from starlight.core import Module, ModuleContext, tool
+from starlight.core import Module, ModuleContext, ToolError, tool
 from starlight.text import html_to_text
 
 
@@ -54,7 +54,7 @@ class Config(BaseModel):
     respect_robots: bool = False  # your own accounts; robots.txt targets crawlers
 
 
-class LoginError(Exception):
+class LoginError(ToolError):
     pass
 
 

@@ -1,12 +1,21 @@
 # Servers Starlight may touch (Step 7). Anything not listed here is refused.
+# Indentation matters: two spaces per level, no tabs. Changes apply right away.
 # SSH keys belong in the vault:  starlight vault set ssh.homeserver < ~/.ssh/id_ed25519
-servers: {}
-#  homeserver:
-#    host: 192.168.1.10
-#    description: NAS in the basement
-#    ports: [22, 443]
-#    http: https://192.168.1.10/health
-#    ssh:
-#      user: paul
-#      key_vault: ssh.homeserver
-#      known_hosts: ~/.ssh/known_hosts
+
+servers:
+  localhost:
+    host: 127.0.0.1
+    description: This PC (Starlight's model server on 8080, its statistics viewer on 8765)
+    ports: [8080, 8765]
+    http: http://127.0.0.1:8765/
+
+# Another server: remove the "# " in front of the lines below, then fill them in.
+  # homeserver:
+  #   host: 192.168.1.10
+  #   description: NAS in the basement
+  #   ports: [22, 443]
+  #   http: https://192.168.1.10/health
+  #   ssh:
+  #     user: paul
+  #     key_vault: ssh.homeserver
+  #     known_hosts: ~/.ssh/known_hosts

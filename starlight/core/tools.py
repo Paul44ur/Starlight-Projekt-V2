@@ -25,6 +25,12 @@ from starlight.core.permissions import Permission
 TOOL_ATTR = "__starlight_tool__"
 
 
+class ToolError(Exception):
+    """A tool turns a request down or cannot do it, for a reason the user can act on
+    (not allowed, file missing, nothing configured). The AI gets the message; the log
+    gets a warning without a traceback, because nothing crashed."""
+
+
 @dataclass(frozen=True)
 class ToolSpec:
     name: str | None
@@ -91,13 +97,20 @@ class Tool:
             "parameters": params,
         }
 
-    async def invoke(self, arguments: dict[str, Any]) -> Any:
-        """Validate arguments and run the tool. Blocking tools run in a worker thread."""
-        validated = self.args_model.model_validate(arguments)
+    def validate(self, arguments: dict[str, Any]) -> BaseModel:
+        """The arguments, checked against the tool's signature (raises ValidationError)."""
+        return self.args_model.model_validate(arguments)
+
+    async def run(self, validated: BaseModel) -> Any:
+        """Run the tool with validated arguments. Blocking tools run in a worker thread."""
         kwargs = {name: getattr(validated, name) for name in type(validated).model_fields}
         if inspect.iscoroutinefunction(self.func):
             return await self.func(**kwargs)
         return await asyncio.to_thread(self.func, **kwargs)
+
+    async def invoke(self, arguments: dict[str, Any]) -> Any:
+        """Validate arguments and run the tool."""
+        return await self.run(self.validate(arguments))
 
 
 def make_tool(

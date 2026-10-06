@@ -5,8 +5,9 @@ Python standard library. Put Starlight.exe in the Starlight folder and double-cl
 
 * first run: shows what it will download and how big it is, asks once, then installs
   uv, Python 3.12 with every package, the Chromium browser, the llama.cpp model server
-  (Vulkan build: AMD, NVIDIA and Intel GPUs) and the model; all inside the Starlight
-  folder, no administrator rights needed
+  (Vulkan build: AMD, NVIDIA and Intel GPUs) and the model into the Starlight folder
+  (uv keeps Python, and Playwright keeps Chromium, in the user profile); no administrator
+  rights needed
 * every run: starts the model server on the GPU, the statistics viewer, and the chat;
   closing the window stops everything it started
 

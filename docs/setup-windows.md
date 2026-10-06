@@ -12,9 +12,10 @@ on your PATH: install it once with `winget install astral-sh.uv`, or type
 
 Double-click `Starlight.exe` in the Starlight folder. It does sections 1 and 2 below for
 you (llama.cpp Vulkan build plus Qwen2.5-14B Uncensored Instruct) and offers Tesseract
-from section 6. What it downloads lands in `tools\` and `models\` inside the Starlight
-folder. The sections below are for doing it by hand, or for the parts it does not cover
-(WhatsApp, servers, Docker).
+from section 6. The model server and the model land in `tools\` and `models\` inside the
+Starlight folder; Python and Chromium go to your user profile (`%APPDATA%\uv` and
+`%LOCALAPPDATA%\ms-playwright`). The sections below are for doing it by hand, or for
+the parts it does not cover (WhatsApp, servers, Docker).
 
 ## 1. Starlight itself
 

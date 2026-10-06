@@ -98,8 +98,10 @@ Continue? [Y/n]
 
 Press **Enter**. How long this takes depends on your internet connection, mostly for the
 model.
-- Everything goes into the Starlight folder, in `tools`, `models` and `.venv`. Nothing is
-  installed into Windows.
+- Starlight's packages, the model server and the model go into the Starlight folder
+  (`.venv`, `tools`, `models`). Python and the Chromium browser go into your user
+  profile, where uv and Playwright keep them (`%APPDATA%\uv\python` and
+  `%LOCALAPPDATA%\ms-playwright`). Nothing needs administrator rights.
 - If the download is interrupted, start `Starlight.exe` again. It continues where it
   stopped.
 - Every download that publishes a checksum is checked against it.
@@ -121,8 +123,8 @@ starlight> ...
 ```
 
 That's it. **Next time, just double-click `Starlight.exe` again.** It skips the
-downloads and goes straight to loading the model. Type `/quit` or close the window to stop. Closing
-the window also stops the model server and the viewer.
+downloads and goes straight to loading the model. Type `/quit` or close the window to
+stop. Closing the window also stops the model server and the viewer.
 
 ### Options
 
@@ -213,6 +215,13 @@ Passwords and keys you stored are in the Windows Credential Manager under "starl
 Remove them there, or with `starlight vault delete <key>` before deleting the folder. Files
 Starlight saved for you stay in `Documents\Starlight` until you delete that folder too.
 
+Python, the Chromium browser and the download cache live in your user profile. To remove
+them as well, delete these folders. Paste each one into the Explorer address bar to find
+it. Skip any that another program of yours still uses.
+- `%APPDATA%\uv`: Python
+- `%LOCALAPPDATA%\uv`: the download cache
+- `%LOCALAPPDATA%\ms-playwright`: Chromium
+
 ---
 
 ## Using Starlight
@@ -248,6 +257,13 @@ a word:
 - send `/kill` on WhatsApp.
 
 Continue with `/resume`.
+
+**Stopping just one answer.** Press **Ctrl+C** while Starlight is writing: that answer
+stops, and you can ask the next thing. Very long answers stop by themselves after about
+3,000 words (`model: reserve_tokens:` in the config).
+
+**Pasting.** Paste several lines at once and they count as one request. Text you typed
+before Starlight asks "Allow?" never counts as the answer.
 
 **Chat commands.** `/help` lists them all. The main ones:
 

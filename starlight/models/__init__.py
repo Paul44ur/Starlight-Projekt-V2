@@ -20,9 +20,11 @@ def _llamacpp(options: dict[str, Any]) -> ModelProvider:
     return OpenAICompatProvider(**{"base_url": "http://127.0.0.1:8080/v1", **options})
 
 
-register_provider("ollama", lambda options: OllamaProvider(**options))
-register_provider("llamacpp", _llamacpp)
-register_provider("openai_compat", lambda options: OpenAICompatProvider(**options))
+register_provider("ollama", lambda options: OllamaProvider(**options), max_tokens=True)
+register_provider("llamacpp", _llamacpp, max_tokens=True)
+register_provider(
+    "openai_compat", lambda options: OpenAICompatProvider(**options), max_tokens=True
+)
 register_provider("router", RouterProvider.from_options)
 
 __all__ = ["OllamaProvider", "OpenAICompatProvider", "RouterProvider"]

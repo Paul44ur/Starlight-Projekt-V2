@@ -26,8 +26,8 @@ skills/*
 !skills/.gitkeep
 
 # Downloaded by Starlight.exe, and per-machine settings
-tools/
-models/
+/tools/
+/models/
 config/starlight.launcher.yaml
 config/starlight.local.yaml
 config/launcher.json

@@ -12,12 +12,13 @@ from typing import Any
 
 from pydantic import ValidationError
 
+from starlight.core.config import ConfigError
 from starlight.core.events import EventBus
 from starlight.core.killswitch import KillSwitch, KillSwitchEngaged
 from starlight.core.logging import AuditLog, get_logger, redact
 from starlight.core.permissions import Permission, PermissionPolicy
 from starlight.core.stats import Stats
-from starlight.core.tools import Tool
+from starlight.core.tools import Tool, ToolError
 
 type Confirmer = Callable[[Tool, dict[str, Any]], Awaitable[bool]]
 
@@ -100,6 +101,12 @@ class Dispatcher:
         if permission is Permission.BLOCKED:
             self.audit.record("tool.denied", tool=name, reason="blocked", request_id=request_id)
             return self._finish(ToolResult(name, False, error="blocked by permissions"), request_id)
+        try:  # before asking you: never confirm a call that cannot run
+            validated = tool.validate(args)
+        except ValidationError as exc:
+            return self._finish(
+                ToolResult(name, False, error=f"invalid arguments: {exc.errors()}"), request_id
+            )
         if permission is Permission.CONFIRM:
             approved = self.confirmer is not None and await self.confirmer(tool, args)
             if not approved:
@@ -121,10 +128,14 @@ class Dispatcher:
         await self.bus.publish("tool.called", {"tool": name, "request_id": request_id})
         started = time.perf_counter()
         try:
-            output = await asyncio.wait_for(tool.invoke(args), timeout=self.timeout)
+            output = await asyncio.wait_for(tool.run(validated), timeout=self.timeout)
             result = ToolResult(name, True, output=output)
-        except ValidationError as exc:
-            result = ToolResult(name, False, error=f"invalid arguments: {exc.errors()}")
+        except ToolError as exc:  # turned down for a reason, not a crash
+            self._log.warning("tool refused", tool=name, reason=str(exc))
+            result = ToolResult(name, False, error=str(exc))
+        except ConfigError as exc:  # a settings file the user can fix
+            self._log.warning("tool config error", tool=name, error=str(exc))
+            result = ToolResult(name, False, error=f"configuration error: {exc}")
         except TimeoutError:
             result = ToolResult(name, False, error=f"timed out after {self.timeout}s")
         except KillSwitchEngaged:

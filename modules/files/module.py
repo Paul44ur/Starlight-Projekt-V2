@@ -23,7 +23,7 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 
-from starlight.core import Module, ModuleContext, tool
+from starlight.core import Module, ModuleContext, ToolError, tool
 from starlight.core.output import known_folders
 
 _INVALID = re.compile(r'[<>:"/\\|?*\x00-\x1f]')  # not allowed in Windows file names
@@ -55,7 +55,7 @@ class Config(BaseModel):
     max_read_chars: int = Field(default=40_000, ge=1000)  # longer files are cut off
 
 
-class FileError(Exception):
+class FileError(ToolError):
     """A request the module turns down. The message goes back to the AI."""
 
 

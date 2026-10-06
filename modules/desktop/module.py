@@ -31,7 +31,7 @@ import numpy as np
 from PIL import Image
 from pydantic import BaseModel, Field
 
-from starlight.core import Message, Module, ModuleContext, Permission, tool
+from starlight.core import Message, Module, ModuleContext, Permission, ToolError, tool
 from starlight.core.config import ModelConfig
 from starlight.core.model import ModelProvider, create_provider
 from starlight.core.modules import keep_running
@@ -288,17 +288,41 @@ class DesktopModule(Module):
 
     @tool
     def screen_info(self) -> dict[str, Any]:
-        """Screen size and mouse position."""
+        """Screen size, each monitor (numbered from 1, with its position) and where the
+        mouse pointer is."""
         left, top, width, height = self.screen.bounds()
         x, y = self.input.position()
-        return {"left": left, "top": top, "width": width, "height": height, "mouse": [x, y]}
+        monitors = [
+            {"monitor": number, "left": m[0], "top": m[1], "width": m[2], "height": m[3]}
+            for number, m in enumerate(self.screen.monitors(), start=1)
+        ]
+        return {
+            "left": left,
+            "top": top,
+            "width": width,
+            "height": height,
+            "monitors": monitors,
+            "mouse": [x, y],
+        }
 
     @tool
-    def read_screen(self, x: int = 0, y: int = 0, width: int = 0, height: int = 0) -> str:
-        """Text on the screen (OCR), optionally only inside a region."""
-        region = (x, y, width, height) if width and height else None
+    def read_screen(
+        self, x: int = 0, y: int = 0, width: int = 0, height: int = 0, monitor: int = 0
+    ) -> str:
+        """Text on the screen (OCR). monitor: 1, 2 ... reads only that monitor (see
+        screen_info); or give a region with x, y, width and height."""
+        if monitor:
+            region: tuple[int, int, int, int] | None = self._monitor(monitor)
+        else:
+            region = (x, y, width, height) if width and height else None
         image = self.screen.capture(region)
         return boxes_to_text(self.ocr.boxes(image))
+
+    def _monitor(self, number: int) -> tuple[int, int, int, int]:
+        monitors = self.screen.monitors()
+        if not 1 <= number <= len(monitors):
+            raise ToolError(f"there is no monitor {number}; this PC has {len(monitors)}")
+        return monitors[number - 1]
 
     @tool
     def find_text(self, text: str) -> list[dict[str, Any]]:
@@ -375,8 +399,14 @@ class DesktopModule(Module):
         return {"started": name, "screen_changed": ratio > 0.0005, "change": round(ratio, 4)}
 
     @tool(permission=Permission.CONFIRM)
-    def move_mouse(self, x: int, y: int) -> dict[str, Any]:
-        """Move the mouse pointer."""
+    def move_mouse(self, x: int, y: int, relative: bool = False) -> dict[str, Any]:
+        """Move the mouse pointer to the screen position x, y. With relative=true, move it
+        by x, y from where it is now (x > 0: right, y > 0: down), e.g. "30 pixels to the
+        right" is x=30, y=0, relative=true. The four screen corners are the emergency stop:
+        moving there stops everything."""
+        if relative:
+            here_x, here_y = self.input.position()
+            x, y = here_x + x, here_y + y
         return self._act(lambda: self.input.move(x, y))
 
     @tool(permission=Permission.CONFIRM)

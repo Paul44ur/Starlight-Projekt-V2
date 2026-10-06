@@ -9,21 +9,24 @@ import getpass
 import json
 import re
 import shutil
+import signal
 import subprocess
 import sys
 from collections.abc import Sequence
 from pathlib import Path
+from types import FrameType
 from typing import Any
 
 import httpx
 
-from starlight import __version__
+from starlight import __version__, console
+from starlight.core.agent import AgentResult
 from starlight.core.config import ConfigError, load_config
 from starlight.core.dispatcher import Confirmer
 from starlight.core.kernel import Kernel
 from starlight.core.killswitch import KillSwitch
 from starlight.core.logging import setup_logging
-from starlight.core.model import create_provider
+from starlight.core.model import TokenCallback, create_provider
 from starlight.core.modules import NAME_PATTERN, ModuleState, discover
 from starlight.core.output import resolve_output_folder
 from starlight.core.paths import Paths
@@ -50,7 +53,7 @@ def make_confirmer(policy: PermissionPolicy, assume_yes: bool) -> Confirmer:
             f"\nStarlight wants to run {tool.qualified_name}({json.dumps(args, default=str)})\n"
             "Allow? [y]es / [n]o / [a]lways this session: "
         )
-        answer = (await asyncio.to_thread(input, prompt)).strip().lower()
+        answer = (await asyncio.to_thread(console.answer, prompt)).strip().lower()
         if answer in ("a", "always"):
             policy.allow_for_session(tool.qualified_name)
             return True
@@ -70,15 +73,16 @@ class TerminalUI:
             return True
         if not sys.stdin.isatty():
             return False
-        answer = await asyncio.to_thread(input, f"\n{question} [y/N]: ")
+        answer = await asyncio.to_thread(console.answer, f"\n{question} [y/N]: ")
         return answer.strip().lower() in ("y", "yes")
 
     async def ask(self, question: str, secret: bool = False) -> str | None:
         if not sys.stdin.isatty():
             return None
         if secret:
+            console.drop_typeahead()
             return await asyncio.to_thread(getpass.getpass, f"\n{question}: ")
-        return (await asyncio.to_thread(input, f"\n{question}: ")).strip() or None
+        return (await asyncio.to_thread(console.answer, f"\n{question}: ")).strip() or None
 
     async def notify(self, text: str) -> None:
         print(f"\n[starlight] {text}")
@@ -114,9 +118,40 @@ async def cmd_ask(paths: Paths, args: argparse.Namespace) -> int:
     return 0
 
 
+async def _ask(kernel: Kernel, line: str, on_token: TokenCallback) -> AgentResult | None:
+    """Run one request. Ctrl+C while Starlight answers stops that answer, not Starlight
+    (it returns None then)."""
+    loop = asyncio.get_running_loop()
+    task = asyncio.ensure_future(kernel.ask(line, keep_history=True, on_token=on_token))
+
+    def stop(signum: int, frame: FrameType | None) -> None:
+        loop.call_soon_threadsafe(task.cancel)
+
+    try:
+        previous = signal.signal(signal.SIGINT, stop)
+    except ValueError:  # not the main thread: keep the usual Ctrl+C
+        previous = None
+    try:
+        return await task
+    except asyncio.CancelledError:
+        current = asyncio.current_task()
+        if current is not None and current.cancelling():
+            raise  # Starlight itself is stopping
+        return None
+    finally:
+        if previous is not None:
+            signal.signal(signal.SIGINT, previous)
+
+
 async def cmd_run(paths: Paths, args: argparse.Namespace) -> int:
     async with _kernel(paths, assume_yes=args.yes, hotkey=True) as kernel:
         print(f"Starlight {__version__}. Type /help for commands, /quit to exit.")
+        print("Ctrl+C stops an answer while it is being written.")
+        if kernel.kill_switch.engaged:
+            print(
+                f"The kill switch is still ON ({kernel.kill_switch.reason}): nothing will "
+                "run until you type /resume."
+            )
         hotkey = kernel.config.kill_switch.hotkey
         if kernel.hotkey_active:
             print(f"Kill hotkey: {hotkey}")
@@ -127,7 +162,7 @@ async def cmd_run(paths: Paths, args: argparse.Namespace) -> int:
             )
         while True:
             try:
-                line = (await asyncio.to_thread(input, "you> ")).strip()
+                line = (await asyncio.to_thread(console.read_request, "you> ")).strip()
             except (EOFError, KeyboardInterrupt):
                 print()
                 break
@@ -145,7 +180,10 @@ async def cmd_run(paths: Paths, args: argparse.Namespace) -> int:
                 streamed.append(token)
                 print(token, end="", flush=True)
 
-            result = await kernel.ask(line, keep_history=True, on_token=on_token)
+            result = await _ask(kernel, line, on_token)
+            if result is None:
+                print("\n[Stopped. Ask something else, or /quit to leave.]")
+                continue
             # Streaming showed the answer (after any text from earlier tool steps).
             if streamed and "".join(streamed).strip().endswith(result.answer.strip()):
                 print()

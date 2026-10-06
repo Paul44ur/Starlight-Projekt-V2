@@ -17,7 +17,7 @@ from starlight.core.model import (
 from starlight.core.modules import Module, ModuleContext, ModuleManager, ModuleManifest
 from starlight.core.paths import Paths
 from starlight.core.permissions import Permission, PermissionPolicy
-from starlight.core.tools import Tool, tool
+from starlight.core.tools import Tool, ToolError, tool
 
 __all__ = [
     "Agent",
@@ -43,6 +43,7 @@ __all__ = [
     "StarlightConfig",
     "Tool",
     "ToolCall",
+    "ToolError",
     "ToolResult",
     "load_config",
     "register_provider",

@@ -28,7 +28,7 @@ from starlight.core.vault import MemoryBackend, Vault, VaultError
 from starlight.models.router import RouterProvider
 from starlight.sandbox import ProcessSandbox
 from starlight.viewer import StatsReader
-from tests.conftest import REPO, ModuleWriter
+from tests.conftest import REPO, ModuleWriter, read_audit
 
 INDICATOR = REPO / "modules" / "desktop" / "indicator.py"
 
@@ -394,3 +394,185 @@ def test_banner_survives_reloads_and_garbage_collection(tmp_path: Path) -> None:
     if "NO DISPLAY" in output:
         pytest.skip("no display")
     assert result.returncode == 0 and "OK" in output, output[-3000:]
+
+
+def _sse(*chunks: dict[str, object]) -> bytes:
+    import json
+
+    return b"".join(f"data: {json.dumps(c)}\n\n".encode() for c in chunks) + b"data: [DONE]\n\n"
+
+
+async def test_an_answer_that_never_ends_is_cut_off(paths: Paths) -> None:
+    """Found in real use: a model answered "What model are you" with 1300+ tokens and kept
+    going; nothing limited the answer, so it would have run until the context was full.
+    Answers now stop at model.reserve_tokens, and the user is told."""
+    import json
+
+    from starlight.core.agent import CUT_OFF
+    from starlight.core.config import ModelConfig
+    from starlight.core.model import create_provider
+
+    sent: list[dict[str, object]] = []
+
+    def server(request: httpx.Request) -> httpx.Response:
+        sent.append(json.loads(request.content))
+        return httpx.Response(
+            200,
+            content=_sse(
+                {"choices": [{"delta": {"content": "I am a model and "}}]},
+                {
+                    "choices": [
+                        {"delta": {"content": "I am a model and"}, "finish_reason": "length"}
+                    ]
+                },
+            ),
+        )
+
+    config = ModelConfig(provider="llamacpp", options={"transport": httpx.MockTransport(server)})
+    provider = create_provider(config)
+    streamed: list[str] = []
+    async with Kernel(paths, provider=provider) as kernel:
+        result = await kernel.ask("What model are you", on_token=streamed.append)
+    assert sent[0]["max_tokens"] == 4096  # model.reserve_tokens
+    assert result.answer.endswith(CUT_OFF)
+    assert "".join(streamed).endswith(CUT_OFF)  # shown while streaming too
+
+    # your own limit wins, and the models behind the router are capped as well
+    custom = create_provider(ModelConfig(provider="llamacpp", options={"max_tokens": 100}))
+    assert custom.max_tokens == 100  # type: ignore[attr-defined]
+    router = create_provider(
+        ModelConfig(
+            provider="router",
+            options={"fast": {"provider": "ollama"}, "main": {"provider": "llamacpp"}},
+        )
+    )
+    assert router.fast.options["num_predict"] == 4096  # type: ignore[attr-defined]
+    assert router.main.max_tokens == 4096  # type: ignore[attr-defined]
+
+
+async def test_ctrl_c_stops_the_answer_not_starlight(paths: Paths) -> None:
+    """Ctrl+C used to end Starlight. While an answer is being written it now stops only
+    that answer; the next question works."""
+    import signal
+
+    from starlight.cli import _ask
+
+    class SlowThenQuick:
+        name = "slow"
+        supports_streaming = True
+        calls = 0
+
+        async def chat(self, messages: object, tools: object, on_token: object = None) -> object:
+            from starlight.core.model import ModelResponse
+
+            type(self).calls += 1
+            if type(self).calls == 1:
+                await asyncio.sleep(60)  # writing forever
+            return ModelResponse(content="Quick answer.")
+
+    async def press_ctrl_c() -> None:
+        await asyncio.sleep(0.5)
+        signal.raise_signal(signal.SIGINT)
+
+    before = signal.getsignal(signal.SIGINT)
+    async with Kernel(paths, provider=SlowThenQuick()) as kernel:
+        presser = asyncio.create_task(press_ctrl_c())
+        stopped = await asyncio.wait_for(_ask(kernel, "Write forever", lambda t: None), 30)
+        await presser
+        after = await _ask(kernel, "Something short", lambda t: None)
+    assert stopped is None
+    assert after is not None and after.answer == "Quick answer."
+    assert signal.getsignal(signal.SIGINT) is before  # Ctrl+C behaves as usual again
+    assert "task.cancelled" in read_audit(paths)
+
+
+def test_run_says_when_the_kill_switch_is_still_on(
+    paths: Paths, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Found in real use: after a restart the kill switch was still on, and the first
+    request was "killed" without a word of explanation."""
+    from starlight.cli import main
+
+    home = str(paths.root)
+    assert main(["--home", home, "kill", "REPL /kill"]) == 0
+    monkeypatch.setattr("sys.stdin", io.StringIO("/quit\n"))
+    assert main(["--home", home, "run"]) == 0
+    assert "kill switch is still ON (REPL /kill)" in capsys.readouterr().out
+
+
+async def test_refusals_and_config_errors_are_reported_for_what_they_are(
+    paths: Paths, write_module: ModuleWriter
+) -> None:
+    """Found in real use: a broken servers.yaml came back as "invalid arguments" (the
+    dispatcher took any validation error inside a tool for bad arguments), and every
+    refusal was logged as a crash with a traceback."""
+    import json
+
+    write_module(
+        "probe",
+        """
+        from pydantic import BaseModel
+        from starlight.core import Module, ToolError, tool
+        from starlight.core.config import ConfigError
+
+        class Setting(BaseModel):
+            host: str
+
+        class Mod(Module):
+            @tool
+            def refuse(self) -> str:
+                raise ToolError("not allowed: that server is not listed")
+
+            @tool
+            def bad_file(self) -> str:
+                raise ConfigError("config/x.yaml: invalid YAML")
+
+            @tool
+            def bad_data(self, count: int) -> str:
+                Setting.model_validate({})  # a validation error inside the tool
+                return "never"
+        """,
+    )
+    async with Kernel(paths) as kernel:
+        refused = await kernel.dispatcher.call("probe.refuse")
+        config = await kernel.dispatcher.call("probe.bad_file")
+        inside = await kernel.dispatcher.call("probe.bad_data", {"count": 1})
+        wrong_args = await kernel.dispatcher.call("probe.bad_data", {"count": "many"})
+    assert refused.error == "not allowed: that server is not listed"
+    assert config.error == "configuration error: config/x.yaml: invalid YAML"
+    assert inside.error is not None and not inside.error.startswith("invalid arguments")
+    assert wrong_args.error is not None and wrong_args.error.startswith("invalid arguments")
+    log = [json.loads(line) for line in (paths.logs / "starlight.log").read_text().splitlines()]
+    refusals = [e for e in log if e["event"] == "tool refused"]
+    assert refusals and refusals[0]["level"] == "warning" and "exception" not in refusals[0]
+
+
+async def test_servers_yaml_mistakes_get_a_clear_answer(
+    paths: Paths, use_module: Callable[[str], Path]
+) -> None:
+    """The exact edits from a real session: "localhost:" with nothing under it, and an
+    inline mapping missing its comma; plus a server that simply is not listed."""
+    use_module("network")
+    servers = paths.config / "servers.yaml"
+    async with Kernel(paths) as kernel:
+        servers.write_text("servers:\n  localhost:\n")
+        empty = await kernel.dispatcher.call("network.servers")
+        servers.write_text("servers: {localhost:\n    url: http://127.0.0.1:8765/\n")
+        broken = await kernel.dispatcher.call("network.ping", {"server": "127.0.0.1"})
+        servers.write_text("servers:\n  # nothing yet\n")
+        none_yet = await kernel.dispatcher.call("network.servers")
+        unlisted = await kernel.dispatcher.call("network.status", {"server": "localhost"})
+    assert empty.error is not None and "needs at least a host" in empty.error
+    assert not empty.error.startswith("invalid arguments")
+    assert broken.error is not None and "invalid YAML" in broken.error
+    assert none_yet.ok and none_yet.output == []
+    assert unlisted.error is not None and "servers:\n  localhost:\n    host: localhost" in (
+        unlisted.error
+    )
+
+
+def test_shipped_servers_yaml_allows_this_pc() -> None:
+    from starlight.core.config import read_yaml
+
+    data = read_yaml(REPO / "config" / "servers.yaml")
+    assert data["servers"]["localhost"]["host"] == "127.0.0.1"

@@ -28,10 +28,10 @@ from pathlib import Path
 from typing import Any
 
 import httpx
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ValidationError, field_validator
 
-from starlight.core import Module, ModuleContext, Permission, tool
-from starlight.core.config import read_yaml
+from starlight.core import Module, ModuleContext, Permission, ToolError, tool
+from starlight.core.config import ConfigError, read_yaml
 
 from .readonly import is_read_only
 
@@ -39,7 +39,7 @@ SERVERS_FILE = "servers.yaml"
 PING_TIME = re.compile(r"(?:time|zeit)\s*[=<]\s*([\d.,]+)\s*ms", re.IGNORECASE)
 
 
-class NotAllowed(Exception):
+class NotAllowed(ToolError):
     pass
 
 
@@ -64,6 +64,17 @@ class Server(BaseModel):
 
 class ServersFile(BaseModel):
     servers: dict[str, Server] = Field(default_factory=dict)
+
+    @field_validator("servers", mode="before")
+    @classmethod
+    def _nothing_listed(cls, value: Any) -> Any:
+        return {} if value is None else value  # "servers:" with only comments below it
+
+
+def how_to_add(host: str) -> str:
+    """The lines that allow ``host``, ready to paste into servers.yaml."""
+    key = re.sub(r"[^a-z0-9]+", "-", host.lower()).strip("-") or "server"
+    return f"servers:\n  {key}:\n    host: {host}"
 
 
 class Config(BaseModel):
@@ -107,7 +118,17 @@ class NetworkModule(Module):
         return self.ctx.paths.config / SERVERS_FILE
 
     def _servers(self) -> dict[str, Server]:
-        return ServersFile.model_validate(read_yaml(self.servers_file())).servers
+        path = self.servers_file()
+        try:
+            return ServersFile.model_validate(read_yaml(path)).servers
+        except ValidationError as exc:
+            problems = "; ".join(
+                f"{'.'.join(str(p) for p in e['loc'])}: {e['msg']}" for e in exc.errors()
+            )
+            raise ConfigError(
+                f"{path}: {problems}. Every server needs at least a host, indented like this "
+                f"(spaces, no tabs):\n{how_to_add('192.168.1.10')}"
+            ) from exc
 
     def _server(self, name: str) -> tuple[str, Server]:
         servers = self._servers()
@@ -116,7 +137,11 @@ class NetworkModule(Module):
         for key, server in servers.items():
             if server.host == name:
                 return key, server
-        raise NotAllowed(f"'{name}' is not in {SERVERS_FILE}; refusing to touch it")
+        raise NotAllowed(
+            f"'{name}' is not in {SERVERS_FILE} (Starlight's config folder), so Starlight will "
+            "not touch it. To allow it, the user can add it to that file, indented exactly "
+            f"like this (spaces, no tabs), and ask again; no restart needed:\n{how_to_add(name)}"
+        )
 
     # -- reachability ------------------------------------------------------------------
 
