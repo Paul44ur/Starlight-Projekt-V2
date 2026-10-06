@@ -1,0 +1,3 @@
+# The system module (modules/system): how your PC is doing. Reading is safe; closing a
+# program asks first. Full detail needs the "system" extra (psutil), part of "all".
+top_processes: 10

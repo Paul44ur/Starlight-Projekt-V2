@@ -29,6 +29,9 @@ and answer you on WhatsApp. Anything risky asks you first, and one key press sto
 | **Use the web** | Searches, reads pages and logs in to your accounts. It makes at most 5 requests per second and respects robots.txt. |
 | **Check your servers** | Pings your servers, checks disk space and services over SSH, and alerts you when one goes down. |
 | **Scan your network** | On hosts you own or are authorized to test: open ports, services, TLS certs, HTTP headers, DNS. Asks first; recon only, never attacks. |
+| **Check your PC** | CPU, memory, disk space, battery, uptime and running programs. Can close a program (asks first). |
+| **Use the clipboard** | Reads what you copied and copies things for you. |
+| **Weather** | Current weather and a short forecast for any place — free, no account or API key. |
 | **Use your desktop** | Reads the screen, then clicks and types for you, with a red banner on screen while it does. |
 | **Save files** | Saves letters, notes, tables (CSV) and web pages it makes for you in `Documents\Starlight`. |
 | **Write code** | Writes small programs, tests them in a sandbox and fixes them until the tests pass. |

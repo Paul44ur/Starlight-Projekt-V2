@@ -1,0 +1,7 @@
+name: clipboard
+version: 0.1.0
+description: Read and set the clipboard, so Starlight can use what you copied and copy things for you
+entrypoint: module:ClipboardModule
+permissions: [safe]
+dependencies: []
+enabled_by_default: true

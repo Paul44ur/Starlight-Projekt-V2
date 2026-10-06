@@ -1,0 +1,2 @@
+# The clipboard module (modules/clipboard): read and set the system clipboard.
+max_chars: 100000

@@ -1,0 +1,8 @@
+name: system
+version: 0.1.0
+description: How your PC is doing - CPU, memory, disk, battery, uptime and running programs
+entrypoint: module:SystemModule
+# Reading is safe; closing a program asks first.
+permissions: [confirm]
+dependencies: []
+enabled_by_default: true

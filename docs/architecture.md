@@ -28,8 +28,8 @@ launcher/           the source of Starlight.exe (standard library only)
 starlight/browser.py, text.py   headless browser and HTML-to-text helpers for modules
 starlight/tui.py    the colored terminal chat (rich), with a plain fallback
 starlight/cli.py    the `starlight` command
-modules/            hello, web, login, network, recon, desktop, code, files, access,
-                    whatsapp (+ _template)
+modules/            hello, web, login, network, recon, desktop, system, clipboard,
+                    weather, code, files, access, whatsapp (+ _template)
 skills/             skills it learns (one folder each)
 scripts/            install.ps1, install.sh
 memory/             what the AI learns (one Markdown file per fact)
