@@ -268,6 +268,13 @@ def test_serve_commands(paths: Paths) -> None:
     assert "--n-gpu-layers 999" in joined and "--flash-attn on" in joined
     assert "--cache-type-k q8_0 --cache-type-v q8_0" in joined
     assert "--ctx-size 32768" in joined and "--jinja" in joined and env == {}
+    assert "--threads" in cmd  # all CPU cores by default (keeps the CPU build from crawling)
+
+    threaded = ModelConfig(provider="llamacpp")
+    threaded.server.binary = "llama-server"
+    threaded.server.model_path = "m.gguf"
+    threaded.server.threads = 6
+    assert "--threads 6" in " ".join(serve_command(threaded)[0])
 
     ollama = ModelConfig(provider="ollama")
     ollama.server.binary = "ollama"

@@ -41,6 +41,7 @@ class ServerConfig(_Strict):
     flash_attention: bool = True
     kv_cache_type: str = "q8_0"  # quantized KV cache: longer context in the same VRAM
     parallel: int = 1
+    threads: int = 0  # CPU threads for prompt processing; 0: all cores (matters on the CPU build)
     extra_args: list[str] = Field(default_factory=list)
 
 
