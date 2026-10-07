@@ -160,6 +160,10 @@ class Kernel:
             policy=self.policy,
             deliver=self.deliver,
             embedder=self.memory.index.embedder,
+            call=self.dispatcher.call,
+            tool_names=lambda: [t.qualified_name for t in self.dispatcher.tools()],
+            tool_lookup=self.dispatcher.get,
+            run_request=self._run_request,
         )
         self.modules = ModuleManager(
             self.paths, self.dispatcher, self.bus, self.kill_switch, self.audit, self.services
@@ -385,6 +389,9 @@ class Kernel:
                 if not (m.role == "system" and not m.content.startswith(SUMMARY_PREFIX))
             ]
         return result
+
+    async def _run_request(self, text: str) -> str:
+        return (await self.ask(text)).answer
 
     async def deliver(self, text: str, title: str = "", source: str = "core") -> None:
         """Tell the user something now (a reminder, an alert, a briefing): on the terminal

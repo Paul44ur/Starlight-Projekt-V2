@@ -1,0 +1,7 @@
+name: calendar
+version: 0.1.0
+description: Your calendar - events, agenda and free time, plus read-only calendar feeds (ICS)
+entrypoint: module:CalendarModule
+permissions: [safe]
+dependencies: []
+enabled_by_default: true

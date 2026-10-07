@@ -1,0 +1,10 @@
+# The calendar module (modules/calendar). Your events are in data/modules/calendar/calendar.ics
+# (standard iCalendar, so other calendar apps can import it).
+remind_minutes: 15        # alert this long before an event (0: no alerts; per event too)
+check_interval: 60        # seconds between alert checks
+feed_refresh_minutes: 30  # how often subscribed feeds are fetched again
+work_start: "08:00"       # free_slots looks between these times
+work_end: "18:00"
+# Read-only feeds you subscribed to from the chat ("subscribe to my Google calendar ...").
+# Their secret addresses are in the keyring (calendar.feed.<name>), never in this file.
+feeds: []

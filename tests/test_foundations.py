@@ -86,6 +86,12 @@ def test_parse_when_keeps_working() -> None:
     assert parse_when("in 2h", WEDNESDAY) == datetime(2026, 10, 7, 16, 0)
     assert parse_when("tomorrow at 9am", WEDNESDAY) == datetime(2026, 10, 8, 9, 0)
     assert parse_when("24.12.2026 18:00", WEDNESDAY) == datetime(2026, 12, 24, 18, 0)
+    # a named day keeps its time even when it has passed; a bare time moves to tomorrow
+    assert parse_when("today 9:00", WEDNESDAY) == datetime(2026, 10, 7, 9, 0)
+    assert parse_when("9:00", WEDNESDAY) == datetime(2026, 10, 8, 9, 0)
+    assert parse_when("yesterday", WEDNESDAY) == datetime(2026, 10, 6, 9, 0)
+    assert parse_when("friday 18:00", WEDNESDAY) == datetime(2026, 10, 9, 18, 0)
+    assert parse_when("next monday", WEDNESDAY) == datetime(2026, 10, 12, 9, 0)
 
 
 # -- paths -------------------------------------------------------------------------------

@@ -33,7 +33,7 @@ import yaml
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 from starlight.core.config import ConfigError, load_module_config, read_yaml
-from starlight.core.dispatcher import Dispatcher
+from starlight.core.dispatcher import Dispatcher, ToolResult
 from starlight.core.events import Event, EventBus
 from starlight.core.http import PoliteHttp
 from starlight.core.killswitch import KillSwitch
@@ -95,6 +95,13 @@ class Services:
     # WhatsApp). Set by the kernel; without one, messages go to ``ui.notify``.
     deliver: Callable[[str, str, str], Awaitable[None]] | None = None
     embedder: Any = None  # the embedding model memory uses (for modules that index text)
+    # Run another module's tool, with the same permission checks, kill switch and audit
+    # as when the model calls it (set by the kernel to the dispatcher).
+    call: Callable[[str, dict[str, Any] | None], Awaitable[ToolResult]] | None = None
+    tool_names: Callable[[], list[str]] | None = None
+    tool_lookup: Callable[[str], Tool | None] | None = None
+    # Run a request through the agent (one-shot, no shared history) and get its answer.
+    run_request: Callable[[str], Awaitable[str]] | None = None
 
 
 PRIMARY_POLL = 1.0  # seconds between checks whether this process became the primary core
@@ -102,7 +109,9 @@ PRIMARY_POLL = 1.0  # seconds between checks whether this process became the pri
 
 @dataclass
 class ModuleContext:
-    """What a module gets from the core. Modules talk to each other only through ``bus``."""
+    """What a module gets from the core. Modules never import each other: they talk through
+    ``bus`` events, or use another module's tools through ``call`` (with the usual permission
+    checks)."""
 
     name: str
     config: Any
@@ -169,6 +178,33 @@ class ModuleContext:
 
     async def publish(self, event: str, data: dict[str, Any] | None = None) -> None:
         await self.bus.publish(event, data, source=self.name)
+
+    async def call(self, tool: str, arguments: dict[str, Any] | None = None) -> ToolResult:
+        """Use another module's tool (e.g. "weather.now"). It goes through the same
+        permission rules, kill switch and audit log as a call from the model: a tool that
+        asks first still asks, a blocked one is refused."""
+        if self.services.call is None:
+            raise RuntimeError("no dispatcher configured")
+        return await self.services.call(tool, arguments)
+
+    async def run_request(self, text: str) -> str:
+        """Ask the assistant something, as if the user had typed it (one-shot, no shared
+        history). Tools it uses ask the current interface (``current_ui``) first."""
+        if self.services.run_request is None:
+            raise RuntimeError("no agent configured")
+        return await self.services.run_request(text)
+
+    def permission_of(self, tool: str) -> Permission:
+        """What happens when this tool is called: safe, confirm (asks first) or blocked,
+        after your permission rules."""
+        lookup = self.services.tool_lookup
+        found = lookup(tool) if lookup is not None else None
+        default = found.permission if found is not None else Permission.SAFE
+        return self.policy.resolve(tool, default)
+
+    def has_tool(self, tool: str) -> bool:
+        """Whether a tool is loaded right now (its module may be disabled)."""
+        return self.services.tool_names is not None and tool in self.services.tool_names()
 
     async def deliver(self, text: str, title: str = "") -> None:
         """Tell the user something now, on every channel that is open."""

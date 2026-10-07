@@ -1,0 +1,4 @@
+# The todo module (modules/todo): your to-do lists, saved in data/modules/todo/todo.json.
+default_list: inbox    # where a task goes when you don't name a list
+max_items: 1000
+keep_done_days: 30     # finished tasks are cleared away after this many days

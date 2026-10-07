@@ -1,0 +1,7 @@
+name: calc
+version: 0.1.0
+description: Exact maths, unit conversion and date arithmetic (no guessing by the model)
+entrypoint: module:CalcModule
+permissions: [safe]
+dependencies: []
+enabled_by_default: true

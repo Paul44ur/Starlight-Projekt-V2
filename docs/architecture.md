@@ -122,6 +122,19 @@ the kill switch) and are enabled by default. Free or local, no API keys except w
   the vault; reading is free, sending asks first), `pdf` (read text from PDFs and make simple
   ones; needs the `pdf` extra — pypdf and reportlab).
 
+- *Daily life:* `todo` (lists, due dates, priorities), `calendar` (a standard `.ics` file,
+  repeating events, read-only ICS feeds whose secret address is kept in the vault, alerts
+  before events), `briefing` (pulls calendar, to-dos, reminders, weather, news, mail and
+  certificate warnings together through `ctx.call`), `calc` (a safe formula evaluator - the
+  text is parsed, never executed - plus units and date maths), `translate` (the
+  `translate` role's model, offline).
+- *Automations:* rules in `config/modules/automations.yaml` with a schedule (`when`) or an
+  event (`on`, with a `condition`), and actions (`tool`, `ask`, `say`, each optionally
+  `only_if`). They run through the dispatcher like any tool call; while a rule runs, an
+  `AutomationUI` answers confirmations - yes only for the tools approved for that rule
+  (`allow`), so nothing that normally asks first runs unapproved. Rules run only in the
+  primary core; an automation started by another one stops at depth 3.
+
 **Shared building blocks for modules.** `ctx.deliver` sends a message to every open
 channel at once: it calls the current interface's `notify` and publishes a `deliver` event
 that every web chat page, the `notify` module (desktop pop-up) and the `whatsapp` module

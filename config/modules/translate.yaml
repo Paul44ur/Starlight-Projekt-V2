@@ -1,0 +1,5 @@
+# The translate module (modules/translate): translation with your own model, offline.
+# A dedicated model can be set as the "translate" role in starlight.yaml (roles:), else
+# the main model is used.
+default_language: English   # translate into this when no language is given
+max_chars: 12000            # longer texts are translated in parts of about this size

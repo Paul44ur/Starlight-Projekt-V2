@@ -1,0 +1,7 @@
+name: todo
+version: 0.1.0
+description: Your to-do lists - add tasks with a due date and priority, tick them off, see what's due
+entrypoint: module:TodoModule
+permissions: [safe]
+dependencies: []
+enabled_by_default: true
