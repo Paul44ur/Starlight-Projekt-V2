@@ -17,6 +17,7 @@ import contextlib
 import importlib
 import importlib.machinery
 import importlib.util
+import os
 import shutil
 import subprocess
 import sys
@@ -203,6 +204,12 @@ class ModuleState:
         return set(raw.get("enabled") or []), set(raw.get("disabled") or [])
 
     def is_enabled(self, manifest: ModuleManifest) -> bool:
+        # STARLIGHT_MODULES, when set, is an allow-list: only those modules load (comma or
+        # space separated). Handy for a minimal run or a fast smoke test; empty/unset means
+        # the normal enabled/disabled rules apply.
+        only = os.environ.get("STARLIGHT_MODULES", "").replace(",", " ").split()
+        if only:
+            return manifest.name in only
         enabled, disabled = self._read()
         if manifest.name in disabled:
             return False
