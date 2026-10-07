@@ -1,0 +1,138 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Starlight settings</title>
+<link rel="icon" href="/icon.svg" type="image/svg+xml" />
+<link rel="stylesheet" href="/style.css" />
+<style>
+  .setting { display: flex; gap: 4px; }
+  .setting button { padding: 3px 8px; font-size: 12px; }
+  .setting button.sel { outline: 2px solid var(--accent); }
+  td.name { font-family: ui-monospace, Consolas, monospace; font-size: 13px; }
+  #code { font-size: 32px; letter-spacing: .3em; font-weight: 700; }
+  .locked { display: none; }
+  body.remote .locked { display: block; }
+  body.remote .local-only button, body.remote .local-only input { pointer-events: none; opacity: .5; }
+</style>
+</head>
+<body>
+<header class="top">
+  <h1>⭐ Settings</h1><span class="spacer"></span>
+  <nav><a href="/">Chat</a><a href="/memory">Memory</a></nav>
+  <button id="theme" class="icon" onclick="cycleTheme()">◐</button>
+</header>
+<div class="page">
+  <div class="card locked"><b>Viewing from another device.</b> <span class="dim">Permissions, modules,
+    devices and skills can only be changed on the PC itself.</span></div>
+
+  <div class="card local-only" id="devices-card">
+    <h2>Your phone and other devices</h2>
+    <p class="dim small" id="remote-state">…</p>
+    <div class="row"><button id="pair" class="ok">Show a pairing code</button><span id="code"></span>
+      <span class="dim small" id="code-note"></span></div>
+    <table id="devices"><thead><tr><th>Device</th><th>Paired</th><th>Last used</th><th></th></tr></thead><tbody></tbody></table>
+  </div>
+
+  <div class="card local-only">
+    <h2>What runs without asking</h2>
+    <p class="dim small">Each tool runs on its own (<b>safe</b>), asks you first (<b>confirm</b>) or never runs
+      (<b>blocked</b>). "default" goes back to what the tool itself says. Changes are saved in
+      config/permissions.chat.yaml.</p>
+    <div class="row"><input id="filter" type="search" class="grow" placeholder="Filter tools, e.g. desktop or files.save" /></div>
+    <table id="tools"><thead><tr><th>Tool</th><th>Now</th><th>Change</th></tr></thead><tbody></tbody></table>
+    <h2 style="margin-top:14px">Rule for a group</h2>
+    <div class="row"><input id="pattern" type="text" placeholder="e.g. network.* or desktop.click" class="grow" />
+      <select id="setting"><option>confirm</option><option>safe</option><option>blocked</option><option>default</option></select>
+      <button id="apply">Apply</button></div>
+  </div>
+
+  <div class="card local-only">
+    <h2>Modules</h2>
+    <table id="modules"><thead><tr><th>Module</th><th>What it does</th><th>State</th><th></th></tr></thead><tbody></tbody></table>
+  </div>
+</div>
+<script src="/common.js"></script>
+<script>
+let tools = [];
+
+async function loadPermissions() {
+  const data = await api("/api/permissions");
+  tools = data.tools; showTools();
+}
+function showTools() {
+  const wanted = document.getElementById("filter").value.toLowerCase();
+  const body = document.querySelector("#tools tbody"); body.innerHTML = "";
+  tools.filter(t => t.name.includes(wanted)).forEach(t => {
+    const row = el("tr");
+    row.appendChild(el("td", "name", t.name));
+    const now = el("td"); now.appendChild(el("span", "pill " + (t.now === "safe" ? "on" : t.now === "confirm" ? "warn" : "off"), t.now)); row.appendChild(now);
+    const cell = el("td"); const box = el("div", "setting");
+    ["safe", "confirm", "blocked", "default"].forEach(s => {
+      const b = el("button", s === t.now ? "sel" : "", s);
+      b.onclick = () => setRule(t.name, s);
+      box.appendChild(b);
+    });
+    cell.appendChild(box); row.appendChild(cell); body.appendChild(row);
+  });
+}
+async function setRule(pattern, setting) {
+  if (setting !== "confirm" && setting !== "blocked" && !confirm(`Let ${pattern} ${setting === "safe" ? "run without asking" : "use its default"}?`)) return;
+  try { await api("/api/permissions", { method: "POST", body: { pattern, setting } }); toast("Saved"); loadPermissions(); }
+  catch (e) { toast(e.message); }
+}
+document.getElementById("filter").oninput = showTools;
+document.getElementById("apply").onclick = () => {
+  const pattern = document.getElementById("pattern").value.trim();
+  if (pattern) setRule(pattern, document.getElementById("setting").value);
+};
+
+async function loadModules() {
+  const data = await api("/api/modules");
+  const body = document.querySelector("#modules tbody"); body.innerHTML = "";
+  data.modules.forEach(m => {
+    const row = el("tr");
+    row.appendChild(el("td", "name", m.name));
+    const what = el("td", "small", m.description); if (m.error) what.appendChild(el("div", "small", "⚠ " + m.error)); row.appendChild(what);
+    const st = el("td"); st.appendChild(el("span", "pill " + (m.status === "loaded" ? "on" : "off"), m.status)); row.appendChild(st);
+    const act = el("td"); const on = m.status === "loaded";
+    const b = el("button", "", on ? "Turn off" : "Turn on");
+    b.onclick = async () => { if (!confirm((on ? "Turn off " : "Turn on ") + m.name + "?")) return; try { await api("/api/modules/" + m.name, { method: "POST", body: { enabled: !on } }); loadModules(); loadPermissions(); } catch (e) { toast(e.message); } };
+    act.appendChild(b); row.appendChild(act); body.appendChild(row);
+  });
+}
+
+async function loadDevices() {
+  let data;
+  try { data = await api("/api/devices"); } catch (e) { return; }
+  const state = document.getElementById("remote-state");
+  state.textContent = data.remote.enabled
+    ? "Remote access is on at https://" + data.remote.hosts.join(", https://") + " (through Tailscale). Pair a device with a code, then open that address on it."
+    : "Remote access is off. Turn it on with `starlight remote enable` (needs Tailscale on this PC and your phone).";
+  const body = document.querySelector("#devices tbody"); body.innerHTML = "";
+  data.devices.forEach(d => {
+    const row = el("tr");
+    row.append(el("td", "", d.name), el("td", "small", d.paired), el("td", "small", d.last_seen || "never"));
+    const act = el("td"); const b = el("button", "danger", "Remove");
+    b.onclick = async () => { if (confirm("Remove " + d.name + "? It can no longer use Starlight.")) { await api("/api/devices/" + d.id, { method: "DELETE" }); loadDevices(); } };
+    act.appendChild(b); row.appendChild(act); body.appendChild(row);
+  });
+  if (!data.devices.length) body.appendChild(el("tr")).appendChild(el("td", "dim small", "No paired devices."));
+}
+document.getElementById("pair").onclick = async () => {
+  try {
+    const data = await api("/api/pair/code", { method: "POST" });
+    document.getElementById("code").textContent = data.code;
+    document.getElementById("code-note").textContent = "works once, for 5 minutes";
+    setTimeout(() => { document.getElementById("code").textContent = ""; document.getElementById("code-note").textContent = ""; }, data.valid_seconds * 1000);
+  } catch (e) { toast(e.message); }
+};
+
+(async () => {
+  try { const s = await api("/api/status"); if (!s.local) document.body.classList.add("remote"); } catch (e) { /* */ }
+  loadPermissions(); loadModules(); loadDevices();
+})();
+</script>
+</body>
+</html>

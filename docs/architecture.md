@@ -33,8 +33,8 @@ modules/            hello, web, login, network, recon, cve, certs, breach, deskt
                     system, clipboard, weather, news, finance, filesearch, notify,
                     reminders, mail, pdf, code, files, access, whatsapp, todo,
                     calendar, briefing, calc, translate, automations, apps, media,
-                    commands, office, dev, research, docs, notes, transcripts
-                    (+ _template)
+                    commands, office, dev, research, docs, notes, transcripts,
+                    voice, home, lan, backup (+ _template)
 skills/             skills it learns (one folder each)
 scripts/            install.ps1, install.sh
 memory/             what the AI learns (one Markdown file per fact)
@@ -155,6 +155,42 @@ the kill switch) and are enabled by default. Free or local, no API keys except w
   parts citing file and page), `notes` (Markdown files in `<Starlight folder>/Notes`,
   indexed by `docs`), `transcripts` (YouTube captions via the `transcripts` extra, with
   [mm:ss] marks, summaries and questions).
+
+**Web chat, conversations and remote use.** Conversations are saved in
+`data/conversations/<id>.json` (`core/conversations.py`); `Kernel.ask(...,
+conversation=id)` continues one, with a lock per conversation, and the terminal continues
+the current one. The web app (`web/app.py`) adds the conversation list, file uploads
+(images go to the model as pictures, documents as text), the settings page (permission
+rules through `save_rule`, modules, devices) and the memory & skills page. A `Gate` decides
+for every request whether it is the local user (a connection from 127.0.0.1/::1, a
+loopback Host and matching Origin, and no proxy headers) or a paired device (`web/auth.py`: one-time 6-digit codes, SHA-256 hashed
+256-bit tokens in an HttpOnly/Secure/SameSite=Strict cookie, lockout after 5 failures).
+Remote use is meant only through `tailscale serve` (`web/remote.py`, `starlight remote`),
+which keeps Starlight on 127.0.0.1 (`starlight web` refuses any other `web.host`);
+`web.remote.confirm` patterns are added as always-ask rules and `web.remote.blocked` as
+never-run rules for the duration of a remote request (`permissions.extra_confirm`,
+`extra_blocked`), every response forbids framing (X-Frame-Options, CSP), uploads are
+capped while streaming and Office files are checked for unpacked size, and
+changing permissions, modules, devices or skills, and releasing the kill switch, are
+local-only.
+
+**Home and devices.** `home` talks to Home Assistant's REST API with a long-lived token
+from the vault; `free_domains` (lights, switches, fans, media players, scenes) switch
+without asking, other domains ask, and `call_service` is a CONFIRM tool; watched entities
+publish `home.changed`. `lan` reads the neighbour table (`arp -a`, `/proc/net/arp`, `ip
+neigh`), optionally pings only the PC's own private /24 networks, keeps names in
+`data/modules/lan/devices.json` and, with `watch`, publishes `lan.new_device`. `backup`
+writes `<target>/<name>/<name> <date>.zip` with a SHA-256 manifest inside (a `.partial`
+file until complete), keeps `keep` versions, verifies against the manifest and restores
+without overwriting unless asked (`restore` is a CONFIRM tool; zip paths are checked).
+
+**Voice.** `Starlight.exe --voice` downloads whisper.cpp's `whisper-server` with a
+multilingual model and Piper with a German and an English voice into `tools/`. The `voice`
+module starts `whisper-server` on 127.0.0.1 the first time speech is transcribed and keeps
+it running, so the model stays loaded; Piper runs once per answer. The web chat records
+16 kHz WAV in the browser (no converter needed) and posts it to `/api/transcribe`;
+`/api/speak` returns a WAV to play. The terminal's `/talk` records with the `voice` extra
+(sounddevice).
 
 **Shared building blocks for modules.** `ctx.deliver` sends a message to every open
 channel at once: it calls the current interface's `notify` and publishes a `deliver` event

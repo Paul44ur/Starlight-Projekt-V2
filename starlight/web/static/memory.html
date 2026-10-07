@@ -1,0 +1,107 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Starlight memory</title>
+<link rel="icon" href="/icon.svg" type="image/svg+xml" />
+<link rel="stylesheet" href="/style.css" />
+<style>
+  .mem { border-bottom: 1px solid var(--border); padding: 10px 0; }
+  .mem:last-child { border-bottom: none; }
+  .mem .topic { font-weight: 600; }
+  .mem .text { white-space: pre-wrap; margin: 4px 0; }
+  .mem textarea { width: 100%; min-height: 80px; }
+  .skill { border-bottom: 1px solid var(--border); padding: 10px 0; }
+  .skill pre { white-space: pre-wrap; background: var(--panel2); padding: 8px; border-radius: 8px;
+               font-size: 13px; max-height: 240px; overflow: auto; }
+  body.remote .local-only { display: none; }
+</style>
+</head>
+<body>
+<header class="top">
+  <h1>⭐ Memory &amp; skills</h1><span class="spacer"></span>
+  <nav><a href="/">Chat</a><a href="/settings">Settings</a></nav>
+  <button id="theme" class="icon" onclick="cycleTheme()">◐</button>
+</header>
+<div class="page">
+  <div class="card">
+    <h2>What Starlight remembers about you</h2>
+    <p class="dim small">Each memory is a plain text file in the <code>memory</code> folder. Edit or delete
+      anything that is wrong or that you don't want kept.</p>
+    <div class="row"><input id="search" type="search" class="grow" placeholder="Search memories" /><span id="count" class="dim small"></span></div>
+    <div id="memories"></div>
+  </div>
+  <div class="card">
+    <h2>Skills it learned</h2>
+    <p class="dim small">Drafts are only used after you approve them<span class="local-only"> here</span>.
+      Every change is kept, so "Undo" brings back the version before.</p>
+    <div id="skills"></div>
+  </div>
+</div>
+<script src="/common.js"></script>
+<script>
+let remote = false;
+
+async function loadMemories() {
+  const search = document.getElementById("search").value;
+  const data = await api("/api/memory?search=" + encodeURIComponent(search));
+  document.getElementById("count").textContent = data.count + " memories";
+  const box = document.getElementById("memories"); box.innerHTML = "";
+  data.memories.forEach(m => {
+    const item = el("div", "mem");
+    item.appendChild(el("div", "topic", m.topic));
+    const text = el("div", "text", m.content); item.appendChild(text);
+    item.appendChild(el("div", "dim small", (m.date || "") + " · from " + m.source));
+    const row = el("div", "row");
+    const edit = el("button", "", "Edit");
+    edit.onclick = () => {
+      const area = document.createElement("textarea"); area.value = m.content;
+      const save = el("button", "ok", "Save");
+      save.onclick = async () => { try { await api("/api/memory/" + m.id, { method: "PUT", body: { content: area.value } }); toast("Saved"); loadMemories(); } catch (e) { toast(e.message); } };
+      text.replaceWith(area); row.replaceChildren(save);
+    };
+    const del = el("button", "danger", "Delete");
+    del.onclick = async () => { if (confirm("Forget this?")) { await api("/api/memory/" + m.id, { method: "DELETE" }); loadMemories(); } };
+    row.append(edit, del); item.appendChild(row); box.appendChild(item);
+  });
+  if (!data.memories.length) box.appendChild(el("div", "dim small", "Nothing yet."));
+}
+document.getElementById("search").oninput = () => loadMemories();
+
+async function loadSkills() {
+  const data = await api("/api/skills");
+  const box = document.getElementById("skills"); box.innerHTML = "";
+  data.skills.forEach(s => {
+    const item = el("div", "skill");
+    const head = el("div", "row");
+    head.append(el("b", "", s.name), el("span", "pill " + (s.status === "approved" ? "on" : s.status === "draft" ? "warn" : "off"), s.status), el("span", "dim small", "v" + s.version));
+    item.appendChild(head);
+    item.appendChild(el("div", "small", s.description));
+    item.appendChild(el("pre", "", s.instructions));
+    if (!remote) {
+      const row = el("div", "row");
+      const act = (label, action, cls) => {
+        const b = el("button", cls || "", label);
+        b.onclick = async () => { try { await api(`/api/skills/${encodeURIComponent(s.name)}/${action}`, { method: "POST" }); loadSkills(); } catch (e) { toast(e.message); } };
+        return b;
+      };
+      if (s.status !== "approved") row.appendChild(act("Approve", "approve", "ok"));
+      if (s.status !== "rejected") row.appendChild(act("Reject", "reject"));
+      row.appendChild(act("Undo last change", "rollback"));
+      const del = el("button", "danger", "Delete");
+      del.onclick = async () => { if (confirm("Delete the skill " + s.name + "?")) { await api("/api/skills/" + encodeURIComponent(s.name), { method: "DELETE" }); loadSkills(); } };
+      row.appendChild(del); item.appendChild(row);
+    }
+    box.appendChild(item);
+  });
+  if (!data.skills.length) box.appendChild(el("div", "dim small", "No skills yet. Starlight drafts one when the same kind of task works twice."));
+}
+
+(async () => {
+  try { const s = await api("/api/status"); remote = !s.local; if (remote) document.body.classList.add("remote"); } catch (e) { /* */ }
+  loadMemories(); loadSkills();
+})();
+</script>
+</body>
+</html>

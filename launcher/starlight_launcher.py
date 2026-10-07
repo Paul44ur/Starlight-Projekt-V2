@@ -50,6 +50,16 @@ DEFAULT_MODEL_URL = (
     "https://huggingface.co/bartowski/Qwen2.5-14B_Uncensored_Instruct-GGUF/resolve/main/"
     "Qwen2.5-14B_Uncensored_Instruct-Q4_K_M.gguf"
 )
+# Voice (optional, --voice): speech-to-text with whisper.cpp and text-to-speech with Piper,
+# both running on this PC. The URLs can be changed in config/launcher.json.
+WHISPER_URL = "https://github.com/ggml-org/whisper.cpp/releases/latest/download/whisper-bin-x64.zip"
+WHISPER_MODEL_URL = "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-small.bin"
+PIPER_URL = "https://github.com/rhasspy/piper/releases/latest/download/piper_windows_amd64.zip"
+PIPER_VOICES = "https://huggingface.co/rhasspy/piper-voices/resolve/main"
+VOICES = (
+    "de/de_DE/thorsten/medium/de_DE-thorsten-medium",
+    "en/en_US/lessac/medium/en_US-lessac-medium",
+)
 GB = 1024**3
 WEB_PORT = 8700  # the local web chat (matches config web.port)
 MB = 1024**2
@@ -77,6 +87,10 @@ class Settings:
     assume_yes: bool = False
     update: bool = False
     tesseract: bool | None = None  # None: ask (Windows)
+    voice: bool = False  # install speech-to-text and text-to-speech (about 0.6 GB)
+    whisper_url: str = WHISPER_URL
+    whisper_model_url: str = WHISPER_MODEL_URL
+    piper_url: str = PIPER_URL
     github_token: str | None = field(default=None, repr=False)
 
     @property
@@ -129,6 +143,10 @@ def load_settings(args: argparse.Namespace) -> Settings:
                     "web",
                     "both",
                     "tesseract",
+                    "voice",
+                    "whisper_url",
+                    "whisper_model_url",
+                    "piper_url",
                 ):
                     setattr(settings, key, value)
         except (OSError, ValueError) as exc:
@@ -147,6 +165,8 @@ def load_settings(args: argparse.Namespace) -> Settings:
     settings.update = args.update
     if args.tesseract:
         settings.tesseract = True
+    if args.voice:
+        settings.voice = True
     settings.github_token = os.environ.get("GITHUB_TOKEN") or None
     # Keep uv's cache on the same drive as the install, so it can hardlink packages into .venv
     # instead of copying them (which is slow and prints "Failed to hardlink files" when the
@@ -469,6 +489,51 @@ def ensure_llama(settings: Settings, ui: Ui) -> Path:
     return binary
 
 
+def voice_downloads() -> bool:
+    """Ready-made speech programs are published for Windows only."""
+    return os.name == "nt"
+
+
+def ensure_voice(settings: Settings, ui: Ui) -> None:
+    """whisper.cpp (speech to text) and Piper (text to speech) with a German and an English
+    voice, into tools/whisper and tools/piper, where the voice module finds them. Optional:
+    if a download fails, Starlight still starts, just without voice."""
+    if not settings.voice:
+        return
+    if not voice_downloads():
+        ui.say(
+            "   Voice: install whisper.cpp (whisper-server) and Piper yourself on Linux and "
+            "set their paths in config/modules/voice.yaml."
+        )
+        return
+    whisper = settings.tools / "whisper"
+    piper = settings.tools / "piper"
+    try:
+        if not (whisper / exe("whisper-server")).is_file() or settings.update:
+            ui.step("Downloading whisper.cpp (speech to text)")
+            archive = download(settings.whisper_url, settings.tools / "whisper.zip", ui)
+            extract_member(archive, exe("whisper-server"), whisper)
+            archive.unlink()
+        model = whisper / "models" / settings.whisper_model_url.rstrip("/").split("/")[-1]
+        if not model.is_file():
+            ui.step(f"Downloading the speech model {model.name}")
+            download(settings.whisper_model_url, model, ui)
+        if not (piper / exe("piper")).is_file() or settings.update:
+            ui.step("Downloading Piper (text to speech)")
+            archive = download(settings.piper_url, settings.tools / "piper.zip", ui)
+            extract_member(archive, exe("piper"), piper)
+            archive.unlink()
+        for voice in VOICES:
+            name = voice.split("/")[-1]
+            for suffix in (".onnx", ".onnx.json"):
+                target = piper / "voices" / f"{name}{suffix}"
+                if not target.is_file():
+                    ui.step(f"Downloading the voice {name}{suffix}")
+                    download(f"{PIPER_VOICES}/{voice}{suffix}", target, ui)
+    except LauncherError as exc:
+        ui.say(f"   Voice could not be installed ({exc}); Starlight works without it.")
+
+
 def ensure_model(settings: Settings, ui: Ui, remote: RemoteFile | None) -> Path:
     dest = settings.model_file
     if dest.is_file() and (remote is None or remote.size in (None, dest.stat().st_size)):
@@ -722,6 +787,7 @@ def setup(settings: Settings, ui: Ui) -> tuple[Path, Path | None, Path | None]:
         server = ensure_llama(settings, ui)
         model = ensure_model(settings, ui, remote)
     maybe_tesseract(settings, ui)
+    ensure_voice(settings, ui)
     write_launcher_config(settings, server, model)
     return uv, server, model
 
@@ -845,6 +911,9 @@ def build_parser() -> argparse.ArgumentParser:
         "--both", action="store_true", help="open the browser chat and a terminal chat together"
     )
     parser.add_argument("--tesseract", action="store_true", help="install Tesseract OCR")
+    parser.add_argument(
+        "--voice", action="store_true", help="install speech input and output (about 0.6 GB)"
+    )
     parser.add_argument("--model-url", help="GGUF model to use (a direct download link)")
     parser.add_argument("--context", type=int, help="context window in tokens")
     parser.add_argument("--variant", choices=["vulkan", "cpu"], help="llama.cpp build")

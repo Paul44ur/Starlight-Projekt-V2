@@ -32,7 +32,9 @@ def client(root: Path) -> object:
     from starlight.core import Paths
     from starlight.web.app import create_app
 
-    return TestClient(create_app(Paths(root)), base_url="http://127.0.0.1:8700")
+    return TestClient(
+        create_app(Paths(root)), base_url="http://127.0.0.1:8700", client=("127.0.0.1", 50000)
+    )
 
 
 def test_page_and_status(tmp_path: Path) -> None:

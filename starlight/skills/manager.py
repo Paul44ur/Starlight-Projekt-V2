@@ -198,6 +198,16 @@ class SkillManager:
     def reject(self, name: str) -> Skill:
         return self._set_status(name, "rejected")
 
+    def delete(self, name: str) -> None:
+        """Remove a skill. Its earlier versions stay in the skill history (rollback)."""
+        slug = slugify(name)
+        folder = self.store.folder(slug)
+        if not folder.is_dir():
+            raise KeyError(f"no skill '{name}'")
+        shutil.rmtree(folder)
+        self._vectors.pop(slug, None)
+        self._commit(f"delete {slug}", slug)
+
     def versions(self, name: str) -> list[tuple[str, str, str]]:
         return self.history.log(slugify(name))
 

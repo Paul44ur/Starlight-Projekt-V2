@@ -416,3 +416,51 @@ def test_load_settings_points_uv_cache_at_the_install_drive(
     monkeypatch.setenv("UV_CACHE_DIR", str(tmp_path / "chosen"))
     L.load_settings(args)
     assert os.environ["UV_CACHE_DIR"] == str(tmp_path / "chosen")  # user's choice is respected
+
+
+def test_voice_is_installed_only_when_asked(
+    server: str, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    def archive(name: str) -> bytes:
+        buffer = io.BytesIO()
+        with zipfile.ZipFile(buffer, "w") as zf:
+            zf.writestr(f"Release/{L.exe(name)}", "program")
+            zf.writestr("Release/helper.dll", "library")
+        return buffer.getvalue()
+
+    Files.files["/whisper.zip"] = archive("whisper-server")
+    Files.files["/ggml-small.bin"] = b"model"
+    Files.files["/piper.zip"] = archive("piper")
+    for voice in L.VOICES:
+        Files.files[f"/voices/{voice}.onnx"] = b"onnx"
+        Files.files[f"/voices/{voice}.onnx.json"] = b"{}"
+    monkeypatch.setattr(L, "voice_downloads", lambda: True)
+    monkeypatch.setattr(L, "PIPER_VOICES", f"{server}/voices")
+    settings = L.Settings(root=tmp_path)
+    settings.whisper_url = f"{server}/whisper.zip"
+    settings.whisper_model_url = f"{server}/ggml-small.bin"
+    settings.piper_url = f"{server}/piper.zip"
+
+    L.ensure_voice(settings, QuietUi())  # not asked for: nothing happens
+    assert not (tmp_path / "tools").exists()
+
+    settings.voice = True
+    L.ensure_voice(settings, QuietUi())
+    assert (tmp_path / "tools" / "whisper" / L.exe("whisper-server")).is_file()
+    assert (tmp_path / "tools" / "whisper" / "helper.dll").is_file()
+    assert (tmp_path / "tools" / "whisper" / "models" / "ggml-small.bin").read_bytes() == b"model"
+    assert (tmp_path / "tools" / "piper" / L.exe("piper")).is_file()
+    voices = sorted(p.name for p in (tmp_path / "tools" / "piper" / "voices").iterdir())
+    assert voices == [
+        "de_DE-thorsten-medium.onnx",
+        "de_DE-thorsten-medium.onnx.json",
+        "en_US-lessac-medium.onnx",
+        "en_US-lessac-medium.onnx.json",
+    ]
+
+    ui = QuietUi()
+    settings.piper_url = f"{server}/missing.zip"
+    settings.update = True
+    L.ensure_voice(settings, ui)  # a failed download is reported, not fatal
+    assert any("works without it" in line for line in ui.lines)
+    assert L.build_parser().parse_args(["--voice"]).voice is True

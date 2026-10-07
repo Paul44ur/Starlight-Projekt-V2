@@ -1,0 +1,13 @@
+# The voice module (modules/voice): speech to text with whisper.cpp and text to speech with
+# Piper, both on this PC. Starlight.exe --voice downloads them into tools/whisper and
+# tools/piper, where they are found automatically; otherwise give the paths here.
+whisper_server: ""      # path to whisper-server(.exe); empty: tools/whisper or PATH
+whisper_model: ""       # a ggml-*.bin model; empty: the first in tools/whisper/models
+whisper_port: 8178      # the speech server listens here, on this PC only
+whisper_threads: 4
+language: auto          # or "de", "en", ...
+piper: ""               # path to piper(.exe); empty: tools/piper or PATH
+voices: {}              # language -> voice model (.onnx), e.g. {de: "D:\\voices\\de.onnx"}
+                        # empty: every .onnx in tools/piper/voices, by its language
+default_voice: de       # used when the language of the text is not given
+record_seconds: 6       # how long `listen` / the terminal's /talk records

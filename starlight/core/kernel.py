@@ -15,6 +15,7 @@ import httpx
 from starlight.core.agent import Agent, AgentResult
 from starlight.core.config import ConfigError, StarlightConfig, load_config
 from starlight.core.context import SUMMARY_PREFIX, ContextManager
+from starlight.core.conversations import ConversationStore
 from starlight.core.corelock import CoreLock
 from starlight.core.dispatcher import Confirmer, Dispatcher
 from starlight.core.events import Event, EventBus
@@ -168,10 +169,12 @@ class Kernel:
         self.modules = ModuleManager(
             self.paths, self.dispatcher, self.bus, self.kill_switch, self.audit, self.services
         )
-        self.history: list[Message] = []
-        # One conversation may be shared by several front-ends (--both: browser + terminal);
-        # requests that continue it take turns so no exchange is lost from the history.
-        self._history_lock = asyncio.Lock()
+        # Saved conversations (data/conversations). One may be shared by several front-ends
+        # (--both: browser + terminal); requests that continue the same conversation take
+        # turns so no exchange is lost from it.
+        self.conversations = ConversationStore(self.paths.data / "conversations")
+        self._histories: dict[str, list[Message]] = {}
+        self._conversation_locks: dict[str, asyncio.Lock] = {}
         self._hotkey = hotkey
         self._watcher: asyncio.Task[None] | None = None
         self._background: set[asyncio.Task[Any]] = set()
@@ -368,27 +371,59 @@ class Kernel:
         keep_history: bool = False,
         on_token: TokenCallback | None = None,
         images: list[bytes] | None = None,
+        conversation: str | None = None,
     ) -> AgentResult:
-        """Run one request through the agent loop."""
+        """Run one request through the agent loop. With ``keep_history`` it continues a
+        saved conversation: ``conversation`` (an id) or the current one."""
         await self.modules.sync_state()
         stream = on_token if self.config.model.stream else None
         if not keep_history:
             return await self.agent.run(request, None, on_token=stream, images=images)
-        async with self._history_lock:
-            return await self._ask_in_conversation(request, stream, images)
+        name = conversation or self.conversations.current
+        lock = self._conversation_locks.setdefault(name, asyncio.Lock())
+        async with lock:
+            return await self._ask_in_conversation(name, request, stream, images)
+
+    def _history_of(self, conversation: str) -> list[Message]:
+        if conversation not in self._histories:
+            self._histories[conversation] = self.conversations.messages(conversation)
+        return self._histories[conversation]
 
     async def _ask_in_conversation(
-        self, request: str, stream: TokenCallback | None, images: list[bytes] | None
+        self,
+        conversation: str,
+        request: str,
+        stream: TokenCallback | None,
+        images: list[bytes] | None,
     ) -> AgentResult:
-        result = await self.agent.run(request, self.history, on_token=stream, images=images)
+        history = self._history_of(conversation)
+        result = await self.agent.run(request, history, on_token=stream, images=images)
         if not result.stopped:
             # Keep the conversation (and summaries), not the system prompt or recalled memories.
-            self.history = [
+            kept = [
                 m
                 for m in result.messages[1:]
                 if not (m.role == "system" and not m.content.startswith(SUMMARY_PREFIX))
             ]
+            self._histories[conversation] = kept
+            try:
+                self.conversations.save(conversation, kept)
+            except (OSError, KeyError):  # deleted meanwhile, or the disk is full
+                self.log.exception("could not save the conversation", conversation=conversation)
         return result
+
+    @property
+    def history(self) -> list[Message]:
+        """The current conversation's messages."""
+        return self._history_of(self.conversations.current)
+
+    def new_conversation(self, title: str = "") -> str:
+        """Start a fresh conversation and make it the current one."""
+        return self.conversations.create(title)
+
+    def forget_conversation(self, conversation: str) -> None:
+        self.conversations.delete(conversation)
+        self._histories.pop(conversation, None)
 
     async def _run_request(self, text: str) -> str:
         return (await self.ask(text)).answer

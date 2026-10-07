@@ -1,0 +1,5 @@
+# The backup module (modules/backup): versioned zip backups of folders you choose. Add a
+# backup from the chat ("back up my Documents\Photos to E:\Backups every Sunday" - the
+# schedule is an automation). Each run makes <target>\<name>\<name> <date>.zip with a list
+# of every file and its checksum inside, and keeps the newest `keep` versions.
+sets: {}

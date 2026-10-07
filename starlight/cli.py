@@ -151,7 +151,8 @@ HELP = """\
 - `/modules` - which modules are on
 - `/reload NAME` / `/enable NAME` / `/disable NAME` - manage a module
 - `/kill [REASON]` / `/resume` - stop everything, and continue
-- `/clear` - forget this conversation
+- `/new` (or `/clear`) - start a new conversation (the old one stays saved)
+- `/talk [SECONDS]` - say your request into the microphone (voice module)
 - `/quit` - leave
 - `!module.tool {json}` - call a tool directly (test model)
 """
@@ -182,7 +183,12 @@ async def cmd_run(paths: Paths, args: argparse.Namespace) -> int:
                 break
             if not line:
                 continue
-            if line.startswith("/"):
+            if line.split(" ", 1)[0] == "/talk":
+                spoken = await _talk(kernel, line[5:].strip(), view)
+                if not spoken:
+                    continue
+                line = spoken
+            elif line.startswith("/"):
                 if await _repl_command(kernel, line, view):
                     break
                 continue
@@ -207,6 +213,29 @@ async def cmd_run(paths: Paths, args: argparse.Namespace) -> int:
             if result.stopped:
                 view.info("Kill switch is engaged. Type /resume to continue.")
     return 0
+
+
+async def _talk(kernel: Kernel, seconds: str, view: ChatView) -> str | None:
+    """/talk [seconds]: record from the microphone and use what was said as the request."""
+    record = kernel.modules.records.get("voice")
+    if record is None or record.instance is None:
+        view.error("The voice module is off (`starlight modules enable voice`).")
+        return None
+    voice: Any = record.instance
+    duration = float(seconds) if seconds.replace(".", "", 1).isdigit() else 0
+    duration = duration or voice.config.record_seconds
+    view.info(f"Listening for {duration:g} seconds ...")
+    try:
+        audio = await asyncio.to_thread(voice.record, duration)
+        text = str(await voice.transcribe_audio(audio)).strip()
+    except Exception as exc:
+        view.error(str(exc))
+        return None
+    if not text:
+        view.info("I didn't catch anything.")
+        return None
+    view.info(f"You said: {text}")
+    return text
 
 
 async def _repl_command(kernel: Kernel, line: str, view: ChatView) -> bool:
@@ -239,8 +268,9 @@ async def _repl_command(kernel: Kernel, line: str, view: ChatView) -> bool:
     elif command == "resume":
         kernel.kill_switch.reset()
         view.info("Kill switch released.")
-    elif command == "clear":
-        kernel.history = []
+    elif command in ("clear", "new"):
+        kernel.new_conversation()
+        view.info("Started a new conversation.")
     else:
         view.error(f"Unknown command: /{command}. Try /help.")
     return False
@@ -512,6 +542,50 @@ async def cmd_connect(paths: Paths, args: argparse.Namespace) -> int:
     return await run_client(host, port, assume_yes=args.yes)
 
 
+def cmd_remote(paths: Paths, args: argparse.Namespace) -> int:
+    """Use the web chat from your phone through Tailscale (private, nothing opened on your
+    router), with every device paired by a one-time code."""
+    from starlight.web import remote
+    from starlight.web.auth import Devices
+
+    devices = Devices(paths.data / "devices")
+    try:
+        if args.action == "enable":
+            url = remote.enable(paths, load_config(paths).web.port)
+            print(f"The chat is now reachable from your devices at {url}")
+            print("Restart the chat (or Starlight) so it accepts that address, then pair a")
+            print("device: open the address on your phone and enter the code from")
+            print("`starlight remote pair`.")
+        elif args.action == "disable":
+            warning = remote.disable(paths)
+            print("Remote access is off. Restart Starlight to apply it.")
+            if warning:
+                print(warning, file=sys.stderr)
+        elif args.action == "status":
+            state = remote.status(paths)
+            print(f"Remote access: {'on' if state['enabled'] else 'off'}")
+            if state["url"]:
+                print(f"Address: {state['url']}")
+            for device in devices.list():
+                print(f"  paired: {device['name']} (id {device['id']}, since {device['paired']})")
+        elif args.action == "pair":
+            code = devices.new_code()
+            print(f"Pairing code: {code}  (works once, for 5 minutes)")
+            print("Open the chat address on your phone and enter it there.")
+        elif args.action == "devices":
+            for device in devices.list() or [{"name": "(none)", "id": "-", "last_seen": None}]:
+                print(f"{device['id']:<12} {device['name']:<30} last seen {device['last_seen']}")
+        elif args.action == "revoke":
+            if not args.device or not devices.revoke(args.device):
+                print("No such device; see `starlight remote devices`.", file=sys.stderr)
+                return 1
+            print(f"Device {args.device} can no longer use Starlight.")
+    except remote.RemoteError as exc:
+        print(str(exc), file=sys.stderr)
+        return 1
+    return 0
+
+
 def cmd_logs(paths: Paths, args: argparse.Namespace) -> int:
     if args.action == "show":
         from starlight.core.logging import format_errors, recent_errors
@@ -685,6 +759,13 @@ def build_parser() -> argparse.ArgumentParser:
     connect.add_argument("--host", default="", help="backend host (default: web.host in config)")
     connect.add_argument("--port", type=int, default=0, help="backend port (default: web.port)")
     connect.add_argument("-y", "--yes", action="store_true", help="approve confirmations")
+    remote_cmd = sub.add_parser(
+        "remote", help="use the web chat from your phone through Tailscale (paired devices)"
+    )
+    remote_cmd.add_argument(
+        "action", choices=["enable", "disable", "status", "pair", "devices", "revoke"]
+    )
+    remote_cmd.add_argument("device", nargs="?", default="", help="revoke: the device id")
     logs = sub.add_parser("logs", help="show recent errors, or check for leaked secrets")
     logs.add_argument("action", choices=["show", "scan"])
     logs.add_argument("-n", "--count", type=int, default=20, help="how many recent errors")
@@ -741,6 +822,8 @@ def main(argv: Sequence[str] | None = None) -> int:
                 return asyncio.run(cmd_connect(paths, args))
             case "logs":
                 return cmd_logs(paths, args)
+            case "remote":
+                return cmd_remote(paths, args)
             case "service":
                 return cmd_service(paths, args)
             case "skills":

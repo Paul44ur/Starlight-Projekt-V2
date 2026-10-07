@@ -1,0 +1,10 @@
+# The home module (modules/home): your smart home through Home Assistant. Set it up from the
+# chat ("connect to my Home Assistant at http://homeassistant.local:8123"); the long-lived
+# access token (HA: your profile -> Security -> Long-lived access tokens) goes into the
+# keyring as home.token.
+url: ""
+# Switching these on and off runs without asking; every other kind of device (locks,
+# alarms, garage doors, heating ...) asks first.
+free_domains: [light, switch, fan, media_player, scene, input_boolean]
+watch: []             # entities to watch for changes (events for automations), e.g. [binary_sensor.front_door]
+watch_interval: 30    # seconds
