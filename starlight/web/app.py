@@ -32,12 +32,20 @@ from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from starlight.core import Event, Kernel, Paths, ToolError
 from starlight.core.config import RemoteConfig, load_config
 from starlight.core.output import describe_output_folder
-from starlight.core.permissions import Permission, extra_confirm, save_rule
+from starlight.core.permissions import Permission, extra_blocked, extra_confirm, save_rule
 from starlight.core.ui import current_ui
 from starlight.web.auth import COOKIE, Device, Devices
 
 STATIC = Path(__file__).with_name("static")
 LOOPBACK = {"127.0.0.1", "localhost", "::1"}
+LOOPBACK_PEERS = {"127.0.0.1", "::1"}
+MAX_UNPACKED = 200 * 1024**2  # a Word/Excel file may unpack to at most this much
+SECURITY_HEADERS = {
+    "X-Frame-Options": "DENY",  # no other page may show the chat in a frame (clickjacking)
+    "Content-Security-Policy": "frame-ancestors 'none'",
+    "X-Content-Type-Options": "nosniff",
+    "Referrer-Policy": "no-referrer",
+}
 FORWARDED = ("x-forwarded-for", "x-forwarded-host", "forwarded", "tailscale-user-login")
 MAX_UPLOAD = 20 * 1024**2
 UPLOAD_KEEP = 3600  # seconds an uploaded file waits to be sent with a message
@@ -49,17 +57,20 @@ def _hostname(value: str) -> str:
     return (urlsplit(f"//{value}").hostname or "").lower()
 
 
-def allowed_request(headers: Any, extra_hosts: set[str]) -> bool:
+def allowed_request(headers: Any, peer: str | None) -> bool:
     """Only this machine's own chat page (or a non-browser client such as the terminal) may
     talk to the backend as the local user. Browsers let any web page open a WebSocket to
     localhost or send it a plain POST, so a page you visit could otherwise ask Starlight to
     do things and approve its own confirmations. The Host must be this machine (stops
     DNS-rebinding tricks), and an Origin, which every browser sends, must be that same host.
-    A request that came through a proxy (Tailscale) is never local."""
+    The connection itself must come from this PC, and a request that came through a proxy
+    (Tailscale) is never local. Pages are never shown inside another site's frame."""
+    if peer not in LOOPBACK_PEERS:
+        return False
     if any(name in headers for name in FORWARDED):
         return False
     host = _hostname(headers.get("host", ""))
-    if host not in LOOPBACK | extra_hosts:
+    if host not in LOOPBACK:
         return False
     origin = headers.get("origin")
     if not origin:
@@ -79,9 +90,8 @@ class Viewer:
 class Gate:
     """Decides, for each request, whether it is the local user, a paired device, or nobody."""
 
-    def __init__(self, devices: Devices, extra_hosts: set[str], remote: RemoteConfig) -> None:
+    def __init__(self, devices: Devices, remote: RemoteConfig) -> None:
         self.devices = devices
-        self.extra_hosts = extra_hosts
         self.remote = remote
 
     def remote_host(self, headers: Any) -> str | None:
@@ -93,11 +103,16 @@ class Gate:
 
     @staticmethod
     def client(headers: Any, peer: str | None) -> str:
+        """Who is knocking, for counting wrong pairing codes: the Tailscale user, else the
+        address Tailscale saw (it replaces any X-Forwarded-For a client sends)."""
+        login = headers.get("tailscale-user-login", "").strip()
+        if login:
+            return f"user:{login}"
         forwarded = headers.get("x-forwarded-for", "")
-        return forwarded.split(",")[0].strip() or peer or "?"
+        return forwarded.split(",")[-1].strip() or peer or "?"
 
     def viewer(self, headers: Any, cookies: dict[str, str], peer: str | None) -> Viewer | None:
-        if allowed_request(headers, self.extra_hosts):
+        if allowed_request(headers, peer):
             return Viewer(local=True)
         host = self.remote_host(headers)
         if host is None:
@@ -152,6 +167,7 @@ class Upload:
     name: str
     data: bytes
     added: float
+    text: str | None = None  # a document's text, read once when it was added
 
 
 def extract_text(name: str, data: bytes) -> str:
@@ -168,6 +184,17 @@ def extract_text(name: str, data: bytes) -> str:
         return text
     if suffix not in {".pdf", ".docx", ".xlsx"}:
         raise ValueError(f"{name}: only pictures, text, PDF, Word and Excel files can be added")
+    if suffix in {".docx", ".xlsx"}:
+        import io
+        import zipfile
+
+        try:
+            with zipfile.ZipFile(io.BytesIO(data)) as archive:
+                unpacked = sum(info.file_size for info in archive.infolist())
+        except zipfile.BadZipFile as exc:
+            raise ValueError(f"{name} is not a valid {suffix} file") from exc
+        if unpacked > MAX_UNPACKED:
+            raise ValueError(f"{name} unpacks to more than 200 MB; it can't be added")
     with tempfile.TemporaryDirectory() as folder:
         path = Path(folder) / f"upload{suffix}"
         path.write_bytes(data)
@@ -224,7 +251,14 @@ def create_app(paths: Paths | None = None) -> Any:
     app = FastAPI(title="Starlight chat", docs_url=None, redoc_url=None, lifespan=lifespan)
     config = load_config(paths)
     devices = Devices(paths.data / "devices")
-    gate = Gate(devices, {config.web.host} - {"0.0.0.0", "::"}, config.web.remote)
+    gate = Gate(devices, config.web.remote)
+
+    @app.middleware("http")
+    async def security_headers(request: Request, call_next: Any) -> Any:
+        response = await call_next(request)
+        for name, value in SECURITY_HEADERS.items():
+            response.headers.setdefault(name, value)
+        return response
 
     def kernel() -> Kernel:
         found: Kernel = state["kernel"]
@@ -423,28 +457,41 @@ def create_app(paths: Paths | None = None) -> Any:
 
     # -- files dropped into the chat -------------------------------------------------------
 
+    async def limited_body(request: Request) -> bytes:
+        """The request body, refusing anything over 20 MB before it is all in memory."""
+        declared = request.headers.get("content-length", "")
+        if declared.isdigit() and int(declared) > MAX_UPLOAD:
+            raise HTTPException(status_code=413, detail="files can be up to 20 MB")
+        chunks: list[bytes] = []
+        size = 0
+        async for chunk in request.stream():
+            size += len(chunk)
+            if size > MAX_UPLOAD:
+                raise HTTPException(status_code=413, detail="files can be up to 20 MB")
+            chunks.append(chunk)
+        return b"".join(chunks)
+
     @app.post("/api/upload")
     async def upload(request: Request) -> dict[str, Any]:
         viewer(request)
         name = Path(unquote(request.headers.get("x-filename", "file"))).name[:120] or "file"
-        data = await request.body()
+        data = await limited_body(request)
         if not data:
             raise HTTPException(status_code=400, detail="the file is empty")
-        if len(data) > MAX_UPLOAD:
-            raise HTTPException(status_code=413, detail="files can be up to 20 MB")
         now = time.time()
         for key in [k for k, u in uploads.items() if now - u.added > UPLOAD_KEEP]:
             uploads.pop(key, None)
         while len(uploads) >= 20:
             uploads.pop(next(iter(uploads)))
         kind = "image" if Path(name).suffix.lower() in IMAGES else "document"
+        text: str | None = None
         if kind == "document":
             try:
-                await asyncio.to_thread(extract_text, name, data)  # can it be read?
+                text = await asyncio.to_thread(extract_text, name, data)
             except Exception as exc:
                 raise HTTPException(status_code=415, detail=str(exc)) from exc
         upload_id = uuid.uuid4().hex
-        uploads[upload_id] = Upload(name, data, now)
+        uploads[upload_id] = Upload(name, b"" if text is not None else data, now, text)
         return {"id": upload_id, "name": name, "kind": kind, "size": len(data)}
 
     async def attach(text: str, ids: list[Any]) -> tuple[str, list[bytes]]:
@@ -457,7 +504,7 @@ def create_app(paths: Paths | None = None) -> Any:
             if Path(item.name).suffix.lower() in IMAGES:
                 images.append(item.data)
                 continue
-            content = await asyncio.to_thread(extract_text, item.name, item.data)
+            content = item.text or ""
             parts.append(f"\n\n[Attached file: {item.name}]\n{content[:60000]}")
         return "".join(parts), images
 
@@ -472,8 +519,8 @@ def create_app(paths: Paths | None = None) -> Any:
     @app.post("/api/transcribe")
     async def transcribe(request: Request) -> dict[str, Any]:
         viewer(request)
-        audio = await request.body()
-        if not audio or len(audio) > MAX_UPLOAD:
+        audio = await limited_body(request)
+        if not audio:
             raise HTTPException(status_code=400, detail="send a short WAV recording")
         try:
             text = await voice().transcribe_audio(audio)
@@ -674,6 +721,7 @@ def create_app(paths: Paths | None = None) -> Any:
         clients[web_ui] = send
         ask_task: asyncio.Task[None] | None = None
         confirm_more = () if who.local else tuple(config.web.remote.confirm)
+        block_more = () if who.local else tuple(config.web.remote.blocked)
         try:
             while True:
                 message = json.loads(await websocket.receive_text())
@@ -698,6 +746,7 @@ def create_app(paths: Paths | None = None) -> Any:
                             images,
                             message.get("conversation") or None,
                             confirm_more,
+                            block_more,
                         )
                     )
                 elif kind == "reply":
@@ -723,6 +772,7 @@ async def _run_ask(
     images: list[bytes] | None = None,
     conversation: str | None = None,
     confirm_more: tuple[str, ...] = (),
+    block_more: tuple[str, ...] = (),
 ) -> None:
     queue: asyncio.Queue[str | None] = asyncio.Queue()
 
@@ -745,6 +795,7 @@ async def _run_ask(
     await send({"type": "start", "conversation": name})
     token_ctx = current_ui.set(web_ui)
     confirm_ctx = extra_confirm.set(confirm_more)
+    block_ctx = extra_blocked.set(block_more)
     pumper = asyncio.create_task(pump())
     try:
         result = await kernel.ask(
@@ -771,6 +822,7 @@ async def _run_ask(
             await pumper
         await send({"type": "error", "text": f"{type(exc).__name__}: {exc}"})
     finally:
+        extra_blocked.reset(block_ctx)
         extra_confirm.reset(confirm_ctx)
         current_ui.reset(token_ctx)
 
@@ -782,6 +834,11 @@ def run(paths: Paths | None = None) -> None:
 
     paths = paths or Paths.discover()
     config = load_config(paths)
+    if config.web.host not in LOOPBACK:
+        raise SystemExit(
+            f"web.host is {config.web.host}: the chat must listen on this PC only "
+            "(127.0.0.1). To use it from your phone, use `starlight remote enable` (Tailscale)."
+        )
     server = uvicorn.Server(
         uvicorn.Config(
             create_app(paths),

@@ -557,8 +557,10 @@ def cmd_remote(paths: Paths, args: argparse.Namespace) -> int:
             print("device: open the address on your phone and enter the code from")
             print("`starlight remote pair`.")
         elif args.action == "disable":
-            remote.disable(paths)
-            print("Remote access is off. Restart the chat to apply it.")
+            warning = remote.disable(paths)
+            print("Remote access is off. Restart Starlight to apply it.")
+            if warning:
+                print(warning, file=sys.stderr)
         elif args.action == "status":
             state = remote.status(paths)
             print(f"Remote access: {'on' if state['enabled'] else 'off'}")

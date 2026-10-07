@@ -162,12 +162,15 @@ conversation=id)` continues one, with a lock per conversation, and the terminal 
 the current one. The web app (`web/app.py`) adds the conversation list, file uploads
 (images go to the model as pictures, documents as text), the settings page (permission
 rules through `save_rule`, modules, devices) and the memory & skills page. A `Gate` decides
-for every request whether it is the local user (loopback Host and matching Origin, and no
-proxy headers) or a paired device (`web/auth.py`: one-time 6-digit codes, SHA-256 hashed
+for every request whether it is the local user (a connection from 127.0.0.1/::1, a
+loopback Host and matching Origin, and no proxy headers) or a paired device (`web/auth.py`: one-time 6-digit codes, SHA-256 hashed
 256-bit tokens in an HttpOnly/Secure/SameSite=Strict cookie, lockout after 5 failures).
 Remote use is meant only through `tailscale serve` (`web/remote.py`, `starlight remote`),
-which keeps Starlight on 127.0.0.1; `web.remote.confirm` patterns are added as
-always-ask rules for the duration of a remote request (`permissions.extra_confirm`), and
+which keeps Starlight on 127.0.0.1 (`starlight web` refuses any other `web.host`);
+`web.remote.confirm` patterns are added as always-ask rules and `web.remote.blocked` as
+never-run rules for the duration of a remote request (`permissions.extra_confirm`,
+`extra_blocked`), every response forbids framing (X-Frame-Options, CSP), uploads are
+capped while streaming and Office files are checked for unpacked size, and
 changing permissions, modules, devices or skills, and releasing the kill switch, are
 local-only.
 

@@ -161,7 +161,9 @@ def test_microphone_and_speaker_in_the_web_chat(project: Paths, tmp_path: Path) 
 
     project.config_file.write_text("model:\n  provider: echo\nkill_switch:\n  hotkey: null\n")
     local = {"host": "127.0.0.1:8700"}
-    with TestClient(create_app(project), base_url="http://127.0.0.1:8700") as c:
+    with TestClient(
+        create_app(project), base_url="http://127.0.0.1:8700", client=("127.0.0.1", 50000)
+    ) as c:
         fake(c.app.state.kernel, tmp_path / "fake")
         assert c.post("/api/transcribe", headers=local, content=b"").status_code == 400
         heard = c.post("/api/transcribe", headers=local, content=recording())

@@ -411,7 +411,11 @@ What is different on the phone:
   git and Docker changes, changing access, and automations (`web: remote: confirm:` in the
   config).
 - Some things only change **on the PC**: permission rules, modules, paired devices,
-  skills, and releasing the kill switch (the phone can engage it).
+  skills, and releasing the kill switch (the phone can engage it). From the phone,
+  Starlight also won't loosen its own rules, add secrets, servers, logins, commands,
+  automations, backups or knowledge-base folders — even if asked (`web: remote: blocked:`).
+- The chat always listens on this PC only (`127.0.0.1`), and no other website can show it
+  inside a frame. Tailscale is the only way in from outside.
 - A wrong code is counted; after 5 wrong tries that device waits 15 minutes. A code works
   once and for 5 minutes. Pairing a new device sends you a notice everywhere.
 

@@ -138,12 +138,12 @@ class Devices:
             return token
 
     def check(self, token: str | None, client: str) -> Device | None:
-        """The paired device a token belongs to, or None (a wrong token counts as a failure)."""
-        if not token:
+        """The paired device a token belongs to, or None. A 256-bit token can't be guessed,
+        so a wrong one is not counted: a revoked phone polling with its old cookie must not
+        lock itself out of pairing again."""
+        if not token or len(token) > 200:
             return None
         with self._lock:
-            if self.throttle.locked(client):
-                return None
             wanted = _hash(token)
             devices = self._load()
             for device in devices:
@@ -152,7 +152,6 @@ class Devices:
                         device.last_seen = time.time()
                         self._store(devices)
                     return device
-            self.throttle.fail(client)
             return None
 
     def list(self) -> list[dict[str, Any]]:

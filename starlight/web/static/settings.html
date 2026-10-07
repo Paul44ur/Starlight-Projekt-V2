@@ -98,7 +98,7 @@ async function loadModules() {
     const st = el("td"); st.appendChild(el("span", "pill " + (m.status === "loaded" ? "on" : "off"), m.status)); row.appendChild(st);
     const act = el("td"); const on = m.status === "loaded";
     const b = el("button", "", on ? "Turn off" : "Turn on");
-    b.onclick = async () => { try { await api("/api/modules/" + m.name, { method: "POST", body: { enabled: !on } }); loadModules(); loadPermissions(); } catch (e) { toast(e.message); } };
+    b.onclick = async () => { if (!confirm((on ? "Turn off " : "Turn on ") + m.name + "?")) return; try { await api("/api/modules/" + m.name, { method: "POST", body: { enabled: !on } }); loadModules(); loadPermissions(); } catch (e) { toast(e.message); } };
     act.appendChild(b); row.appendChild(act); body.appendChild(row);
   });
 }

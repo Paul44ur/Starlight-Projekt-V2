@@ -30,6 +30,9 @@ def _matches(name: str, patterns: list[str]) -> bool:
 #: another device (the web chat over Tailscale) runs, so desktop control, code and your
 #: commands ask on that device even when they normally run on their own.
 extra_confirm: ContextVar[tuple[str, ...]] = ContextVar("extra_confirm", default=())
+#: Patterns that never run for the request being handled (set for another device: changing
+#: permissions, access or automations stays on the PC).
+extra_blocked: ContextVar[tuple[str, ...]] = ContextVar("extra_blocked", default=())
 
 
 class PermissionPolicy:
@@ -40,7 +43,11 @@ class PermissionPolicy:
     def resolve(self, tool_name: str, default: Permission) -> Permission:
         """Effective permission. Order: blocked > tool's own BLOCKED > confirm >
         auto_approve / allowed this session > the tool's own tag."""
-        if _matches(tool_name, self.config.blocked) or default is Permission.BLOCKED:
+        if (
+            _matches(tool_name, self.config.blocked)
+            or default is Permission.BLOCKED
+            or _matches(tool_name, list(extra_blocked.get()))
+        ):
             return Permission.BLOCKED
         if _matches(tool_name, self.config.confirm) or _matches(
             tool_name, list(extra_confirm.get())

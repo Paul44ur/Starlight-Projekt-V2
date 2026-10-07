@@ -12,7 +12,6 @@ config/starlight.remote.yaml; `starlight remote disable` undoes both.
 
 from __future__ import annotations
 
-import contextlib
 import json
 import shutil
 import subprocess
@@ -83,13 +82,18 @@ def enable(paths: Paths, port: int) -> str:
     return f"https://{name}/"
 
 
-def disable(paths: Paths) -> None:
-    # not serving, or Tailscale gone: the config change below is what matters
-    with contextlib.suppress(RemoteError):
-        _run("serve", "--https=443", "off", timeout=60)
+def disable(paths: Paths) -> str | None:
+    """Turn remote access off. Returns a warning if Tailscale could not stop serving (the
+    config change is made either way, and Starlight refuses remote requests after a
+    restart)."""
     write_yaml_config(
         paths.config / REMOTE_FILE, {"web": {"remote": {"enabled": False, "hosts": []}}}, HEADER
     )
+    try:
+        _run("serve", "--https=443", "off", timeout=60)
+    except RemoteError as exc:
+        return f"Tailscale is still serving the chat ({exc}); run `tailscale serve reset`."
+    return None
 
 
 def status(paths: Paths) -> dict[str, Any]:

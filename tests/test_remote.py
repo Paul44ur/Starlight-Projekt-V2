@@ -47,7 +47,9 @@ def client(root: Path) -> Any:
 
     from starlight.web.app import create_app
 
-    return TestClient(create_app(Paths(root)), base_url="http://127.0.0.1:8700")
+    return TestClient(
+        create_app(Paths(root)), base_url="http://127.0.0.1:8700", client=("127.0.0.1", 50000)
+    )
 
 
 def pair(c: Any) -> str:
@@ -272,3 +274,78 @@ def test_pages_and_app_files_load(tmp_path: Path) -> None:
         for path in ("/", "/settings", "/memory", "/style.css", "/common.js", "/icon.svg",
                      "/manifest.webmanifest"):  # fmt: skip
             assert c.get(path, headers=LOCAL).status_code == 200, path
+
+
+# -- hardening (from the security review) -----------------------------------------------------
+
+
+def test_a_request_from_another_machine_is_never_local(tmp_path: Path) -> None:
+    """Even with a loopback Host header, a connection that does not come from this PC is
+    not the local user (e.g. if someone made the chat listen on the network)."""
+    from fastapi.testclient import TestClient
+
+    from starlight.web.app import create_app
+
+    root = home(tmp_path / "h", remote=False)
+    with TestClient(
+        create_app(Paths(root)), base_url="http://127.0.0.1:8700", client=("192.168.1.50", 4000)
+    ) as c:
+        assert c.get("/api/status", headers=LOCAL).status_code == 403
+        assert c.post("/api/pair/code", headers=LOCAL).status_code == 403
+        assert c.post("/api/resume", headers=LOCAL).status_code == 403
+
+
+def test_pages_refuse_to_be_framed(tmp_path: Path) -> None:
+    with client(home(tmp_path / "h", remote=False)) as c:
+        for path in ("/", "/settings", "/api/status"):
+            response = c.get(path, headers=LOCAL)
+            assert response.headers["x-frame-options"] == "DENY", path
+            assert "frame-ancestors 'none'" in response.headers["content-security-policy"]
+
+
+def test_the_phone_cannot_change_what_starlight_may_do(tmp_path: Path) -> None:
+    """Loosening permissions, adding secrets or automations from the phone is refused even
+    when the phone approves it: those decisions stay at the PC."""
+    with client(home(tmp_path / "h")) as c:
+        token = pair(c)
+        with c.websocket_connect("/ws", headers=phone(token)) as ws:
+            ws.send_json({"type": "ask", "text": '!access.allow_action {"pattern": "code.*"}'})
+            reply, _ = answer_of(ws)
+        assert "blocked" in reply["text"]
+        assert (
+            "code.*" not in c.get("/api/permissions", headers=LOCAL).json()["rules"]["auto_approve"]
+        )
+        with c.websocket_connect("/ws", headers=LOCAL) as ws:  # at the PC it still works
+            ws.send_json({"type": "ask", "text": '!access.allow_action {"pattern": "hello.*"}'})
+            reply, _ = answer_of(ws)
+        assert "blocked" not in reply["text"]
+
+
+def test_a_revoked_phone_can_pair_again(tmp_path: Path) -> None:
+    with client(home(tmp_path / "h")) as c:
+        old = pair(c)
+        device = c.get("/api/devices", headers=LOCAL).json()["devices"][0]["id"]
+        c.delete(f"/api/devices/{device}", headers=LOCAL)
+        for _ in range(10):  # the page keeps polling with the old cookie
+            assert c.get("/api/status", headers=phone(old)).status_code == 403
+        assert pair(c)  # not locked out
+
+
+def test_oversized_uploads_and_unpacking_bombs_are_refused(tmp_path: Path) -> None:
+    import io
+    import zipfile
+
+    with client(home(tmp_path / "h", remote=False)) as c:
+        huge = c.post(
+            "/api/upload",
+            headers={**LOCAL, "x-filename": "big.txt", "content-length": str(30 * 1024**2)},
+            content=b"x",
+        )
+        assert huge.status_code == 413
+        bomb = io.BytesIO()
+        with zipfile.ZipFile(bomb, "w", zipfile.ZIP_DEFLATED) as archive:
+            archive.writestr("word/document.xml", b"0" * (210 * 1024**2))
+        response = c.post(
+            "/api/upload", headers={**LOCAL, "x-filename": "bomb.docx"}, content=bomb.getvalue()
+        )
+        assert response.status_code == 415 and "200 MB" in response.json()["detail"]

@@ -135,6 +135,17 @@ class RemoteConfig(_Strict):
             "dev.container_*", "access.*", "automations.*", "files.save*",
         ]
     )  # fmt: skip
+    # From another device these never run: they would change what Starlight may do (or
+    # set up actions that later run on the PC), which stays a decision made at the PC.
+    blocked: list[str] = Field(
+        default_factory=lambda: [
+            "access.allow_action", "access.ask_action", "access.block_action",
+            "access.clear_rule", "access.set_secret", "access.forget_secret",
+            "automations.add", "automations.use_template", "automations.enable",
+            "automations.allow", "network.allow", "login.add_site", "commands.add",
+            "docs.add_folder", "home.connect", "backup.add",
+        ]
+    )  # fmt: skip
 
 
 class WebConfig(_Strict):
