@@ -1,0 +1,7 @@
+name: reminders
+version: 0.1.0
+description: Reminders and recurring nudges that Starlight brings back to you at the right time
+entrypoint: module:RemindersModule
+permissions: [safe]
+dependencies: []
+enabled_by_default: true

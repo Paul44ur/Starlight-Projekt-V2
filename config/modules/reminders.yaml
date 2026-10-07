@@ -1,0 +1,3 @@
+# The reminders module (modules/reminders): local reminders that survive a restart.
+check_interval: 20     # seconds between due-checks (0 turns the background check off)
+max_reminders: 200

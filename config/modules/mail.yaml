@@ -1,0 +1,9 @@
+# The email module (modules/email). Set this up from the chat with email.setup - that stores
+# the app-password in the OS keyring and fills in the servers below. Use an app-password from
+# your mail provider, never your main password. Nothing secret is stored in this file.
+username: ""       # your email address / login
+imap_host: ""      # e.g. imap.gmail.com, imap.web.de
+imap_port: 993
+smtp_host: ""      # e.g. smtp.gmail.com, smtp.web.de
+smtp_port: 587
+from_name: ""      # display name on messages you send (optional)
