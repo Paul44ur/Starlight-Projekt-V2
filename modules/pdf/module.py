@@ -9,13 +9,13 @@ Needs the ``pdf`` extra (``pypdf`` and ``reportlab``); without it, the tools say
 
 from __future__ import annotations
 
-import os
 from pathlib import Path
 from typing import Any
 
 from pydantic import BaseModel, Field
 
 from starlight.core import Module, ModuleContext, ToolError, tool
+from starlight.core.safepaths import PathGuard
 
 
 def _pypdf() -> Any | None:
@@ -50,21 +50,12 @@ class PdfModule(Module):
         self.config: Config = ctx.config
         self.root = ctx.paths.root.resolve()
         self.output = ctx.output_dir
+        self.guard = PathGuard(self.root, self.output, error=PdfError)
 
     def _resolve(self, path: str) -> tuple[Path, bool]:
-        raw = os.path.expandvars(path.strip())
-        if not raw:
-            raise PdfError("give a file name, e.g. 'report.pdf'")
-        given = Path(raw).expanduser()
         # A bare or relative name goes in the Starlight folder; a full path is used as given.
-        resolved = (given if given.is_absolute() else self.output / given).resolve()
-        if resolved == self.root or resolved.is_relative_to(self.root):
-            raise PdfError(
-                f"{resolved} is inside Starlight's own folder, which is off-limits. "
-                f"Use the Starlight folder ({self.output}) or another location."
-            )
-        free = resolved.is_relative_to(self.output)
-        return resolved, free
+        found = self.guard.resolve(path)
+        return found.path, found.free
 
     @tool
     async def read_pdf(self, path: str, max_chars: int = 0) -> dict[str, Any]:

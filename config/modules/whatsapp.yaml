@@ -9,3 +9,6 @@ host: 127.0.0.1           # Cloudflare Tunnel connects here
 port: 8787
 path: /webhook/whatsapp
 allow_resume: false       # /resume from the phone
+deliver: true             # send reminders, alerts and briefings to your phone
+# Extra events forwarded as they are (glob patterns), e.g. ["skill.drafted", "files.saved"]
+notify: ["skill.drafted"]

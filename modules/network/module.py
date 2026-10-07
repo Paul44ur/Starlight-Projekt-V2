@@ -91,19 +91,11 @@ class NetworkModule(Module):
         self._ssh: dict[str, Any] = {}
         self._client = httpx.AsyncClient(timeout=self.config.timeout, verify=True)
         self._up: dict[str, bool] = {}
-        self._watcher: asyncio.Task[None] | None = None
         ctx.kill_switch.add_cleanup(self._close_ssh, owner=ctx.name)
-        ctx.bus.subscribe("core.primary", self._on_primary, owner=ctx.name)
-        if self.config.watch and ctx.services.primary:  # one watcher, not one per process
-            self._watcher = asyncio.create_task(self._watch(), name="network-watch")
-
-    async def _on_primary(self, event: Any) -> None:
-        if self.config.watch and self._watcher is None:
-            self._watcher = asyncio.create_task(self._watch(), name="network-watch")
+        if self.config.watch:  # runs in the primary core only: one watcher, not one per process
+            ctx.every(self.config.watch_interval, self.check_all, "watch", first_delay=0)
 
     async def shutdown(self) -> None:
-        if self._watcher is not None:
-            self._watcher.cancel()
         await self._close_ssh()
         await self._client.aclose()
 
@@ -492,13 +484,5 @@ class NetworkModule(Module):
             event = "network.server_up" if up else "network.server_down"
             self.ctx.logger.warning(event, server=name, host=srv.host)
             await self.ctx.publish(event, {"server": name, "host": srv.host})
-            await self.ctx.ui.notify(f"Server {name} is {'back up' if up else 'DOWN'}")
+            await self.ctx.deliver(f"Server {name} is {'back up' if up else 'DOWN'}")
         return states
-
-    async def _watch(self) -> None:
-        while True:
-            try:
-                await self.check_all()
-            except Exception:
-                self.ctx.logger.exception("watch round failed")
-            await asyncio.sleep(self.config.watch_interval)

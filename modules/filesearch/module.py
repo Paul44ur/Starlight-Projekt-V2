@@ -19,6 +19,7 @@ from pydantic import BaseModel, Field
 
 from starlight.core import Module, ModuleContext, ToolError, tool
 from starlight.core.output import known_folders
+from starlight.core.safepaths import expand, inside
 
 # Folders not worth searching: huge, and never what the user means.
 _SKIP_DIRS = {
@@ -69,7 +70,7 @@ class FileSearchModule(Module):
     # -- path safety ---------------------------------------------------------------------
 
     def _in_starlight(self, path: Path) -> bool:
-        return path == self.star_root or path.is_relative_to(self.star_root)
+        return inside(path, self.star_root)
 
     def _roots(self, root: str) -> list[Path]:
         if not root.strip():
@@ -77,7 +78,7 @@ class FileSearchModule(Module):
             if not live:
                 raise ToolError("no searchable folders are configured or present")
             return live
-        given = Path(os.path.expandvars(root.strip())).expanduser().resolve()
+        given = expand(root)
         if self._in_starlight(given):
             raise ToolError("Starlight's own folder is not searchable")
         if not any(given == a or given.is_relative_to(a) for a in self.allowed):

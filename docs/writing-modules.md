@@ -95,6 +95,27 @@ The interface:
 - `ctx.model`: the main model, e.g. to summarize something inside a tool
 - `ctx.model_for("code")`: the model the core routes a kind of work to (`roles:` in the
   config), falling back to the main model
+- `ctx.deliver(text, title="")`: tell the user something now (an alert, a reminder) on
+  every open channel: the terminal, every web chat, a desktop notification and WhatsApp
+- `ctx.every(seconds, fn, "name")`: run `fn` (sync or async) on a timer, and
+  `ctx.background(coro_fn, "name")` for a long-running task. Both run only in the primary
+  Starlight process (so two open Starlights never do the work twice), skip a round while
+  the kill switch is engaged, log failures and stop when the module unloads
+- `ctx.embedder`: the embedding model memory uses: `await ctx.embedder.embed(["text"])`
+- `ctx.output_dir`: your Starlight folder for files made for the user
+
+Shared helpers:
+
+- `starlight.core.safepaths.PathGuard(ctx.paths.root, ctx.output_dir, trusted)`:
+  `.resolve(text)` turns a name or path from the chat into a path. Starlight's own folder
+  is refused, `..` is refused, a bare name lands in the Starlight folder, and `.free` tells
+  you whether you may write without asking first
+- `starlight.core.schedule`: `parse_when("tomorrow 9am", now)` and
+  `parse_schedule("weekdays 7:30")` (also "mon,wed,fri 18:00", "every 2 hours", "every
+  month on the 1st at 9:00"), whose `.next_after(now)` gives the next time
+- Event handlers that send something slow can subscribe with
+  `ctx.bus.subscribe(pattern, handler, owner=ctx.name, background=True)` so the publisher
+  is not held up
 
 For a headless browser, use `starlight.browser.Browser(ctx.http)`: its requests count
 against the same limits.

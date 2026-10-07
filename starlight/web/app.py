@@ -12,6 +12,7 @@ import asyncio
 import contextlib
 import json
 import uuid
+from collections.abc import Awaitable, Callable
 from pathlib import Path
 from typing import Any
 from urllib.parse import urlsplit
@@ -19,7 +20,7 @@ from urllib.parse import urlsplit
 from fastapi import FastAPI, HTTPException, Request, WebSocket, WebSocketDisconnect
 from fastapi.responses import HTMLResponse
 
-from starlight.core import Kernel, Paths
+from starlight.core import Event, Kernel, Paths
 from starlight.core.config import load_config
 from starlight.core.output import describe_output_folder
 from starlight.core.ui import current_ui
@@ -85,10 +86,20 @@ class WebUI:
 def create_app(paths: Paths | None = None) -> Any:
     paths = paths or Paths.discover()
     state: dict[str, Any] = {}
+    clients: dict[WebUI, Callable[[dict[str, Any]], Awaitable[None]]] = {}
+
+    async def broadcast(event: Event) -> None:
+        """Reminders, alerts and briefings appear in every open chat page."""
+        for web_ui, send in list(clients.items()):
+            if current_ui.get() is web_ui:
+                continue  # asked from this page: it already got the message
+            with contextlib.suppress(Exception):
+                await send({"type": "notify", "text": str(event.data.get("text", ""))})
 
     async def lifespan(app: Any) -> Any:
         kernel = Kernel(paths, hotkey=True)
         await kernel.start()
+        kernel.bus.subscribe("deliver", broadcast, owner="web", background=True)
         state["kernel"] = kernel
         try:
             yield
@@ -155,6 +166,7 @@ def create_app(paths: Paths | None = None) -> Any:
                 await websocket.send_text(json.dumps(obj))
 
         web_ui = WebUI(send)
+        clients[web_ui] = send
         ask_task: asyncio.Task[None] | None = None
         try:
             while True:
@@ -174,6 +186,7 @@ def create_app(paths: Paths | None = None) -> Any:
         except WebSocketDisconnect:
             pass
         finally:
+            clients.pop(web_ui, None)
             if ask_task is not None and not ask_task.done():
                 ask_task.cancel()
             web_ui.cancel_all()

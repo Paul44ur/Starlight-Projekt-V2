@@ -6,11 +6,12 @@ desktop (a headless server) it says so instead of failing oddly.
 
 from __future__ import annotations
 
+import asyncio
 from typing import Any
 
 from pydantic import BaseModel, Field
 
-from starlight.core import Module, ModuleContext, ToolError, tool
+from starlight.core import Event, Module, ModuleContext, ToolError, tool
 
 from .backends import Backend, NotifyUnavailable, detect
 
@@ -20,6 +21,7 @@ MAX_LEN = 1000
 class Config(BaseModel):
     app_name: str = "Starlight"
     default_title: str = Field(default="Starlight")
+    on_deliver: bool = True  # also pop up reminders, alerts and briefings Starlight sends you
 
 
 class NotifyModule(Module):
@@ -28,7 +30,19 @@ class NotifyModule(Module):
     async def setup(self, ctx: ModuleContext) -> None:
         self.config: Config = ctx.config
         self.backend: Backend | None = detect()
+        if self.config.on_deliver and self.backend is not None:
+            ctx.bus.subscribe("deliver", self._on_deliver, owner=ctx.name, background=True)
         ctx.logger.info("ready", backend=self.backend.name if self.backend else None)
+
+    async def _on_deliver(self, event: Event) -> None:
+        if self.backend is None:
+            return
+        title = str(event.data.get("title") or self.config.default_title)[:MAX_LEN]
+        text = str(event.data.get("text", ""))[:MAX_LEN]
+        try:
+            await asyncio.to_thread(self.backend.send, title, text, False)
+        except NotifyUnavailable as exc:
+            self.ctx.logger.warning("desktop notification failed", error=str(exc))
 
     def _show(self, title: str, message: str, urgent: bool) -> dict[str, Any]:
         message = (message or "").strip()

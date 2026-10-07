@@ -5,7 +5,7 @@ from __future__ import annotations
 
 import sys
 from collections.abc import Callable
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any
 
@@ -99,7 +99,7 @@ async def test_daily_reschedules_instead_of_removing(project: Paths) -> None:
         assert fired[0]["text"] == "stretch"
         # still present, moved to a future time
         listed = (await k.dispatcher.call("reminders.list", {})).output
-        assert listed["count"] == 1 and listed["reminders"][0]["repeats"] == "daily"
+        assert listed["count"] == 1 and listed["reminders"][0]["repeats"] == "every day at 08:00"
 
 
 async def test_reminders_survive_a_restart(project: Paths) -> None:
@@ -120,10 +120,10 @@ async def test_every_weekday_and_unit_word_is_understood(project: Paths) -> None
             ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"]
         ):
             for text in (f"{day} 9am", f"every {day} at 8:00", f"{day[:3]} 18:30", f"{day}s 7:15"):
-                *_, weekday = module.parse_schedule(text)
-                assert weekday == index, text
-        assert module.parse_schedule("every day at 8:00") == (8, 0, None)
-        assert module.parse_schedule("daily 6pm") == (18, 0, None)
+                assert module.parse_schedule(text).weekdays == (index,), text
+        daily = module.parse_schedule("every day at 8:00")
+        assert (daily.kind, daily.hour, daily.minute, daily.weekdays) == ("daily", 8, 0, ())
+        assert module.parse_schedule("daily 6pm").hour == 18
         for text, delta in (
             ("in 30 minutes", 1800),
             ("in 2 days", 2 * 86400),
@@ -132,3 +132,52 @@ async def test_every_weekday_and_unit_word_is_understood(project: Paths) -> None
             ("in 1 week", 7 * 86400),
         ):
             assert (module.parse_when(text, now) - now).total_seconds() == delta, text
+
+
+async def test_reminders_fire_once_with_two_starlights_open(project: Paths) -> None:
+    """Two processes (e.g. the background core and a chat) must not both fire a reminder,
+    and a reminder set in the chat process must reach the one that fires."""
+    async with Kernel(project) as primary, Kernel(project) as chat:
+        assert primary.services.primary and not chat.services.primary
+        await chat.dispatcher.call("reminders.remind", {"when": "in 1h", "text": "once"})
+        future = datetime.now() + timedelta(hours=2)
+        fired = await mod(primary).check_due(future)  # sees the chat's new reminder
+        assert [r["text"] for r in fired] == ["once"]
+        assert await mod(chat).check_due(future) == []  # already gone from the file
+
+
+async def test_a_reminder_is_delivered_to_every_channel(project: Paths) -> None:
+    delivered: list[tuple[str, str]] = []
+    async with Kernel(project) as k:
+        k.bus.subscribe(
+            "deliver",
+            lambda e: delivered.append((e.data["title"], e.data["text"])),
+            background=True,
+        )
+        await k.dispatcher.call("reminders.remind", {"when": "in 1h", "text": "water plants"})
+        await mod(k).check_due(datetime.now() + timedelta(hours=2))
+        await k.bus.settle()
+    assert delivered == [("Reminder", "Reminder: water plants")]
+
+
+async def test_a_repeating_reminder_from_an_older_version_still_works(project: Paths) -> None:
+    import json
+
+    folder = project.data / "modules" / "reminders"
+    folder.mkdir(parents=True, exist_ok=True)
+    old = {
+        "id": "abc12345",
+        "text": "old",
+        "kind": "weekly",
+        "due": 0,
+        "time": "09:00",
+        "weekday": 0,
+        "when": "2020-01-01 09:00",
+        "created": "2020-01-01T00:00:00",
+    }
+    (folder / "reminders.json").write_text(json.dumps([old]))
+    async with Kernel(project) as k:
+        fired = await mod(k).check_due(datetime(2026, 10, 7, 14, 0))
+        assert [r["text"] for r in fired] == ["old"]
+        listed = (await k.dispatcher.call("reminders.list", {})).output["reminders"]
+    assert listed[0]["next"] == "2026-10-12 09:00"  # the next Monday

@@ -17,11 +17,12 @@ import contextlib
 import importlib
 import importlib.machinery
 import importlib.util
+import inspect
 import os
 import shutil
 import subprocess
 import sys
-from collections.abc import Callable
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from enum import StrEnum
 from pathlib import Path
@@ -90,6 +91,13 @@ class Services:
     # This process runs the background parts (webhook, watchers). False while another
     # Starlight core does; the event "core.primary" announces a takeover.
     primary: bool = True
+    # Send a message to you on every channel that is open (terminal, web chat, desktop,
+    # WhatsApp). Set by the kernel; without one, messages go to ``ui.notify``.
+    deliver: Callable[[str, str, str], Awaitable[None]] | None = None
+    embedder: Any = None  # the embedding model memory uses (for modules that index text)
+
+
+PRIMARY_POLL = 1.0  # seconds between checks whether this process became the primary core
 
 
 @dataclass
@@ -104,6 +112,7 @@ class ModuleContext:
     paths: Paths
     data_dir: Path
     services: Services = field(default_factory=Services)
+    tasks: list[asyncio.Task[Any]] = field(default_factory=list, repr=False)
 
     @property
     def http(self) -> PoliteHttp:
@@ -151,8 +160,76 @@ class ModuleContext:
             return self.services.models(role)
         return self.services.model
 
+    @property
+    def embedder(self) -> Any:
+        """The embedding model (``embed(texts) -> vectors``) memory uses."""
+        if self.services.embedder is None:
+            raise RuntimeError("no embedder configured")
+        return self.services.embedder
+
     async def publish(self, event: str, data: dict[str, Any] | None = None) -> None:
         await self.bus.publish(event, data, source=self.name)
+
+    async def deliver(self, text: str, title: str = "") -> None:
+        """Tell the user something now, on every channel that is open."""
+        if self.services.deliver is not None:
+            await self.services.deliver(text, title, self.name)
+            return
+        with contextlib.suppress(Exception):
+            await self.ui.notify(f"{title}: {text}" if title else text)
+
+    # -- background work ------------------------------------------------------------------
+
+    def background(
+        self, run: Callable[[], Awaitable[Any]], name: str, primary_only: bool = True
+    ) -> asyncio.Task[Any]:
+        """Run ``run()`` in the background until the module unloads. With ``primary_only``
+        (the default) it starts only in the primary core - the one running the watchers -
+        and waits while another Starlight process is primary, so nothing runs twice."""
+
+        async def runner() -> None:
+            while primary_only and not self.services.primary:
+                await asyncio.sleep(PRIMARY_POLL)
+            await run()
+
+        task = asyncio.create_task(runner(), name=f"{self.name}:{name}")
+        self.tasks[:] = [t for t in self.tasks if not t.done()] + [task]
+        return task
+
+    def every(
+        self,
+        seconds: float,
+        work: Callable[[], Any],
+        name: str,
+        primary_only: bool = True,
+        first_delay: float | None = None,
+    ) -> asyncio.Task[Any]:
+        """Call ``work()`` (sync or async) every ``seconds``. Skipped while the kill switch
+        is engaged; a failure is logged and the next round runs as usual."""
+
+        async def loop() -> None:
+            await asyncio.sleep(seconds if first_delay is None else first_delay)
+            while True:
+                if not self.kill_switch.engaged:
+                    try:
+                        result = work()
+                        if inspect.isawaitable(result):
+                            await result
+                    except asyncio.CancelledError:
+                        raise
+                    except Exception:
+                        self.logger.exception("background work failed", work=name)
+                await asyncio.sleep(seconds)
+
+        return self.background(loop, name, primary_only)
+
+    async def stop_background(self) -> None:
+        tasks, self.tasks[:] = list(self.tasks), []
+        for task in tasks:
+            task.cancel()
+        for task in tasks:
+            with contextlib.suppress(asyncio.CancelledError, Exception):
+                await task
 
 
 class Module:
@@ -418,6 +495,7 @@ class ModuleManager:
             return self._fail(record, f"missing dependencies: {', '.join(missing)}")
 
         log = module_logger(name)
+        instance: Module | None = None
         try:
             cls = import_module_class(record.manifest, record.path)
             instance = cls()
@@ -436,6 +514,9 @@ class ModuleManager:
                 self.dispatcher.register(tool)
         except Exception as exc:
             self.dispatcher.unregister_module(name)
+            started = getattr(instance, "ctx", None)
+            if started is not None:
+                await started.stop_background()
             log.exception("module failed to load")
             return self._fail(record, f"{type(exc).__name__}: {exc}")
 
@@ -473,6 +554,9 @@ class ModuleManager:
                 await record.instance.shutdown()
             except Exception:
                 module_logger(name).exception("module shutdown failed")
+            context = getattr(record.instance, "ctx", None)
+            if context is not None:
+                await context.stop_background()
         record.instance = None
         record.status = ModuleStatus.DISABLED
         record.tools = []

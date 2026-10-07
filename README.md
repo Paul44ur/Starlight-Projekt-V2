@@ -38,7 +38,7 @@ and answer you on WhatsApp. Anything risky asks you first, and one key press sto
 | **News** | Headlines and topic search from free news feeds (RSS). No account or API key. |
 | **Prices** | Stock, currency and crypto prices from free sources. No API key. |
 | **Find files** | Searches your PC for files by name or by what's inside them. Read-only. |
-| **Reminders** | "Remind me in 2 hours …" or "every day at 8 …" — reminders that come back to you, even after a restart. |
+| **Reminders** | "Remind me in 2 hours …", "every weekday at 7:30 …", "every month on the 1st …" — reminders that come back to you on the desktop, in the web chat and on WhatsApp, even after a restart. |
 | **Desktop notifications** | Pops a notification on your screen to get your attention. |
 | **Email** | Reads your inbox and sends mail from your own account (asks before sending). |
 | **PDFs** | Reads text from PDF files and makes simple PDFs from text. |
