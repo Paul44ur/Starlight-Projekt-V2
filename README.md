@@ -231,11 +231,11 @@ Passwords and keys you stored are in the Windows Credential Manager under "starl
 Remove them there, or with `starlight vault delete <key>` before deleting the folder. Files
 Starlight saved for you stay in `Documents\Starlight` until you delete that folder too.
 
-Python, the Chromium browser and the download cache live in your user profile. To remove
-them as well, delete these folders. Paste each one into the Explorer address bar to find
-it. Skip any that another program of yours still uses.
+Python and the Chromium browser live in your user profile (the package cache sits inside the
+Starlight folder as `.uv-cache`, so it goes when that folder does). To remove the rest, delete
+these folders. Paste each one into the Explorer address bar to find it. Skip any that another
+program of yours still uses.
 - `%APPDATA%\uv`: Python
-- `%LOCALAPPDATA%\uv`: the download cache
 - `%LOCALAPPDATA%\ms-playwright`: Chromium
 
 ---

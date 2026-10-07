@@ -398,3 +398,21 @@ sys.exit(L.main(["--root", {str(root)!r}, "--yes", "--variant", "cpu", "--no-vie
     assert config.model.provider == "llamacpp"
     assert config.model.server.binary == str(root / "tools" / "llama.cpp" / "cpu" / "llama-server")
     assert not L.port_in_use(port)  # the model server was stopped again
+
+
+def test_load_settings_points_uv_cache_at_the_install_drive(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """uv's cache goes inside the Starlight folder, so it shares a filesystem with .venv and
+    uv can hardlink instead of copying (no 'Failed to hardlink files' warning). A user-set
+    UV_CACHE_DIR is left alone."""
+    (tmp_path / "pyproject.toml").write_text('[project]\nname = "starlight"\n', encoding="utf-8")
+    args = L.build_parser().parse_args(["--root", str(tmp_path)])
+
+    monkeypatch.delenv("UV_CACHE_DIR", raising=False)
+    settings = L.load_settings(args)
+    assert os.environ["UV_CACHE_DIR"] == str(settings.root / ".uv-cache")
+
+    monkeypatch.setenv("UV_CACHE_DIR", str(tmp_path / "chosen"))
+    L.load_settings(args)
+    assert os.environ["UV_CACHE_DIR"] == str(tmp_path / "chosen")  # user's choice is respected

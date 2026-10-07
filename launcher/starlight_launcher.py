@@ -144,6 +144,11 @@ def load_settings(args: argparse.Namespace) -> Settings:
     if args.tesseract:
         settings.tesseract = True
     settings.github_token = os.environ.get("GITHUB_TOKEN") or None
+    # Keep uv's cache on the same drive as the install, so it can hardlink packages into .venv
+    # instead of copying them (which is slow and prints "Failed to hardlink files" when the
+    # cache is on another drive, e.g. the default C:\Users\...\AppData while Starlight is on D:).
+    # The cache then lives inside the Starlight folder. A user-set UV_CACHE_DIR is respected.
+    os.environ.setdefault("UV_CACHE_DIR", str(settings.root / ".uv-cache"))
     return settings
 
 
