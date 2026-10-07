@@ -1,0 +1,7 @@
+# The filesearch module (modules/filesearch): find files on this PC. Read-only; it never
+# opens, changes or deletes anything, and never looks inside Starlight's own folder.
+roots: []                      # extra folders to allow, e.g. ["D:/Work", "E:/Photos"]
+include_default_folders: true  # also search your Documents, Desktop, Downloads and home
+max_files_scanned: 50000       # stop after this many files (safety)
+max_hits: 100                  # most results returned at once
+max_grep_mb: 5                 # grep skips files larger than this

@@ -1,0 +1,7 @@
+name: cve
+version: 0.1.0
+description: Look up known vulnerabilities (CVEs) from the public NVD database, no API key
+entrypoint: module:CveModule
+permissions: [safe]
+dependencies: []
+enabled_by_default: true

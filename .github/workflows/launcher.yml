@@ -41,6 +41,10 @@ jobs:
       - name: End to end on a clean checkout (CPU build, small model)
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # A tiny CPU model would spend minutes just reading every module's tool schema.
+          # Load a minimal set for this smoke so it answers fast; the full module set is
+          # exercised by the Tests workflow. The real app loads all modules by default.
+          STARLIGHT_MODULES: "hello weather"
         run: |
           Copy-Item dist\Starlight.exe .
           .\Starlight.exe --yes --variant cpu --no-viewer --context 16384 `

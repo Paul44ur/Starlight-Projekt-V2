@@ -1,0 +1,7 @@
+name: filesearch
+version: 0.1.0
+description: Find files on this PC by name, by what's inside them, or by what changed recently (read-only)
+entrypoint: module:FileSearchModule
+permissions: [safe]
+dependencies: []
+enabled_by_default: true

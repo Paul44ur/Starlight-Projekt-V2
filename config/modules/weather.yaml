@@ -1,0 +1,4 @@
+# The weather module (modules/weather): free weather via Open-Meteo, no API key.
+units: metric          # metric (Celsius, km/h) or imperial (Fahrenheit, mph)
+default_place: ""      # used when you just ask "what's the weather", e.g. "Vienna"
+forecast_days: 3

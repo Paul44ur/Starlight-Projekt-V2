@@ -12,7 +12,7 @@ TEXT = "Starlight is controlling mouse and keyboard  ·  {hotkey} or a screen co
 class Indicator:
     """The banner as one module instance sees it."""
 
-    def __init__(self, enabled: bool = True, hotkey: str = "Ctrl+Alt+K", linger: float = 2.0):
+    def __init__(self, enabled: bool = True, hotkey: str = "Ctrl+Alt+J", linger: float = 2.0):
         self.enabled = enabled
         self.text = TEXT.format(hotkey=hotkey)
         self.linger = linger

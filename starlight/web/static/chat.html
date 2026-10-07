@@ -1,0 +1,187 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Starlight</title>
+<style>
+  :root {
+    --bg: #0f1115; --panel: #171a21; --panel2: #1e222b; --border: #2a2f3a;
+    --text: #e6e8ec; --dim: #9aa3b2; --accent: #6ea8fe; --user: #244; --you: #0b2a4a;
+    --ok: #3fb950; --warn: #d29922; --bad: #f85149;
+  }
+  @media (prefers-color-scheme: light) {
+    :root { --bg:#f6f7f9; --panel:#fff; --panel2:#f0f2f5; --border:#d8dce3; --text:#1f2328;
+            --dim:#5a6372; --you:#dbeafe; --user:#eef1f5; }
+  }
+  * { box-sizing: border-box; }
+  body { margin:0; font:15px/1.5 -apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;
+         background:var(--bg); color:var(--text); height:100vh; display:flex; }
+  #main { flex:1; display:flex; flex-direction:column; min-width:0; }
+  header { display:flex; align-items:center; gap:12px; padding:10px 16px;
+           border-bottom:1px solid var(--border); background:var(--panel); }
+  header h1 { font-size:16px; margin:0; font-weight:700; }
+  header .spacer { flex:1; }
+  button { font:inherit; color:var(--text); background:var(--panel2); border:1px solid var(--border);
+           border-radius:8px; padding:6px 12px; cursor:pointer; }
+  button:hover { border-color:var(--accent); }
+  button.danger { color:#fff; background:#b3231d; border-color:#b3231d; }
+  button.ok { color:#06240f; background:var(--ok); border-color:var(--ok); }
+  #log { flex:1; overflow-y:auto; padding:18px; display:flex; flex-direction:column; gap:14px; }
+  .msg { max-width:760px; padding:10px 14px; border-radius:12px; white-space:pre-wrap;
+         word-wrap:break-word; }
+  .msg.you { align-self:flex-end; background:var(--you); }
+  .msg.bot { align-self:flex-start; background:var(--panel); border:1px solid var(--border); }
+  .msg.sys { align-self:center; color:var(--dim); font-size:13px; background:none; }
+  .msg .who { font-size:11px; color:var(--dim); margin-bottom:3px; text-transform:uppercase;
+              letter-spacing:.04em; }
+  .confirm { align-self:flex-start; max-width:760px; border:1px solid var(--warn);
+             border-radius:12px; padding:12px 14px; background:var(--panel); }
+  .confirm .q { white-space:pre-wrap; margin-bottom:10px; }
+  .confirm .row { display:flex; gap:8px; }
+  footer { border-top:1px solid var(--border); background:var(--panel); padding:10px 16px; }
+  #form { display:flex; gap:10px; align-items:flex-end; max-width:900px; margin:0 auto; }
+  #input { flex:1; resize:none; min-height:44px; max-height:180px; padding:10px 12px;
+           border-radius:10px; border:1px solid var(--border); background:var(--panel2);
+           color:var(--text); font:inherit; }
+  #side { width:280px; border-left:1px solid var(--border); background:var(--panel);
+          padding:14px; overflow-y:auto; }
+  #side h2 { font-size:12px; text-transform:uppercase; letter-spacing:.05em; color:var(--dim);
+             margin:16px 0 6px; }
+  #side .item { font-size:13px; padding:2px 0; color:var(--text); word-break:break-all; }
+  #side .empty { color:var(--dim); font-size:13px; }
+  .pill { display:inline-block; font-size:12px; padding:2px 8px; border-radius:999px;
+          border:1px solid var(--border); }
+  .pill.on { color:#06240f; background:var(--ok); border-color:var(--ok); }
+  .pill.off { color:var(--dim); }
+  @media (max-width: 760px) { #side { display:none; } }
+  a { color:var(--accent); }
+</style>
+</head>
+<body>
+  <div id="main">
+    <header>
+      <h1>⭐ Starlight</h1>
+      <span id="conn" class="pill off">connecting…</span>
+      <span class="spacer"></span>
+      <button id="stop" title="Stop the current answer">Stop</button>
+      <button id="kill" class="danger" title="Stop everything">Kill</button>
+      <button id="clear" title="Clear this view">Clear</button>
+    </header>
+    <div id="log"></div>
+    <footer>
+      <form id="form">
+        <textarea id="input" placeholder="Ask Starlight…  (Enter to send, Shift+Enter for a new line)"></textarea>
+        <button id="send" class="ok" type="submit">Send</button>
+      </form>
+    </footer>
+  </div>
+  <aside id="side">
+    <div><span class="pill" id="model">model: …</span></div>
+    <h2>Allowed servers</h2><div id="servers" class="empty">none</div>
+    <h2>Logins</h2><div id="logins" class="empty">none</div>
+    <h2>Secrets</h2><div id="secrets" class="empty">none</div>
+    <h2>Saved files</h2><div id="files" class="item"></div>
+  </aside>
+
+<script>
+const log = document.getElementById("log");
+const input = document.getElementById("input");
+const connPill = document.getElementById("conn");
+let ws, current = null;
+
+function el(cls, html) { const d = document.createElement("div"); d.className = cls; if (html!==undefined) d.innerHTML = html; return d; }
+function atBottom() { return log.scrollHeight - log.scrollTop - log.clientHeight < 80; }
+function scroll() { log.scrollTop = log.scrollHeight; }
+
+function addMsg(who, text) {
+  const stick = atBottom();
+  const m = el("msg " + (who === "you" ? "you" : "bot"));
+  m.appendChild(el("who", who === "you" ? "you" : "starlight"));
+  const body = el("body"); body.textContent = text || ""; m.appendChild(body);
+  log.appendChild(m); if (stick) scroll();
+  return body;
+}
+function addSys(text) { const stick = atBottom(); log.appendChild(el("msg sys", "")).textContent = text; if (stick) scroll(); }
+
+function connect() {
+  ws = new WebSocket((location.protocol === "https:" ? "wss://" : "ws://") + location.host + "/ws");
+  ws.onopen = () => { connPill.textContent = "connected"; connPill.className = "pill on"; };
+  ws.onclose = () => { connPill.textContent = "offline"; connPill.className = "pill off"; setTimeout(connect, 1500); };
+  ws.onmessage = (ev) => handle(JSON.parse(ev.data));
+}
+
+function handle(m) {
+  if (m.type === "start") { current = addMsg("bot", ""); }
+  else if (m.type === "token") { if (!current) current = addMsg("bot", ""); const s = atBottom(); current.textContent += m.text; if (s) scroll(); }
+  else if (m.type === "answer") { if (!current || current.textContent.trim() === "") { (current || (current = addMsg("bot",""))).textContent = m.text; } if (m.stopped) addSys("Kill switch engaged. Type /resume or press Resume."); current = null; }
+  else if (m.type === "stopped") { addSys("[stopped]"); current = null; }
+  else if (m.type === "error") { const b = addMsg("bot", ""); b.textContent = "⚠ " + m.text; b.style.color = "var(--bad)"; current = null; }
+  else if (m.type === "notify") { addSys("ℹ " + m.text); }
+  else if (m.type === "busy") { addSys("Starlight is still working on the last message."); }
+  else if (m.type === "confirm") { showConfirm(m); }
+  else if (m.type === "prompt") { showPrompt(m); }
+}
+
+function showConfirm(m) {
+  const stick = atBottom();
+  const card = el("confirm");
+  card.appendChild(el("q")).textContent = m.question;
+  const row = el("row");
+  const yes = document.createElement("button"); yes.className = "ok"; yes.textContent = "Approve";
+  const no = document.createElement("button"); no.textContent = "Deny";
+  yes.onclick = () => { ws.send(JSON.stringify({type:"reply", id:m.id, value:"yes"})); card.remove(); };
+  no.onclick = () => { ws.send(JSON.stringify({type:"reply", id:m.id, value:"no"})); card.remove(); };
+  row.appendChild(yes); row.appendChild(no); card.appendChild(row);
+  log.appendChild(card); if (stick) scroll();
+}
+function showPrompt(m) {
+  const stick = atBottom();
+  const card = el("confirm");
+  card.appendChild(el("q")).textContent = m.question;
+  const box = document.createElement("input");
+  box.type = m.secret ? "password" : "text"; box.style.cssText = "width:100%;padding:8px;margin-bottom:8px;border-radius:8px;border:1px solid var(--border);background:var(--panel2);color:var(--text)";
+  const send = document.createElement("button"); send.className = "ok"; send.textContent = "Send";
+  const go = () => { ws.send(JSON.stringify({type:"reply", id:m.id, value:box.value})); card.remove(); };
+  send.onclick = go; box.onkeydown = (e) => { if (e.key === "Enter") go(); };
+  card.appendChild(box); card.appendChild(send); log.appendChild(card); if (stick) scroll(); box.focus();
+}
+
+document.getElementById("form").onsubmit = (e) => {
+  e.preventDefault();
+  const text = input.value.trim(); if (!text || ws.readyState !== 1) return;
+  addMsg("you", text); input.value = ""; input.style.height = "44px";
+  ws.send(JSON.stringify({type:"ask", text}));
+};
+input.onkeydown = (e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); document.getElementById("form").requestSubmit(); } };
+input.oninput = () => { input.style.height = "44px"; input.style.height = Math.min(input.scrollHeight, 180) + "px"; };
+document.getElementById("stop").onclick = () => ws && ws.readyState === 1 && ws.send(JSON.stringify({type:"stop"}));
+document.getElementById("clear").onclick = () => { log.innerHTML = ""; };
+document.getElementById("kill").onclick = async () => {
+  const k = document.getElementById("kill");
+  if (k.dataset.on === "1") { await fetch("/api/resume", {method:"POST"}); } else { await fetch("/api/kill", {method:"POST"}); }
+  refresh();
+};
+
+async function refresh() {
+  try {
+    const s = await (await fetch("/api/status")).json();
+    document.getElementById("model").textContent = "model: " + s.model;
+    const k = document.getElementById("kill");
+    if (s.kill.engaged) { k.textContent = "Resume"; k.classList.remove("danger"); k.classList.add("ok"); k.dataset.on = "1"; }
+    else { k.textContent = "Kill"; k.classList.add("danger"); k.classList.remove("ok"); k.dataset.on = "0"; }
+    fill("servers", (s.access.servers)||[]); fill("logins", (s.access.login_sites)||[]); fill("secrets", (s.access.secrets)||[]);
+    document.getElementById("files").textContent = s.saves_files || "";
+  } catch (e) { /* server starting */ }
+}
+function fill(id, items) {
+  const box = document.getElementById(id); box.innerHTML = "";
+  if (!items.length) { box.className = "empty"; box.textContent = "none"; return; }
+  box.className = ""; items.forEach(x => { const d = el("item"); d.textContent = x; box.appendChild(d); });
+}
+
+connect(); refresh(); setInterval(refresh, 4000);
+addSys("Ask anything. Actions that change something will ask you to approve them here.");
+</script>
+</body>
+</html>

@@ -1,7 +1,7 @@
 """Kill switch. Checked by the dispatcher before every tool call.
 
 Layers:
-  * a global hotkey (default Ctrl+Alt+K, needs the optional ``pynput`` extra)
+  * a global hotkey (default Ctrl+Alt+J, needs the optional ``pynput`` extra)
   * a STOP file, created by ``starlight kill`` and polled while the core runs
   * a WhatsApp ``/kill`` command from your own number (Step 10), via ``trigger()``
 

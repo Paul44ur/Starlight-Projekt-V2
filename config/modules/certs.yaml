@@ -1,0 +1,4 @@
+# The certs module (modules/certs): read-only TLS certificate checks. check_all and
+# expiring use the servers in config/servers.yaml.
+timeout: 10            # seconds to wait for each TLS connection
+default_warn_days: 30  # "expiring" flags certificates due within this many days

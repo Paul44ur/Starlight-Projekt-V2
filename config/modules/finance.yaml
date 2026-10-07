@@ -1,0 +1,2 @@
+# The finance module (modules/finance): free prices, no API key. Indicative, not advice.
+default_currency: eur    # used for crypto, and as the currency to convert into by default

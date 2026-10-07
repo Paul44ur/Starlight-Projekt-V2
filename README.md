@@ -23,13 +23,30 @@ and answer you on WhatsApp. Anything risky asks you first, and one key press sto
 
 | Feature | What it does |
 | --- | --- |
+| **Chat in a browser or the terminal** | A clean web chat (the default) or a colored terminal chat. Both stream answers and ask before risky actions. |
 | **Chat with a local model** | Runs a model such as Qwen2.5-14B on your GPU. Long conversations are summarized, not cut off. |
 | **Remember** | Keeps what it learns as plain text files in the `memory` folder. You can read, edit or delete them. |
 | **Use the web** | Searches, reads pages and logs in to your accounts. It makes at most 5 requests per second and respects robots.txt. |
 | **Check your servers** | Pings your servers, checks disk space and services over SSH, and alerts you when one goes down. |
+| **Scan your network** | On hosts you own or are authorized to test: open ports, services, TLS certs, HTTP headers, DNS. Asks first; recon only, never attacks. |
+| **Look up vulnerabilities** | Checks a service or product against the public CVE database (NVD). Pairs with a scan. Free, no key. |
+| **Check certificates** | Reads your servers' TLS certificates and warns when one is about to expire. |
+| **Check passwords** | Tells you if a password is in known breaches — the password never leaves your PC (only a short hash prefix is sent). |
+| **Check your PC** | CPU, memory, disk space, battery, uptime and running programs. Can close a program (asks first). |
+| **Use the clipboard** | Reads what you copied and copies things for you. |
+| **Weather** | Current weather and a short forecast for any place — free, no account or API key. |
+| **News** | Headlines and topic search from free news feeds (RSS). No account or API key. |
+| **Prices** | Stock, currency and crypto prices from free sources. No API key. |
+| **Find files** | Searches your PC for files by name or by what's inside them. Read-only. |
+| **Reminders** | "Remind me in 2 hours …" or "every day at 8 …" — reminders that come back to you, even after a restart. |
+| **Desktop notifications** | Pops a notification on your screen to get your attention. |
+| **Email** | Reads your inbox and sends mail from your own account (asks before sending). |
+| **PDFs** | Reads text from PDF files and makes simple PDFs from text. |
 | **Use your desktop** | Reads the screen, then clicks and types for you, with a red banner on screen while it does. |
+| **Save files** | Saves letters, notes, tables (CSV) and web pages it makes for you in `Documents\Starlight`. |
 | **Write code** | Writes small programs, tests them in a sandbox and fixes them until the tests pass. |
 | **Learn skills** | Turns tasks that worked into reusable skills, but only after you approve them. |
+| **Manage access from chat** | Add servers, logins and API keys, and set what runs without asking — all by typing, no files to edit. |
 | **Answer on WhatsApp** | Lets you send tasks from your phone and stop everything with `/kill`. |
 | **Show statistics** | Shows tasks, errors, model speed and GPU use in a separate viewer in your browser. |
 
@@ -97,8 +114,10 @@ Continue? [Y/n]
 
 Press **Enter**. How long this takes depends on your internet connection, mostly for the
 model.
-- Everything goes into the Starlight folder, in `tools`, `models` and `.venv`. Nothing is
-  installed into Windows.
+- Starlight's packages, the model server and the model go into the Starlight folder
+  (`.venv`, `tools`, `models`). Python and the Chromium browser go into your user
+  profile, where uv and Playwright keep them (`%APPDATA%\uv\python` and
+  `%LOCALAPPDATA%\ms-playwright`). Nothing needs administrator rights.
 - If the download is interrupted, start `Starlight.exe` again. It continues where it
   stopped.
 - Every download that publishes a checksum is checked against it.
@@ -109,19 +128,18 @@ and add it later.
 
 ### 5. Chat
 
-Starlight loads the model onto your graphics card, opens the statistics viewer at
-http://127.0.0.1:8765 and starts the chat:
+Starlight loads the model onto your graphics card, starts the statistics viewer
+(http://127.0.0.1:8765), and **opens the chat in your web browser**
+(http://127.0.0.1:8700). Type in the browser window and press Send. Actions that change
+something show Approve / Deny buttons.
 
-```
-Kill switch: Ctrl+Alt+K, a screen corner, or /kill. Leave with /quit.
-
-you> What can you do?
-starlight> ...
-```
+Prefer the keyboard? Start `Starlight.exe --terminal` for a colored terminal chat in the
+window instead.
 
 That's it. **Next time, just double-click `Starlight.exe` again.** It skips the
-downloads and goes straight to loading the model. Type `/quit` or close the window to stop. Closing
-the window also stops the model server and the viewer.
+downloads and goes straight to opening the chat. Closing the black window stops
+everything (the model server, the chat and the viewer). The emergency stop is
+**Ctrl+Alt+J** or moving the mouse into a screen corner.
 
 ### Options
 
@@ -132,6 +150,8 @@ Run `Starlight.exe --help` in a terminal to see every option. The most useful on
 | `--model-url <link>` | Use another model (a direct download link to a `.gguf` file). |
 | `--context 16384` | A smaller context window: uses less video memory. |
 | `--variant cpu` | Run without a graphics card (slow). |
+| `--terminal` | Chat in the window instead of opening the browser. |
+| `--both` | Open the browser chat **and** a terminal chat together — both talk to the same Starlight (one conversation, one kill switch). |
 | `--no-viewer` | Don't start the statistics viewer. |
 | `--update` | Download the newest uv and llama.cpp again. |
 | `--setup-only` | Download and set up, then exit without starting. |
@@ -199,7 +219,8 @@ then connect a model as in [docs/setup-windows.md](docs/setup-windows.md#2-the-m
 Your `memory`, `skills`, `data`, `logs`, `models` and `tools` folders and your
 `config\starlight.local.yaml` aren't part of the download, so they stay as they are. Keep
 a copy of any changes you made to the other files in `config`, because those files are
-overwritten.
+overwritten. Files Starlight saved for you are in `Documents\Starlight`, outside the
+Starlight folder, so updates never touch them.
 
 ### Uninstalling
 
@@ -208,24 +229,58 @@ overwritten.
 2. Delete the Starlight folder.
 
 Passwords and keys you stored are in the Windows Credential Manager under "starlight".
-Remove them there, or with `starlight vault delete <key>` before deleting the folder.
+Remove them there, or with `starlight vault delete <key>` before deleting the folder. Files
+Starlight saved for you stay in `Documents\Starlight` until you delete that folder too.
+
+Python and the Chromium browser live in your user profile (the package cache sits inside the
+Starlight folder as `.uv-cache`, so it goes when that folder does). To remove the rest, delete
+these folders. Paste each one into the Explorer address bar to find it. Skip any that another
+program of yours still uses.
+- `%APPDATA%\uv`: Python
+- `%LOCALAPPDATA%\ms-playwright`: Chromium
 
 ---
 
 ## Using Starlight
 
+**Two ways to chat.** When you start `Starlight.exe`, it opens a **web chat in your
+browser** (http://127.0.0.1:8700): a normal chat window where answers stream in, actions
+you need to approve appear with **Approve / Deny** buttons, and a sidebar shows what's
+allowed. Prefer the keyboard? Start it with `--terminal` (or run `starlight run`) for a
+colored terminal chat. Both use the same assistant, settings and safeguards.
+
 Just write what you want, for example:
 
 ```
-you> Remember that my home server is called nas01.
-you> Is nas01 up, and how full is its disk?
-you> Search the web for the latest llama.cpp release and summarize the changes.
-you> Write a script that renames the photos in C:\Photos by the date they were taken.
-you> Open Notepad and type a shopping list: milk, bread, coffee.
+Remember that my home server is called nas01.
+Is nas01 up, and how full is its disk?
+Search the web for the latest llama.cpp release and summarize the changes.
+Scan 192.168.1.10 and tell me what's open.
+Write a cover letter for the job at the bakery and save it as a file.
+Open Notepad and type a shopping list: milk, bread, coffee.
 ```
 
 Some of these need a [one-time setup](#optional-extras), for example servers and web
 search.
+
+**Give it access as you go.** You never have to edit project files. Just ask, and
+Starlight adds it after you confirm:
+
+```
+Let me access my server at 192.168.1.10.        -> added to the allow-list
+Set up my GitHub login.                          -> username and password go to the keyring
+Save my Brave Search API key.                    -> stored as a secret, never shown again
+Always allow pinging my servers without asking.  -> a permission rule it remembers
+Show me what you're allowed to do.               -> servers, logins, secrets, permissions
+```
+
+**Scanning and your servers.** Starlight only reaches hosts you've allowed, and a scan
+first asks you to confirm you own the host or are authorized to test it. It gathers
+information (ports, services, certificates); it never attacks. A host you scan or ping
+can't flood your machine back — responses are capped.
+
+**Seeing what went wrong.** Ask "show me recent errors" (or run `starlight logs show`) to
+read Starlight's own problems in plain language, without opening a log file.
 
 **When Starlight asks first.** Actions that could change something ask before they run:
 typing, clicking, running code, commands that change a server, and deleting a memory:
@@ -237,13 +292,20 @@ Allow? [y]es / [n]o / [a]lways this session:
 
 **Stopping it.** Any of these stops everything at once, including typing in the middle of
 a word:
-- press **Ctrl+Alt+K**;
+- press **Ctrl+Alt+J**;
 - move the mouse into any **corner of the screen**;
 - type `/kill`;
 - run `starlight kill` in another window;
 - send `/kill` on WhatsApp.
 
 Continue with `/resume`.
+
+**Stopping just one answer.** Press **Ctrl+C** while Starlight is writing: that answer
+stops, and you can ask the next thing. Very long answers stop by themselves after about
+3,000 words (`model: reserve_tokens:` in the config).
+
+**Pasting.** Paste several lines at once and they count as one request. Text you typed
+before Starlight asks "Allow?" never counts as the answer.
 
 **Chat commands.** `/help` lists them all. The main ones:
 
@@ -260,6 +322,23 @@ model speed, GPU use and memory size.
 
 **Memory.** Everything Starlight remembers is a text file in the `memory` folder. Open,
 correct or delete any of them; Starlight picks up the change.
+
+**Files.** Ask Starlight to save what it made ("save it as a file", "make a CSV of
+that"), and it saves it in the **Starlight** folder in your Documents, then tells you
+where:
+- **No question in that folder.** Saving there just happens. Programs it writes go
+  into its `code` subfolder.
+- **Never overwritten silently.** A second `letter.txt` becomes `letter (2).txt`, and
+  replacing a file asks you first.
+- **Elsewhere, it asks.** "Save it on my Desktop" works, but Starlight asks first and
+  shows the full path.
+- **Text formats only.** It saves `.txt`, `.md`, `.csv`, `.html`, code and similar. For a
+  Word document, ask for `.html`: Word opens it, and you can save it as `.docx` there.
+  For a spreadsheet, ask for `.csv`: Excel opens it.
+
+To use another folder, set `output: folder:` in `config\starlight.local.yaml`. Folders
+where it may save without asking go under `trusted_folders` in
+`config\modules\files.yaml`.
 
 ## Optional extras
 
@@ -287,8 +366,20 @@ Each of these is set up once. The step-by-step instructions are in
 - **Passwords stay out of files.** Passwords and keys are kept in the Windows Credential
   Manager, never in config files. They are hidden in every log line, and
   `starlight logs scan` checks for leaks.
-- **Servers are on an allow-list.** Starlight only talks to servers you listed.
-  Read-only commands such as `df` and `uptime` run freely; anything else asks first.
+- **Servers are on an allow-list.** Starlight only talks to, scans or pings hosts you
+  listed. Read-only commands such as `df` and `uptime` run freely; anything else asks
+  first. A scan of a host you haven't allowed asks you to confirm you're authorized.
+- **Nothing can flood your machine.** When Starlight fetches, pings or scans, responses
+  are capped in size and time and connections are limited, so a hostile server can't
+  turn a request into a flood against you. Scanning is reconnaissance only — it never
+  attacks, and it does one host at a time.
+- **Files stay where you expect.** Starlight saves on its own only into its folder in
+  your Documents. Anywhere else, and replacing an existing file, it asks first. Its own
+  install folder, which holds its settings and data, is off-limits, so it can't change
+  its own permissions.
+- **The model is yours, unchanged.** Starlight sends your messages to the local model
+  you chose and returns its answer as-is — it adds no filter of its own. How the model
+  behaves is down to the model file, which runs entirely on your PC.
 - **Everything is logged.** Every action Starlight takes is recorded in
   `logs\audit.log`.
 
@@ -347,7 +438,7 @@ Another program uses that port. Start with `--port 8081`, or add `"port": 8081` 
 </details>
 
 <details>
-<summary><b>Ctrl+Alt+K does nothing</b></summary>
+<summary><b>Ctrl+Alt+J does nothing</b></summary>
 
 The hotkey only works in a normal desktop session. The screen corners, `/kill` and
 `starlight kill` always work.
@@ -371,7 +462,9 @@ If you installed with `Starlight.exe`, uv isn't on your PATH. Either install it 
 
 | Command | What it does |
 | --- | --- |
-| `starlight run` | The chat (what `Starlight.exe` opens). |
+| `starlight web` | The browser chat (what `Starlight.exe` opens by default). |
+| `starlight run` | The terminal chat (`Starlight.exe --terminal`). |
+| `starlight connect` | A terminal chat that joins a running `starlight web` backend — the same brain as the browser (`Starlight.exe --both` opens both together). |
 | `starlight ask "..."` | One request: prints the answer and exits (`-y` approves everything). |
 | `starlight kill [reason]` / `resume` | Stop everything, and continue. Works from any window. |
 | `starlight status` | Settings, kill switch and modules at a glance. |
@@ -384,7 +477,7 @@ If you installed with `Starlight.exe`, uv isn't on your PATH. Either install it 
 | `starlight serve` | Run in the background: WhatsApp, server alerts, kill hotkey. |
 | `starlight viewer` | The statistics viewer on its own. |
 | `starlight service install / start / stop / status / uninstall` | Start Starlight and the viewer at logon. |
-| `starlight logs scan` | Check the logs for leaked passwords. |
+| `starlight logs show` / `logs scan` | Show recent errors in plain language / check the logs for leaked passwords. |
 
 ## For developers
 

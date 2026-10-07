@@ -22,6 +22,12 @@ from starlight.core.stats import Stats
 #: for an extra system message, or None.
 type Enricher = Callable[[str], Awaitable[str | None]]
 
+# Added to an answer the model was still writing when it reached max_tokens.
+CUT_OFF = (
+    "\n\n[Cut off: the answer reached the length limit (model.reserve_tokens in the "
+    "config). Ask for the rest, or for a shorter answer.]"
+)
+
 
 @dataclass
 class AgentResult:
@@ -91,8 +97,10 @@ class Agent:
                 result.messages = messages
                 await self._loop(messages, result, on_token)
         except (KillSwitchEngaged, asyncio.CancelledError):
-            if not self.kill_switch.engaged:
-                raise  # cancelled for another reason (e.g. shutdown)
+            if not self.kill_switch.engaged:  # stopped another way: Ctrl+C, shutdown
+                self.audit.record("task.cancelled", request_id=request_id, steps=result.steps)
+                log.info("task cancelled", steps=result.steps)
+                raise
             task = asyncio.current_task()
             if task is not None and task.cancelling():
                 task.uncancel()  # the kill was handled here; let the caller carry on
@@ -159,6 +167,10 @@ class Agent:
             messages.append(Message("assistant", response.content, tool_calls=response.tool_calls))
             if not response.tool_calls:
                 result.answer = response.content
+                if response.usage.get("finish_reason") == "length":
+                    result.answer += CUT_OFF
+                    if on_token is not None and getattr(self.provider, "supports_streaming", False):
+                        on_token(CUT_OFF)  # streamed answers show it too
                 return
             for call in response.tool_calls:
                 tool_result = await self.dispatcher.call(

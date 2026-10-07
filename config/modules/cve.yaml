@@ -1,0 +1,2 @@
+# The cve module (modules/cve): look up vulnerabilities in the public NVD database. No key.
+max_results: 10

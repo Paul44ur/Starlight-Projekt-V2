@@ -1,0 +1,7 @@
+name: mail
+version: 0.1.0
+description: Read and send email from your own mailbox over IMAP and SMTP (app-password in the keyring)
+entrypoint: module:EmailModule
+permissions: [confirm]
+dependencies: []
+enabled_by_default: true

@@ -41,6 +41,8 @@ def llama_server_command(config: ModelConfig) -> list[str]:
         str(s.gpu_layers),
         "--parallel",
         str(s.parallel),
+        "--threads",
+        str(s.threads or os.cpu_count() or 4),  # all cores by default (slow when left at 1)
         "--jinja",  # chat template with tool calling
     ]
     if s.flash_attention:

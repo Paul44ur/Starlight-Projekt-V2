@@ -10,7 +10,8 @@ agent:
   max_steps: 8
   system_prompt: >-
     You are Starlight, a local assistant. Use the available tools when they help,
-    and answer briefly.
+    and answer briefly. When the user wants something you made as a file, or wants
+    to keep it, save it with files.save and tell them where it is.
 
 # --- Step 4: the local model -------------------------------------------------------
 # "echo" is a built-in test stand-in so everything runs without a model.
@@ -75,6 +76,13 @@ memory:
   merge_threshold: 0.92   # this similar to an existing memory = update it, not a new file
   auto_extract: true      # after each task the model picks what is worth keeping
 
+# --- Files Starlight makes for you ---------------------------------------------------
+output:
+  # Letters, notes, tables and code Starlight saves (modules/files and modules/code).
+  # Empty: a "Starlight" folder in your Documents. A full path such as D:/Starlight files
+  # works too, but never Starlight's own folder.
+  folder: ""
+
 # --- Step 6: polite web access, shared by every module ------------------------------
 http:
   max_requests_per_second: 5   # in any one-second window, across all modules
@@ -99,8 +107,13 @@ viewer:
   port: 8765
   refresh_seconds: 5
 
+# The web chat (starlight web). Local only: it runs the assistant, keep it off the network.
+web:
+  host: 127.0.0.1
+  port: 8700
+
 kill_switch:
-  hotkey: "<ctrl>+<alt>+k"   # needs the optional "hotkey" extra (pynput)
+  hotkey: "<ctrl>+<alt>+j"   # emergency stop, works anywhere; needs the "hotkey" extra (pynput)
   stop_file: data/STOP
   poll_interval: 0.2
 

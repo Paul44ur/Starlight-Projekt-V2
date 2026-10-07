@@ -1,0 +1,7 @@
+name: pdf
+version: 0.1.0
+description: Read text from PDF files and make simple PDFs from text
+entrypoint: module:PdfModule
+permissions: [safe]
+dependencies: []
+enabled_by_default: true

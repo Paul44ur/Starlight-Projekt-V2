@@ -37,6 +37,10 @@ class FakeDesktop:
     def bounds(self) -> tuple[int, int, int, int]:
         return 0, 0, self.width, self.height
 
+    def monitors(self) -> list[tuple[int, int, int, int]]:
+        half = self.width // 2  # two monitors side by side
+        return [(0, 0, half, self.height), (half, 0, self.width - half, self.height)]
+
     def capture(self, region: Any = None) -> Image.Image:
         image = Image.new("RGB", (self.width, self.height), "white")
         draw = ImageDraw.Draw(image)
@@ -155,7 +159,7 @@ async def test_kill_hotkey_stops_typing_halfway(desktop_project: Paths) -> None:
             deadline = time.monotonic() + 10
             while len(fake.text) < 5 and time.monotonic() < deadline:
                 time.sleep(0.005)
-            kernel.kill_switch.trigger("hotkey <ctrl>+<alt>+k", source="hotkey")
+            kernel.kill_switch.trigger("hotkey <ctrl>+<alt>+j", source="hotkey")
 
         threading.Thread(target=press_hotkey_midway, daemon=True).start()
         result = await kernel.ask("type a long sentence")
@@ -186,6 +190,31 @@ async def test_find_text_click_text_and_keys(desktop_project: Paths) -> None:
         await kernel.dispatcher.call("desktop.press_keys", {"keys": "ctrl+s"})
     assert ("click", 65, 11, "left", 1) in fake.events
     assert ("keys", "ctrl", "s") in fake.events
+
+
+async def test_mouse_moves_relative_and_one_monitor_can_be_read(desktop_project: Paths) -> None:
+    """Found in real use: "move the mouse 30 pixels to the right" moved it to x=30, and
+    "what is on monitor 2" got no answer because no tool knew about monitors."""
+
+    class Recording(FakeDesktop):
+        def capture(self, region: Any = None) -> Image.Image:
+            self.events.append(("capture", region))
+            return super().capture(region)
+
+    fake = Recording()  # 2560 x 1440: two monitors side by side, mouse at 800, 600
+    async with Kernel(desktop_project, ui=Yes()) as kernel:
+        install(kernel, fake)
+        await kernel.dispatcher.call("desktop.move_mouse", {"x": 30, "y": 0, "relative": True})
+        moved_by = fake.mouse
+        await kernel.dispatcher.call("desktop.move_mouse", {"x": 30, "y": 40})
+        moved_to = fake.mouse
+        info = await kernel.dispatcher.call("desktop.screen_info")
+        second = await kernel.dispatcher.call("desktop.read_screen", {"monitor": 2})
+        third = await kernel.dispatcher.call("desktop.read_screen", {"monitor": 3})
+    assert moved_by == (830, 600) and moved_to == (30, 40)
+    assert [m["left"] for m in info.output["monitors"]] == [0, 1280]
+    assert second.ok and ("capture", (1280, 0, 1280, 1440)) in fake.events
+    assert third.error == "there is no monitor 3; this PC has 2"
 
 
 async def test_vision_locate_scales_back_and_stays_local(desktop_project: Paths) -> None:
@@ -276,6 +305,7 @@ def test_real_screen_and_mouse_on_virtual_display(xvfb: str) -> None:
 
     screen = MssScreen()
     assert screen.bounds() == (0, 0, 1024, 768)
+    assert screen.monitors() == [(0, 0, 1024, 768)]  # one virtual monitor
     assert screen.capture().size == (1024, 768)
     try:
         mouse = PynputInput()

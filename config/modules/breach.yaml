@@ -1,0 +1,2 @@
+# The breach module (modules/breach): check passwords against Have I Been Pwned.
+# Only a short hash prefix is ever sent; the password itself never leaves this PC.

@@ -47,6 +47,10 @@ class Screen(Protocol):
         """left, top, width, height of the whole virtual screen."""
         ...
 
+    def monitors(self) -> list[tuple[int, int, int, int]]:
+        """left, top, width, height of each monitor, in the order Windows numbers them."""
+        ...
+
     def capture(self, region: tuple[int, int, int, int] | None = None) -> Image.Image: ...
 
 
@@ -63,6 +67,10 @@ class MssScreen:
         with self._open() as sct:
             m = sct.monitors[0]
             return m["left"], m["top"], m["width"], m["height"]
+
+    def monitors(self) -> list[tuple[int, int, int, int]]:
+        with self._open() as sct:
+            return [(m["left"], m["top"], m["width"], m["height"]) for m in sct.monitors[1:]]
 
     def capture(self, region: tuple[int, int, int, int] | None = None) -> Image.Image:
         with self._open() as sct:

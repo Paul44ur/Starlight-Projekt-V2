@@ -41,6 +41,7 @@ class ServerConfig(_Strict):
     flash_attention: bool = True
     kv_cache_type: str = "q8_0"  # quantized KV cache: longer context in the same VRAM
     parallel: int = 1
+    threads: int = 0  # CPU threads for prompt processing; 0: all cores (matters on the CPU build)
     extra_args: list[str] = Field(default_factory=list)
 
 
@@ -83,10 +84,15 @@ class HttpConfig(_Strict):
     max_retries: int = Field(default=3, ge=0)
     backoff_base: float = Field(default=2.0, gt=0)
     max_retry_after: float = Field(default=120, ge=0)
+    # Protection against a hostile or broken server flooding this machine:
+    max_response_bytes: int = Field(default=10_000_000, ge=1024)  # stop reading a huge body
+    max_redirects: int = Field(default=10, ge=0)  # no endless redirect chains
+    max_connections: int = Field(default=20, ge=1)  # cap simultaneous connections
+    max_total_seconds: float = Field(default=60, gt=0)  # hard ceiling on one request
 
 
 class KillSwitchConfig(_Strict):
-    hotkey: str | None = "<ctrl>+<alt>+k"
+    hotkey: str | None = "<ctrl>+<alt>+j"
     stop_file: str = "data/STOP"
     poll_interval: float = Field(default=0.2, gt=0)
 
@@ -114,6 +120,17 @@ class StatsConfig(_Strict):
     gpu_sample_interval: float = Field(default=30, ge=0)  # 0 = off
 
 
+class WebConfig(_Strict):
+    host: str = "127.0.0.1"  # local only; the chat can run actions, keep it off the network
+    port: int = 8700
+
+
+class OutputConfig(_Strict):
+    # Where Starlight saves files it makes for you (letters, notes, tables, code).
+    # Empty: a "Starlight" folder in your Documents. Never Starlight's own folder.
+    folder: str = ""
+
+
 class ViewerConfig(_Strict):
     host: str = "127.0.0.1"
     port: int = 8765
@@ -136,6 +153,8 @@ class StarlightConfig(_Strict):
     skills: SkillsConfig = Field(default_factory=SkillsConfig)
     stats: StatsConfig = Field(default_factory=StatsConfig)
     viewer: ViewerConfig = Field(default_factory=ViewerConfig)
+    web: WebConfig = Field(default_factory=WebConfig)
+    output: OutputConfig = Field(default_factory=OutputConfig)
 
 
 def read_yaml(path: Path) -> dict[str, Any]:
@@ -167,6 +186,31 @@ def deep_merge(base: dict[str, Any], extra: dict[str, Any]) -> dict[str, Any]:
         else:
             merged[key] = value
     return merged
+
+
+def write_yaml_config(path: Path, data: dict[str, Any], header: str = "") -> None:
+    """Write a config file as a comment header plus YAML. Used when Starlight edits its own
+    config from the chat, so the user never has to open the file."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    body = yaml.safe_dump(data, sort_keys=True, allow_unicode=True, default_flow_style=False)
+    text = (header.rstrip() + "\n\n" if header else "") + body
+    tmp = path.with_name(f".{path.name}.tmp")
+    tmp.write_text(text, encoding="utf-8")
+    tmp.replace(path)
+
+
+def update_local_config(paths: Paths, updates: dict[str, Any]) -> None:
+    """Merge ``updates`` into config/starlight.local.yaml (your own overlay, applied over
+    starlight.yaml). Only the given keys change; the rest of the file is kept."""
+    overlay = paths.config / "starlight.local.yaml"
+    current = read_yaml(overlay)
+    merged = deep_merge(current, updates)
+    write_yaml_config(
+        overlay,
+        merged,
+        "# Your own settings, merged over config/starlight.yaml (this file wins).\n"
+        "# Starlight writes here when you change settings from the chat; safe to edit by hand.",
+    )
 
 
 def load_config(paths: Paths) -> StarlightConfig:

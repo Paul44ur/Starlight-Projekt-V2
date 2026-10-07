@@ -151,6 +151,8 @@ def _usage(final: dict[str, Any]) -> dict[str, Any]:
             usage["tokens_per_second"] = round(
                 final["eval_count"] / final["eval_duration"] * 1e9, 2
             )
+    if final.get("done_reason"):  # "length": cut off at num_predict
+        usage["finish_reason"] = final["done_reason"]
     if "prompt_eval_count" in final:
         usage["prompt_tokens"] = final["prompt_eval_count"]
         if final.get("prompt_eval_duration"):

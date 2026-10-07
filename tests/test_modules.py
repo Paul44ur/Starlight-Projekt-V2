@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import pytest
+
 from starlight.core import Kernel, Paths
 from starlight.core.modules import ModuleStatus
 from tests.conftest import ModuleWriter
@@ -133,6 +135,21 @@ async def test_disabled_by_default(paths: Paths, write_module: ModuleWriter) -> 
         assert kernel.modules.records["quiet"].status is ModuleStatus.DISABLED
         record = await kernel.modules.enable("quiet")
         assert record.status is ModuleStatus.LOADED
+
+
+async def test_modules_env_is_an_allowlist(
+    paths: Paths, write_module: ModuleWriter, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """STARLIGHT_MODULES, when set, loads only the named modules (used by the CPU smoke test
+    to keep the model prompt small); everything else stays unloaded."""
+    write_module("keep", GOOD.replace("{word}", "k"))
+    write_module("drop", GOOD.replace("{word}", "d"))
+    monkeypatch.setenv("STARLIGHT_MODULES", "keep")
+    async with Kernel(paths) as kernel:
+        assert kernel.modules.records["keep"].status is ModuleStatus.LOADED
+        assert kernel.modules.records["drop"].status is ModuleStatus.DISABLED
+        loaded = {t.module for t in kernel.dispatcher.tools()}
+        assert "keep" in loaded and "drop" not in loaded
 
 
 async def test_relative_imports_inside_module(paths: Paths, write_module: ModuleWriter) -> None:

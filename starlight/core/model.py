@@ -34,7 +34,8 @@ class Message:
 @dataclass
 class ModelResponse:
     """``usage`` keys when known: prompt_tokens, completion_tokens, tokens_per_second,
-    prompt_tokens_per_second, duration_s, model."""
+    prompt_tokens_per_second, duration_s, model, finish_reason ("length": the answer hit
+    the max_tokens limit and was cut off)."""
 
     content: str = ""
     tool_calls: list[ToolCall] = field(default_factory=list)
@@ -92,10 +93,18 @@ class EchoProvider:
 type ProviderFactory = Callable[[dict[str, Any]], ModelProvider]
 
 _PROVIDERS: dict[str, ProviderFactory] = {"echo": lambda options: EchoProvider()}
+_TAKES_MAX_TOKENS: set[str] = set()
 
 
-def register_provider(name: str, factory: ProviderFactory) -> None:
+def register_provider(name: str, factory: ProviderFactory, *, max_tokens: bool = False) -> None:
+    """Make a provider available as ``model.provider: <name>``. ``max_tokens=True``: its
+    factory takes a ``max_tokens`` option, which then defaults to the config's
+    ``reserve_tokens``, so a model that never stops cannot run on until the context is full."""
     _PROVIDERS[name] = factory
+    if max_tokens:
+        _TAKES_MAX_TOKENS.add(name)
+    else:
+        _TAKES_MAX_TOKENS.discard(name)
 
 
 def create_provider(config: ModelConfig) -> ModelProvider:
@@ -106,4 +115,7 @@ def create_provider(config: ModelConfig) -> ModelProvider:
     except KeyError:
         known = ", ".join(sorted(_PROVIDERS))
         raise ValueError(f"unknown model provider '{config.provider}' (known: {known})") from None
-    return factory(config.options)
+    options = dict(config.options)
+    if config.provider in _TAKES_MAX_TOKENS:
+        options.setdefault("max_tokens", config.reserve_tokens)
+    return factory(options)

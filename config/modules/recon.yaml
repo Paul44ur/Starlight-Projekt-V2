@@ -1,0 +1,9 @@
+# The recon module (modules/recon): scan a host you own or are authorized to test.
+# Every scan asks you to confirm authorization first. Reconnaissance only - no attacks.
+
+connect_timeout: 2.0    # seconds to wait for a TCP connection
+read_timeout: 2.0       # seconds to wait for a banner/response
+concurrency: 100        # ports probed at the same time (bounded, gentle)
+banner_bytes: 512       # how much to read from an open port (0 = no banner grab)
+top_ports: 100          # how many common ports a plain scan covers
+max_ports: 2048         # hard cap on ports per scan

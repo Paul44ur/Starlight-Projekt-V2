@@ -5,8 +5,9 @@ Python standard library. Put Starlight.exe in the Starlight folder and double-cl
 
 * first run: shows what it will download and how big it is, asks once, then installs
   uv, Python 3.12 with every package, the Chromium browser, the llama.cpp model server
-  (Vulkan build: AMD, NVIDIA and Intel GPUs) and the model; all inside the Starlight
-  folder, no administrator rights needed
+  (Vulkan build: AMD, NVIDIA and Intel GPUs) and the model into the Starlight folder
+  (uv keeps Python, and Playwright keeps Chromium, in the user profile); no administrator
+  rights needed
 * every run: starts the model server on the GPU, the statistics viewer, and the chat;
   closing the window stops everything it started
 
@@ -28,6 +29,7 @@ import subprocess
 import sys
 import tarfile
 import tempfile
+import threading
 import time
 import urllib.error
 import urllib.request
@@ -49,6 +51,7 @@ DEFAULT_MODEL_URL = (
     "Qwen2.5-14B_Uncensored_Instruct-Q4_K_M.gguf"
 )
 GB = 1024**3
+WEB_PORT = 8700  # the local web chat (matches config web.port)
 MB = 1024**2
 
 
@@ -68,6 +71,8 @@ class Settings:
     llama_release: str = "latest"  # or a tag such as "b6500"
     port: int = 8080
     viewer: bool = True
+    web: bool = True  # open the browser chat; False: the terminal chat
+    both: bool = False  # open the browser chat AND a terminal connected to the same backend
     use_model: bool = True  # False: Starlight's built-in test model, nothing downloaded
     assume_yes: bool = False
     update: bool = False
@@ -121,6 +126,8 @@ def load_settings(args: argparse.Namespace) -> Settings:
                     "llama_release",
                     "port",
                     "viewer",
+                    "web",
+                    "both",
                     "tesseract",
                 ):
                     setattr(settings, key, value)
@@ -131,12 +138,21 @@ def load_settings(args: argparse.Namespace) -> Settings:
         if value is not None:
             setattr(settings, key, value)
     settings.viewer = settings.viewer and not args.no_viewer
+    if args.terminal:
+        settings.web = False
+    if args.both:
+        settings.both = True
     settings.use_model = not args.no_model
     settings.assume_yes = args.yes
     settings.update = args.update
     if args.tesseract:
         settings.tesseract = True
     settings.github_token = os.environ.get("GITHUB_TOKEN") or None
+    # Keep uv's cache on the same drive as the install, so it can hardlink packages into .venv
+    # instead of copying them (which is slow and prints "Failed to hardlink files" when the
+    # cache is on another drive, e.g. the default C:\Users\...\AppData while Starlight is on D:).
+    # The cache then lives inside the Starlight folder. A user-set UV_CACHE_DIR is respected.
+    os.environ.setdefault("UV_CACHE_DIR", str(settings.root / ".uv-cache"))
     return settings
 
 
@@ -628,6 +644,16 @@ def port_in_use(port: int) -> bool:
         return probe_socket.connect_ex(("127.0.0.1", port)) == 0
 
 
+def wait_for_web(port: int, ui: Ui, timeout: float = 60) -> None:
+    """Wait until the web backend is accepting connections before the terminal connects."""
+    started = time.monotonic()
+    while time.monotonic() - started < timeout:
+        if port_in_use(port):
+            return
+        time.sleep(0.5)
+    ui.say(f"   the web backend did not open on port {port} in time; the terminal may not connect")
+
+
 def wait_for_model(
     port: int, process: subprocess.Popen[bytes] | None, log: Path, ui: Ui, timeout: float = 900
 ) -> None:
@@ -767,10 +793,34 @@ def start(settings: Settings, ui: Ui, uv: Path, ask: str | None) -> int:
         if ask is not None:
             result = subprocess.run(starlight(uv, "ask", "-y", ask), cwd=settings.root, check=False)
             return result.returncode
-        ui.say("Kill switch: Ctrl+Alt+K, a screen corner, or /kill. Leave with /quit.\n")
+        if settings.both:
+            url = f"http://127.0.0.1:{WEB_PORT}"
+            ui.say(f"\nOpening the chat in your browser: {url}")
+            ui.say("A terminal chat opens here too - both talk to the same Starlight.")
+            ui.say("Type /quit to leave the terminal; close this window to stop everything.\n")
+            group.start(starlight(uv, "web"), logs / "web.log", settings.root)
+            wait_for_web(WEB_PORT, ui)
+            threading.Timer(1.0, _open_browser, args=(url,)).start()
+            return subprocess.run(
+                starlight(uv, "connect"), cwd=settings.root, check=False
+            ).returncode
+        if settings.web:
+            url = f"http://127.0.0.1:{WEB_PORT}"
+            ui.say(f"\nOpening the chat in your browser: {url}")
+            ui.say("Close this window (or press Ctrl+C) to stop everything.\n")
+            threading.Timer(2.5, _open_browser, args=(url,)).start()
+            return subprocess.run(starlight(uv, "web"), cwd=settings.root, check=False).returncode
+        ui.say("Kill switch: Ctrl+Alt+J, a screen corner, or /kill. Leave with /quit.\n")
         return subprocess.run(starlight(uv, "run"), cwd=settings.root, check=False).returncode
     finally:
         group.stop()
+
+
+def _open_browser(url: str) -> None:
+    with contextlib.suppress(Exception):
+        import webbrowser
+
+        webbrowser.open(url)
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -788,6 +838,12 @@ def build_parser() -> argparse.ArgumentParser:
         help="use Starlight's built-in test model; download no model",
     )
     parser.add_argument("--no-viewer", action="store_true", help="do not start the viewer")
+    parser.add_argument(
+        "--terminal", action="store_true", help="chat in this window instead of the browser"
+    )
+    parser.add_argument(
+        "--both", action="store_true", help="open the browser chat and a terminal chat together"
+    )
     parser.add_argument("--tesseract", action="store_true", help="install Tesseract OCR")
     parser.add_argument("--model-url", help="GGUF model to use (a direct download link)")
     parser.add_argument("--context", type=int, help="context window in tokens")

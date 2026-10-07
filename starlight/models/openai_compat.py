@@ -90,12 +90,16 @@ class OpenAICompatProvider:
         return result
 
     def _parse(self, data: dict[str, Any]) -> ModelResponse:
-        message = data["choices"][0]["message"]
+        choice = data["choices"][0]
+        message = choice["message"]
         calls = [
             tool_call(c["function"]["name"], c["function"].get("arguments"), c.get("id"))
             for c in message.get("tool_calls") or []
         ]
-        return ModelResponse(message.get("content") or "", calls, _usage(data))
+        usage = _usage(data)
+        if choice.get("finish_reason"):
+            usage["finish_reason"] = choice["finish_reason"]
+        return ModelResponse(message.get("content") or "", calls, usage)
 
     async def _stream(
         self, url: str, body: dict[str, Any], on_token: TokenCallback | None
@@ -114,6 +118,8 @@ class OpenAICompatProvider:
                 chunk = json.loads(payload)
                 usage.update(_usage(chunk))
                 for choice in chunk.get("choices") or []:
+                    if choice.get("finish_reason"):
+                        usage["finish_reason"] = choice["finish_reason"]
                     delta = choice.get("delta") or {}
                     if delta.get("content"):
                         text.append(delta["content"])

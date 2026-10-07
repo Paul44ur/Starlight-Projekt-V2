@@ -17,8 +17,8 @@ import json
 import sqlite3
 import threading
 import time
-from collections import deque
 from collections.abc import AsyncIterator
+from contextvars import ContextVar
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -51,6 +51,7 @@ class HttpResponse:
     text: str
     from_cache: bool = False
     elapsed_ms: float = 0.0
+    truncated: bool = False  # the body was longer than max_response_bytes and was cut off
 
     @property
     def ok(self) -> bool:
@@ -60,25 +61,49 @@ class HttpResponse:
         return json.loads(self.text)
 
 
+@dataclass(eq=False)
+class Slot:
+    """One request's place in the window."""
+
+    at: float  # when the request went out (until then: when it was allowed)
+    pending: bool = False  # allowed, not sent yet: counts as going out right now
+
+    def sent(self) -> None:
+        """The request is leaving now. Only the first call counts."""
+        if self.pending:
+            self.at = time.monotonic()
+            self.pending = False
+
+
 class SlidingWindowLimiter:
-    """At most ``limit`` acquisitions in any ``window`` seconds."""
+    """At most ``limit`` requests in any ``window`` seconds.
+
+    With ``until_sent=True`` a request's slot counts from when it really went out
+    (``Slot.sent``), not from when it was allowed: if the program stalls in between, the
+    requests after it still keep their distance where the server sees them."""
 
     def __init__(self, limit: int, window: float = 1.0) -> None:
         self.limit = limit
         self.window = window
-        self._times: deque[float] = deque()
+        self._slots: list[Slot] = []
         self._lock = asyncio.Lock()
 
-    async def acquire(self) -> None:
+    async def acquire(self, until_sent: bool = False) -> Slot:
         async with self._lock:
             while True:
                 now = time.monotonic()
-                while self._times and now - self._times[0] >= self.window:
-                    self._times.popleft()
-                if len(self._times) < self.limit:
-                    self._times.append(now)
-                    return
-                await asyncio.sleep(self.window - (now - self._times[0]) + 0.001)
+                self._slots = [s for s in self._slots if s.pending or now - s.at < self.window]
+                if len(self._slots) < self.limit:
+                    slot = Slot(now, pending=until_sent)
+                    self._slots.append(slot)
+                    return slot
+                done = [s.at for s in self._slots if not s.pending]
+                wait = self.window - (now - min(done)) + 0.001 if done else 0.01
+                await asyncio.sleep(max(wait, 0.001))
+
+
+# The slot of the request this task is sending; the client's request hook marks it sent.
+_sending: ContextVar[Slot | None] = ContextVar("starlight_http_sending", default=None)
 
 
 @dataclass
@@ -165,7 +190,10 @@ class PoliteHttp:
             transport=transport,
             timeout=self.config.timeout,
             follow_redirects=True,
+            max_redirects=self.config.max_redirects,
+            limits=httpx.Limits(max_connections=self.config.max_connections),
             headers={"User-Agent": self.config.user_agent},
+            event_hooks={"request": [self._leaving]},
         )
         self._log = get_logger("http")
 
@@ -202,14 +230,23 @@ class PoliteHttp:
         host.robots_until = time.monotonic() + 3600
         return parser
 
-    async def _wait_turn(self, host: _Host, delay: float, count_global: bool = True) -> None:
+    async def _wait_turn(
+        self, host: _Host, delay: float, count_global: bool = True, until_sent: bool = False
+    ) -> Slot | None:
         """Per-domain spacing, then the global window. Call with host.lock held."""
         now = time.monotonic()
         if host.next_at > now:
             await asyncio.sleep(host.next_at - now)
-        if count_global:
-            await self.limiter.acquire()
+        slot = await self.limiter.acquire(until_sent) if count_global else None
         host.next_at = time.monotonic() + delay
+        return slot
+
+    @staticmethod
+    async def _leaving(request: httpx.Request) -> None:
+        """httpx calls this right before a request goes out."""
+        slot = _sending.get()
+        if slot is not None:
+            slot.sent()
 
     async def _prepare(self, url: str, respect_robots: bool) -> tuple[_Host, float]:
         """Kill-switch and robots.txt checks; returns the host and its request spacing."""
@@ -257,21 +294,52 @@ class PoliteHttp:
 
     # -- requests ----------------------------------------------------------------------
 
+    async def _read_capped(self, response: httpx.Response) -> tuple[bytes, bool]:
+        """Read the body, but never more than max_response_bytes. Counts decompressed
+        bytes, so a gzip bomb is stopped too."""
+        cap = self.config.max_response_bytes
+        chunks: list[bytes] = []
+        total = 0
+        async for chunk in response.aiter_bytes():
+            chunks.append(chunk)
+            total += len(chunk)
+            if total >= cap:
+                return b"".join(chunks)[:cap], True
+        return b"".join(chunks), False
+
     async def _send(
         self, method: str, url: str, host: _Host, delay: float, **kwargs: Any
     ) -> HttpResponse:
         async with host.lock:
-            await self._wait_turn(host, delay)
+            slot = await self._wait_turn(host, delay, until_sent=True)
             self._note(url, method)
             started = time.perf_counter()
-            response = await self._client.request(method, url, **kwargs)
+            sending = _sending.set(slot)
+            try:
+                async with self._client.stream(method, url, **kwargs) as response:
+                    if slot is not None:
+                        slot.sent()
+                    body, truncated = await asyncio.wait_for(
+                        self._read_capped(response), self.config.max_total_seconds
+                    )
+                    status, headers = response.status_code, dict(response.headers)
+                    final_url, encoding = str(response.url), response.encoding or "utf-8"
+            except TimeoutError as exc:
+                raise HttpError(
+                    f"{url}: took longer than {self.config.max_total_seconds:.0f}s"
+                ) from exc
+            finally:
+                _sending.reset(sending)
+                if slot is not None:
+                    slot.sent()  # failed before it went out: free the slot from now
         elapsed = round((time.perf_counter() - started) * 1000, 1)
         return HttpResponse(
-            str(response.url),
-            response.status_code,
-            dict(response.headers),
-            response.text,
+            final_url,
+            status,
+            headers,
+            body.decode(encoding, errors="replace"),
             elapsed_ms=elapsed,
+            truncated=truncated,
         )
 
     async def request(

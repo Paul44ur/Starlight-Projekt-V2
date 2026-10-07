@@ -9,22 +9,26 @@ import getpass
 import json
 import re
 import shutil
+import signal
 import subprocess
 import sys
 from collections.abc import Sequence
 from pathlib import Path
+from types import FrameType
 from typing import Any
 
 import httpx
 
-from starlight import __version__
+from starlight import __version__, console
+from starlight.core.agent import AgentResult
 from starlight.core.config import ConfigError, load_config
 from starlight.core.dispatcher import Confirmer
 from starlight.core.kernel import Kernel
 from starlight.core.killswitch import KillSwitch
 from starlight.core.logging import setup_logging
-from starlight.core.model import create_provider
+from starlight.core.model import TokenCallback, create_provider
 from starlight.core.modules import NAME_PATTERN, ModuleState, discover
+from starlight.core.output import resolve_output_folder
 from starlight.core.paths import Paths
 from starlight.core.permissions import PermissionPolicy
 from starlight.core.stats import Stats
@@ -35,6 +39,7 @@ from starlight.models.bench import benchmark
 from starlight.models.serve import ServeError, run_server, serve_command
 from starlight.skills import SkillManager
 from starlight.skills.git import GitError
+from starlight.tui import ChatView
 
 TEMPLATE = "_template"
 
@@ -49,7 +54,7 @@ def make_confirmer(policy: PermissionPolicy, assume_yes: bool) -> Confirmer:
             f"\nStarlight wants to run {tool.qualified_name}({json.dumps(args, default=str)})\n"
             "Allow? [y]es / [n]o / [a]lways this session: "
         )
-        answer = (await asyncio.to_thread(input, prompt)).strip().lower()
+        answer = (await asyncio.to_thread(console.answer, prompt)).strip().lower()
         if answer in ("a", "always"):
             policy.allow_for_session(tool.qualified_name)
             return True
@@ -69,15 +74,16 @@ class TerminalUI:
             return True
         if not sys.stdin.isatty():
             return False
-        answer = await asyncio.to_thread(input, f"\n{question} [y/N]: ")
+        answer = await asyncio.to_thread(console.answer, f"\n{question} [y/N]: ")
         return answer.strip().lower() in ("y", "yes")
 
     async def ask(self, question: str, secret: bool = False) -> str | None:
         if not sys.stdin.isatty():
             return None
         if secret:
+            console.drop_typeahead()
             return await asyncio.to_thread(getpass.getpass, f"\n{question}: ")
-        return (await asyncio.to_thread(input, f"\n{question}: ")).strip() or None
+        return (await asyncio.to_thread(console.answer, f"\n{question}: ")).strip() or None
 
     async def notify(self, text: str) -> None:
         print(f"\n[starlight] {text}")
@@ -113,95 +119,130 @@ async def cmd_ask(paths: Paths, args: argparse.Namespace) -> int:
     return 0
 
 
+async def _ask(kernel: Kernel, line: str, on_token: TokenCallback) -> AgentResult | None:
+    """Run one request. Ctrl+C while Starlight answers stops that answer, not Starlight
+    (it returns None then)."""
+    loop = asyncio.get_running_loop()
+    task = asyncio.ensure_future(kernel.ask(line, keep_history=True, on_token=on_token))
+
+    def stop(signum: int, frame: FrameType | None) -> None:
+        loop.call_soon_threadsafe(task.cancel)
+
+    try:
+        previous = signal.signal(signal.SIGINT, stop)
+    except ValueError:  # not the main thread: keep the usual Ctrl+C
+        previous = None
+    try:
+        return await task
+    except asyncio.CancelledError:
+        current = asyncio.current_task()
+        if current is not None and current.cancelling():
+            raise  # Starlight itself is stopping
+        return None
+    finally:
+        if previous is not None:
+            signal.signal(signal.SIGINT, previous)
+
+
+HELP = """\
+**Commands**
+
+- `/tools` - what Starlight can do
+- `/modules` - which modules are on
+- `/reload NAME` / `/enable NAME` / `/disable NAME` - manage a module
+- `/kill [REASON]` / `/resume` - stop everything, and continue
+- `/clear` - forget this conversation
+- `/quit` - leave
+- `!module.tool {json}` - call a tool directly (test model)
+"""
+
+
 async def cmd_run(paths: Paths, args: argparse.Namespace) -> int:
-    async with _kernel(paths, assume_yes=args.yes, hotkey=True) as kernel:
-        print(f"Starlight {__version__}. Type /help for commands, /quit to exit.")
+    view = ChatView(assume_yes=args.yes)
+    kernel = Kernel(paths, hotkey=True)
+    kernel.set_ui(view)
+    kernel.set_confirmer(view.permission_confirmer(kernel.policy))
+    async with kernel:
         hotkey = kernel.config.kill_switch.hotkey
-        if kernel.hotkey_active:
-            print(f"Kill hotkey: {hotkey}")
-        elif hotkey:
-            print(
-                "Kill hotkey inactive (needs the 'hotkey' extra and a desktop session). "
-                "/kill and `starlight kill` still work."
-            )
+        info = {
+            "home": str(paths.root),
+            "model": kernel.config.model.provider,
+            "saves files": str(resolve_output_folder(kernel.config.output.folder, paths.root)),
+        }
+        if kernel.kill_switch.engaged:
+            info["kill switch"] = f"ON - {kernel.kill_switch.reason} (type /resume)"
+        elif not kernel.hotkey_active and hotkey:
+            info["hotkey"] = "inactive (needs the 'hotkey' extra and a desktop)"
+        view.banner(__version__, info, hotkey)
         while True:
             try:
-                line = (await asyncio.to_thread(input, "you> ")).strip()
+                line = view.read()
             except (EOFError, KeyboardInterrupt):
                 print()
                 break
             if not line:
                 continue
             if line.startswith("/"):
-                if await _repl_command(kernel, line):
+                if await _repl_command(kernel, line, view):
                     break
                 continue
             streamed: list[str] = []
+            emit = view.on_token()
 
-            def on_token(token: str, streamed: list[str] = streamed) -> None:
-                if not streamed:
-                    print("starlight> ", end="", flush=True)
+            def on_token(token: str, streamed: list[str] = streamed, emit: Any = emit) -> None:
                 streamed.append(token)
-                print(token, end="", flush=True)
+                emit(token)
 
-            result = await kernel.ask(line, keep_history=True, on_token=on_token)
-            # Streaming showed the answer (after any text from earlier tool steps).
+            result = await _ask(kernel, line, on_token)
+            if result is None:
+                view.end_answer(bool(streamed))
+                view.info("[Stopped. Ask something else, or /quit to leave.]")
+                continue
+            # Streaming already showed the answer (after any text from earlier tool steps).
             if streamed and "".join(streamed).strip().endswith(result.answer.strip()):
-                print()
+                view.end_answer(True)
             else:
-                if streamed:
-                    print()
-                print(f"starlight> {result.answer}")
+                view.end_answer(bool(streamed))
+                view.answer(result.answer)
             if result.stopped:
-                print("Kill switch is engaged. Type /resume to continue.")
+                view.info("Kill switch is engaged. Type /resume to continue.")
     return 0
 
 
-async def _repl_command(kernel: Kernel, line: str) -> bool:
+async def _repl_command(kernel: Kernel, line: str, view: ChatView) -> bool:
     """Handle a /command. Returns True to quit."""
     command, _, rest = line[1:].partition(" ")
     rest = rest.strip()
     if command in ("quit", "exit"):
         return True
     if command == "help":
-        print(
-            "/tools            list tools\n"
-            "/modules          list modules\n"
-            "/reload NAME      hot-reload a module\n"
-            "/enable NAME      enable a module\n"
-            "/disable NAME     disable a module\n"
-            "/kill [REASON]    engage the kill switch\n"
-            "/resume           release the kill switch\n"
-            "/clear            forget this conversation\n"
-            "/quit             exit\n"
-            "!module.tool {json}   call a tool directly (echo provider)"
-        )
+        view.help(HELP)
     elif command == "tools":
-        _print_tools(kernel.dispatcher.tools())
+        view.tools(kernel.dispatcher.tools())
     elif command == "modules":
         for name, record in sorted(kernel.modules.records.items()):
-            print(f"  {name:<16} {record.status.value:<9} {record.error or ''}")
+            view.info(f"  {name:<16} {record.status.value:<9} {record.error or ''}")
     elif command in ("reload", "enable", "disable") and rest:
         try:
             if command == "disable":
                 await kernel.modules.disable(rest)
-                print(f"{rest}: disabled")
+                view.info(f"{rest}: disabled")
             else:
                 op = kernel.modules.reload if command == "reload" else kernel.modules.enable
                 record = await op(rest)
-                print(f"{rest}: {record.status.value} {record.error or ''}")
+                view.info(f"{rest}: {record.status.value} {record.error or ''}")
         except KeyError as exc:
-            print(exc.args[0])
+            view.error(str(exc.args[0]))
     elif command == "kill":
         kernel.kill_switch.trigger(rest or "REPL /kill", source="cli")
-        print("Kill switch engaged.")
+        view.info("Kill switch engaged.")
     elif command == "resume":
         kernel.kill_switch.reset()
-        print("Kill switch released.")
+        view.info("Kill switch released.")
     elif command == "clear":
         kernel.history = []
     else:
-        print(f"Unknown command: /{command}. Try /help.")
+        view.error(f"Unknown command: /{command}. Try /help.")
     return False
 
 
@@ -237,6 +278,7 @@ def cmd_status(paths: Paths, args: argparse.Namespace) -> int:
     switch = _kill_switch(paths)
     print(f"Starlight {__version__}")
     print(f"  home:         {paths.root}")
+    print(f"  saves files:  {resolve_output_folder(config.output.folder, paths.root)}")
     print(f"  model:        {config.model.provider}")
     kill_state = f"ENGAGED ({switch.reason})" if switch.engaged else "off"
     print(f"  kill switch:  {kill_state}")
@@ -450,7 +492,32 @@ def cmd_viewer(paths: Paths, args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_web(paths: Paths, args: argparse.Namespace) -> int:
+    from starlight.web.app import run
+
+    config = load_config(paths)
+    print(f"Starlight chat on http://{config.web.host}:{config.web.port}", flush=True)
+    run(paths)
+    return 0
+
+
+async def cmd_connect(paths: Paths, args: argparse.Namespace) -> int:
+    """A terminal chat that drives a running web backend, so the terminal and the browser
+    share one assistant (one conversation, one kill switch)."""
+    from starlight.web.client import run_client
+
+    config = load_config(paths)
+    host = args.host or config.web.host
+    port = args.port or config.web.port
+    return await run_client(host, port, assume_yes=args.yes)
+
+
 def cmd_logs(paths: Paths, args: argparse.Namespace) -> int:
+    if args.action == "show":
+        from starlight.core.logging import format_errors, recent_errors
+
+        print(format_errors(recent_errors(paths.logs, limit=args.count)))
+        return 0
     from starlight.core.secretscan import scan_logs
 
     vault = Vault(paths.config / "vault_index.yaml")
@@ -611,8 +678,16 @@ def build_parser() -> argparse.ArgumentParser:
 
     sub.add_parser("serve", help="run the core in the background (WhatsApp, watchers)")
     sub.add_parser("viewer", help="the statistics viewer (a separate web app)")
-    logs = sub.add_parser("logs", help="check the logs for leaked secrets")
-    logs.add_argument("action", choices=["scan"])
+    sub.add_parser("web", help="a browser chat page for Starlight (local only)")
+    connect = sub.add_parser(
+        "connect", help="a terminal chat connected to a running web backend (shares its brain)"
+    )
+    connect.add_argument("--host", default="", help="backend host (default: web.host in config)")
+    connect.add_argument("--port", type=int, default=0, help="backend port (default: web.port)")
+    connect.add_argument("-y", "--yes", action="store_true", help="approve confirmations")
+    logs = sub.add_parser("logs", help="show recent errors, or check for leaked secrets")
+    logs.add_argument("action", choices=["show", "scan"])
+    logs.add_argument("-n", "--count", type=int, default=20, help="how many recent errors")
     service_cmd = sub.add_parser("service", help="start core and viewer at logon")
     service_cmd.add_argument("action", choices=["install", "uninstall", "start", "stop", "status"])
     service_cmd.add_argument("--print-only", action="store_true", help="only show what it does")
@@ -660,6 +735,10 @@ def main(argv: Sequence[str] | None = None) -> int:
                 return asyncio.run(cmd_serve(paths, args))
             case "viewer":
                 return cmd_viewer(paths, args)
+            case "web":
+                return cmd_web(paths, args)
+            case "connect":
+                return asyncio.run(cmd_connect(paths, args))
             case "logs":
                 return cmd_logs(paths, args)
             case "service":

@@ -22,13 +22,15 @@ Configure sites in ``config/modules/login.yaml``:
 from __future__ import annotations
 
 import json
+import re
 from pathlib import Path
 from typing import Any
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ValidationError
 
 from starlight.browser import Browser
-from starlight.core import Module, ModuleContext, tool
+from starlight.core import Module, ModuleContext, ToolError, tool
+from starlight.core.config import read_yaml, write_yaml_config
 from starlight.text import html_to_text
 
 
@@ -47,22 +49,22 @@ class Site(BaseModel):
     password_key: str = ""  # vault key, default login.<site>.password
 
 
-class Config(BaseModel):
+class LoginConfig(BaseModel):
     sites: dict[str, Site] = Field(default_factory=dict)
     headless: bool = True
     timeout: float = 30.0
     respect_robots: bool = False  # your own accounts; robots.txt targets crawlers
 
 
-class LoginError(Exception):
+class LoginError(ToolError):
     pass
 
 
 class LoginModule(Module):
-    Config = Config
+    Config = LoginConfig
 
     async def setup(self, ctx: ModuleContext) -> None:
-        self.config: Config = ctx.config
+        self.config: LoginConfig = ctx.config
         self.browser = Browser(
             ctx.http, headless=self.config.headless, respect_robots=self.config.respect_robots
         )
@@ -74,10 +76,21 @@ class LoginModule(Module):
     async def shutdown(self) -> None:
         await self.browser.close()
 
+    def _config_file(self) -> Path:
+        return self.ctx.paths.module_configs / "login.yaml"
+
+    def _live(self) -> LoginConfig:
+        """Re-read the config so sites added from the chat work without a restart."""
+        try:
+            return LoginConfig.model_validate(read_yaml(self._config_file()))
+        except ValidationError:
+            return self.config
+
     def _site(self, name: str) -> Site:
-        site = self.config.sites.get(name)
+        sites = self._live().sites
+        site = sites.get(name)
         if site is None:
-            known = ", ".join(sorted(self.config.sites)) or "none configured"
+            known = ", ".join(sorted(sites)) or "none configured"
             raise LoginError(f"unknown site '{name}' ({known})")
         return site
 
@@ -107,8 +120,63 @@ class LoginModule(Module):
         """Configured sites and whether a saved session exists."""
         return [
             {"site": name, "url": s.url, "session": self._session(name).is_file()}
-            for name, s in sorted(self.config.sites.items())
+            for name, s in sorted(self._live().sites.items())
         ]
+
+    LOGIN_HEADER = (
+        "# Sites Starlight can log in to (Step 6). Starlight edits this from the chat\n"
+        "# (login.add_site); you may also edit it by hand. Passwords are NEVER here —\n"
+        "# they live in the OS keyring under login.<site>.username / .password."
+    )
+
+    def _write_sites(self, config: LoginConfig) -> None:
+        data = config.model_dump(exclude_defaults=True)
+        write_yaml_config(self._config_file(), data, self.LOGIN_HEADER)
+
+    @tool
+    async def add_site(
+        self,
+        site: str,
+        url: str,
+        username: str,
+        password: str,
+        username_selector: str = "",
+        password_selector: str = "",
+        success_selector: str = "",
+    ) -> dict[str, Any]:
+        """Set up a login for one of the user's own accounts, so they never edit files.
+        site is a short name (e.g. "github"); url is the login page. The username and
+        password are stored in the OS keyring, never in a file or a log. The selectors are
+        optional (Starlight guesses the usual ones). Asks the user first; the password is
+        never shown back."""
+        name = site.strip().lower()
+        if not re.fullmatch(r"[a-z0-9][a-z0-9_-]*", name):
+            raise LoginError("site name: lowercase letters, digits, '-' and '_' only")
+        if not url.strip().startswith(("http://", "https://")):
+            raise LoginError("give the login page URL (https://...)")
+        ok = await self.ctx.ui.confirm(
+            f"Save a login for '{name}' at {url.strip()}?\n"
+            "  The username and password go into the OS keyring (not any file). "
+            "The password is hidden."
+        )
+        if not ok:
+            raise LoginError("not confirmed, so nothing was saved")
+        self.ctx.kill_switch.check()
+        self.ctx.vault.set(f"login.{name}.username", username)
+        self.ctx.vault.set(f"login.{name}.password", password)
+        fields: dict[str, Any] = {"url": url.strip()}
+        for key, value in (
+            ("username_selector", username_selector),
+            ("password_selector", password_selector),
+            ("success_selector", success_selector),
+        ):
+            if value.strip():
+                fields[key] = value.strip()
+        config = self._live()
+        config.sites[name] = Site(**fields)
+        self._write_sites(config)
+        self.ctx.logger.info("login site added", site=name)
+        return {"added": name, "url": url.strip(), "note": "Try: log in to " + name}
 
     @tool
     async def login(self, site: str) -> str:
