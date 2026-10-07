@@ -50,6 +50,10 @@ the context window, older turns are summarized (by the fast model when routing) 
 cut off, and the summary is saved to `memory/conversations/`. `starlight model serve`
 starts the server with full GPU offload, flash attention and a q8 KV cache;
 `starlight model bench` records tokens/s, time to first token and VRAM in `data/stats.db`.
+`models/output.py` keeps replies clean when a model file is faulty: requests carry stop
+sequences, the stream is cut at an end-of-turn marker (so the model can't write the user's
+next message), and tool calls written as text (```json blocks, `<tool_call>` tags) naming a
+known tool are run as real calls and held back from the chat while they stream.
 
 **Step 5, memory.** One Markdown file per fact in `memory/` with a small header (topic,
 source, date, confidence). A vector index (embeddings cached in SQLite, rebuilt from the

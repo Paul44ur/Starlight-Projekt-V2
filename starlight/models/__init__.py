@@ -15,9 +15,15 @@ from starlight.models.ollama import OllamaProvider
 from starlight.models.openai_compat import OpenAICompatProvider
 from starlight.models.router import RouterProvider
 
+# llama-server's own sampling extensions. Qwen's recommended values: they keep a model from
+# drifting into other languages or repeating itself. model.options.extra overrides them.
+LLAMACPP_SAMPLING: dict[str, Any] = {"top_p": 0.8, "top_k": 20, "repeat_penalty": 1.05}
+
 
 def _llamacpp(options: dict[str, Any]) -> ModelProvider:
-    return OpenAICompatProvider(**{"base_url": "http://127.0.0.1:8080/v1", **options})
+    options = {"base_url": "http://127.0.0.1:8080/v1", **options}
+    options["extra"] = {**LLAMACPP_SAMPLING, **(options.get("extra") or {})}
+    return OpenAICompatProvider(**options)
 
 
 register_provider("ollama", lambda options: OllamaProvider(**options), max_tokens=True)

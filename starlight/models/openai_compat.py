@@ -20,6 +20,12 @@ import httpx
 
 from starlight.core.model import Message, ModelResponse, TokenCallback, ToolCall
 from starlight.models.common import function_tools, openai_messages, tool_call
+from starlight.models.output import (
+    TURN_MARKERS,
+    StreamFilter,
+    cut_at_turn_end,
+    recover_tool_calls,
+)
 
 
 class OpenAICompatProvider:
@@ -37,6 +43,7 @@ class OpenAICompatProvider:
         extra: dict[str, Any] | None = None,
         name: str = "llamacpp",
         transport: httpx.AsyncBaseTransport | None = None,
+        stop: list[str] | None = None,
     ) -> None:
         self.name = name
         self.model = model
@@ -44,6 +51,9 @@ class OpenAICompatProvider:
         self.temperature = temperature
         self.max_tokens = max_tokens
         self.stream = stream
+        # End the reply at the end-of-turn marker even when the model file does not mark it
+        # as a stop (the model would otherwise write the user's next message itself).
+        self.stop = list(TURN_MARKERS) if stop is None else stop
         # cache_prompt: llama-server reuses the KV cache for the shared prompt prefix.
         self.extra = {"cache_prompt": True, **(extra or {})}
         headers = {"Authorization": f"Bearer {api_key}"} if api_key else {}
@@ -65,6 +75,8 @@ class OpenAICompatProvider:
             body["tools"] = function_tools(tools)
         if self.max_tokens:
             body["max_tokens"] = self.max_tokens
+        if self.stop:
+            body["stop"] = self.stop
         if stream:
             body["stream_options"] = {"include_usage": True}
         return body
@@ -79,12 +91,18 @@ class OpenAICompatProvider:
         stream = self.stream and on_token is not None
         url = f"{self.base_url}/chat/completions"
         body = self._body(messages, tools, stream)
+        known = {t["name"] for t in tools}
         if not stream:
             response = await self._client.post(url, json=body)
             response.raise_for_status()
             result = self._parse(response.json())
+            result.content = cut_at_turn_end(result.content)
+            if not result.tool_calls and known:
+                calls, text = recover_tool_calls(result.content, known)
+                if calls:
+                    result.tool_calls, result.content = calls, text
         else:
-            result = await self._stream(url, body, on_token)
+            result = await self._stream(url, body, on_token, known)
         result.usage.setdefault("duration_s", round(time.perf_counter() - started, 3))
         result.usage.setdefault("model", self.model)
         return result
@@ -102,9 +120,13 @@ class OpenAICompatProvider:
         return ModelResponse(message.get("content") or "", calls, usage)
 
     async def _stream(
-        self, url: str, body: dict[str, Any], on_token: TokenCallback | None
+        self,
+        url: str,
+        body: dict[str, Any],
+        on_token: TokenCallback | None,
+        known: set[str],
     ) -> ModelResponse:
-        text: list[str] = []
+        shown = StreamFilter()  # what of the reply may be shown while it streams
         calls: dict[int, dict[str, str]] = {}
         usage: dict[str, Any] = {}
         async with self._client.stream("POST", url, json=body) as response:
@@ -122,9 +144,9 @@ class OpenAICompatProvider:
                         usage["finish_reason"] = choice["finish_reason"]
                     delta = choice.get("delta") or {}
                     if delta.get("content"):
-                        text.append(delta["content"])
-                        if on_token is not None:
-                            on_token(delta["content"])
+                        visible = shown.feed(delta["content"])
+                        if visible and on_token is not None:
+                            on_token(visible)
                     for part in delta.get("tool_calls") or []:
                         slot = calls.setdefault(
                             part.get("index", 0), {"id": "", "name": "", "arguments": ""}
@@ -133,10 +155,23 @@ class OpenAICompatProvider:
                         function = part.get("function") or {}
                         slot["name"] += function.get("name") or ""
                         slot["arguments"] += function.get("arguments") or ""
+                if shown.ended or shown.call_finished(known):
+                    # The turn is over but the model keeps writing: stop reading. Closing the
+                    # stream makes llama-server stop generating too.
+                    usage["finish_reason"] = "stop"
+                    break
         tool_calls: list[ToolCall] = [
             tool_call(c["name"], c["arguments"], c["id"] or None) for _, c in sorted(calls.items())
         ]
-        return ModelResponse("".join(text), tool_calls, usage)
+        content = shown.text
+        if not tool_calls and known:
+            recovered, before = recover_tool_calls(content, known)
+            if recovered:
+                return ModelResponse(before, recovered, usage)
+        rest = shown.held()  # held back in case it was a tool call; it was not
+        if rest and on_token is not None:
+            on_token(rest)
+        return ModelResponse(content, tool_calls, usage)
 
     async def warmup(self) -> None:
         """llama-server loads the model at start; just check it is up."""
