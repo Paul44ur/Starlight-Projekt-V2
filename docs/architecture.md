@@ -34,7 +34,7 @@ modules/            hello, web, login, network, recon, cve, certs, breach, deskt
                     reminders, mail, pdf, code, files, access, whatsapp, todo,
                     calendar, briefing, calc, translate, automations, apps, media,
                     commands, office, dev, research, docs, notes, transcripts,
-                    voice (+ _template)
+                    voice, home, lan, backup (+ _template)
 skills/             skills it learns (one folder each)
 scripts/            install.ps1, install.sh
 memory/             what the AI learns (one Markdown file per fact)
@@ -170,6 +170,16 @@ which keeps Starlight on 127.0.0.1; `web.remote.confirm` patterns are added as
 always-ask rules for the duration of a remote request (`permissions.extra_confirm`), and
 changing permissions, modules, devices or skills, and releasing the kill switch, are
 local-only.
+
+**Home and devices.** `home` talks to Home Assistant's REST API with a long-lived token
+from the vault; `free_domains` (lights, switches, fans, media players, scenes) switch
+without asking, other domains ask, and `call_service` is a CONFIRM tool; watched entities
+publish `home.changed`. `lan` reads the neighbour table (`arp -a`, `/proc/net/arp`, `ip
+neigh`), optionally pings only the PC's own private /24 networks, keeps names in
+`data/modules/lan/devices.json` and, with `watch`, publishes `lan.new_device`. `backup`
+writes `<target>/<name>/<name> <date>.zip` with a SHA-256 manifest inside (a `.partial`
+file until complete), keeps `keep` versions, verifies against the manifest and restores
+without overwriting unless asked (`restore` is a CONFIRM tool; zip paths are checked).
 
 **Voice.** `Starlight.exe --voice` downloads whisper.cpp's `whisper-server` with a
 multilingual model and Piper with a German and an English voice into `tools/`. The `voice`

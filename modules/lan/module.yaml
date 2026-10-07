@@ -1,0 +1,7 @@
+name: lan
+version: 0.1.0
+description: Which devices are on your home network, with names you give them, and a warning when a new one appears
+entrypoint: module:LanModule
+permissions: [safe]
+dependencies: []
+enabled_by_default: true

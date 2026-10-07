@@ -117,6 +117,10 @@ TEMPLATES: dict[str, dict[str, Any]] = {
             },
         ],
     },
+    "nightly-backups": {
+        "when": "every day at 3:00",
+        "actions": [{"ask": "Run all my backups (backup.list, then backup.run for each)."}],
+    },
     "weekly-cert-check": {
         "when": "monday 9:00",
         "actions": [

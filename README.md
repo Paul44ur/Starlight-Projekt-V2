@@ -58,6 +58,9 @@ and answer you on WhatsApp. Anything risky asks you first, and one key press sto
 | **Notes** | Quick notes as plain files ("note: …", "add eggs to my shopping note"), searchable and part of your knowledge base. |
 | **YouTube summaries** | Summarizes a video or answers a question about it from its captions, with the times it was said. |
 | **Talk to it** | Speak instead of typing and hear the answers — 🎤 and 🔊 in the web chat (on your phone too), `/talk` in the terminal. Speech recognition (whisper.cpp) and the voices (Piper, German and English) run on your PC. Install with `Starlight.exe --voice`. |
+| **Smart home** | "Turn off the living room lights", "is the front door locked?" — through your Home Assistant. Lights, plugs and scenes switch at once; locks, alarms, doors and heating ask first. |
+| **Your home network** | Which devices are on your WiFi (with names you give them), and a warning when an unknown one joins. Only ever looks at your own network. |
+| **Backups** | Versioned backups of folders you choose (e.g. to an external drive), checked with checksums; restoring asks first and never overwrites without your say. Schedule them with an automation. |
 | **Use your desktop** | Reads the screen, then clicks and types for you, with a red banner on screen while it does. |
 | **Save files** | Saves letters, notes, tables (CSV) and web pages it makes for you in `Documents\Starlight`. |
 | **Write code** | Writes small programs, tests them in a sandbox and fixes them until the tests pass. |

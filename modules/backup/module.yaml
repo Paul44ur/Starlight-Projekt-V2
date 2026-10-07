@@ -1,0 +1,7 @@
+name: backup
+version: 0.1.0
+description: Versioned backups of folders you choose - make, check and restore them
+entrypoint: module:BackupModule
+permissions: [safe, confirm]
+dependencies: []
+enabled_by_default: true

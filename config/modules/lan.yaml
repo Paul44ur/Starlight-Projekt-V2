@@ -1,0 +1,5 @@
+# The lan module (modules/lan): devices on your own home network. It only ever looks at the
+# network this PC is in (its own private /24), never at anything else.
+watch: false          # warn when a device that was never seen before appears
+watch_minutes: 10     # how often the watcher looks
+sweep_on_watch: true  # ping the network each round, so quiet devices show up too
