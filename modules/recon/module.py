@@ -20,6 +20,8 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import ipaddress
+import json
+import re
 import socket
 import ssl
 import sys
@@ -29,11 +31,13 @@ from typing import Any
 from pydantic import BaseModel, Field
 
 from starlight.core import Module, ModuleContext, ToolError, tool
-from starlight.core.config import read_yaml, write_yaml_config
+from starlight.core.config import read_yaml
+from starlight.core.tlsinfo import decode_der, unverified_context
 
 from .ports import COMMON, HTTP_PORTS, TLS_PORTS
 
 SERVERS_FILE = "servers.yaml"
+AUTHORIZED_FILE = "authorized.json"  # hosts the user authorized for scans
 MAX_BANNER = 2048  # never read more than this from one port, hostile or not
 
 
@@ -59,26 +63,29 @@ class ReconModule(Module):
         hosts = {str(s.get("host")) for s in servers.values() if isinstance(s, dict)}
         return hosts | set(servers)
 
-    def _remember(self, name: str, host: str) -> None:
-        path = self.ctx.paths.config / SERVERS_FILE
-        data = read_yaml(path)
-        servers = data.get("servers")
-        if not isinstance(servers, dict):
-            servers = {}
-        servers.setdefault(name, {"host": host, "description": "added for a scan"})
-        data["servers"] = servers
-        write_yaml_config(
-            path,
-            data,
-            "# Servers Starlight may touch. Edited from the chat (network.allow, scans).",
-        )
+    # Hosts the user authorized for scanning are kept in recon's own data, not in
+    # servers.yaml: authorizing a scan must not also open the host to the network tools.
+    def _authorized(self) -> set[str]:
+        path = self.ctx.data_dir / AUTHORIZED_FILE
+        try:
+            data = json.loads(path.read_text("utf-8"))
+        except (OSError, ValueError):
+            return set()
+        return {str(h) for h in data} if isinstance(data, list) else set()
+
+    def _remember(self, *hosts: str) -> None:
+        known = self._authorized() | set(hosts)
+        path = self.ctx.data_dir / AUTHORIZED_FILE
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps(sorted(known), indent=2), encoding="utf-8")
 
     @staticmethod
     def _one_host(target: str) -> str:
         target = target.strip()
         if not target:
             raise ToolError("give one host: an IP address or a hostname")
-        if "/" in target or "-" in target.split(".")[-1] or " " in target or "," in target:
+        numeric_range = re.fullmatch(r"\d+-\d+", target.split(".")[-1]) is not None
+        if "/" in target or numeric_range or " " in target or "," in target:
             raise ToolError(
                 "scan one host at a time, not a range or list. Give a single IP or hostname."
             )
@@ -103,9 +110,10 @@ class ReconModule(Module):
 
     async def _authorize(self, target: str, ip: str, ports_desc: str) -> None:
         """Make sure the user is allowed to scan this host before anything is sent."""
-        if target in self._allowed_hosts() or ip in self._allowed_hosts():
+        known = self._allowed_hosts() | self._authorized()
+        if target in known or ip in known:
             ok = await self.ctx.ui.confirm(
-                f"Scan {target} ({ip}) now? Ports: {ports_desc}. (It is on your allow-list.)"
+                f"Scan {target} ({ip}) now? Ports: {ports_desc}. (You allowed this host before.)"
             )
             if not ok:
                 raise ToolError("not confirmed, so nothing was scanned")
@@ -303,19 +311,17 @@ class ReconModule(Module):
         return {"http_status": status.strip(), "http": interesting} if status else {}
 
     async def _tls(self, host: str, ip: str, port: int) -> dict[str, Any]:
-        context = ssl.create_default_context()
-        context.check_hostname = False
-        context.verify_mode = ssl.CERT_NONE  # we want to SEE the cert, not validate the chain
         try:
             reader, writer = await asyncio.wait_for(
-                asyncio.open_connection(ip, port, ssl=context, server_hostname=host),
+                asyncio.open_connection(ip, port, ssl=unverified_context(), server_hostname=host),
                 self.config.connect_timeout,
             )
         except (OSError, TimeoutError, ssl.SSLError) as exc:
             return {"tls": f"handshake failed: {type(exc).__name__}"}
         try:
             ssl_object = writer.get_extra_info("ssl_object")
-            cert = ssl_object.getpeercert() if ssl_object else None
+            # unverified, getpeercert() is empty: parse the raw certificate instead
+            cert = decode_der(ssl_object.getpeercert(binary_form=True)) if ssl_object else None
         except (AttributeError, ValueError):
             cert = None
         finally:
@@ -328,7 +334,7 @@ class ReconModule(Module):
     @staticmethod
     def _cert_summary(cert: Any) -> dict[str, Any]:
         if not cert:
-            return {"note": "no certificate details (verification is off)"}
+            return {"note": "the server sent no certificate"}
 
         def name(parts: Any) -> str:
             flat = {k: v for rdn in parts for k, v in rdn}

@@ -9,8 +9,12 @@ Both only apply in an interactive terminal; piped input is read line by line as 
 
 from __future__ import annotations
 
+import asyncio
 import sys
+import threading
 import time
+from collections.abc import Callable
+from concurrent.futures import Future
 
 PASTE_GAP = 0.05  # seconds: lines that arrive closer together than this were pasted
 
@@ -82,3 +86,41 @@ def answer(prompt: str) -> str:
     if drop_typeahead():
         print("\n(Text typed before this question was ignored. Please answer it now.)")
     return input(prompt)
+
+
+class LineReader:
+    """Reads input in a background thread so the event loop keeps running while a prompt
+    waits (the kill-switch watcher, reminders and the WhatsApp bridge carry on).
+
+    At most one read is in flight. If a question is abandoned (Ctrl+C at a confirmation),
+    its read is still waiting for a line; the next prompt takes that read over instead of
+    starting a second one, which would otherwise swallow the user's next line. The thread
+    is a daemon, so leaving Starlight never waits for Enter."""
+
+    def __init__(self) -> None:
+        self._pending: Future[str] | None = None
+
+    async def read(self, reader: Callable[[str], str], prompt: str) -> str:
+        if self._pending is not None and not self._pending.done():
+            print(prompt, end="", flush=True)  # the old read is waiting: show the new prompt
+            future = self._pending
+        else:
+            future = Future()
+            future.set_running_or_notify_cancel()  # running: Ctrl+C cannot cancel it
+            self._pending = future
+            threading.Thread(target=_run, args=(future, reader, prompt), daemon=True).start()
+        try:
+            return await asyncio.wrap_future(future)
+        finally:
+            if future.done():
+                self._pending = None
+
+
+def _run(future: Future[str], reader: Callable[[str], str], prompt: str) -> None:
+    try:
+        future.set_result(reader(prompt))
+    except BaseException as exc:  # EOFError, KeyboardInterrupt: hand them to the caller
+        future.set_exception(exc)
+
+
+lines = LineReader()

@@ -16,6 +16,7 @@ import yaml
 from pydantic import BaseModel, Field
 
 from starlight.core import Module, ModuleContext, ToolError, tool
+from starlight.core.tlsinfo import read_certificate
 
 SERVERS_FILE = "servers.yaml"
 
@@ -34,15 +35,8 @@ class CertsModule(Module):
     # -- reading a certificate (blocking; run off the event loop) -------------------------
 
     def _read_cert(self, host: str, port: int) -> dict[str, Any]:
-        context = ssl.create_default_context()
-        with (
-            __import__("socket").create_connection(
-                (host, port), timeout=self.config.timeout
-            ) as sock,
-            context.wrap_socket(sock, server_hostname=host) as tls,
-        ):
-            cert = tls.getpeercert()
-        return cert or {}
+        # read even an expired or self-signed certificate: its dates are what we report
+        return read_certificate(host, port, self.config.timeout)
 
     def _describe(self, host: str, port: int, raw: dict[str, Any]) -> dict[str, Any]:
         not_after = raw.get("notAfter")
@@ -56,6 +50,8 @@ class CertsModule(Module):
             "valid_until": not_after,
             "san": [value for kind, value in raw.get("subjectAltName", ()) if kind == "DNS"],
         }
+        if raw.get("verify_error"):
+            result["problem"] = f"does not verify: {raw['verify_error']}"
         if not_after:
             try:
                 expiry = ssl.cert_time_to_seconds(not_after)
@@ -72,12 +68,6 @@ class CertsModule(Module):
             raise ToolError("give a host name, e.g. 'example.com'")
         try:
             raw = await asyncio.to_thread(self._read_cert, host, port)
-        except ssl.SSLCertVerificationError as exc:
-            return {
-                "host": host,
-                "port": port,
-                "error": f"certificate did not verify: {exc.verify_message or exc}",
-            }
         except (OSError, ssl.SSLError) as exc:
             return {"host": host, "port": port, "error": f"could not read the certificate: {exc}"}
         return self._describe(host, port, raw)

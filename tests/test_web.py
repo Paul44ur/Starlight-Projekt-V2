@@ -143,8 +143,26 @@ async def test_a_huge_response_is_capped_not_read_whole() -> None:
         transport=httpx.MockTransport(handler),
     )
     response = await http.get("https://big.example/file")
+    again = await http.get("https://big.example/file")
     await http.aclose()
     assert len(response.text) == 10_000 and response.truncated  # only the cap was read
+    # a cut-off body is never cached as if it were the whole page
+    assert again.truncated and not again.from_cache
+
+
+async def test_a_server_that_never_answers_is_given_up_on() -> None:
+    """The time ceiling covers waiting for the response headers, not only the body."""
+    import asyncio
+
+    class Silent(httpx.AsyncBaseTransport):
+        async def handle_async_request(self, request: httpx.Request) -> httpx.Response:
+            await asyncio.sleep(30)  # connected, but no response ever comes
+            return httpx.Response(200)
+
+    http = PoliteHttp(HttpConfig(respect_robots=False, max_total_seconds=0.3), transport=Silent())
+    with pytest.raises(HttpError, match="took longer"):
+        await asyncio.wait_for(http.get("https://slow.example/"), 5)
+    await http.aclose()
 
 
 async def test_a_redirect_loop_is_stopped() -> None:

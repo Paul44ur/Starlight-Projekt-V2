@@ -96,7 +96,9 @@ class NewsModule(Module):
 
     async def _read_feed(self, url: str) -> list[dict[str, Any]]:
         try:
-            response = await self.ctx.http.get(url, respect_robots=False)
+            response = await self.ctx.http.get(
+                url, respect_robots=False, use_cache=False
+            )  # fresh headlines
         except HttpError as exc:
             raise ToolError(f"could not reach the news feed: {exc}") from exc
         if not response.ok:

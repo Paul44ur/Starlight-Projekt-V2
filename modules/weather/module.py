@@ -136,7 +136,9 @@ class WeatherModule(Module):
         from starlight.core.http import HttpError
 
         try:
-            response = await self.ctx.http.get(url, respect_robots=False)
+            response = await self.ctx.http.get(
+                url, respect_robots=False, use_cache=False
+            )  # current data
         except HttpError as exc:
             raise ToolError(f"could not reach the weather service: {exc}") from exc
         if not response.ok:

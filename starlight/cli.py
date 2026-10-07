@@ -28,7 +28,7 @@ from starlight.core.killswitch import KillSwitch
 from starlight.core.logging import setup_logging
 from starlight.core.model import TokenCallback, create_provider
 from starlight.core.modules import NAME_PATTERN, ModuleState, discover
-from starlight.core.output import resolve_output_folder
+from starlight.core.output import describe_output_folder
 from starlight.core.paths import Paths
 from starlight.core.permissions import PermissionPolicy
 from starlight.core.stats import Stats
@@ -54,7 +54,7 @@ def make_confirmer(policy: PermissionPolicy, assume_yes: bool) -> Confirmer:
             f"\nStarlight wants to run {tool.qualified_name}({json.dumps(args, default=str)})\n"
             "Allow? [y]es / [n]o / [a]lways this session: "
         )
-        answer = (await asyncio.to_thread(console.answer, prompt)).strip().lower()
+        answer = (await console.lines.read(console.answer, prompt)).strip().lower()
         if answer in ("a", "always"):
             policy.allow_for_session(tool.qualified_name)
             return True
@@ -74,7 +74,7 @@ class TerminalUI:
             return True
         if not sys.stdin.isatty():
             return False
-        answer = await asyncio.to_thread(console.answer, f"\n{question} [y/N]: ")
+        answer = await console.lines.read(console.answer, f"\n{question} [y/N]: ")
         return answer.strip().lower() in ("y", "yes")
 
     async def ask(self, question: str, secret: bool = False) -> str | None:
@@ -82,8 +82,8 @@ class TerminalUI:
             return None
         if secret:
             console.drop_typeahead()
-            return await asyncio.to_thread(getpass.getpass, f"\n{question}: ")
-        return (await asyncio.to_thread(console.answer, f"\n{question}: ")).strip() or None
+            return await console.lines.read(getpass.getpass, f"\n{question}: ")
+        return (await console.lines.read(console.answer, f"\n{question}: ")).strip() or None
 
     async def notify(self, text: str) -> None:
         print(f"\n[starlight] {text}")
@@ -167,7 +167,7 @@ async def cmd_run(paths: Paths, args: argparse.Namespace) -> int:
         info = {
             "home": str(paths.root),
             "model": kernel.config.model.provider,
-            "saves files": str(resolve_output_folder(kernel.config.output.folder, paths.root)),
+            "saves files": describe_output_folder(kernel.config.output.folder, paths.root),
         }
         if kernel.kill_switch.engaged:
             info["kill switch"] = f"ON - {kernel.kill_switch.reason} (type /resume)"
@@ -176,7 +176,7 @@ async def cmd_run(paths: Paths, args: argparse.Namespace) -> int:
         view.banner(__version__, info, hotkey)
         while True:
             try:
-                line = view.read()
+                line = await view.aread()
             except (EOFError, KeyboardInterrupt):
                 print()
                 break
@@ -278,7 +278,7 @@ def cmd_status(paths: Paths, args: argparse.Namespace) -> int:
     switch = _kill_switch(paths)
     print(f"Starlight {__version__}")
     print(f"  home:         {paths.root}")
-    print(f"  saves files:  {resolve_output_folder(config.output.folder, paths.root)}")
+    print(f"  saves files:  {describe_output_folder(config.output.folder, paths.root)}")
     print(f"  model:        {config.model.provider}")
     kill_state = f"ENGAGED ({switch.reason})" if switch.engaged else "off"
     print(f"  kill switch:  {kill_state}")

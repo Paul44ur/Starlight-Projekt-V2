@@ -30,4 +30,5 @@ skills/*
 /models/
 config/starlight.launcher.yaml
 config/starlight.local.yaml
+config/permissions.chat.yaml
 config/launcher.json

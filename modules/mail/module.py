@@ -112,7 +112,7 @@ class EmailModule(Module):
     @tool
     async def inbox(self, limit: int = 10) -> dict[str, Any]:
         """The most recent messages in your inbox: who from, the subject and the date. Use
-        email.read with an id to see a message's text."""
+        mail.read with an id to see a message's text."""
         password = self._require()
         count = max(1, min(limit, 50))
         messages = await asyncio.to_thread(self._imap_list, password, count)
@@ -120,11 +120,11 @@ class EmailModule(Module):
 
     @tool
     async def read(self, id: str) -> dict[str, Any]:
-        """Read one message by its id (from email.inbox): sender, subject, date and the text
+        """Read one message by its id (from mail.inbox): sender, subject, date and the text
         body."""
         password = self._require()
         if not id.strip():
-            raise EmailError("give a message id from email.inbox")
+            raise EmailError("give a message id from mail.inbox")
         message = await asyncio.to_thread(self._imap_fetch, password, id.strip())
         return message
 

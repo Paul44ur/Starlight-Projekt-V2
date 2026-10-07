@@ -3,6 +3,7 @@ check_due, so no timing flakiness) and surviving a restart. All local, no networ
 
 from __future__ import annotations
 
+import sys
 from collections.abc import Callable
 from datetime import datetime
 from pathlib import Path
@@ -107,3 +108,27 @@ async def test_reminders_survive_a_restart(project: Paths) -> None:
     async with Kernel(project) as k2:
         listed = (await k2.dispatcher.call("reminders.list", {})).output
         assert listed["count"] == 1 and listed["reminders"][0]["text"] == "survive"
+
+
+async def test_every_weekday_and_unit_word_is_understood(project: Paths) -> None:
+    """Weekly reminders work for every day (not just Monday, Friday and Sunday), and
+    'in 30 minutes', 'in 2 days', 'in 10 seconds', 'in an hour' all parse."""
+    async with Kernel(project) as k:
+        module = sys.modules[type(mod(k)).__module__]
+        now = datetime(2026, 10, 7, 14, 0, 0)  # a Wednesday
+        for index, day in enumerate(
+            ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"]
+        ):
+            for text in (f"{day} 9am", f"every {day} at 8:00", f"{day[:3]} 18:30", f"{day}s 7:15"):
+                *_, weekday = module.parse_schedule(text)
+                assert weekday == index, text
+        assert module.parse_schedule("every day at 8:00") == (8, 0, None)
+        assert module.parse_schedule("daily 6pm") == (18, 0, None)
+        for text, delta in (
+            ("in 30 minutes", 1800),
+            ("in 2 days", 2 * 86400),
+            ("in 10 seconds", 10),
+            ("in an hour", 3600),
+            ("in 1 week", 7 * 86400),
+        ):
+            assert (module.parse_when(text, now) - now).total_seconds() == delta, text

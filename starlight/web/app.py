@@ -14,16 +14,34 @@ import json
 import uuid
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlsplit
 
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, HTTPException, Request, WebSocket, WebSocketDisconnect
 from fastapi.responses import HTMLResponse
 
 from starlight.core import Kernel, Paths
 from starlight.core.config import load_config
-from starlight.core.output import resolve_output_folder
+from starlight.core.output import describe_output_folder
 from starlight.core.ui import current_ui
 
 STATIC = Path(__file__).with_name("static")
+LOOPBACK = {"127.0.0.1", "localhost", "::1"}
+
+
+def allowed_request(headers: Any, extra_hosts: set[str]) -> bool:
+    """Only this machine's own chat page (or a non-browser client such as the terminal) may
+    talk to the backend. Browsers let any web page open a WebSocket to localhost or send it a
+    plain POST, so a page you visit could otherwise ask Starlight to do things and approve its
+    own confirmations. The Host must be this machine (stops DNS-rebinding tricks), and an Origin,
+    which every browser sends, must be that same host."""
+    host = urlsplit(f"//{headers.get('host', '')}").hostname or ""
+    if host not in LOOPBACK | extra_hosts:
+        return False
+    origin = headers.get("origin")
+    if not origin:
+        return True  # not a browser (the terminal client, curl, tests)
+    parts = urlsplit(origin)
+    return parts.scheme in ("http", "https") and parts.netloc == headers.get("host")
 
 
 class WebUI:
@@ -78,6 +96,11 @@ def create_app(paths: Paths | None = None) -> Any:
             await kernel.stop()
 
     app = FastAPI(title="Starlight chat", docs_url=None, redoc_url=None, lifespan=lifespan)
+    extra_hosts = {load_config(paths).web.host} - {"0.0.0.0", "::"}
+
+    def guard(request: Request) -> None:
+        if not allowed_request(request.headers, extra_hosts):
+            raise HTTPException(status_code=403, detail="only the local chat page may do this")
 
     @app.get("/", response_class=HTMLResponse)
     def index() -> str:
@@ -87,15 +110,18 @@ def create_app(paths: Paths | None = None) -> Any:
     async def status() -> dict[str, Any]:
         kernel: Kernel = state["kernel"]
         access: dict[str, Any] = {}
-        if kernel.dispatcher.get("access.status") is not None and not kernel.kill_switch.engaged:
+        record = kernel.modules.records.get("access")
+        if record is not None and record.instance is not None:
+            # read directly: this page polls every few seconds, and going through the
+            # dispatcher would write an audit entry and a statistic each time
             with contextlib.suppress(Exception):
-                result = await kernel.dispatcher.call("access.status")
-                if result.ok:
-                    access = result.output
+                read_status = getattr(record.instance, "status", None)
+                if callable(read_status):
+                    access = read_status()
         return {
             "model": kernel.config.model.provider,
             "home": str(paths.root),
-            "saves_files": str(resolve_output_folder(kernel.config.output.folder, paths.root)),
+            "saves_files": describe_output_folder(kernel.config.output.folder, paths.root),
             "kill": {
                 "engaged": kernel.kill_switch.engaged,
                 "reason": kernel.kill_switch.reason,
@@ -104,17 +130,22 @@ def create_app(paths: Paths | None = None) -> Any:
         }
 
     @app.post("/api/kill")
-    def kill() -> dict[str, Any]:
+    def kill(request: Request) -> dict[str, Any]:
+        guard(request)
         state["kernel"].kill_switch.trigger("web /kill", source="web")
         return {"engaged": True}
 
     @app.post("/api/resume")
-    def resume() -> dict[str, Any]:
+    def resume(request: Request) -> dict[str, Any]:
+        guard(request)
         state["kernel"].kill_switch.reset()
         return {"engaged": False}
 
     @app.websocket("/ws")
     async def ws(websocket: WebSocket) -> None:
+        if not allowed_request(websocket.headers, extra_hosts):
+            await websocket.close(code=1008)  # policy violation: another site's page
+            return
         await websocket.accept()
         kernel: Kernel = state["kernel"]
         send_lock = asyncio.Lock()

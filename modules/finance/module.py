@@ -43,7 +43,9 @@ class FinanceModule(Module):
 
     async def _get(self, url: str, what: str) -> Any:
         try:
-            response = await self.ctx.http.get(url, respect_robots=False)
+            response = await self.ctx.http.get(
+                url, respect_robots=False, use_cache=False
+            )  # live prices
         except HttpError as exc:
             raise ToolError(f"could not reach the {what} service: {exc}") from exc
         if not response.ok:

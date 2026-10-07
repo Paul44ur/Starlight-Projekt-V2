@@ -83,7 +83,7 @@ def test_a_paste_is_one_request_and_typeahead_never_answers_a_question() -> None
         term.type("y\n")  # typed ahead, before the question appears
         term.wait_for("Allow? ")
         term.type("n\n")  # the real answer
-        term.wait_for("ANSWER")
+        term.wait_for("ANSWER 'n'")  # the whole line: under load it can arrive in pieces
     finally:
         term.close()
     assert "REQUEST 'first line\\nsecond line\\nthird line'" in term.output
@@ -106,3 +106,39 @@ def test_piped_input_stays_one_line_at_a_time() -> None:
         timeout=60,
     )
     assert result.stdout.splitlines() == ["'first'", "'second'"]
+
+
+async def test_waiting_for_input_keeps_starlight_running() -> None:
+    """While a prompt waits, the event loop keeps going (kill-switch watcher, reminders,
+    WhatsApp). A read abandoned by Ctrl+C at a question is handed to the next prompt
+    instead of a second read starting, which would swallow the user's next line."""
+    import asyncio
+    import contextlib
+    import threading
+
+    from starlight.console import LineReader
+
+    typed = threading.Event()
+    started: list[str] = []
+
+    def keyboard(prompt: str) -> str:
+        started.append(prompt)
+        typed.wait(5)
+        return "my next request"
+
+    reader = LineReader()
+    question = asyncio.create_task(reader.read(keyboard, "[y]es / [n]o: "))
+    ticks = 0
+    for _ in range(5):
+        await asyncio.sleep(0.01)
+        ticks += 1
+    assert ticks == 5 and not question.done()  # the loop was not blocked
+
+    question.cancel()  # Ctrl+C at the question
+    with contextlib.suppress(asyncio.CancelledError):
+        await question
+    prompt = asyncio.create_task(reader.read(keyboard, "you> "))
+    await asyncio.sleep(0.01)
+    typed.set()
+    assert await prompt == "my next request"
+    assert started == ["[y]es / [n]o: "]  # only one read ever waited for the keyboard

@@ -85,3 +85,20 @@ async def test_cert_error_becomes_tool_error(project: Paths) -> None:
         mod(k)._read_cert = boom
         result = await k.dispatcher.call("certs.cert", {"host": "nope.test"})
     assert not result.ok and "could not read the certificate" in str(result.error)
+
+
+async def test_an_expired_certificate_is_reported_as_expired(project: Paths) -> None:
+    """An expired certificate does not verify; it must still count as expiring (with its
+    dates), not as an unreachable server."""
+
+    def expired(host: str, port: int) -> dict[str, Any]:
+        return {**fake_cert(-3, cn=host), "verify_error": "certificate has expired"}
+
+    async with Kernel(project) as k:
+        mod(k)._read_cert = expired
+        one = await k.dispatcher.call("certs.cert", {"host": "alpha.test"})
+        soon = await k.dispatcher.call("certs.expiring", {"days": 30})
+    assert one.output["expired"] is True and one.output["days_left"] < 0
+    assert "expired" in one.output["problem"]
+    assert {c["host"] for c in soon.output["expiring"]} == {"alpha.test", "beta.test"}
+    assert soon.output["unreachable"] == []

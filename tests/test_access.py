@@ -104,14 +104,22 @@ async def test_change_what_runs_without_asking_and_it_persists(project: Paths) -
         denied = await call(k, "hello.greet", name="x")
         assert not denied.ok and "blocked" in str(denied.error)
         assert "hello.greet" in k.policy.rules()["blocked"]
-    # persisted to the user overlay, so it survives a restart
-    overlay = read_yaml(project.config / "starlight.local.yaml")
-    assert "hello.greet" in overlay["permissions"]["blocked"]
-    async with kernel(project, User()) as k:
+    # saved in its own file (your starlight.local.yaml is not touched), survives a restart
+    saved = read_yaml(project.config / "permissions.chat.yaml")["rules"]
+    assert saved == {"hello.greet": "blocked"}
+    assert not (project.config / "starlight.local.yaml").exists()
+    no = User(False)
+    async with kernel(project, no) as k:
         again = await call(k, "hello.greet", name="x")
         assert not again.ok  # still blocked after "restart"
+        kept = await call(k, "access.clear_rule", pattern="hello.greet")
+        assert not kept.ok and "blocked" in no.questions[0]  # lifting a block asks first
+        assert not (await call(k, "hello.greet", name="x")).ok
+    async with kernel(project, User(True)) as k:
         cleared = await call(k, "access.clear_rule", pattern="hello.greet")
         assert cleared.ok
+        assert (await call(k, "hello.greet", name="x")).ok
+    async with kernel(project, User()) as k:  # and the removal survives a restart
         assert (await call(k, "hello.greet", name="x")).ok
 
 
@@ -169,3 +177,24 @@ def test_logs_show_command(paths: Paths, capsys: pytest.CaptureFixture[str]) -> 
     assert main(["--home", str(paths.root), "logs", "show"]) == 0
     out = capsys.readouterr().out
     assert "ERROR" in out and "x.do" in out and "RuntimeError: nope" in out
+
+
+async def test_allowing_a_known_server_again_keeps_its_ssh_settings(project: Paths) -> None:
+    """Adding a port to a server that is already listed must not drop its SSH setup."""
+    (project.config / "servers.yaml").write_text(
+        "servers:\n"
+        "  homeserver:\n"
+        "    host: 192.168.1.10\n"
+        "    description: NAS\n"
+        "    ports: [22]\n"
+        "    ssh:\n"
+        "      user: paul\n"
+        "      key_vault: ssh.homeserver\n"
+    )
+    async with kernel(project, User(True)) as k:
+        result = await call(k, "network.allow", host="192.168.1.10", name="homeserver", ports=[80])
+    assert result.ok and "unchanged" in result.output["note"]
+    server = read_yaml(project.config / "servers.yaml")["servers"]["homeserver"]
+    assert server["ssh"] == {"user": "paul", "key_vault": "ssh.homeserver"}
+    assert server["ports"] == [22, 80] and server["description"] == "NAS"
+    assert "# Example" in (project.config / "servers.yaml").read_text()  # guidance kept

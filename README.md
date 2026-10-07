@@ -216,8 +216,9 @@ then connect a model as in [docs/setup-windows.md](docs/setup-windows.md#2-the-m
 2. Unpack it over your Starlight folder.
 3. Start `Starlight.exe`. It installs whatever changed.
 
-Your `memory`, `skills`, `data`, `logs`, `models` and `tools` folders and your
-`config\starlight.local.yaml` aren't part of the download, so they stay as they are. Keep
+Your `memory`, `skills`, `data`, `logs`, `models` and `tools` folders, your
+`config\starlight.local.yaml` and the permission rules you set from the chat
+(`config\permissions.chat.yaml`) aren't part of the download, so they stay as they are. Keep
 a copy of any changes you made to the other files in `config`, because those files are
 overwritten. Files Starlight saved for you are in `Documents\Starlight`, outside the
 Starlight folder, so updates never touch them.
