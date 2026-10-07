@@ -57,6 +57,7 @@ and answer you on WhatsApp. Anything risky asks you first, and one key press sto
 | **Your own knowledge base** | "What does my rental contract say about pets?" — answers from folders you choose (text, Word, Excel, PDF), naming the file and page. Everything stays on your PC. |
 | **Notes** | Quick notes as plain files ("note: …", "add eggs to my shopping note"), searchable and part of your knowledge base. |
 | **YouTube summaries** | Summarizes a video or answers a question about it from its captions, with the times it was said. |
+| **Talk to it** | Speak instead of typing and hear the answers — 🎤 and 🔊 in the web chat (on your phone too), `/talk` in the terminal. Speech recognition (whisper.cpp) and the voices (Piper, German and English) run on your PC. Install with `Starlight.exe --voice`. |
 | **Use your desktop** | Reads the screen, then clicks and types for you, with a red banner on screen while it does. |
 | **Save files** | Saves letters, notes, tables (CSV) and web pages it makes for you in `Documents\Starlight`. |
 | **Write code** | Writes small programs, tests them in a sandbox and fixes them until the tests pass. |
@@ -167,6 +168,7 @@ Run `Starlight.exe --help` in a terminal to see every option. The most useful on
 | `--variant cpu` | Run without a graphics card (slow). |
 | `--terminal` | Chat in the window instead of opening the browser. |
 | `--both` | Open the browser chat **and** a terminal chat together — both talk to the same Starlight (one conversation, one kill switch). |
+| `--voice` | Also install speech: talk to Starlight and hear its answers (about 0.6 GB, Windows; `"voice": true` in `launcher.json` keeps it). |
 | `--no-viewer` | Don't start the statistics viewer. |
 | `--update` | Download the newest uv and llama.cpp again. |
 | `--setup-only` | Download and set up, then exit without starting. |
@@ -338,6 +340,7 @@ before Starlight asks "Allow?" never counts as the answer.
 | Command | What it does |
 | --- | --- |
 | `/new` (or `/clear`) | Start a new conversation (the old one stays saved). |
+| `/talk [seconds]` | Say your request into the microphone (needs voice, see `--voice`). |
 | `/tools` | Show what Starlight can use. |
 | `/modules` | Show which modules are on or off. |
 | `/kill`, `/resume` | Stop everything, and continue. |

@@ -1,0 +1,7 @@
+name: voice
+version: 0.1.0
+description: Talk to Starlight and hear answers - speech to text (whisper.cpp) and text to speech (Piper), all on this PC
+entrypoint: module:VoiceModule
+permissions: [safe]
+dependencies: []
+enabled_by_default: true

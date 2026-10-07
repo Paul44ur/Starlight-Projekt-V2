@@ -29,7 +29,7 @@ from urllib.parse import unquote, urlsplit
 from fastapi import FastAPI, HTTPException, Request, Response, WebSocket, WebSocketDisconnect
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 
-from starlight.core import Event, Kernel, Paths
+from starlight.core import Event, Kernel, Paths, ToolError
 from starlight.core.config import RemoteConfig, load_config
 from starlight.core.output import describe_output_folder
 from starlight.core.permissions import Permission, extra_confirm, save_rule
@@ -215,6 +215,7 @@ def create_app(paths: Paths | None = None) -> Any:
         await kernel.start()
         kernel.bus.subscribe("deliver", broadcast, owner="web", background=True)
         state["kernel"] = kernel
+        app.state.kernel = kernel  # for tests and tooling
         try:
             yield
         finally:
@@ -459,6 +460,38 @@ def create_app(paths: Paths | None = None) -> Any:
             content = await asyncio.to_thread(extract_text, item.name, item.data)
             parts.append(f"\n\n[Attached file: {item.name}]\n{content[:60000]}")
         return "".join(parts), images
+
+    # -- voice ----------------------------------------------------------------------------
+
+    def voice() -> Any:
+        record = kernel().modules.records.get("voice")
+        if record is None or record.instance is None:
+            raise HTTPException(status_code=404, detail="the voice module is off")
+        return record.instance
+
+    @app.post("/api/transcribe")
+    async def transcribe(request: Request) -> dict[str, Any]:
+        viewer(request)
+        audio = await request.body()
+        if not audio or len(audio) > MAX_UPLOAD:
+            raise HTTPException(status_code=400, detail="send a short WAV recording")
+        try:
+            text = await voice().transcribe_audio(audio)
+        except ToolError as exc:
+            raise HTTPException(status_code=503, detail=str(exc)) from exc
+        return {"text": text}
+
+    @app.post("/api/speak")
+    async def speak(request: Request) -> Response:
+        viewer(request)
+        data = await body(request)
+        try:
+            audio = await voice().synthesize_audio(
+                str(data.get("text", "")), str(data.get("language", ""))
+            )
+        except ToolError as exc:
+            raise HTTPException(status_code=503, detail=str(exc)) from exc
+        return Response(audio, media_type="audio/wav")
 
     # -- settings: permissions and modules ---------------------------------------------------
 

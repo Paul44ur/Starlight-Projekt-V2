@@ -33,8 +33,8 @@ modules/            hello, web, login, network, recon, cve, certs, breach, deskt
                     system, clipboard, weather, news, finance, filesearch, notify,
                     reminders, mail, pdf, code, files, access, whatsapp, todo,
                     calendar, briefing, calc, translate, automations, apps, media,
-                    commands, office, dev, research, docs, notes, transcripts
-                    (+ _template)
+                    commands, office, dev, research, docs, notes, transcripts,
+                    voice (+ _template)
 skills/             skills it learns (one folder each)
 scripts/            install.ps1, install.sh
 memory/             what the AI learns (one Markdown file per fact)
@@ -170,6 +170,14 @@ which keeps Starlight on 127.0.0.1; `web.remote.confirm` patterns are added as
 always-ask rules for the duration of a remote request (`permissions.extra_confirm`), and
 changing permissions, modules, devices or skills, and releasing the kill switch, are
 local-only.
+
+**Voice.** `Starlight.exe --voice` downloads whisper.cpp's `whisper-server` with a
+multilingual model and Piper with a German and an English voice into `tools/`. The `voice`
+module starts `whisper-server` on 127.0.0.1 the first time speech is transcribed and keeps
+it running, so the model stays loaded; Piper runs once per answer. The web chat records
+16 kHz WAV in the browser (no converter needed) and posts it to `/api/transcribe`;
+`/api/speak` returns a WAV to play. The terminal's `/talk` records with the `voice` extra
+(sounddevice).
 
 **Shared building blocks for modules.** `ctx.deliver` sends a message to every open
 channel at once: it calls the current interface's `notify` and publishes a `deliver` event

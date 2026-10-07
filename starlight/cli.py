@@ -152,6 +152,7 @@ HELP = """\
 - `/reload NAME` / `/enable NAME` / `/disable NAME` - manage a module
 - `/kill [REASON]` / `/resume` - stop everything, and continue
 - `/new` (or `/clear`) - start a new conversation (the old one stays saved)
+- `/talk [SECONDS]` - say your request into the microphone (voice module)
 - `/quit` - leave
 - `!module.tool {json}` - call a tool directly (test model)
 """
@@ -182,7 +183,12 @@ async def cmd_run(paths: Paths, args: argparse.Namespace) -> int:
                 break
             if not line:
                 continue
-            if line.startswith("/"):
+            if line.split(" ", 1)[0] == "/talk":
+                spoken = await _talk(kernel, line[5:].strip(), view)
+                if not spoken:
+                    continue
+                line = spoken
+            elif line.startswith("/"):
                 if await _repl_command(kernel, line, view):
                     break
                 continue
@@ -207,6 +213,29 @@ async def cmd_run(paths: Paths, args: argparse.Namespace) -> int:
             if result.stopped:
                 view.info("Kill switch is engaged. Type /resume to continue.")
     return 0
+
+
+async def _talk(kernel: Kernel, seconds: str, view: ChatView) -> str | None:
+    """/talk [seconds]: record from the microphone and use what was said as the request."""
+    record = kernel.modules.records.get("voice")
+    if record is None or record.instance is None:
+        view.error("The voice module is off (`starlight modules enable voice`).")
+        return None
+    voice: Any = record.instance
+    duration = float(seconds) if seconds.replace(".", "", 1).isdigit() else 0
+    duration = duration or voice.config.record_seconds
+    view.info(f"Listening for {duration:g} seconds ...")
+    try:
+        audio = await asyncio.to_thread(voice.record, duration)
+        text = str(await voice.transcribe_audio(audio)).strip()
+    except Exception as exc:
+        view.error(str(exc))
+        return None
+    if not text:
+        view.info("I didn't catch anything.")
+        return None
+    view.info(f"You said: {text}")
+    return text
 
 
 async def _repl_command(kernel: Kernel, line: str, view: ChatView) -> bool:

@@ -54,6 +54,7 @@
           font-size: 20px; }
   body.dragging #drop { display: flex; }
   #menu { display: none; }
+  #mic.on { color: var(--bad); border-color: var(--bad); }
   @media (max-width: 1100px) { #side { display: none; } }
   @media (max-width: 760px) {
     #menu { display: inline-block; }
@@ -81,6 +82,7 @@
       <span id="where" class="pill off" hidden></span>
       <span class="spacer"></span>
       <nav><a href="/memory">Memory</a><a href="/settings">Settings</a></nav>
+      <button id="speaker" class="icon" title="Read answers aloud">🔇</button>
       <button id="theme" class="icon" title="Theme" onclick="cycleTheme()">◐</button>
       <button id="stop" title="Stop the current answer">Stop</button>
       <button id="kill" class="danger" title="Stop everything">Kill</button>
@@ -91,6 +93,7 @@
       <form id="form">
         <button id="attach" type="button" class="icon" title="Add a picture or document">📎</button>
         <input id="picker" type="file" multiple hidden />
+        <button id="mic" type="button" class="icon" title="Speak (press again to stop)">🎤</button>
         <textarea id="input" placeholder="Ask Starlight…  (Enter to send, Shift+Enter for a new line)"></textarea>
         <button id="send" class="ok" type="submit">Send</button>
       </form>
@@ -153,6 +156,7 @@ function handle(m) {
   else if (m.type === "answer") {
     if (!current || current.textContent.trim() === "") (current || (current = addMsg("bot", ""))).textContent = m.text;
     if (m.stopped) addSys("Kill switch engaged. Press Resume on the PC to continue.");
+    else if (speakAnswers) say(m.text);
     current = null; loadList();
   }
   else if (m.type === "stopped") { addSys("[stopped]"); current = null; }
@@ -237,6 +241,73 @@ window.addEventListener("dragleave", () => { dragDepth = Math.max(0, dragDepth -
 window.addEventListener("dragover", (e) => e.preventDefault());
 window.addEventListener("drop", (e) => { e.preventDefault(); dragDepth = 0; document.body.classList.remove("dragging"); [...(e.dataTransfer.files || [])].forEach(upload); });
 input.addEventListener("paste", (e) => { [...(e.clipboardData.files || [])].forEach(upload); });
+
+// -- voice -----------------------------------------------------------------------------------
+let speakAnswers = false, recorder = null;
+try { speakAnswers = localStorage.getItem("starlight-speak") === "1"; } catch (e) { /* */ }
+function showSpeaker() { document.getElementById("speaker").textContent = speakAnswers ? "🔊" : "🔇"; }
+document.getElementById("speaker").onclick = () => {
+  speakAnswers = !speakAnswers; showSpeaker();
+  try { localStorage.setItem("starlight-speak", speakAnswers ? "1" : "0"); } catch (e) { /* */ }
+};
+async function say(text) {
+  try {
+    const response = await fetch("/api/speak", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ text }) });
+    if (!response.ok) { const d = await response.json().catch(() => ({})); toast(d.detail || "Could not speak"); return; }
+    new Audio(URL.createObjectURL(await response.blob())).play();
+  } catch (e) { toast("Could not speak"); }
+}
+// Record 16 kHz mono 16-bit WAV in the browser, which the speech server reads directly.
+async function startRecording() {
+  const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+  const context = new AudioContext();
+  const source = context.createMediaStreamSource(stream);
+  const node = context.createScriptProcessor(4096, 1, 1);
+  const chunks = [];
+  node.onaudioprocess = (e) => chunks.push(new Float32Array(e.inputBuffer.getChannelData(0)));
+  source.connect(node); node.connect(context.destination);
+  return { stop: async () => {
+    node.disconnect(); source.disconnect(); stream.getTracks().forEach(t => t.stop());
+    const rate = context.sampleRate; await context.close();
+    return wav(chunks, rate);
+  } };
+}
+function wav(chunks, rate) {
+  const all = new Float32Array(chunks.reduce((n, c) => n + c.length, 0));
+  let at = 0; chunks.forEach(c => { all.set(c, at); at += c.length; });
+  const ratio = rate / 16000, length = Math.floor(all.length / ratio);
+  const buffer = new ArrayBuffer(44 + length * 2), view = new DataView(buffer);
+  const text = (o, s) => [...s].forEach((ch, i) => view.setUint8(o + i, ch.charCodeAt(0)));
+  text(0, "RIFF"); view.setUint32(4, 36 + length * 2, true); text(8, "WAVEfmt ");
+  view.setUint32(16, 16, true); view.setUint16(20, 1, true); view.setUint16(22, 1, true);
+  view.setUint32(24, 16000, true); view.setUint32(28, 32000, true); view.setUint16(32, 2, true);
+  view.setUint16(34, 16, true); text(36, "data"); view.setUint32(40, length * 2, true);
+  for (let i = 0; i < length; i++) {
+    const v = Math.max(-1, Math.min(1, all[Math.floor(i * ratio)]));
+    view.setInt16(44 + i * 2, v < 0 ? v * 0x8000 : v * 0x7fff, true);
+  }
+  return new Blob([buffer], { type: "audio/wav" });
+}
+document.getElementById("mic").onclick = async () => {
+  const mic = document.getElementById("mic");
+  if (!recorder) {
+    if (!navigator.mediaDevices) { toast("The microphone needs https:// or this PC"); return; }
+    try { recorder = await startRecording(); mic.classList.add("on"); }
+    catch (e) { toast("No microphone access: " + e.message); }
+    return;
+  }
+  mic.classList.remove("on");
+  const audio = await recorder.stop(); recorder = null;
+  input.placeholder = "Listening…";
+  try {
+    const response = await fetch("/api/transcribe", { method: "POST", headers: { "Content-Type": "audio/wav" }, body: audio });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) { toast(data.detail || "Could not understand that"); return; }
+    input.value = (input.value ? input.value + " " : "") + (data.text || "");
+    input.focus(); input.oninput();
+  } finally { input.placeholder = "Ask Starlight…  (Enter to send, Shift+Enter for a new line)"; }
+};
+showSpeaker();
 
 // -- conversations ---------------------------------------------------------------------------
 async function loadList() {
