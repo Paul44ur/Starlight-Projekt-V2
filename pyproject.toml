@@ -34,7 +34,9 @@ desktop = [
 ]
 # Richer system info (CPU/RAM/battery/processes). Falls back to the standard library.
 system = ["psutil>=5.9"]
-all = ["starlight[hotkey,browser,network,desktop,system]"]
+# Reading and writing PDF files (the pdf module). Without it, the pdf module says so.
+pdf = ["pypdf>=4.0", "reportlab>=4.0"]
+all = ["starlight[hotkey,browser,network,desktop,system,pdf]"]
 
 [project.scripts]
 starlight = "starlight.cli:main"
@@ -68,7 +70,7 @@ strict = true
 packages = ["starlight"]
 
 [[tool.mypy.overrides]]
-module = ["pynput", "pynput.*", "mss", "mss.*", "pytesseract", "uiautomation", "keyring", "keyring.*", "psutil"]
+module = ["pynput", "pynput.*", "mss", "mss.*", "pytesseract", "uiautomation", "keyring", "keyring.*", "psutil", "pypdf", "pypdf.*", "reportlab", "reportlab.*"]
 ignore_missing_imports = true
 
 [tool.pytest.ini_options]

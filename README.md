@@ -29,9 +29,19 @@ and answer you on WhatsApp. Anything risky asks you first, and one key press sto
 | **Use the web** | Searches, reads pages and logs in to your accounts. It makes at most 5 requests per second and respects robots.txt. |
 | **Check your servers** | Pings your servers, checks disk space and services over SSH, and alerts you when one goes down. |
 | **Scan your network** | On hosts you own or are authorized to test: open ports, services, TLS certs, HTTP headers, DNS. Asks first; recon only, never attacks. |
+| **Look up vulnerabilities** | Checks a service or product against the public CVE database (NVD). Pairs with a scan. Free, no key. |
+| **Check certificates** | Reads your servers' TLS certificates and warns when one is about to expire. |
+| **Check passwords** | Tells you if a password is in known breaches — the password never leaves your PC (only a short hash prefix is sent). |
 | **Check your PC** | CPU, memory, disk space, battery, uptime and running programs. Can close a program (asks first). |
 | **Use the clipboard** | Reads what you copied and copies things for you. |
 | **Weather** | Current weather and a short forecast for any place — free, no account or API key. |
+| **News** | Headlines and topic search from free news feeds (RSS). No account or API key. |
+| **Prices** | Stock, currency and crypto prices from free sources. No API key. |
+| **Find files** | Searches your PC for files by name or by what's inside them. Read-only. |
+| **Reminders** | "Remind me in 2 hours …" or "every day at 8 …" — reminders that come back to you, even after a restart. |
+| **Desktop notifications** | Pops a notification on your screen to get your attention. |
+| **Email** | Reads your inbox and sends mail from your own account (asks before sending). |
+| **PDFs** | Reads text from PDF files and makes simple PDFs from text. |
 | **Use your desktop** | Reads the screen, then clicks and types for you, with a red banner on screen while it does. |
 | **Save files** | Saves letters, notes, tables (CSV) and web pages it makes for you in `Documents\Starlight`. |
 | **Write code** | Writes small programs, tests them in a sandbox and fixes them until the tests pass. |

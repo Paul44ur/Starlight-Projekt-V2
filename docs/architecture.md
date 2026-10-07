@@ -28,8 +28,9 @@ launcher/           the source of Starlight.exe (standard library only)
 starlight/browser.py, text.py   headless browser and HTML-to-text helpers for modules
 starlight/tui.py    the colored terminal chat (rich), with a plain fallback
 starlight/cli.py    the `starlight` command
-modules/            hello, web, login, network, recon, desktop, system, clipboard,
-                    weather, code, files, access, whatsapp (+ _template)
+modules/            hello, web, login, network, recon, cve, certs, breach, desktop,
+                    system, clipboard, weather, news, finance, filesearch, notify,
+                    reminders, mail, pdf, code, files, access, whatsapp (+ _template)
 skills/             skills it learns (one folder each)
 scripts/            install.ps1, install.sh
 memory/             what the AI learns (one Markdown file per fact)
@@ -100,6 +101,21 @@ the busiest second against the 5/s cap), tokens per second, GPU use, VRAM, memor
 and skills, plus Prometheus metrics at `/metrics`. Hardening: end-to-end tests per
 module, a test that the kill switch stops every tool of every module, a load test of the
 5 requests/s cap, vault values masked in every log line, and `starlight logs scan`.
+
+**Add-on modules.** Beyond the build plan, a set of everyday, security and productivity
+modules follow the same pattern (config, `@tool`, confirmations, the shared HTTP client,
+the kill switch) and are enabled by default. Free or local, no API keys except where noted:
+
+- *Everyday:* `weather` (Open-Meteo), `news` (RSS/Atom feeds), `finance` (stooq for stocks,
+  frankfurter for currency, CoinGecko for crypto), `clipboard`, `system` (PC health),
+  `filesearch` (find files on disk, read-only), `notify` (desktop notifications).
+- *Security (read-only, pair with `recon`):* `cve` (NVD vulnerability lookup), `certs` (TLS
+  certificate expiry, reads `config/servers.yaml`), `breach` (Have I Been Pwned range API —
+  only a hash prefix is sent, the password never leaves the PC).
+- *Productivity:* `reminders` (one-off and recurring, a background loop fires them to a
+  notification and the event bus, saved to disk), `mail` (IMAP/SMTP with an app-password in
+  the vault; reading is free, sending asks first), `pdf` (read text from PDFs and make simple
+  ones; needs the `pdf` extra — pypdf and reportlab).
 
 ## Build plan status
 

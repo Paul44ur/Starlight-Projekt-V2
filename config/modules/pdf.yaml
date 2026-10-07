@@ -1,0 +1,4 @@
+# The pdf module (modules/pdf): read text from PDFs and make simple PDFs. Needs the 'pdf'
+# extra (pypdf, reportlab); without it the tools explain how to enable it.
+max_read_chars: 40000   # longer PDFs are cut off when reading
+max_file_mb: 25         # largest PDF it will read
