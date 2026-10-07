@@ -431,6 +431,16 @@ into video memory is much slower: choose a smaller one.
 </details>
 
 <details>
+<summary><b>Answers run on, invent your next message, or show raw <code>```json</code> tool calls</b></summary>
+
+Some model files (often merged or "uncensored" fine-tunes) don't mark their end-of-turn
+token as a stop, or write tool calls as text. Starlight handles both: it ends the answer at
+the end-of-turn marker, and runs a tool call written as a ```json block or `<tool_call>` tag
+instead of showing it. If a model still rambles, try another model file, or lower
+`temperature` in `config\starlight.yaml` under `model: options:`.
+</details>
+
+<details>
 <summary><b>"something already listens on port 8080"</b></summary>
 
 Another program uses that port. Start with `--port 8081`, or add `"port": 8081` to
