@@ -21,7 +21,8 @@ CURRENT = "current.txt"
 
 
 def _now() -> str:
-    return datetime.now().isoformat(timespec="seconds")
+    # to the microsecond: conversations saved within the same second still sort correctly
+    return datetime.now().isoformat(timespec="microseconds")
 
 
 def to_dict(message: Message) -> dict[str, Any]:

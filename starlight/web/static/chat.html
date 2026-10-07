@@ -318,7 +318,7 @@ async function loadList() {
   const list = document.getElementById("list"); list.innerHTML = "";
   data.conversations.forEach(c => {
     const row = el("div", "conv" + (c.id === conversation ? " active" : ""));
-    const t = el("span", "t", c.title); t.title = c.title + " — " + c.updated.replace("T", " ");
+    const t = el("span", "t", c.title); t.title = c.title + " — " + c.updated.replace("T", " ").slice(0, 16);
     const acts = el("span", "acts");
     const ren = el("button", "icon", "✎"); ren.title = "Rename";
     ren.onclick = async (e) => { e.stopPropagation(); const title = prompt("New name", c.title); if (title) { await api("/api/conversations/" + c.id, { method: "PATCH", body: { title } }); loadList(); } };
