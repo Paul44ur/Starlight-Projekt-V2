@@ -1,0 +1,18 @@
+# The automations module (modules/automations): "when X, do Y" rules. Usually made from
+# the chat ("send me the briefing every weekday at 7:30"); you may also edit them here.
+#
+# A rule:
+#   name: morning-briefing
+#   enabled: true
+#   when: "weekdays 7:30"             # a schedule (like reminders), or
+#   on: "network.server_down"         # an event (glob pattern), optional `condition`
+#   condition: "server == nas"        # for events: field op value  (op: == != < <= > >= ~)
+#   actions:
+#     - tool: briefing.send           # run a tool with args
+#       args: {}
+#     - ask: "Summarize my unread mail"   # ask the assistant (one-shot)
+#     - say: "Done: {result}"         # deliver a message; {result}, {event.field}
+#       only_if: "count > 0"          # skip unless the previous result matches
+#   allow: []                         # tools that normally ask first, approved for this rule
+check_interval: 30
+rules: []

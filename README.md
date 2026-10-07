@@ -39,6 +39,12 @@ and answer you on WhatsApp. Anything risky asks you first, and one key press sto
 | **Prices** | Stock, currency and crypto prices from free sources. No API key. |
 | **Find files** | Searches your PC for files by name or by what's inside them. Read-only. |
 | **Reminders** | "Remind me in 2 hours …", "every weekday at 7:30 …", "every month on the 1st …" — reminders that come back to you on the desktop, in the web chat and on WhatsApp, even after a restart. |
+| **To-do lists** | "Add 'file taxes' for Friday, high priority" — lists, due dates and priorities; shows what's due and overdue. |
+| **Calendar** | Add events, see your agenda and free time, get an alert before something starts. Subscribe to your Google/Outlook/Nextcloud calendar's iCal link (read-only). |
+| **Daily briefing** | "How does my day look?" — events, to-dos, reminders, weather, headlines, new mail and alerts in one short message. |
+| **Automations** | "Send me the briefing every weekday at 7:30", "when the NAS goes down, tell me" — rules that run on a schedule or when something happens. Anything that normally asks first runs only if you approved it for that rule. |
+| **Exact maths** | Calculations, unit conversion (km/mi, °C/°F, GB/MB, …) and date maths ("days until 24.12.") worked out exactly, not guessed. |
+| **Translate** | Translates text with your own model — offline, nothing leaves the PC. |
 | **Desktop notifications** | Pops a notification on your screen to get your attention. |
 | **Email** | Reads your inbox and sends mail from your own account (asks before sending). |
 | **PDFs** | Reads text from PDF files and makes simple PDFs from text. |

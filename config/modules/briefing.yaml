@@ -1,0 +1,9 @@
+# The briefing module (modules/briefing): "how does my day look?" in one message.
+# Sections in order; a section whose module is off or not set up is skipped quietly.
+sections: [calendar, todo, reminders, weather, news, mail, certs]
+place: ""          # weather place (empty: the weather module's default_place)
+news_topic: ""     # empty: your followed feeds / top stories
+news_count: 3
+mail_count: 5
+# To get it every morning, ask: "send me the briefing every weekday at 7:30"
+# (an automation), or `starlight` will offer it when automations are set up.

@@ -1,0 +1,7 @@
+name: automations
+version: 0.1.0
+description: 'When X, do Y: run tools, questions or messages on a schedule or when something happens'
+entrypoint: module:AutomationsModule
+permissions: [safe]
+dependencies: []
+enabled_by_default: true

@@ -1,0 +1,2 @@
+# The calc module (modules/calc): exact arithmetic, unit conversion and date maths.
+max_digits: 4000   # refuse results bigger than this (e.g. 9**9**9)

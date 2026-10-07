@@ -56,19 +56,28 @@ def parse_when(text: str, now: datetime) -> datetime:
             raise ScheduleError("use seconds, minutes, hours or days, e.g. 'in 2 hours'")
         return now + timedelta(seconds=amount * seconds)
 
-    day = now
-    if raw.startswith("tomorrow"):
-        day = now + timedelta(days=1)
-        raw = raw[len("tomorrow") :].strip() or "09:00"
-    elif raw.startswith("today"):
-        raw = raw[len("today") :].strip() or "09:00"
+    words = raw.removeprefix("next ").removeprefix("on ").split(maxsplit=1)
+    weekday = _weekday(words[0]) if words and len(words[0]) >= 3 else None
+    if weekday is not None:  # "friday", "next monday 10am", "on tue at 18:00"
+        rest = words[1].removeprefix("at ").strip() if len(words) > 1 else "09:00"
+        clock = parse_clock(rest)
+        if clock is None:
+            raise ScheduleError(f"could not understand the time '{rest}'")
+        return Schedule("daily", clock[0], clock[1], weekdays=(weekday,)).next_after(now)
+
+    day: datetime | None = None  # a named day: its time is kept even if already past
+    for word, offset in (("tomorrow", 1), ("today", 0), ("yesterday", -1)):
+        if raw.startswith(word):
+            day = now + timedelta(days=offset)
+            raw = raw[len(word) :].strip() or "09:00"
+            break
 
     clock = parse_clock(raw.removeprefix("at ").strip())
     if clock is not None:
         hour, minute = clock
-        target = day.replace(hour=hour, minute=minute, second=0, microsecond=0)
-        if target <= now and day == now:
-            target += timedelta(days=1)  # a time already past means tomorrow
+        target = (day or now).replace(hour=hour, minute=minute, second=0, microsecond=0)
+        if day is None and target <= now:
+            target += timedelta(days=1)  # a bare time already past means tomorrow
         return target
 
     for parser in (datetime.fromisoformat, parse_date_time):

@@ -79,7 +79,8 @@ The interface:
 
 - `ctx.config`: your validated config
 - `ctx.logger`: writes to `logs/modules/<name>.log` and the main log
-- `ctx.publish(name, data)`: send an event. Modules never call each other directly
+- `ctx.publish(name, data)`: send an event. Modules never import each other; they use events
+  or `ctx.call` (below)
 - `ctx.kill_switch`: call `ctx.kill_switch.check()` inside long loops, and register
   `ctx.kill_switch.add_cleanup(fn, owner=ctx.name)` for anything that must be released
   on a kill (keyboard, mouse, browser sessions)
@@ -101,6 +102,11 @@ The interface:
   `ctx.background(coro_fn, "name")` for a long-running task. Both run only in the primary
   Starlight process (so two open Starlights never do the work twice), skip a round while
   the kill switch is engaged, log failures and stop when the module unloads
+- `await ctx.call("weather.now", {"place": "Vienna"})`: use another module's tool. It goes
+  through the same permission rules, kill switch and audit log as a call from the model;
+  `ctx.has_tool(name)` tells you whether it is loaded and `ctx.permission_of(name)` what
+  would happen (safe, confirm or blocked)
+- `await ctx.run_request("...")`: ask the assistant something (one-shot) and get its answer
 - `ctx.embedder`: the embedding model memory uses: `await ctx.embedder.embed(["text"])`
 - `ctx.output_dir`: your Starlight folder for files made for the user
 
