@@ -134,3 +134,11 @@ def resolve_output_folder(setting: str, root: Path) -> Path:
         f"Starlight is installed in {root}, where it would save your files. Set "
         "output.folder in config/starlight.local.yaml to a folder outside it."
     )
+
+
+def describe_output_folder(setting: str, root: Path) -> str:
+    """The output folder for display, or what is wrong with the setting (never raises)."""
+    try:
+        return str(resolve_output_folder(setting, root))
+    except ConfigError as exc:
+        return f"not usable - {exc}"

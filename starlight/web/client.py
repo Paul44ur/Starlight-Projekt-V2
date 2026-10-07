@@ -104,7 +104,7 @@ async def run_client(host: str, port: int, assume_yes: bool = False) -> int:
                 return data
 
             while True:
-                line = (await asyncio.to_thread(view.read)).strip()
+                line = await view.aread()
                 if not line:
                     continue
                 low = line.lower()

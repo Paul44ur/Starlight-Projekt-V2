@@ -275,3 +275,21 @@ def test_localized_linux_folders(tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     assert system_folder("documents") == Path.home() / "Dokumente"
     assert system_folder("desktop") == Path.home() / "Desktop"  # $HOME itself means unused
     assert system_folder("downloads") == Path.home() / "Downloads"  # not listed
+
+
+async def test_a_bad_output_folder_does_not_stop_starlight(
+    paths: Paths, use_module: Callable[[str], Path]
+) -> None:
+    """output.folder pointing into Starlight's own folder only breaks saving files (with a
+    clear reason); the rest of Starlight starts and works."""
+    from starlight.core.modules import ModuleStatus
+
+    use_module("files")
+    use_module("hello")
+    paths.config_file.write_text(
+        paths.config_file.read_text() + f"output:\n  folder: '{(paths.root / 'out').as_posix()}'\n"
+    )
+    async with Kernel(paths) as kernel:  # starts instead of raising ConfigError
+        files = kernel.modules.records["files"]
+        assert files.status is ModuleStatus.FAILED and "overlaps" in (files.error or "")
+        assert (await kernel.dispatcher.call("hello.greet", {"name": "Paul"})).ok

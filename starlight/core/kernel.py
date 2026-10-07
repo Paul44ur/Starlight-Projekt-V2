@@ -6,13 +6,14 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+from pathlib import Path
 from types import TracebackType
 from typing import Any
 
 import httpx
 
 from starlight.core.agent import Agent, AgentResult
-from starlight.core.config import StarlightConfig, load_config
+from starlight.core.config import ConfigError, StarlightConfig, load_config
 from starlight.core.context import SUMMARY_PREFIX, ContextManager
 from starlight.core.corelock import CoreLock
 from starlight.core.dispatcher import Confirmer, Dispatcher
@@ -30,7 +31,7 @@ from starlight.core.model import Message, ModelProvider, TokenCallback, create_p
 from starlight.core.modules import ModuleManager, Services
 from starlight.core.output import resolve_output_folder
 from starlight.core.paths import Paths
-from starlight.core.permissions import PermissionPolicy
+from starlight.core.permissions import PermissionPolicy, apply_saved_rules
 from starlight.core.stats import Stats
 from starlight.core.tools import Tool
 from starlight.core.ui import ContextualUI, NoUser, UserIO, current_ui
@@ -91,6 +92,7 @@ class Kernel:
             self.paths.root / self.config.kill_switch.stop_file, self.audit
         )
         self.policy = PermissionPolicy(self.config.permissions)
+        apply_saved_rules(self.policy, self.paths.config)  # rules changed from the chat
         self.dispatcher = Dispatcher(
             self.kill_switch,
             self.policy,
@@ -135,6 +137,14 @@ class Kernel:
         )
         self.agent.enrichers.append(self.memory.enrich)
         self.agent.enrichers.append(self.skills.enrich)
+        # A bad output.folder must not stop all of Starlight: only saving files fails,
+        # with this message, and the problem is logged at start.
+        output_dir: Path | None = None
+        output_error: str | None = None
+        try:
+            output_dir = resolve_output_folder(self.config.output.folder, self.paths.root)
+        except ConfigError as exc:
+            output_error = str(exc)
         self.core_lock = CoreLock(self.paths.data / "core.lock")
         self.services = Services(
             primary=False,
@@ -145,13 +155,17 @@ class Kernel:
             model=self.provider,
             models=self.model_for,
             skills=self.skills,
-            output_dir=resolve_output_folder(self.config.output.folder, self.paths.root),
+            output_dir=output_dir,
+            output_error=output_error,
             policy=self.policy,
         )
         self.modules = ModuleManager(
             self.paths, self.dispatcher, self.bus, self.kill_switch, self.audit, self.services
         )
         self.history: list[Message] = []
+        # One conversation may be shared by several front-ends (--both: browser + terminal);
+        # requests that continue it take turns so no exchange is lost from the history.
+        self._history_lock = asyncio.Lock()
         self._hotkey = hotkey
         self._watcher: asyncio.Task[None] | None = None
         self._background: set[asyncio.Task[Any]] = set()
@@ -212,6 +226,11 @@ class Kernel:
             modules=[n for n, r in self.modules.records.items() if r.instance],
         )
         self.log.info("core started", root=str(self.paths.root))
+        if self.services.output_error:
+            self.log.error(
+                "output.folder is not usable; saving files will fail",
+                reason=self.services.output_error,
+            )
         await self.bus.publish("core.started")
 
     async def _warmup(self) -> None:
@@ -347,10 +366,16 @@ class Kernel:
         """Run one request through the agent loop."""
         await self.modules.sync_state()
         stream = on_token if self.config.model.stream else None
-        result = await self.agent.run(
-            request, self.history if keep_history else None, on_token=stream, images=images
-        )
-        if keep_history and not result.stopped:
+        if not keep_history:
+            return await self.agent.run(request, None, on_token=stream, images=images)
+        async with self._history_lock:
+            return await self._ask_in_conversation(request, stream, images)
+
+    async def _ask_in_conversation(
+        self, request: str, stream: TokenCallback | None, images: list[bytes] | None
+    ) -> AgentResult:
+        result = await self.agent.run(request, self.history, on_token=stream, images=images)
+        if not result.stopped:
             # Keep the conversation (and summaries), not the system prompt or recalled memories.
             self.history = [
                 m

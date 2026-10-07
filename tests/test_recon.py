@@ -104,8 +104,20 @@ async def test_public_host_needs_authorization_and_is_remembered(project: Paths)
         module._probe_open = _no_details
         module._ping = _no_ping
         await module.scan("8.8.8.8", ports="80")
-    assert "8.8.8.8" in (project.config / "servers.yaml").read_text()
     assert any("PUBLIC host" in q for q in user.questions)  # it warned about legality
+    # remembered for the next scan, but not added to the network tools' allow-list
+    assert "8.8.8.8" not in (project.config / "servers.yaml").read_text()
+
+    again = User(True)
+    async with Kernel(project, ui=again, vault_backend=MemoryBackend()) as k:
+        module = recon(k)
+        module._scan_ports = _no_ports
+        module._probe_open = _no_details
+        module._ping = _no_ping
+        await module.scan("8.8.8.8", ports="80")
+        reach = await k.dispatcher.call("network.ping", {"server": "8.8.8.8"})
+    assert "allowed this host before" in again.questions[0]  # asked, no legal warning again
+    assert reach is None or not reach.ok  # network tools still can't touch it
 
 
 async def test_only_one_host_no_ranges(project: Paths) -> None:
@@ -113,6 +125,8 @@ async def test_only_one_host_no_ranges(project: Paths) -> None:
         for bad in ("10.0.0.0/24", "10.0.0.1-50", "10.0.0.1 10.0.0.2", "a,b"):
             result = await k.dispatcher.call("recon.scan", {"target": bad})
             assert not result.ok and "one host" in str(result.error).lower(), bad
+        for name in ("my-nas", "router-1", "nas-2.home.lan"):  # ordinary names with a dash
+            assert recon(k)._one_host(name) == name
 
 
 async def test_http_and_cert_parsing_are_read_only(project: Paths) -> None:

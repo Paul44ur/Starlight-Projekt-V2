@@ -316,12 +316,15 @@ class PoliteHttp:
             started = time.perf_counter()
             sending = _sending.set(slot)
             try:
-                async with self._client.stream(method, url, **kwargs) as response:
+                # The ceiling covers the whole exchange - connecting, waiting for the headers
+                # and reading the body - so a server that never answers can't hold a request.
+                async with (
+                    asyncio.timeout(self.config.max_total_seconds),
+                    self._client.stream(method, url, **kwargs) as response,
+                ):
                     if slot is not None:
                         slot.sent()
-                    body, truncated = await asyncio.wait_for(
-                        self._read_capped(response), self.config.max_total_seconds
-                    )
+                    body, truncated = await self._read_capped(response)
                     status, headers = response.status_code, dict(response.headers)
                     final_url, encoding = str(response.url), response.encoding or "utf-8"
             except TimeoutError as exc:
@@ -378,7 +381,7 @@ class PoliteHttp:
                 host.next_at = max(host.next_at, time.monotonic() + wait)
                 attempt += 1
                 continue
-            if cacheable and response.status == 200:
+            if cacheable and response.status == 200 and not response.truncated:
                 self.cache.put(response)
             return response
 

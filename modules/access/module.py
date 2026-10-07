@@ -16,8 +16,8 @@ from typing import Any
 from pydantic import BaseModel
 
 from starlight.core import Module, ModuleContext, ToolError, tool
-from starlight.core.config import read_yaml, update_local_config
-from starlight.core.permissions import Permission
+from starlight.core.config import read_yaml
+from starlight.core.permissions import Permission, save_rule
 
 KEY = re.compile(r"^[a-z0-9][a-z0-9_.-]*$")
 PATTERN = re.compile(r"^[a-z0-9_.][a-z0-9_.*?-]*$")
@@ -76,7 +76,7 @@ class AccessModule(Module):
             raise ToolError("not confirmed, so the rule was not changed")
         self.ctx.kill_switch.check()
         self.ctx.policy.set_rule(pattern, permission)
-        update_local_config(self.ctx.paths, {"permissions": self.ctx.policy.rules()})
+        save_rule(self.ctx.paths.config, pattern, permission.value)
         self.ctx.logger.info("permission rule set", pattern=pattern, permission=permission.value)
         return {"rule": pattern, "permission": permission.value}
 
@@ -105,11 +105,21 @@ class AccessModule(Module):
 
     @tool
     async def clear_rule(self, pattern: str) -> dict[str, Any]:
-        """Remove a permission rule set earlier, back to the action's default."""
+        """Remove a permission rule set earlier, back to the action's default. Removing a
+        block or an always-ask rule asks first, since the action may then run."""
         pattern = pattern.strip()
-        if not self.ctx.policy.clear_rule(pattern):
+        rules = self.ctx.policy.rules()
+        if not any(pattern in listed for listed in rules.values()):
             raise ToolError(f"no rule for '{pattern}'")
-        update_local_config(self.ctx.paths, {"permissions": self.ctx.policy.rules()})
+        loosening = pattern in rules["blocked"] or pattern in rules["confirm"]
+        if loosening:
+            was = "blocked" if pattern in rules["blocked"] else "set to always ask"
+            question = f"'{pattern}' is {was}. Remove that rule, so it may run again?"
+            if not await self.ctx.ui.confirm(question):
+                raise ToolError("not confirmed, so the rule was kept")
+        self.ctx.kill_switch.check()
+        self.ctx.policy.clear_rule(pattern)
+        save_rule(self.ctx.paths.config, pattern, "default")
         return {"cleared": pattern}
 
     # -- overview ------------------------------------------------------------------------

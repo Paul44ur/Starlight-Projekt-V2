@@ -23,7 +23,14 @@ from pydantic import BaseModel, Field
 from starlight.core import Module, ModuleContext, ToolError, tool
 
 _WEEKDAYS = ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"]
-_UNITS = {"s": 1, "sec": 1, "m": 60, "min": 60, "h": 3600, "hr": 3600, "hour": 3600, "d": 86400}
+_UNITS = {
+    **dict.fromkeys(("s", "sec", "secs", "second", "seconds"), 1),
+    **dict.fromkeys(("m", "min", "mins", "minute", "minutes"), 60),
+    **dict.fromkeys(("h", "hr", "hrs", "hour", "hours"), 3600),
+    **dict.fromkeys(("d", "day", "days"), 86400),
+    **dict.fromkeys(("w", "week", "weeks"), 7 * 86400),
+}
+_FILLER = {"every", "each", "at", "on", "day", "daily", "the"}  # words around a schedule
 
 
 class Config(BaseModel):
@@ -193,9 +200,10 @@ def parse_when(text: str, now: datetime) -> datetime:
     if not raw:
         raise ToolError("when should it remind you?")
 
-    match = re.fullmatch(r"in\s+(\d+)\s*([a-z]+)", raw)
+    match = re.fullmatch(r"in\s+(\d+|an?|one)\s*([a-z]+)", raw)
     if match:
-        amount, unit = int(match.group(1)), match.group(2).rstrip("s")
+        count, unit = match.group(1), match.group(2)
+        amount = int(count) if count.isdigit() else 1  # "in an hour"
         seconds = _UNITS.get(unit)
         if seconds is None:
             raise ToolError("use seconds, minutes, hours or days, e.g. 'in 2 hours'")
@@ -226,14 +234,18 @@ def parse_when(text: str, now: datetime) -> datetime:
 
 def parse_schedule(text: str) -> tuple[int, int, int | None]:
     """A repeating schedule -> (hour, minute, weekday or None)."""
-    raw = text.strip().lower().replace("every", " ").replace("at", " ").replace("day", " ")
+    # Work on whole words: removing "at" or "day" from inside a word would turn
+    # "saturday" into "ur" and "tuesday" into "tues".
     weekday: int | None = None
-    for index, name in enumerate(_WEEKDAYS):
-        if name in raw or name[:3] in raw.split():
-            weekday = index
-            raw = raw.replace(name, " ").replace(name[:3], " ")
-            break
-    clock = _parse_clock(raw.strip()) or (_parse_clock(text.strip().lower()))
+    rest: list[str] = []
+    for word in text.strip().lower().replace(",", " ").split():
+        word = word.removesuffix("s") if word.removesuffix("s") in _WEEKDAYS else word
+        match = [i for i, name in enumerate(_WEEKDAYS) if word in (name, name[:3])]
+        if match and weekday is None:
+            weekday = match[0]
+        elif word not in _FILLER:
+            rest.append(word)
+    clock = _parse_clock(" ".join(rest))
     if clock is None:
         raise ToolError("give a time, e.g. 'every day at 8:00' or 'monday 9am'")
     return clock[0], clock[1], weekday

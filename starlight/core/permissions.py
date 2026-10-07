@@ -5,8 +5,14 @@ from __future__ import annotations
 
 import fnmatch
 from enum import StrEnum
+from pathlib import Path
 
-from starlight.core.config import PermissionsConfig
+from starlight.core.config import PermissionsConfig, read_yaml, write_yaml_config
+
+# Rules changed from the chat (access module), kept apart from your own config files:
+# each pattern maps to "safe", "confirm", "blocked" or "default" (rule removed). They are
+# applied over config/starlight.yaml at start, so new defaults shipped there still apply.
+CHAT_RULES_FILE = "permissions.chat.yaml"
 
 
 class Permission(StrEnum):
@@ -68,3 +74,28 @@ class PermissionPolicy:
     def allow_for_session(self, tool_name: str) -> None:
         """Stop asking for this tool until the core restarts."""
         self._session_allowed.add(tool_name)
+
+
+def saved_rules(config_dir: Path) -> dict[str, str]:
+    data = read_yaml(config_dir / CHAT_RULES_FILE).get("rules") or {}
+    return {str(k): str(v) for k, v in data.items()} if isinstance(data, dict) else {}
+
+
+def save_rule(config_dir: Path, pattern: str, setting: str) -> None:
+    """Remember a rule change made from the chat (setting: a Permission value or "default")."""
+    rules = saved_rules(config_dir)
+    rules[pattern] = setting
+    write_yaml_config(
+        config_dir / CHAT_RULES_FILE,
+        {"rules": rules},
+        "# Permission rules changed from the chat (access module), applied over\n"
+        '# config/starlight.yaml. "default" means the rule was removed. Safe to edit.',
+    )
+
+
+def apply_saved_rules(policy: PermissionPolicy, config_dir: Path) -> None:
+    for pattern, setting in saved_rules(config_dir).items():
+        if setting == "default":
+            policy.clear_rule(pattern)
+        elif setting in {p.value for p in Permission}:
+            policy.set_rule(pattern, Permission(setting))

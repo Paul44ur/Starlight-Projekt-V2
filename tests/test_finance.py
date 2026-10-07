@@ -86,3 +86,20 @@ async def test_crypto_ticker_alias(project: Paths) -> None:
     out = result.output
     assert out["coin"] == "bitcoin" and out["price"] == 54321.0
     assert out["currency"] == "EUR" and out["change_24h"] == "+2.50%"
+
+
+async def test_prices_are_live_not_cached(project: Paths) -> None:
+    """Asking twice gets the new price: live data must not come from the page cache."""
+    prices = iter(["100.0", "101.5"])
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/robots.txt":
+            return httpx.Response(404)
+        csv = "Symbol,Name,Date,Time,Open,High,Low,Close,Volume\n"
+        csv += f"AAPL.US,APPLE,2026-10-07,10:00:00,1,1,1,{next(prices)},1\n"
+        return httpx.Response(200, text=csv)
+
+    async with Kernel(project, http_transport=httpx.MockTransport(handler)) as k:
+        first = await call(k, "stock", symbol="AAPL")
+        second = await call(k, "stock", symbol="AAPL")
+    assert (first.output["price"], second.output["price"]) == ("100.0", "101.5")

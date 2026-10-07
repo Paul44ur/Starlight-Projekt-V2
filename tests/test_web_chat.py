@@ -22,13 +22,17 @@ def web_home(root: Path) -> Path:
     return root
 
 
+# The test client always says "testserver" as the WebSocket host; a real browser says this.
+LOCAL = {"host": "127.0.0.1:8700"}
+
+
 def client(root: Path) -> object:
     from fastapi.testclient import TestClient
 
     from starlight.core import Paths
     from starlight.web.app import create_app
 
-    return TestClient(create_app(Paths(root)))
+    return TestClient(create_app(Paths(root)), base_url="http://127.0.0.1:8700")
 
 
 def test_page_and_status(tmp_path: Path) -> None:
@@ -41,14 +45,14 @@ def test_page_and_status(tmp_path: Path) -> None:
 
 
 def test_chat_streams_an_answer(tmp_path: Path) -> None:
-    with client(web_home(tmp_path / "h")) as c, c.websocket_connect("/ws") as ws:
+    with client(web_home(tmp_path / "h")) as c, c.websocket_connect("/ws", headers=LOCAL) as ws:
         ws.send_json({"type": "ask", "text": "Hello there"})
         answer = _until_answer(ws)
     assert answer["text"] == "You said: Hello there"
 
 
 def test_an_action_is_approved_from_the_browser(tmp_path: Path) -> None:
-    with client(web_home(tmp_path / "h")) as c, c.websocket_connect("/ws") as ws:
+    with client(web_home(tmp_path / "h")) as c, c.websocket_connect("/ws", headers=LOCAL) as ws:
         ws.send_json({"type": "ask", "text": '!hello.shout {"text": "hi"}'})
         asked = []
         while True:
@@ -63,7 +67,7 @@ def test_an_action_is_approved_from_the_browser(tmp_path: Path) -> None:
 
 
 def test_denying_an_action_from_the_browser(tmp_path: Path) -> None:
-    with client(web_home(tmp_path / "h")) as c, c.websocket_connect("/ws") as ws:
+    with client(web_home(tmp_path / "h")) as c, c.websocket_connect("/ws", headers=LOCAL) as ws:
         ws.send_json({"type": "ask", "text": '!hello.shout {"text": "hi"}'})
         while True:
             m = ws.receive_json()
@@ -81,6 +85,30 @@ def test_kill_and_resume_from_the_web(tmp_path: Path) -> None:
         assert c.post("/api/resume").json()["engaged"] is False
 
 
+def test_other_websites_cannot_drive_starlight(tmp_path: Path) -> None:
+    """A page on another site can open a WebSocket to localhost or POST to it; both are
+    refused, as is a page that rebinds its own domain to 127.0.0.1."""
+    from starlette.websockets import WebSocketDisconnect
+
+    with client(web_home(tmp_path / "h")) as c:
+        evil = {"origin": "https://evil.example"}
+        with (
+            pytest.raises(WebSocketDisconnect),
+            c.websocket_connect("/ws", headers={**LOCAL, **evil}) as ws,
+        ):
+            ws.receive_json()
+        assert c.post("/api/resume", headers=evil).status_code == 403
+        assert c.post("/api/kill", headers=evil).status_code == 403
+        rebound = {"host": "evil.example:8700", "origin": "http://evil.example:8700"}
+        assert c.post("/api/kill", headers=rebound).status_code == 403
+        assert c.get("/api/status").json()["kill"]["engaged"] is False  # nothing happened
+        # the page itself (same origin) and the terminal client (no Origin) still work
+        own = {"origin": "http://127.0.0.1:8700"}
+        assert c.post("/api/kill", headers=own).json()["engaged"] is True
+        with c.websocket_connect("/ws", headers={**LOCAL, **own}):
+            pass
+
+
 def _until_answer(ws: object) -> dict:
     while True:
         m = ws.receive_json()  # type: ignore[attr-defined]
@@ -88,3 +116,14 @@ def _until_answer(ws: object) -> dict:
             return m
         if m["type"] == "error":
             pytest.fail(m["text"])
+
+
+def test_status_polling_leaves_no_audit_trail(tmp_path: Path) -> None:
+    """The page polls /api/status every few seconds; that must not write an audit entry
+    and a statistic each time."""
+    root = web_home(tmp_path / "h")
+    with client(root) as c:
+        for _ in range(5):
+            assert "servers" in c.get("/api/status").json()["access"]
+    audit = root / "logs" / "audit.log"
+    assert "access.status" not in (audit.read_text() if audit.exists() else "")

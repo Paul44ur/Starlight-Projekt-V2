@@ -55,19 +55,15 @@ class ChatView:
             return True
         if not console.interactive():
             return False
-        import asyncio
-
-        return await asyncio.to_thread(self._yes_no, question)
-
-    def _yes_no(self, question: str) -> bool:
         self._print_question(question)
-        answer = console.answer(self._style("  [y]es / [n]o: ", "1;33")).strip().lower()
+        hint = self._style("  [y]es / [n]o: ", "1;33")
+        answer = (await console.lines.read(console.answer, hint)).strip().lower()
         return answer in ("y", "yes", "j", "ja")
 
-    def _permission(self, question: str) -> str:
+    async def _permission(self, question: str) -> str:
         self._print_question(question)
-        hint = "  [y]es / [n]o / [a]lways this session: "
-        answer = console.answer(self._style(hint, "1;33")).strip().lower()
+        hint = self._style("  [y]es / [n]o / [a]lways this session: ", "1;33")
+        answer = (await console.lines.read(console.answer, hint)).strip().lower()
         if answer in ("a", "always"):
             return "always"
         return "yes" if answer in ("y", "yes", "j", "ja") else "no"
@@ -75,13 +71,12 @@ class ChatView:
     async def ask(self, question: str, secret: bool = False) -> str | None:
         if not console.interactive():
             return None
-        import asyncio
         import getpass
 
         if secret:
             console.drop_typeahead()
-            return await asyncio.to_thread(getpass.getpass, self._style(f"\n{question}: ", "1;33"))
-        answer = await asyncio.to_thread(console.answer, self._style(f"\n{question}: ", "1;33"))
+            return await console.lines.read(getpass.getpass, self._style(f"\n{question}: ", "1;33"))
+        answer = await console.lines.read(console.answer, self._style(f"\n{question}: ", "1;33"))
         return answer.strip() or None
 
     async def notify(self, text: str) -> None:
@@ -98,12 +93,11 @@ class ChatView:
                 return True
             if not console.interactive():
                 return False
-            import asyncio
             import json
 
             shown = json.dumps(args, default=str)
             question = f"Starlight wants to run {tool.qualified_name}({shown})"
-            result = await asyncio.to_thread(self._permission, question)
+            result = await self._permission(question)
             if result == "always":
                 policy.allow_for_session(tool.qualified_name)
                 return True
@@ -142,6 +136,11 @@ class ChatView:
 
     def read(self) -> str:
         return console.read_request(USER_PROMPT if self.rich else "you> ").strip()
+
+    async def aread(self) -> str:
+        """The next request, read without stopping Starlight's background work."""
+        prompt = USER_PROMPT if self.rich else "you> "
+        return (await console.lines.read(console.read_request, prompt)).strip()
 
     def on_token(self) -> Any:
         """A callback that streams the answer live under a 'starlight' label."""

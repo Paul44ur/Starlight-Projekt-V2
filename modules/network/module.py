@@ -163,11 +163,26 @@ class NetworkModule(Module):
     SERVERS_HEADER = (
         "# Servers Starlight may touch (Step 7). Anything not listed here is refused.\n"
         "# Starlight edits this from the chat (network.allow / network.forget); you may also\n"
-        "# edit it by hand (two spaces per level, no tabs). SSH keys go in the vault."
+        "# edit it by hand (two spaces per level, no tabs). SSH keys go in the vault.\n"
+        "#\n"
+        "# Example (remove the '# ' to use it, keep the indentation):\n"
+        "#   homeserver:\n"
+        "#     host: 192.168.1.10\n"
+        "#     description: NAS in the basement\n"
+        "#     ports: [22, 443]\n"
+        "#     http: https://192.168.1.10/health\n"
+        "#     ssh:\n"
+        "#       user: paul\n"
+        "#       key_vault: ssh.homeserver"
     )
 
     def _write_servers(self, servers: dict[str, Server]) -> None:
-        data = {"servers": {n: s.model_dump(exclude_none=True) for n, s in servers.items()}}
+        data = {
+            "servers": {
+                n: s.model_dump(exclude_none=True, exclude_defaults=True)
+                for n, s in servers.items()
+            }
+        }
         write_yaml_config(self.servers_file(), data, self.SERVERS_HEADER)
 
     @tool(permission=Permission.CONFIRM)
@@ -187,13 +202,24 @@ class NetworkModule(Module):
             raise ToolError("give a host (an IP address or hostname)")
         key = name.strip() or re.sub(r"[^a-z0-9]+", "-", host.lower()).strip("-") or "server"
         servers = self._servers()
-        server = Server(host=host, description=description.strip(), ports=ports or [])
+        existing = servers.get(key)
+        if existing is not None:
+            # Update in place: keep its SSH, WebSocket and other settings, add new ports, and
+            # only replace the description or health URL when a new one is given.
+            server = existing.model_copy(deep=True)
+            server.host = host
+            server.description = description.strip() or server.description
+            server.ports = server.ports + [p for p in ports or [] if p not in server.ports]
+            note = f"Updated {key} ({host}); its other settings are unchanged."
+        else:
+            server = Server(host=host, description=description.strip(), ports=ports or [])
+            note = f"Starlight may now reach {key} ({host})."
         if http.strip():
             server.http = http.strip()
         servers[key] = server
         self._write_servers(servers)
-        self.ctx.logger.info("server allowed", name=key, host=host)
-        return {"allowed": key, "host": host, "note": f"Starlight may now reach {key} ({host})."}
+        self.ctx.logger.info("server allowed", name=key, host=host, updated=existing is not None)
+        return {"allowed": key, "host": host, "note": note}
 
     @tool(permission=Permission.CONFIRM)
     def forget(self, name: str) -> dict[str, Any]:

@@ -199,20 +199,6 @@ def write_yaml_config(path: Path, data: dict[str, Any], header: str = "") -> Non
     tmp.replace(path)
 
 
-def update_local_config(paths: Paths, updates: dict[str, Any]) -> None:
-    """Merge ``updates`` into config/starlight.local.yaml (your own overlay, applied over
-    starlight.yaml). Only the given keys change; the rest of the file is kept."""
-    overlay = paths.config / "starlight.local.yaml"
-    current = read_yaml(overlay)
-    merged = deep_merge(current, updates)
-    write_yaml_config(
-        overlay,
-        merged,
-        "# Your own settings, merged over config/starlight.yaml (this file wins).\n"
-        "# Starlight writes here when you change settings from the chat; safe to edit by hand.",
-    )
-
-
 def load_config(paths: Paths) -> StarlightConfig:
     """Load config/starlight.yaml plus its overlays. Missing files mean defaults."""
     data = read_yaml(paths.config_file)

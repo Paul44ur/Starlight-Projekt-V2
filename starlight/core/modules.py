@@ -85,6 +85,7 @@ class Services:
     models: Callable[[str], ModelProvider] | None = None
     skills: Any = None  # the skill manager (Step 9)
     output_dir: Path | None = None  # where files made for the user go (output.folder)
+    output_error: str | None = None  # why output.folder can't be used, if it can't
     policy: PermissionPolicy | None = None  # the running permission rules (access module)
     # This process runs the background parts (webhook, watchers). False while another
     # Starlight core does; the event "core.primary" announces a takeover.
@@ -138,6 +139,8 @@ class ModuleContext:
     def output_dir(self) -> Path:
         """Where to save files made for the user: ``output.folder``, by default the
         "Starlight" folder in their Documents. Created when something is first saved."""
+        if self.services.output_error is not None:
+            raise ConfigError(self.services.output_error)
         if self.services.output_dir is not None:
             return self.services.output_dir
         return resolve_output_folder("", self.paths.root)
