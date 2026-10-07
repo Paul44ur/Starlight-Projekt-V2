@@ -151,6 +151,7 @@ Run `Starlight.exe --help` in a terminal to see every option. The most useful on
 | `--context 16384` | A smaller context window: uses less video memory. |
 | `--variant cpu` | Run without a graphics card (slow). |
 | `--terminal` | Chat in the window instead of opening the browser. |
+| `--both` | Open the browser chat **and** a terminal chat together — both talk to the same Starlight (one conversation, one kill switch). |
 | `--no-viewer` | Don't start the statistics viewer. |
 | `--update` | Download the newest uv and llama.cpp again. |
 | `--setup-only` | Download and set up, then exit without starting. |
@@ -463,6 +464,7 @@ If you installed with `Starlight.exe`, uv isn't on your PATH. Either install it 
 | --- | --- |
 | `starlight web` | The browser chat (what `Starlight.exe` opens by default). |
 | `starlight run` | The terminal chat (`Starlight.exe --terminal`). |
+| `starlight connect` | A terminal chat that joins a running `starlight web` backend — the same brain as the browser (`Starlight.exe --both` opens both together). |
 | `starlight ask "..."` | One request: prints the answer and exits (`-y` approves everything). |
 | `starlight kill [reason]` / `resume` | Stop everything, and continue. Works from any window. |
 | `starlight status` | Settings, kill switch and modules at a glance. |

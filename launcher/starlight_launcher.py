@@ -72,6 +72,7 @@ class Settings:
     port: int = 8080
     viewer: bool = True
     web: bool = True  # open the browser chat; False: the terminal chat
+    both: bool = False  # open the browser chat AND a terminal connected to the same backend
     use_model: bool = True  # False: Starlight's built-in test model, nothing downloaded
     assume_yes: bool = False
     update: bool = False
@@ -126,6 +127,7 @@ def load_settings(args: argparse.Namespace) -> Settings:
                     "port",
                     "viewer",
                     "web",
+                    "both",
                     "tesseract",
                 ):
                     setattr(settings, key, value)
@@ -138,6 +140,8 @@ def load_settings(args: argparse.Namespace) -> Settings:
     settings.viewer = settings.viewer and not args.no_viewer
     if args.terminal:
         settings.web = False
+    if args.both:
+        settings.both = True
     settings.use_model = not args.no_model
     settings.assume_yes = args.yes
     settings.update = args.update
@@ -640,6 +644,16 @@ def port_in_use(port: int) -> bool:
         return probe_socket.connect_ex(("127.0.0.1", port)) == 0
 
 
+def wait_for_web(port: int, ui: Ui, timeout: float = 60) -> None:
+    """Wait until the web backend is accepting connections before the terminal connects."""
+    started = time.monotonic()
+    while time.monotonic() - started < timeout:
+        if port_in_use(port):
+            return
+        time.sleep(0.5)
+    ui.say(f"   the web backend did not open on port {port} in time; the terminal may not connect")
+
+
 def wait_for_model(
     port: int, process: subprocess.Popen[bytes] | None, log: Path, ui: Ui, timeout: float = 900
 ) -> None:
@@ -779,6 +793,17 @@ def start(settings: Settings, ui: Ui, uv: Path, ask: str | None) -> int:
         if ask is not None:
             result = subprocess.run(starlight(uv, "ask", "-y", ask), cwd=settings.root, check=False)
             return result.returncode
+        if settings.both:
+            url = f"http://127.0.0.1:{WEB_PORT}"
+            ui.say(f"\nOpening the chat in your browser: {url}")
+            ui.say("A terminal chat opens here too - both talk to the same Starlight.")
+            ui.say("Type /quit to leave the terminal; close this window to stop everything.\n")
+            group.start(starlight(uv, "web"), logs / "web.log", settings.root)
+            wait_for_web(WEB_PORT, ui)
+            threading.Timer(1.0, _open_browser, args=(url,)).start()
+            return subprocess.run(
+                starlight(uv, "connect"), cwd=settings.root, check=False
+            ).returncode
         if settings.web:
             url = f"http://127.0.0.1:{WEB_PORT}"
             ui.say(f"\nOpening the chat in your browser: {url}")
@@ -815,6 +840,9 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--no-viewer", action="store_true", help="do not start the viewer")
     parser.add_argument(
         "--terminal", action="store_true", help="chat in this window instead of the browser"
+    )
+    parser.add_argument(
+        "--both", action="store_true", help="open the browser chat and a terminal chat together"
     )
     parser.add_argument("--tesseract", action="store_true", help="install Tesseract OCR")
     parser.add_argument("--model-url", help="GGUF model to use (a direct download link)")

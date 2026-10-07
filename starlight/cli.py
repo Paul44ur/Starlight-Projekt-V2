@@ -501,6 +501,17 @@ def cmd_web(paths: Paths, args: argparse.Namespace) -> int:
     return 0
 
 
+async def cmd_connect(paths: Paths, args: argparse.Namespace) -> int:
+    """A terminal chat that drives a running web backend, so the terminal and the browser
+    share one assistant (one conversation, one kill switch)."""
+    from starlight.web.client import run_client
+
+    config = load_config(paths)
+    host = args.host or config.web.host
+    port = args.port or config.web.port
+    return await run_client(host, port, assume_yes=args.yes)
+
+
 def cmd_logs(paths: Paths, args: argparse.Namespace) -> int:
     if args.action == "show":
         from starlight.core.logging import format_errors, recent_errors
@@ -668,6 +679,12 @@ def build_parser() -> argparse.ArgumentParser:
     sub.add_parser("serve", help="run the core in the background (WhatsApp, watchers)")
     sub.add_parser("viewer", help="the statistics viewer (a separate web app)")
     sub.add_parser("web", help="a browser chat page for Starlight (local only)")
+    connect = sub.add_parser(
+        "connect", help="a terminal chat connected to a running web backend (shares its brain)"
+    )
+    connect.add_argument("--host", default="", help="backend host (default: web.host in config)")
+    connect.add_argument("--port", type=int, default=0, help="backend port (default: web.port)")
+    connect.add_argument("-y", "--yes", action="store_true", help="approve confirmations")
     logs = sub.add_parser("logs", help="show recent errors, or check for leaked secrets")
     logs.add_argument("action", choices=["show", "scan"])
     logs.add_argument("-n", "--count", type=int, default=20, help="how many recent errors")
@@ -720,6 +737,8 @@ def main(argv: Sequence[str] | None = None) -> int:
                 return cmd_viewer(paths, args)
             case "web":
                 return cmd_web(paths, args)
+            case "connect":
+                return asyncio.run(cmd_connect(paths, args))
             case "logs":
                 return cmd_logs(paths, args)
             case "service":
