@@ -48,6 +48,15 @@ and answer you on WhatsApp. Anything risky asks you first, and one key press sto
 | **Desktop notifications** | Pops a notification on your screen to get your attention. |
 | **Email** | Reads your inbox and sends mail from your own account (asks before sending). |
 | **PDFs** | Reads text from PDF files and makes simple PDFs from text. |
+| **Open programs** | "Open Spotify", "open my budget sheet", "bring Outlook to the front" — starts any installed program (asks the first time only), opens files and links, and arranges or closes windows. |
+| **Music and volume** | Play/pause, next/previous track and volume, like the media keys. |
+| **Your own commands** | Name your own scripts once ("backup-photos", "restart the game server") and run them by name. Starlight can run only those, and asks first unless you say otherwise. |
+| **Word and Excel** | Reads .docx and .xlsx files and makes new ones (letters, lists, tables). |
+| **Developer tools** | Git status/log/diff/commit, Docker containers and their logs, and which program uses which network port. Changes ask first. |
+| **Research** | "Find out whether …" — searches, reads several pages and writes a short report with numbered sources you can check. |
+| **Your own knowledge base** | "What does my rental contract say about pets?" — answers from folders you choose (text, Word, Excel, PDF), naming the file and page. Everything stays on your PC. |
+| **Notes** | Quick notes as plain files ("note: …", "add eggs to my shopping note"), searchable and part of your knowledge base. |
+| **YouTube summaries** | Summarizes a video or answers a question about it from its captions, with the times it was said. |
 | **Use your desktop** | Reads the screen, then clicks and types for you, with a red banner on screen while it does. |
 | **Save files** | Saves letters, notes, tables (CSV) and web pages it makes for you in `Documents\Starlight`. |
 | **Write code** | Writes small programs, tests them in a sandbox and fixes them until the tests pass. |

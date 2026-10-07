@@ -37,7 +37,11 @@ desktop = [
 system = ["psutil>=5.9"]
 # Reading and writing PDF files (the pdf module). Without it, the pdf module says so.
 pdf = ["pypdf>=4.0", "reportlab>=4.0"]
-all = ["starlight[hotkey,browser,network,desktop,system,pdf]"]
+# Word and Excel files (the office module). Without it, the office module says so.
+office = ["python-docx>=1.1", "openpyxl>=3.1"]
+# YouTube captions (the transcripts module). Without it, the transcripts module says so.
+transcripts = ["youtube-transcript-api>=1.0"]
+all = ["starlight[hotkey,browser,network,desktop,system,pdf,office,transcripts]"]
 
 [project.scripts]
 starlight = "starlight.cli:main"
@@ -71,7 +75,7 @@ strict = true
 packages = ["starlight"]
 
 [[tool.mypy.overrides]]
-module = ["pynput", "pynput.*", "mss", "mss.*", "pytesseract", "uiautomation", "keyring", "keyring.*", "psutil", "pypdf", "pypdf.*", "reportlab", "reportlab.*"]
+module = ["pynput", "pynput.*", "mss", "mss.*", "pytesseract", "uiautomation", "keyring", "keyring.*", "psutil", "pypdf", "pypdf.*", "reportlab", "reportlab.*", "docx", "docx.*", "openpyxl", "openpyxl.*", "youtube_transcript_api", "youtube_transcript_api.*"]
 ignore_missing_imports = true
 
 [tool.pytest.ini_options]

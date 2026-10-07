@@ -1,0 +1,4 @@
+# The notes module (modules/notes): quick notes as Markdown files in the "Notes" folder of
+# your Starlight folder (Documents\Starlight\Notes). The docs module includes them in your
+# knowledge base, so you can ask questions about your notes too.
+folder: Notes

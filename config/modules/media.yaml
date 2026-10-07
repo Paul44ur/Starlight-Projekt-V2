@@ -1,0 +1,3 @@
+# The media module (modules/media): media keys (play/pause, next, previous) and volume.
+# Works with Spotify, browsers, VLC and anything else that listens to the media keys.
+volume_step: 10   # percent per "louder"/"quieter"

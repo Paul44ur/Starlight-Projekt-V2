@@ -1,0 +1,7 @@
+name: apps
+version: 0.1.0
+description: Open programs, files and links, and switch between, arrange or close windows on this PC
+entrypoint: module:AppsModule
+permissions: [safe, confirm]
+dependencies: []
+enabled_by_default: true

@@ -31,7 +31,10 @@ starlight/tui.py    the colored terminal chat (rich), with a plain fallback
 starlight/cli.py    the `starlight` command
 modules/            hello, web, login, network, recon, cve, certs, breach, desktop,
                     system, clipboard, weather, news, finance, filesearch, notify,
-                    reminders, mail, pdf, code, files, access, whatsapp (+ _template)
+                    reminders, mail, pdf, code, files, access, whatsapp, todo,
+                    calendar, briefing, calc, translate, automations, apps, media,
+                    commands, office, dev, research, docs, notes, transcripts
+                    (+ _template)
 skills/             skills it learns (one folder each)
 scripts/            install.ps1, install.sh
 memory/             what the AI learns (one Markdown file per fact)
@@ -134,6 +137,24 @@ the kill switch) and are enabled by default. Free or local, no API keys except w
   `AutomationUI` answers confirmations - yes only for the tools approved for that rule
   (`allow`), so nothing that normally asks first runs unapproved. Rules run only in the
   primary core; an automation started by another one stops at depth 3.
+
+- *Your PC and tech:* `apps` (Start-menu programs via `os.startfile`, windows via the Win32
+  API through ctypes - no extra packages; the first start of each program asks, the yes is
+  remembered; files are opened only if they are not programs or scripts), `media` (media
+  and volume keys; playerctl/pactl on Linux), `commands` (only your named commands from
+  `config/modules/commands.yaml`, argument lists without a shell, `{placeholders}` filled
+  as single arguments that can't start with "-", a time limit and the kill switch),
+  `office` (python-docx/openpyxl in the `office` extra; cells starting with = + - @ are
+  written as text), `dev` (git with no password prompts, Docker, listening ports via
+  psutil; changes are CONFIRM tools), `research` (plans searches with the model, reads
+  pages through the `web` module and writes a report citing numbered sources).
+
+- *Knowledge:* `docs` (folders you add are split into overlapping parts, embedded with
+  memory's embedder via `ctx.embedder` and kept in `data/modules/docs/index.sqlite`; only
+  new or changed files are read again, deleted ones dropped; `ask` answers from the best
+  parts citing file and page), `notes` (Markdown files in `<Starlight folder>/Notes`,
+  indexed by `docs`), `transcripts` (YouTube captions via the `transcripts` extra, with
+  [mm:ss] marks, summaries and questions).
 
 **Shared building blocks for modules.** `ctx.deliver` sends a message to every open
 channel at once: it calls the current interface's `notify` and publishes a `deliver` event

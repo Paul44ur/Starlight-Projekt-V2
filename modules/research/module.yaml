@@ -1,0 +1,7 @@
+name: research
+version: 0.1.0
+description: Research a question on the web and write a short report with numbered sources
+entrypoint: module:ResearchModule
+permissions: [safe]
+dependencies: [web]
+enabled_by_default: true
