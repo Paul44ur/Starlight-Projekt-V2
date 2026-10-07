@@ -117,10 +117,20 @@ the kill switch) and are enabled by default. Free or local, no API keys except w
 - *Security (read-only, pair with `recon`):* `cve` (NVD vulnerability lookup), `certs` (TLS
   certificate expiry, reads `config/servers.yaml`), `breach` (Have I Been Pwned range API —
   only a hash prefix is sent, the password never leaves the PC).
-- *Productivity:* `reminders` (one-off and recurring, a background loop fires them to a
-  notification and the event bus, saved to disk), `mail` (IMAP/SMTP with an app-password in
+- *Productivity:* `reminders` (one-off and recurring: daily, weekdays, chosen days, every
+  N minutes/hours, monthly; delivered to every open channel, saved to disk), `mail` (IMAP/SMTP with an app-password in
   the vault; reading is free, sending asks first), `pdf` (read text from PDFs and make simple
   ones; needs the `pdf` extra — pypdf and reportlab).
+
+**Shared building blocks for modules.** `ctx.deliver` sends a message to every open
+channel at once: it calls the current interface's `notify` and publishes a `deliver` event
+that every web chat page, the `notify` module (desktop pop-up) and the `whatsapp` module
+pick up. `ctx.every`/`ctx.background` run background work only in the primary core (the
+one holding `data/core.lock`), pause it while the kill switch is engaged and cancel it on
+unload. Event handlers can be `background=True`, so a slow one (a WhatsApp send) never
+holds up the event's publisher. `core/safepaths.py` is the one place that decides which of
+your paths a module may use, and `core/schedule.py` understands times and repeating
+schedules for reminders and automations.
 
 ## Build plan status
 

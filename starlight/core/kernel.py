@@ -158,6 +158,8 @@ class Kernel:
             output_dir=output_dir,
             output_error=output_error,
             policy=self.policy,
+            deliver=self.deliver,
+            embedder=self.memory.index.embedder,
         )
         self.modules = ModuleManager(
             self.paths, self.dispatcher, self.bus, self.kill_switch, self.audit, self.services
@@ -384,11 +386,22 @@ class Kernel:
             ]
         return result
 
+    async def deliver(self, text: str, title: str = "", source: str = "core") -> None:
+        """Tell the user something now (a reminder, an alert, a briefing): on the terminal
+        or the channel in use, and - through the "deliver" event - in every open web chat,
+        as a desktop notification and on WhatsApp, when those are set up."""
+        message = f"{title}: {text}" if title and not text.startswith(title) else text
+        with contextlib.suppress(Exception):
+            await self.ui.notify(message)
+        self.stats.record("deliver", source=source)
+        await self.bus.publish("deliver", {"text": message, "title": title}, source=source)
+
     async def drain(self, timeout: float = 30.0) -> None:
         """Wait for background work (memory writing, skill drafting) to finish."""
         pending = [t for t in self._background if not t.get_name().startswith("gpu-")]
         if pending:
             await asyncio.wait(pending, timeout=timeout)
+        await self.bus.settle(timeout)
 
     async def stop(self) -> None:
         await self.bus.publish("core.stopping")

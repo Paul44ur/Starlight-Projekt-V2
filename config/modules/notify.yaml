@@ -1,3 +1,4 @@
 # The notify module (modules/notify): desktop notifications.
 app_name: Starlight
 default_title: Starlight
+on_deliver: true   # also pop up reminders, alerts and briefings Starlight sends you

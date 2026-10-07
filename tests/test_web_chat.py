@@ -127,3 +127,34 @@ def test_status_polling_leaves_no_audit_trail(tmp_path: Path) -> None:
             assert "servers" in c.get("/api/status").json()["access"]
     audit = root / "logs" / "audit.log"
     assert "access.status" not in (audit.read_text() if audit.exists() else "")
+
+
+def test_a_delivered_message_reaches_every_open_chat_once(tmp_path: Path) -> None:
+    """Reminders and alerts show up in every open page; the page that caused it gets it
+    once (as the answer's notice), not twice."""
+    home = web_home(tmp_path / "h")
+    module = home / "modules" / "tell"
+    module.mkdir()
+    (module / "module.yaml").write_text("name: tell\nentrypoint: module:Mod\n")
+    (module / "module.py").write_text(
+        "from starlight.core import Module, tool\n\n"
+        "class Mod(Module):\n"
+        "    @tool\n"
+        "    async def it(self, text: str) -> str:\n"
+        "        await self.ctx.deliver(text)\n"
+        "        return 'told'\n"
+    )
+    with (
+        client(home) as c,
+        c.websocket_connect("/ws", headers=LOCAL) as watcher,
+        c.websocket_connect("/ws", headers=LOCAL) as asker,
+    ):
+        asker.send_json({"type": "ask", "text": '!tell.it {"text": "tea is ready"}'})
+        seen: list[dict[str, str]] = []
+        while True:
+            m = asker.receive_json()
+            seen.append(m)
+            if m["type"] == "answer":
+                break
+        assert [m["text"] for m in seen if m["type"] == "notify"] == ["tea is ready"]
+        assert watcher.receive_json() == {"type": "notify", "text": "tea is ready"}

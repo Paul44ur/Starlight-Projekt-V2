@@ -25,6 +25,7 @@ from pydantic import BaseModel, Field
 
 from starlight.core import Module, ModuleContext, ToolError, tool
 from starlight.core.output import known_folders
+from starlight.core.safepaths import PathGuard, expand
 
 _INVALID = re.compile(r'[<>:"/\\|?*\x00-\x1f]')  # not allowed in Windows file names
 _RESERVED = re.compile(r"^(con|prn|aux|nul|com[0-9]|lpt[0-9])(\..*)?$", re.IGNORECASE)
@@ -122,13 +123,14 @@ class FilesModule(Module):
         self.root = ctx.paths.root.resolve()  # Starlight's own folder: off-limits
         self.output = ctx.output_dir
         self.trusted = [self._expand(folder) for folder in self.config.trusted_folders]
+        self.guard = PathGuard(self.root, self.output, self.trusted, error=FileError)
         ctx.logger.info("ready", folder=str(self.output))
 
     # -- paths ---------------------------------------------------------------------------
 
     @staticmethod
     def _expand(text: str) -> Path:
-        return Path(os.path.expandvars(text.strip())).expanduser().resolve()
+        return expand(text)
 
     @staticmethod
     def _relative_parts(text: str) -> list[str]:
@@ -142,29 +144,10 @@ class FilesModule(Module):
 
     def _target(self, text: str) -> Target:
         """A file name inside the Starlight folder, or a full path anywhere else."""
-        raw = os.path.expandvars(text.strip())
-        if not raw:
-            raise FileError("give a file name, e.g. 'notes.txt'")
-        given = Path(raw).expanduser()
-        if given.is_absolute():
-            normal = Path(os.path.normpath(given))
-            path = Path(normal.anchor, *(clean_name(p) for p in normal.parts[1:]))
-        else:
-            parts = self._relative_parts(raw)
-            if not parts:
-                raise FileError("give a file name, e.g. 'notes.txt'")
-            path = self.output.joinpath(*parts)
-        path = path.resolve()
-        if path == self.root or path.is_relative_to(self.root):
-            raise FileError(
-                f"{path} is inside Starlight's own folder ({self.root}), which holds its "
-                f"settings and data. Save it in the Starlight folder ({self.output}) or "
-                "somewhere else."
-            )
-        if path.is_dir():
-            raise FileError(f"{path} is a folder; give a file name")
-        free = any(path.is_relative_to(f) for f in (self.output, *self.trusted))
-        return Target(path, free)
+        found = self.guard.resolve(text, clean=clean_name)
+        if found.path.is_dir():
+            raise FileError(f"{found.path} is a folder; give a file name")
+        return Target(found.path, found.free)
 
     def _where(self, path: Path) -> str:
         if path.is_relative_to(self.output):

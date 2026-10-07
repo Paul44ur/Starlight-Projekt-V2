@@ -30,6 +30,7 @@ from fastapi import FastAPI, Request, Response
 from pydantic import BaseModel, Field
 
 from starlight.core import Event, Module, ModuleContext, tool
+from starlight.core.ui import current_ui
 
 YES = {"y", "yes", "ja", "j", "ok", "okay", "sure", "allow", "approve"}
 MAX_TEXT = 4000  # WhatsApp allows 4096 characters per text message
@@ -48,9 +49,10 @@ class Config(BaseModel):
     path: str = "/webhook/whatsapp"
     reply_timeout: float = 300.0  # how long a question waits for your answer
     allow_resume: bool = False  # allow /resume from the phone
-    notify: list[str] = Field(
-        default_factory=lambda: ["network.server_down", "network.server_up", "skill.drafted"]
-    )
+    # Events forwarded as they are. Server up/down, reminders and alerts already arrive
+    # through `deliver`, so they are not listed here.
+    notify: list[str] = Field(default_factory=lambda: ["skill.drafted"])
+    deliver: bool = True  # reminders, alerts and briefings Starlight sends you
 
 
 def digits(number: str) -> str:
@@ -110,7 +112,9 @@ class WhatsAppModule(Module):
         self._server_task: asyncio.Task[None] | None = None
         self._handlers: set[asyncio.Task[Any]] = set()
         for pattern in self.config.notify:
-            ctx.bus.subscribe(pattern, self._forward, owner=ctx.name)
+            ctx.bus.subscribe(pattern, self._forward, owner=ctx.name, background=True)
+        if self.config.deliver:
+            ctx.bus.subscribe("deliver", self._deliver, owner=ctx.name, background=True)
         ctx.bus.subscribe("core.primary", self._on_primary, owner=ctx.name)
         if not (self.owner and self.config.phone_number_id):
             ctx.logger.info("whatsapp not configured; set owner_number and phone_number_id")
@@ -315,6 +319,12 @@ class WhatsAppModule(Module):
             return
         data = ", ".join(f"{k}: {v}" for k, v in event.data.items() if isinstance(v, str))
         await self.send(f"[{event.name}] {data}".strip())
+
+    async def _deliver(self, event: Event) -> None:
+        # Asked from WhatsApp itself? Then the message already came here as the answer.
+        if not self.configured or current_ui.get() is self.ui:
+            return
+        await self.send(str(event.data.get("text", "")))
 
     @tool
     async def send_to_me(self, text: str) -> str:
