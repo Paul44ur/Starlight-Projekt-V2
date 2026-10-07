@@ -1,0 +1,15 @@
+# The commands module (modules/commands): your own named commands. Starlight can only run
+# what is listed here - never any other command. Add one from the chat ("add a command
+# 'backup-photos' that runs ...") or here:
+#
+# commands:
+#   backup-photos:
+#     run: ["robocopy", "D:\\Photos", "E:\\Backup\\Photos", "/MIR"]
+#     description: Mirror my photos to the backup drive
+#     ask: true          # false: runs without asking each time
+#     timeout: 600
+#   restart-game-server:
+#     run: ["powershell", "-File", "C:\\scripts\\restart.ps1", "{name}"]   # {name}: an argument
+#     description: Restart a game server by name
+max_output: 8000   # characters of output kept
+commands: {}

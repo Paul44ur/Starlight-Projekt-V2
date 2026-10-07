@@ -1,0 +1,7 @@
+name: media
+version: 0.1.0
+description: Play, pause and skip music or videos, and change the volume on this PC
+entrypoint: module:MediaModule
+permissions: [safe]
+dependencies: []
+enabled_by_default: true

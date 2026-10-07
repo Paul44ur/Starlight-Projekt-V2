@@ -1,0 +1,7 @@
+name: office
+version: 0.1.0
+description: Read and write Word (.docx) and Excel (.xlsx) files
+entrypoint: module:OfficeModule
+permissions: [safe]
+dependencies: []
+enabled_by_default: true

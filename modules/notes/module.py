@@ -1,0 +1,128 @@
+"""Quick notes as plain Markdown files you can open in any editor: "note: the WiFi password
+for guests is on the router", "add to my shopping note: eggs", "what did I note about the
+car?". Notes live in the Notes folder of your Starlight folder.
+"""
+
+from __future__ import annotations
+
+import re
+from datetime import datetime
+from pathlib import Path
+from typing import Any
+
+from pydantic import BaseModel
+
+from starlight.core import Module, ModuleContext, ToolError, tool
+
+_BAD = re.compile(r'[<>:"/\\|?*\x00-\x1f]')
+
+
+class Config(BaseModel):
+    folder: str = "Notes"
+
+
+class NotesModule(Module):
+    Config = Config
+
+    async def setup(self, ctx: ModuleContext) -> None:
+        self.config: Config = ctx.config
+
+    @property
+    def folder(self) -> Path:
+        folder = self.ctx.output_dir / (_BAD.sub("", self.config.folder).strip() or "Notes")
+        folder.mkdir(parents=True, exist_ok=True)
+        return folder
+
+    def _file(self, title: str) -> Path:
+        name = _BAD.sub("", title).strip().strip(".")[:80]
+        if not name:
+            raise ToolError("give the note a title")
+        return self.folder / f"{name}.md"
+
+    def _find(self, title: str) -> Path:
+        exact = self._file(title)
+        if exact.is_file():
+            return exact
+        wanted = title.strip().lower()
+        matches = [p for p in self.folder.glob("*.md") if wanted in p.stem.lower()]
+        if len(matches) == 1:
+            return matches[0]
+        if matches:
+            names = ", ".join(sorted(p.stem for p in matches)[:10])
+            raise ToolError(f"'{title}' matches several notes: {names}")
+        raise ToolError(f"no note called '{title}'; see notes.list")
+
+    @staticmethod
+    def _stamp() -> str:
+        return datetime.now().strftime("%Y-%m-%d %H:%M")
+
+    @tool
+    def note(self, title: str, text: str) -> dict[str, Any]:
+        """Write a new note. If a note with this title exists, the text is added to it."""
+        if not text.strip():
+            raise ToolError("what should the note say?")
+        path = self._file(title)
+        if path.exists():
+            return self.append(title, text)
+        path.write_text(f"# {title.strip()}\n\n{text.strip()}\n", encoding="utf-8")
+        return {"saved": path.stem, "file": str(path)}
+
+    @tool
+    def append(self, title: str, text: str) -> dict[str, Any]:
+        """Add text to the end of a note (with the date), e.g. to a shopping or ideas list."""
+        if not text.strip():
+            raise ToolError("what should be added?")
+        try:
+            path = self._find(title)
+        except ToolError:
+            return self.note(title, text)
+        with path.open("a", encoding="utf-8") as handle:
+            handle.write(f"\n_{self._stamp()}_\n{text.strip()}\n")
+        return {"added_to": path.stem, "file": str(path)}
+
+    @tool
+    def read(self, title: str) -> dict[str, Any]:
+        """Read a note (by its title or part of it)."""
+        path = self._find(title)
+        return {"title": path.stem, "text": path.read_text("utf-8", errors="replace")[:20000]}
+
+    @tool(name="list")
+    def list_notes(self) -> dict[str, Any]:
+        """Your notes, most recently changed first."""
+        files = sorted(self.folder.glob("*.md"), key=lambda p: p.stat().st_mtime, reverse=True)
+        return {
+            "count": len(files),
+            "notes": [
+                {
+                    "title": p.stem,
+                    "changed": datetime.fromtimestamp(p.stat().st_mtime).strftime("%Y-%m-%d %H:%M"),
+                }
+                for p in files[:200]
+            ],
+        }
+
+    @tool
+    def find(self, text: str) -> dict[str, Any]:
+        """Search all notes for a word or phrase; returns the matching lines."""
+        wanted = text.strip().lower()
+        if not wanted:
+            raise ToolError("what should I look for?")
+        hits = []
+        for path in sorted(self.folder.glob("*.md")):
+            for number, line in enumerate(
+                path.read_text("utf-8", errors="replace").splitlines(), 1
+            ):
+                if wanted in line.lower():
+                    hits.append({"note": path.stem, "line": number, "text": line.strip()[:300]})
+            if len(hits) >= 100:
+                break
+        return {"count": len(hits), "matches": hits}
+
+    @tool
+    async def delete(self, title: str) -> dict[str, Any]:
+        """Delete a note. Asks first."""
+        path = self._find(title)
+        if not await self.ctx.ui.confirm(f"Delete the note '{path.stem}'?"):
+            raise ToolError("not confirmed, the note is kept")
+        path.unlink()
+        return {"deleted": path.stem}

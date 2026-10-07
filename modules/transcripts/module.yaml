@@ -1,0 +1,7 @@
+name: transcripts
+version: 0.1.0
+description: Get the transcript of a YouTube video and summarize it or answer questions about it
+entrypoint: module:TranscriptsModule
+permissions: [safe]
+dependencies: []
+enabled_by_default: true

@@ -1,0 +1,13 @@
+# The docs module (modules/docs): ask questions about your own documents. Folders are added
+# from the chat ("add my Documents\Contracts folder to the knowledge base"); the index stays
+# on this PC (data/modules/docs/index.sqlite). Reads .txt .md .csv .html .json, PDFs (pdf
+# extra) and Word/Excel files (office extra). The embedding model is memory's (memory.embedder
+# in starlight.yaml); a real embedding model (e.g. nomic-embed-text) finds much more than the
+# built-in one.
+folders: []
+include_notes: true          # also your notes (the Notes folder in your Starlight folder)
+reindex_minutes: 60          # look for new and changed files this often (0: only on request)
+max_file_mb: 30
+max_files: 20000
+chunk_chars: 1200
+top_k: 6

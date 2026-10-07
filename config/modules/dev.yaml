@@ -1,0 +1,6 @@
+# The dev module (modules/dev): git, Docker and network ports.
+repos: {}            # short names for your repositories, e.g. {starlight: "D:\\code\\starlight"}
+git: git             # the git program (a full path if it is not on PATH)
+docker: docker       # the docker program
+timeout: 60          # seconds per command
+max_output: 12000    # characters of output kept

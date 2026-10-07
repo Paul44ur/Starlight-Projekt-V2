@@ -1,0 +1,6 @@
+# The research module (modules/research): searches, reads the pages and writes a report with
+# sources. Uses the web module (its rate limits and robots.txt rules apply) and the model set
+# for the "research" role (else the main model).
+quick_pages: 5      # pages read for a quick answer
+deep_pages: 12      # pages read for "depth: deep"
+chars_per_page: 4000
