@@ -1,0 +1,7 @@
+name: notify
+version: 0.1.0
+description: Show a notification on this PC's desktop, so Starlight can get your attention
+entrypoint: module:NotifyModule
+permissions: [safe]
+dependencies: []
+enabled_by_default: true

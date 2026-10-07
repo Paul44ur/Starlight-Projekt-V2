@@ -1,0 +1,4 @@
+# The news module (modules/news): free headlines via RSS/Atom. No API key.
+feeds: []            # extra feed URLs you follow, e.g. ["https://example.com/rss"]
+region: en-US        # Google News language-region, e.g. en-GB, de-DE
+max_items: 10
