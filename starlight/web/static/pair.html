@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Pair with Starlight</title>
+<link rel="manifest" href="/manifest.webmanifest" />
+<link rel="icon" href="/icon.svg" type="image/svg+xml" />
+<link rel="stylesheet" href="/style.css" />
+<style>
+  .box { max-width: 380px; margin: 12vh auto 0; padding: 0 16px; text-align: center; }
+  input { width: 100%; margin: 8px 0; text-align: center; }
+  #code { font-size: 28px; letter-spacing: .3em; }
+  button { width: 100%; padding: 10px; margin-top: 8px; }
+</style>
+</head>
+<body>
+<div class="box">
+  <h1>⭐ Starlight</h1>
+  <p class="dim">This device isn't paired yet. On your PC, open Starlight's <b>Settings</b> and press
+    <b>Show a pairing code</b> (or run <code>starlight remote pair</code>), then enter the code here.</p>
+  <input id="code" inputmode="numeric" autocomplete="one-time-code" maxlength="6" placeholder="000000" />
+  <input id="name" type="text" placeholder="Name for this device (e.g. My phone)" />
+  <button id="go" class="ok">Pair</button>
+  <p id="msg" class="dim small"></p>
+</div>
+<script src="/common.js"></script>
+<script>
+document.getElementById("name").value = /iPhone|iPad/.test(navigator.userAgent) ? "iPhone" : /Android/.test(navigator.userAgent) ? "Android phone" : "Browser";
+document.getElementById("go").onclick = async () => {
+  const msg = document.getElementById("msg");
+  try {
+    await api("/api/pair", { method: "POST", body: { code: document.getElementById("code").value, name: document.getElementById("name").value } });
+    msg.textContent = "Paired. Opening the chat…";
+    location.href = "/";
+  } catch (e) { msg.textContent = e.message; }
+};
+document.getElementById("code").onkeydown = (e) => { if (e.key === "Enter") document.getElementById("go").click(); };
+</script>
+</body>
+</html>

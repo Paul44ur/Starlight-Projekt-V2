@@ -156,6 +156,21 @@ the kill switch) and are enabled by default. Free or local, no API keys except w
   indexed by `docs`), `transcripts` (YouTube captions via the `transcripts` extra, with
   [mm:ss] marks, summaries and questions).
 
+**Web chat, conversations and remote use.** Conversations are saved in
+`data/conversations/<id>.json` (`core/conversations.py`); `Kernel.ask(...,
+conversation=id)` continues one, with a lock per conversation, and the terminal continues
+the current one. The web app (`web/app.py`) adds the conversation list, file uploads
+(images go to the model as pictures, documents as text), the settings page (permission
+rules through `save_rule`, modules, devices) and the memory & skills page. A `Gate` decides
+for every request whether it is the local user (loopback Host and matching Origin, and no
+proxy headers) or a paired device (`web/auth.py`: one-time 6-digit codes, SHA-256 hashed
+256-bit tokens in an HttpOnly/Secure/SameSite=Strict cookie, lockout after 5 failures).
+Remote use is meant only through `tailscale serve` (`web/remote.py`, `starlight remote`),
+which keeps Starlight on 127.0.0.1; `web.remote.confirm` patterns are added as
+always-ask rules for the duration of a remote request (`permissions.extra_confirm`), and
+changing permissions, modules, devices or skills, and releasing the kill switch, are
+local-only.
+
 **Shared building blocks for modules.** `ctx.deliver` sends a message to every open
 channel at once: it calls the current interface's `notify` and publishes a `deliver` event
 that every web chat page, the `notify` module (desktop pop-up) and the `whatsapp` module

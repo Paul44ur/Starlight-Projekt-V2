@@ -4,6 +4,7 @@ can override the tag, so you choose which actions run on their own and which ask
 from __future__ import annotations
 
 import fnmatch
+from contextvars import ContextVar
 from enum import StrEnum
 from pathlib import Path
 
@@ -25,6 +26,12 @@ def _matches(name: str, patterns: list[str]) -> bool:
     return any(fnmatch.fnmatchcase(name, p) for p in patterns)
 
 
+#: Extra "always ask" patterns for the request being handled - set while a request from
+#: another device (the web chat over Tailscale) runs, so desktop control, code and your
+#: commands ask on that device even when they normally run on their own.
+extra_confirm: ContextVar[tuple[str, ...]] = ContextVar("extra_confirm", default=())
+
+
 class PermissionPolicy:
     def __init__(self, config: PermissionsConfig | None = None) -> None:
         self.config = config or PermissionsConfig()
@@ -35,7 +42,9 @@ class PermissionPolicy:
         auto_approve / allowed this session > the tool's own tag."""
         if _matches(tool_name, self.config.blocked) or default is Permission.BLOCKED:
             return Permission.BLOCKED
-        if _matches(tool_name, self.config.confirm):
+        if _matches(tool_name, self.config.confirm) or _matches(
+            tool_name, list(extra_confirm.get())
+        ):
             return Permission.CONFIRM
         if tool_name in self._session_allowed or _matches(tool_name, self.config.auto_approve):
             return Permission.SAFE

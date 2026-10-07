@@ -1,0 +1,173 @@
+"""Saved conversations: each one a JSON file in data/conversations/, so a chat survives a
+restart and the web chat can list, reopen, rename and delete them. Pictures sent in a
+conversation are not saved (only a note that there was one)."""
+
+from __future__ import annotations
+
+import contextlib
+import json
+import re
+import threading
+import uuid
+from dataclasses import asdict
+from datetime import datetime
+from pathlib import Path
+from typing import Any
+
+from starlight.core.model import Message, ToolCall
+
+ID = re.compile(r"^[a-f0-9]{12}$")
+CURRENT = "current.txt"
+
+
+def _now() -> str:
+    return datetime.now().isoformat(timespec="seconds")
+
+
+def to_dict(message: Message) -> dict[str, Any]:
+    data: dict[str, Any] = {"role": message.role, "content": message.content}
+    if message.tool_calls:
+        data["tool_calls"] = [asdict(c) for c in message.tool_calls]
+    if message.tool_call_id:
+        data["tool_call_id"] = message.tool_call_id
+    if message.name:
+        data["name"] = message.name
+    if message.images:
+        data["images"] = len(message.images)  # how many there were; the pixels stay out
+    return data
+
+
+def from_dict(data: dict[str, Any]) -> Message:
+    return Message(
+        role=data.get("role", "user"),
+        content=str(data.get("content", "")),
+        tool_calls=[
+            ToolCall(
+                c.get("name", ""), c.get("arguments") or {}, c.get("id") or uuid.uuid4().hex[:12]
+            )
+            for c in data.get("tool_calls") or []
+        ],
+        tool_call_id=data.get("tool_call_id"),
+        name=data.get("name"),
+    )
+
+
+class ConversationStore:
+    def __init__(self, folder: Path) -> None:
+        self.folder = folder
+        self._lock = threading.Lock()
+
+    def _file(self, conversation: str) -> Path:
+        if not ID.match(conversation):
+            raise KeyError(f"no conversation '{conversation}'")
+        return self.folder / f"{conversation}.json"
+
+    def _read(self, conversation: str) -> dict[str, Any]:
+        try:
+            data = json.loads(self._file(conversation).read_text("utf-8"))
+        except (OSError, json.JSONDecodeError) as exc:
+            raise KeyError(f"no conversation '{conversation}'") from exc
+        return data if isinstance(data, dict) else {}
+
+    def _write(self, conversation: str, data: dict[str, Any]) -> None:
+        self.folder.mkdir(parents=True, exist_ok=True)
+        target = self._file(conversation)
+        tmp = target.with_suffix(".tmp")
+        with self._lock:
+            tmp.write_text(json.dumps(data, ensure_ascii=False, indent=1), encoding="utf-8")
+            tmp.replace(target)
+
+    # -- the conversation in use ------------------------------------------------------------
+
+    @property
+    def current(self) -> str:
+        """The conversation the terminal and a fresh browser page continue."""
+        with contextlib.suppress(OSError):
+            found = (self.folder / CURRENT).read_text("utf-8").strip()
+            if ID.match(found) and self._file(found).exists():
+                return found
+        return self.create()
+
+    def set_current(self, conversation: str) -> None:
+        self._file(conversation)  # validates
+        self.folder.mkdir(parents=True, exist_ok=True)
+        (self.folder / CURRENT).write_text(conversation, encoding="utf-8")
+
+    # -- operations -----------------------------------------------------------------------
+
+    def create(self, title: str = "") -> str:
+        conversation = uuid.uuid4().hex[:12]
+        self._write(
+            conversation,
+            {
+                "id": conversation,
+                "title": title.strip(),
+                "created": _now(),
+                "updated": _now(),
+                "messages": [],
+            },
+        )
+        self.set_current(conversation)
+        return conversation
+
+    def messages(self, conversation: str) -> list[Message]:
+        return [from_dict(m) for m in self._read(conversation).get("messages", [])]
+
+    def save(self, conversation: str, messages: list[Message]) -> None:
+        data = self._read(conversation)
+        data["messages"] = [to_dict(m) for m in messages]
+        data["updated"] = _now()
+        if not data.get("title"):
+            first = next((m.content for m in messages if m.role == "user" and m.content), "")
+            data["title"] = " ".join(first.split())[:60]
+        self._write(conversation, data)
+
+    def rename(self, conversation: str, title: str) -> None:
+        data = self._read(conversation)
+        data["title"] = " ".join(title.split())[:80]
+        self._write(conversation, data)
+
+    def delete(self, conversation: str) -> None:
+        self._file(conversation).unlink(missing_ok=False)
+
+    def get(self, conversation: str) -> dict[str, Any]:
+        data = self._read(conversation)
+        return {
+            "id": conversation,
+            "title": data.get("title") or "New conversation",
+            "created": data.get("created"),
+            "updated": data.get("updated"),
+            "messages": [
+                m
+                for m in data.get("messages", [])
+                if m.get("role") in ("user", "assistant") and m.get("content")
+            ],
+        }
+
+    def list(self, search: str = "", limit: int = 200) -> list[dict[str, Any]]:
+        wanted = search.strip().lower()
+        found: list[dict[str, Any]] = []
+        if not self.folder.is_dir():
+            return found
+        for path in self.folder.glob("*.json"):
+            try:
+                data = json.loads(path.read_text("utf-8"))
+            except (OSError, json.JSONDecodeError):
+                continue
+            messages = data.get("messages", [])
+            if (
+                wanted
+                and wanted not in (data.get("title") or "").lower()
+                and not any(wanted in str(m.get("content", "")).lower() for m in messages)
+            ):
+                continue
+            found.append(
+                {
+                    "id": path.stem,
+                    "title": data.get("title") or "New conversation",
+                    "updated": data.get("updated") or "",
+                    "count": sum(1 for m in messages if m.get("role") == "user"),
+                },
+            )
+        found.sort(key=lambda c: c["updated"], reverse=True)
+        return found[:limit]

@@ -265,6 +265,16 @@ you need to approve appear with **Approve / Deny** buttons, and a sidebar shows 
 allowed. Prefer the keyboard? Start it with `--terminal` (or run `starlight run`) for a
 colored terminal chat. Both use the same assistant, settings and safeguards.
 
+**The web chat.** Your conversations are saved: the list on the left reopens, renames,
+searches and deletes them (the terminal continues the most recent one). Drop pictures or
+documents (PDF, Word, Excel, text) onto the chat, or press 📎, to send them with your
+message. Every answer has **Copy** and **Retry**. **Settings** shows what each tool may do
+(change it with one click), turns modules on and off, and pairs your phone. **Memory**
+lets you read, correct and delete what Starlight remembers, and approve or undo the skills
+it learned. ◐ switches between light, dark and your system's theme.
+
+**On your phone.** See [Use Starlight from your phone](#use-starlight-from-your-phone).
+
 Just write what you want, for example:
 
 ```
@@ -327,7 +337,7 @@ before Starlight asks "Allow?" never counts as the answer.
 
 | Command | What it does |
 | --- | --- |
-| `/clear` | Start a new conversation. |
+| `/new` (or `/clear`) | Start a new conversation (the old one stays saved). |
 | `/tools` | Show what Starlight can use. |
 | `/modules` | Show which modules are on or off. |
 | `/kill`, `/resume` | Stop everything, and continue. |
@@ -372,6 +382,36 @@ Each of these is set up once. The step-by-step instructions are in
 | [WhatsApp](docs/setup-windows.md#8-whatsapp-step-10) | A WhatsApp Business account with its own phone number, and a Cloudflare Tunnel. |
 | [Start at logon](docs/setup-windows.md#9-statistics-viewer-and-background-start-step-10) | `starlight service install`. No administrator rights needed. |
 
+## Use Starlight from your phone
+
+Starlight can be used from your phone or laptop anywhere, privately, through
+**[Tailscale](https://tailscale.com)** (free for personal use). Tailscale connects your
+devices in a private network: **no port is opened on your router**, and nobody outside
+your own devices can even reach the page. On top of that, each device has to be **paired**
+once with a code shown on your PC.
+
+1. Install Tailscale on this PC and on your phone, and sign in on both with the same
+   account. In the Tailscale admin console, under **DNS**, turn on **MagicDNS** and
+   **HTTPS certificates**.
+2. On the PC, run `starlight remote enable`. It prints your private address, like
+   `https://my-pc.tail1234.ts.net/`. Restart Starlight.
+3. On the PC, open **Settings → Show a pairing code** (or run `starlight remote pair`).
+4. On the phone, open that address and enter the code. Add the page to your home screen
+   to use it like an app.
+
+What is different on the phone:
+- Things that could do harm **always ask on the phone**, even if they run on their own at
+  home: desktop control, running code and your commands, closing or opening programs,
+  git and Docker changes, changing access, and automations (`web: remote: confirm:` in the
+  config).
+- Some things only change **on the PC**: permission rules, modules, paired devices,
+  skills, and releasing the kill switch (the phone can engage it).
+- A wrong code is counted; after 5 wrong tries that device waits 15 minutes. A code works
+  once and for 5 minutes. Pairing a new device sends you a notice everywhere.
+
+Remove a device in **Settings** (or `starlight remote revoke ID`), and turn the whole thing
+off with `starlight remote disable`.
+
 ## Safety and privacy
 
 - **Everything runs on your PC.** The model, your conversations, your memory and
@@ -396,6 +436,9 @@ Each of these is set up once. The step-by-step instructions are in
 - **The model is yours, unchanged.** Starlight sends your messages to the local model
   you chose and returns its answer as-is — it adds no filter of its own. How the model
   behaves is down to the model file, which runs entirely on your PC.
+- **Your phone, privately.** Remote use goes only through Tailscale (no open router
+  port), every device is paired with a one-time code, and risky actions ask on the phone.
+  See [Use Starlight from your phone](#use-starlight-from-your-phone).
 - **Everything is logged.** Every action Starlight takes is recorded in
   `logs\audit.log`.
 
@@ -504,6 +547,8 @@ If you installed with `Starlight.exe`, uv isn't on your PATH. Either install it 
 | `starlight viewer` | The statistics viewer on its own. |
 | `starlight service install / start / stop / status / uninstall` | Start Starlight and the viewer at logon. |
 | `starlight logs show` / `logs scan` | Show recent errors in plain language / check the logs for leaked passwords. |
+| `starlight remote enable / disable / status` | Use the web chat from your phone through Tailscale. |
+| `starlight remote pair / devices / revoke ID` | Pair a device with a one-time code, list them, remove one. |
 
 ## For developers
 

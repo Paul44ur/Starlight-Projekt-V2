@@ -120,9 +120,27 @@ class StatsConfig(_Strict):
     gpu_sample_interval: float = Field(default=30, ge=0)  # 0 = off
 
 
+class RemoteConfig(_Strict):
+    """Using the web chat from your other devices (through Tailscale). Off by default;
+    `starlight remote enable` sets it up in config/starlight.remote.yaml."""
+
+    enabled: bool = False
+    # Host names the chat answers to besides this PC, e.g. "my-pc.tail1234.ts.net".
+    hosts: list[str] = Field(default_factory=list)
+    # From another device these always ask on that device first, even if they normally
+    # run on their own.
+    confirm: list[str] = Field(
+        default_factory=lambda: [
+            "desktop.*", "code.*", "commands.*", "apps.close", "apps.open", "dev.git_*",
+            "dev.container_*", "access.*", "automations.*", "files.save*",
+        ]
+    )  # fmt: skip
+
+
 class WebConfig(_Strict):
     host: str = "127.0.0.1"  # local only; the chat can run actions, keep it off the network
     port: int = 8700
+    remote: RemoteConfig = Field(default_factory=RemoteConfig)
 
 
 class OutputConfig(_Strict):
@@ -173,8 +191,9 @@ def read_yaml(path: Path) -> dict[str, Any]:
 
 # Merged over config/starlight.yaml, in this order (later wins):
 #   starlight.launcher.yaml  written by Starlight.exe (model server, model file)
+#   starlight.remote.yaml    written by `starlight remote enable/disable` (Tailscale access)
 #   starlight.local.yaml     your own changes, never touched by any tool
-OVERLAYS = ("starlight.launcher.yaml", "starlight.local.yaml")
+OVERLAYS = ("starlight.launcher.yaml", "starlight.remote.yaml", "starlight.local.yaml")
 
 
 def deep_merge(base: dict[str, Any], extra: dict[str, Any]) -> dict[str, Any]:

@@ -2,75 +2,95 @@
 <html lang="en">
 <head>
 <meta charset="utf-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<meta name="theme-color" content="#171a21" />
 <title>Starlight</title>
+<link rel="manifest" href="/manifest.webmanifest" />
+<link rel="icon" href="/icon.svg" type="image/svg+xml" />
+<link rel="apple-touch-icon" href="/icon.svg" />
+<link rel="stylesheet" href="/style.css" />
 <style>
-  :root {
-    --bg: #0f1115; --panel: #171a21; --panel2: #1e222b; --border: #2a2f3a;
-    --text: #e6e8ec; --dim: #9aa3b2; --accent: #6ea8fe; --user: #244; --you: #0b2a4a;
-    --ok: #3fb950; --warn: #d29922; --bad: #f85149;
+  body { display: flex; height: 100vh; height: 100dvh; overflow: hidden; }
+  #convs { width: 260px; border-right: 1px solid var(--border); background: var(--panel);
+           display: flex; flex-direction: column; }
+  #convs .head { padding: 10px; display: flex; gap: 6px; }
+  #convs input { flex: 1; min-width: 0; padding: 6px 8px; }
+  #list { flex: 1; overflow-y: auto; padding: 0 6px 10px; }
+  .conv { display: flex; align-items: center; gap: 4px; padding: 7px 8px; border-radius: 8px;
+          cursor: pointer; font-size: 14px; }
+  .conv:hover { background: var(--panel2); }
+  .conv.active { background: var(--panel2); outline: 1px solid var(--border); }
+  .conv .t { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .conv .acts { display: none; }
+  .conv:hover .acts, .conv.active .acts { display: flex; }
+  #main { flex: 1; display: flex; flex-direction: column; min-width: 0; }
+  #log { flex: 1; overflow-y: auto; padding: 18px; display: flex; flex-direction: column; gap: 14px; }
+  .msg { max-width: 780px; padding: 10px 14px; border-radius: 12px; white-space: pre-wrap;
+         word-wrap: break-word; position: relative; }
+  .msg.you { align-self: flex-end; background: var(--you); }
+  .msg.bot { align-self: flex-start; background: var(--panel); border: 1px solid var(--border); }
+  .msg.sys { align-self: center; color: var(--dim); font-size: 13px; background: none; padding: 2px; }
+  .msg .who { font-size: 11px; color: var(--dim); margin-bottom: 3px; text-transform: uppercase;
+              letter-spacing: .04em; }
+  .msg .tools { display: flex; gap: 4px; margin-top: 6px; }
+  .msg .att { font-size: 12px; color: var(--dim); margin-top: 4px; }
+  .confirm { align-self: flex-start; max-width: 780px; border: 1px solid var(--warn); border-radius: 12px;
+             padding: 12px 14px; background: var(--panel); }
+  .confirm .q { white-space: pre-wrap; margin-bottom: 10px; }
+  footer { border-top: 1px solid var(--border); background: var(--panel); padding: 10px 14px
+           calc(10px + env(safe-area-inset-bottom)); }
+  #files { display: flex; gap: 6px; flex-wrap: wrap; max-width: 900px; margin: 0 auto 6px; }
+  #files .pill { cursor: pointer; }
+  #form { display: flex; gap: 8px; align-items: flex-end; max-width: 900px; margin: 0 auto; }
+  #input { flex: 1; resize: none; min-height: 44px; max-height: 180px; padding: 10px 12px;
+           border-radius: 10px; }
+  #side { width: 260px; border-left: 1px solid var(--border); background: var(--panel); padding: 14px;
+          overflow-y: auto; }
+  #side h2 { font-size: 12px; text-transform: uppercase; letter-spacing: .05em; color: var(--dim);
+             margin: 16px 0 6px; }
+  #side .item { font-size: 13px; padding: 2px 0; word-break: break-all; }
+  #drop { display: none; position: fixed; inset: 0; background: rgba(110,168,254,.15);
+          border: 3px dashed var(--accent); z-index: 40; align-items: center; justify-content: center;
+          font-size: 20px; }
+  body.dragging #drop { display: flex; }
+  #menu { display: none; }
+  @media (max-width: 1100px) { #side { display: none; } }
+  @media (max-width: 760px) {
+    #menu { display: inline-block; }
+    #convs { position: fixed; z-index: 30; top: 0; bottom: 0; left: 0; transform: translateX(-100%);
+             transition: transform .2s; box-shadow: var(--shadow); }
+    body.drawer #convs { transform: none; }
+    #log { padding: 12px; }
+    header.top nav a.wide { display: none; }
   }
-  @media (prefers-color-scheme: light) {
-    :root { --bg:#f6f7f9; --panel:#fff; --panel2:#f0f2f5; --border:#d8dce3; --text:#1f2328;
-            --dim:#5a6372; --you:#dbeafe; --user:#eef1f5; }
-  }
-  * { box-sizing: border-box; }
-  body { margin:0; font:15px/1.5 -apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;
-         background:var(--bg); color:var(--text); height:100vh; display:flex; }
-  #main { flex:1; display:flex; flex-direction:column; min-width:0; }
-  header { display:flex; align-items:center; gap:12px; padding:10px 16px;
-           border-bottom:1px solid var(--border); background:var(--panel); }
-  header h1 { font-size:16px; margin:0; font-weight:700; }
-  header .spacer { flex:1; }
-  button { font:inherit; color:var(--text); background:var(--panel2); border:1px solid var(--border);
-           border-radius:8px; padding:6px 12px; cursor:pointer; }
-  button:hover { border-color:var(--accent); }
-  button.danger { color:#fff; background:#b3231d; border-color:#b3231d; }
-  button.ok { color:#06240f; background:var(--ok); border-color:var(--ok); }
-  #log { flex:1; overflow-y:auto; padding:18px; display:flex; flex-direction:column; gap:14px; }
-  .msg { max-width:760px; padding:10px 14px; border-radius:12px; white-space:pre-wrap;
-         word-wrap:break-word; }
-  .msg.you { align-self:flex-end; background:var(--you); }
-  .msg.bot { align-self:flex-start; background:var(--panel); border:1px solid var(--border); }
-  .msg.sys { align-self:center; color:var(--dim); font-size:13px; background:none; }
-  .msg .who { font-size:11px; color:var(--dim); margin-bottom:3px; text-transform:uppercase;
-              letter-spacing:.04em; }
-  .confirm { align-self:flex-start; max-width:760px; border:1px solid var(--warn);
-             border-radius:12px; padding:12px 14px; background:var(--panel); }
-  .confirm .q { white-space:pre-wrap; margin-bottom:10px; }
-  .confirm .row { display:flex; gap:8px; }
-  footer { border-top:1px solid var(--border); background:var(--panel); padding:10px 16px; }
-  #form { display:flex; gap:10px; align-items:flex-end; max-width:900px; margin:0 auto; }
-  #input { flex:1; resize:none; min-height:44px; max-height:180px; padding:10px 12px;
-           border-radius:10px; border:1px solid var(--border); background:var(--panel2);
-           color:var(--text); font:inherit; }
-  #side { width:280px; border-left:1px solid var(--border); background:var(--panel);
-          padding:14px; overflow-y:auto; }
-  #side h2 { font-size:12px; text-transform:uppercase; letter-spacing:.05em; color:var(--dim);
-             margin:16px 0 6px; }
-  #side .item { font-size:13px; padding:2px 0; color:var(--text); word-break:break-all; }
-  #side .empty { color:var(--dim); font-size:13px; }
-  .pill { display:inline-block; font-size:12px; padding:2px 8px; border-radius:999px;
-          border:1px solid var(--border); }
-  .pill.on { color:#06240f; background:var(--ok); border-color:var(--ok); }
-  .pill.off { color:var(--dim); }
-  @media (max-width: 760px) { #side { display:none; } }
-  a { color:var(--accent); }
 </style>
 </head>
 <body>
+  <aside id="convs">
+    <div class="head">
+      <input id="search" type="search" placeholder="Search chats" />
+      <button id="new" title="New conversation">＋</button>
+    </div>
+    <div id="list"></div>
+  </aside>
   <div id="main">
-    <header>
+    <header class="top">
+      <button id="menu" class="icon" title="Conversations">☰</button>
       <h1>⭐ Starlight</h1>
       <span id="conn" class="pill off">connecting…</span>
+      <span id="where" class="pill off" hidden></span>
       <span class="spacer"></span>
+      <nav><a href="/memory">Memory</a><a href="/settings">Settings</a></nav>
+      <button id="theme" class="icon" title="Theme" onclick="cycleTheme()">◐</button>
       <button id="stop" title="Stop the current answer">Stop</button>
       <button id="kill" class="danger" title="Stop everything">Kill</button>
-      <button id="clear" title="Clear this view">Clear</button>
     </header>
     <div id="log"></div>
     <footer>
+      <div id="files"></div>
       <form id="form">
+        <button id="attach" type="button" class="icon" title="Add a picture or document">📎</button>
+        <input id="picker" type="file" multiple hidden />
         <textarea id="input" placeholder="Ask Starlight…  (Enter to send, Shift+Enter for a new line)"></textarea>
         <button id="send" class="ok" type="submit">Send</button>
       </form>
@@ -78,31 +98,44 @@
   </div>
   <aside id="side">
     <div><span class="pill" id="model">model: …</span></div>
-    <h2>Allowed servers</h2><div id="servers" class="empty">none</div>
-    <h2>Logins</h2><div id="logins" class="empty">none</div>
-    <h2>Secrets</h2><div id="secrets" class="empty">none</div>
-    <h2>Saved files</h2><div id="files" class="item"></div>
+    <h2>Allowed servers</h2><div id="servers" class="dim small">none</div>
+    <h2>Logins</h2><div id="logins" class="dim small">none</div>
+    <h2>Secrets</h2><div id="secrets" class="dim small">none</div>
+    <h2>Saved files</h2><div id="saves" class="item"></div>
   </aside>
+  <div id="drop">Drop pictures or documents to add them to your message</div>
 
+<script src="/common.js"></script>
 <script>
 const log = document.getElementById("log");
 const input = document.getElementById("input");
 const connPill = document.getElementById("conn");
-let ws, current = null;
+let ws, current = null, conversation = null, lastQuestion = null, attached = [];
 
-function el(cls, html) { const d = document.createElement("div"); d.className = cls; if (html!==undefined) d.innerHTML = html; return d; }
 function atBottom() { return log.scrollHeight - log.scrollTop - log.clientHeight < 80; }
 function scroll() { log.scrollTop = log.scrollHeight; }
 
-function addMsg(who, text) {
+function addMsg(who, text, files) {
   const stick = atBottom();
-  const m = el("msg " + (who === "you" ? "you" : "bot"));
-  m.appendChild(el("who", who === "you" ? "you" : "starlight"));
-  const body = el("body"); body.textContent = text || ""; m.appendChild(body);
-  log.appendChild(m); if (stick) scroll();
+  const m = el("div", "msg " + (who === "you" ? "you" : "bot"));
+  m.appendChild(el("div", "who", who === "you" ? "you" : "starlight"));
+  const body = el("div", "body", text || "");
+  m.appendChild(body);
+  if (files && files.length) m.appendChild(el("div", "att", "📎 " + files.join(", ")));
+  if (who !== "you") {
+    const tools = el("div", "tools");
+    const copy = el("button", "icon", "Copy");
+    copy.onclick = () => navigator.clipboard.writeText(body.textContent).then(() => toast("Copied"));
+    const retry = el("button", "icon", "Retry");
+    retry.onclick = () => { if (lastQuestion) ask(lastQuestion, []); };
+    tools.append(copy, retry);
+    m.appendChild(tools);
+  }
+  log.appendChild(m);
+  if (stick) scroll();
   return body;
 }
-function addSys(text) { const stick = atBottom(); log.appendChild(el("msg sys", "")).textContent = text; if (stick) scroll(); }
+function addSys(text) { const stick = atBottom(); log.appendChild(el("div", "msg sys", text)); if (stick) scroll(); }
 
 function connect() {
   ws = new WebSocket((location.protocol === "https:" ? "wss://" : "ws://") + location.host + "/ws");
@@ -112,11 +145,18 @@ function connect() {
 }
 
 function handle(m) {
-  if (m.type === "start") { current = addMsg("bot", ""); }
+  if (m.type === "start") {
+    current = addMsg("bot", "");
+    if (m.conversation && m.conversation !== conversation) { conversation = m.conversation; }
+  }
   else if (m.type === "token") { if (!current) current = addMsg("bot", ""); const s = atBottom(); current.textContent += m.text; if (s) scroll(); }
-  else if (m.type === "answer") { if (!current || current.textContent.trim() === "") { (current || (current = addMsg("bot",""))).textContent = m.text; } if (m.stopped) addSys("Kill switch engaged. Type /resume or press Resume."); current = null; }
+  else if (m.type === "answer") {
+    if (!current || current.textContent.trim() === "") (current || (current = addMsg("bot", ""))).textContent = m.text;
+    if (m.stopped) addSys("Kill switch engaged. Press Resume on the PC to continue.");
+    current = null; loadList();
+  }
   else if (m.type === "stopped") { addSys("[stopped]"); current = null; }
-  else if (m.type === "error") { const b = addMsg("bot", ""); b.textContent = "⚠ " + m.text; b.style.color = "var(--bad)"; current = null; }
+  else if (m.type === "error") { const b = addMsg("bot", "⚠ " + m.text); b.style.color = "var(--bad)"; current = null; }
   else if (m.type === "notify") { addSys("ℹ " + m.text); }
   else if (m.type === "busy") { addSys("Starlight is still working on the last message."); }
   else if (m.type === "confirm") { showConfirm(m); }
@@ -125,63 +165,140 @@ function handle(m) {
 
 function showConfirm(m) {
   const stick = atBottom();
-  const card = el("confirm");
-  card.appendChild(el("q")).textContent = m.question;
-  const row = el("row");
-  const yes = document.createElement("button"); yes.className = "ok"; yes.textContent = "Approve";
-  const no = document.createElement("button"); no.textContent = "Deny";
-  yes.onclick = () => { ws.send(JSON.stringify({type:"reply", id:m.id, value:"yes"})); card.remove(); };
-  no.onclick = () => { ws.send(JSON.stringify({type:"reply", id:m.id, value:"no"})); card.remove(); };
-  row.appendChild(yes); row.appendChild(no); card.appendChild(row);
+  const card = el("div", "confirm");
+  card.appendChild(el("div", "q", m.question));
+  const row = el("div", "row");
+  const yes = el("button", "ok", "Approve");
+  const no = el("button", "", "Deny");
+  yes.onclick = () => { ws.send(JSON.stringify({ type: "reply", id: m.id, value: "yes" })); card.remove(); };
+  no.onclick = () => { ws.send(JSON.stringify({ type: "reply", id: m.id, value: "no" })); card.remove(); };
+  row.append(yes, no); card.appendChild(row);
   log.appendChild(card); if (stick) scroll();
 }
 function showPrompt(m) {
   const stick = atBottom();
-  const card = el("confirm");
-  card.appendChild(el("q")).textContent = m.question;
+  const card = el("div", "confirm");
+  card.appendChild(el("div", "q", m.question));
   const box = document.createElement("input");
-  box.type = m.secret ? "password" : "text"; box.style.cssText = "width:100%;padding:8px;margin-bottom:8px;border-radius:8px;border:1px solid var(--border);background:var(--panel2);color:var(--text)";
-  const send = document.createElement("button"); send.className = "ok"; send.textContent = "Send";
-  const go = () => { ws.send(JSON.stringify({type:"reply", id:m.id, value:box.value})); card.remove(); };
+  box.type = m.secret ? "password" : "text"; box.style.cssText = "width:100%;margin-bottom:8px";
+  const send = el("button", "ok", "Send");
+  const go = () => { ws.send(JSON.stringify({ type: "reply", id: m.id, value: box.value })); card.remove(); };
   send.onclick = go; box.onkeydown = (e) => { if (e.key === "Enter") go(); };
-  card.appendChild(box); card.appendChild(send); log.appendChild(card); if (stick) scroll(); box.focus();
+  card.append(box, send); log.appendChild(card); if (stick) scroll(); box.focus();
+}
+
+function ask(text, files) {
+  if (!ws || ws.readyState !== 1) { toast("Not connected yet"); return; }
+  lastQuestion = text;
+  addMsg("you", text, files.map(f => f.name));
+  ws.send(JSON.stringify({ type: "ask", text, conversation, attachments: files.map(f => f.id) }));
 }
 
 document.getElementById("form").onsubmit = (e) => {
   e.preventDefault();
-  const text = input.value.trim(); if (!text || ws.readyState !== 1) return;
-  addMsg("you", text); input.value = ""; input.style.height = "44px";
-  ws.send(JSON.stringify({type:"ask", text}));
+  const text = input.value.trim();
+  if (!text) return;
+  const files = attached; attached = []; showFiles();
+  input.value = ""; input.style.height = "44px";
+  ask(text, files);
 };
 input.onkeydown = (e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); document.getElementById("form").requestSubmit(); } };
 input.oninput = () => { input.style.height = "44px"; input.style.height = Math.min(input.scrollHeight, 180) + "px"; };
-document.getElementById("stop").onclick = () => ws && ws.readyState === 1 && ws.send(JSON.stringify({type:"stop"}));
-document.getElementById("clear").onclick = () => { log.innerHTML = ""; };
+document.getElementById("stop").onclick = () => ws && ws.readyState === 1 && ws.send(JSON.stringify({ type: "stop" }));
 document.getElementById("kill").onclick = async () => {
   const k = document.getElementById("kill");
-  if (k.dataset.on === "1") { await fetch("/api/resume", {method:"POST"}); } else { await fetch("/api/kill", {method:"POST"}); }
+  try { await api(k.dataset.on === "1" ? "/api/resume" : "/api/kill", { method: "POST" }); }
+  catch (e) { toast(e.message); }
   refresh();
 };
 
+// -- files ---------------------------------------------------------------------------------
+async function upload(file) {
+  const response = await fetch("/api/upload", { method: "POST", headers: { "X-Filename": encodeURIComponent(file.name) }, body: file });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) { toast(data.detail || "Could not add " + file.name); return; }
+  attached.push({ id: data.id, name: data.name });
+  showFiles();
+}
+function showFiles() {
+  const box = document.getElementById("files"); box.innerHTML = "";
+  attached.forEach((f, i) => {
+    const p = el("span", "pill", "📎 " + f.name + " ✕");
+    p.title = "Remove"; p.onclick = () => { attached.splice(i, 1); showFiles(); };
+    box.appendChild(p);
+  });
+}
+const picker = document.getElementById("picker");
+document.getElementById("attach").onclick = () => picker.click();
+picker.onchange = () => { [...picker.files].forEach(upload); picker.value = ""; };
+let dragDepth = 0;
+window.addEventListener("dragenter", (e) => { if (e.dataTransfer && [...e.dataTransfer.types].includes("Files")) { dragDepth++; document.body.classList.add("dragging"); } });
+window.addEventListener("dragleave", () => { dragDepth = Math.max(0, dragDepth - 1); if (!dragDepth) document.body.classList.remove("dragging"); });
+window.addEventListener("dragover", (e) => e.preventDefault());
+window.addEventListener("drop", (e) => { e.preventDefault(); dragDepth = 0; document.body.classList.remove("dragging"); [...(e.dataTransfer.files || [])].forEach(upload); });
+input.addEventListener("paste", (e) => { [...(e.clipboardData.files || [])].forEach(upload); });
+
+// -- conversations ---------------------------------------------------------------------------
+async function loadList() {
+  const search = document.getElementById("search").value;
+  let data;
+  try { data = await api("/api/conversations?search=" + encodeURIComponent(search)); } catch (e) { return; }
+  if (!conversation) conversation = data.current;
+  const list = document.getElementById("list"); list.innerHTML = "";
+  data.conversations.forEach(c => {
+    const row = el("div", "conv" + (c.id === conversation ? " active" : ""));
+    const t = el("span", "t", c.title); t.title = c.title + " — " + c.updated.replace("T", " ");
+    const acts = el("span", "acts");
+    const ren = el("button", "icon", "✎"); ren.title = "Rename";
+    ren.onclick = async (e) => { e.stopPropagation(); const title = prompt("New name", c.title); if (title) { await api("/api/conversations/" + c.id, { method: "PATCH", body: { title } }); loadList(); } };
+    const del = el("button", "icon", "🗑"); del.title = "Delete";
+    del.onclick = async (e) => { e.stopPropagation(); if (confirm("Delete \"" + c.title + "\"?")) { await api("/api/conversations/" + c.id, { method: "DELETE" }); if (c.id === conversation) { conversation = null; log.innerHTML = ""; } loadList(); } };
+    acts.append(ren, del); row.append(t, acts);
+    row.onclick = () => open(c.id);
+    list.appendChild(row);
+  });
+}
+async function open(id) {
+  document.body.classList.remove("drawer");
+  let data;
+  try { data = await api("/api/conversations/" + id); } catch (e) { toast(e.message); return; }
+  conversation = id; log.innerHTML = ""; current = null;
+  data.messages.forEach(m => addMsg(m.role === "user" ? "you" : "bot", m.content));
+  if (!data.messages.length) addSys("New conversation. Ask anything.");
+  loadList(); scroll();
+}
+document.getElementById("new").onclick = async () => { const d = await api("/api/conversations", { method: "POST" }); await open(d.id); input.focus(); };
+document.getElementById("search").oninput = () => loadList();
+document.getElementById("menu").onclick = () => document.body.classList.toggle("drawer");
+log.addEventListener("click", () => document.body.classList.remove("drawer"));
+
+// -- status ----------------------------------------------------------------------------------
 async function refresh() {
   try {
-    const s = await (await fetch("/api/status")).json();
+    const s = await api("/api/status");
     document.getElementById("model").textContent = "model: " + s.model;
+    const where = document.getElementById("where");
+    if (!s.local) { where.hidden = false; where.textContent = s.device || "remote"; }
     const k = document.getElementById("kill");
-    if (s.kill.engaged) { k.textContent = "Resume"; k.classList.remove("danger"); k.classList.add("ok"); k.dataset.on = "1"; }
-    else { k.textContent = "Kill"; k.classList.add("danger"); k.classList.remove("ok"); k.dataset.on = "0"; }
-    fill("servers", (s.access.servers)||[]); fill("logins", (s.access.login_sites)||[]); fill("secrets", (s.access.secrets)||[]);
-    document.getElementById("files").textContent = s.saves_files || "";
+    if (s.kill.engaged) {
+      k.textContent = "Resume"; k.className = "ok"; k.dataset.on = "1"; k.disabled = !s.local;
+      if (!s.local) k.title = "Release the kill switch on the PC";
+    } else { k.textContent = "Kill"; k.className = "danger"; k.dataset.on = "0"; k.disabled = false; }
+    fill("servers", s.access.servers || []); fill("logins", s.access.login_sites || []); fill("secrets", s.access.secrets || []);
+    document.getElementById("saves").textContent = s.saves_files || "";
   } catch (e) { /* server starting */ }
 }
 function fill(id, items) {
   const box = document.getElementById(id); box.innerHTML = "";
-  if (!items.length) { box.className = "empty"; box.textContent = "none"; return; }
-  box.className = ""; items.forEach(x => { const d = el("item"); d.textContent = x; box.appendChild(d); });
+  if (!items.length) { box.className = "dim small"; box.textContent = "none"; return; }
+  box.className = ""; items.forEach(x => box.appendChild(el("div", "item", x)));
 }
 
-connect(); refresh(); setInterval(refresh, 4000);
-addSys("Ask anything. Actions that change something will ask you to approve them here.");
+(async () => {
+  await loadList();
+  if (conversation) await open(conversation);
+  connect(); refresh(); setInterval(refresh, 4000);
+})();
 </script>
 </body>
 </html>
