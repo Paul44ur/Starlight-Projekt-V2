@@ -121,6 +121,17 @@ TEMPLATES: dict[str, dict[str, Any]] = {
         "when": "every day at 3:00",
         "actions": [{"ask": "Run all my backups (backup.list, then backup.run for each)."}],
     },
+    "memory-tidy": {
+        "when": "every month on the 1st at 10:00",
+        "actions": [
+            {"tool": "memory.duplicates"},
+            {
+                "say": "{result.count} pairs of memories say nearly the same thing. "
+                "Say 'tidy my memory' to merge them.",
+                "only_if": "count > 0",
+            },
+        ],
+    },
     "weekly-cert-check": {
         "when": "monday 9:00",
         "actions": [

@@ -19,6 +19,7 @@ from starlight.core.conversations import ConversationStore
 from starlight.core.corelock import CoreLock
 from starlight.core.dispatcher import Confirmer, Dispatcher
 from starlight.core.events import Event, EventBus
+from starlight.core.focus import Focus, finish
 from starlight.core.http import PoliteHttp
 from starlight.core.killswitch import KillSwitch
 from starlight.core.logging import (
@@ -156,6 +157,7 @@ class Kernel:
         except ConfigError as exc:
             output_error = str(exc)
         self.core_lock = CoreLock(self.paths.data / "core.lock")
+        self.focus = Focus(self.paths.data / "focus.json")
         self.services = Services(
             primary=False,
             http=self.http,
@@ -175,6 +177,7 @@ class Kernel:
             tool_lookup=self.dispatcher.get,
             run_request=self._run_request,
             profile=self._profile,
+            focus=self.focus,
         )
         self.modules = ModuleManager(
             self.paths, self.dispatcher, self.bus, self.kill_switch, self.audit, self.services
@@ -202,7 +205,10 @@ class Kernel:
         record = self.modules.records.get(name)
         if record is None:
             return {
-                "memory": ("Long-term memory: remember, recall and forget facts", ["remember"]),
+                "memory": (
+                    "Long-term memory: remember, recall and forget facts; the user's profile",
+                    ["remember", "know", "profile", "forget", "tidy", "duplicates", "weißt"],
+                ),
                 "skills": ("Approved skills: how-tos learned from earlier tasks", ["skill"]),
             }.get(name, ("", []))
         return record.manifest.description, record.manifest.keywords
@@ -381,6 +387,11 @@ class Kernel:
                 self.log.info("this process now runs the background parts")
                 await self.bus.publish("core.primary")
             self.stats.record("core.heartbeat")
+            if self.focus.expired():  # focus time is over: deliver what was held
+                try:
+                    await finish(self.focus, self.deliver)
+                except Exception:
+                    self.log.exception("could not end focus mode")
             status = None
             if interval > 0:
                 try:
@@ -459,10 +470,17 @@ class Kernel:
     async def _run_request(self, text: str) -> str:
         return (await self.ask(text)).answer
 
-    async def deliver(self, text: str, title: str = "", source: str = "core") -> None:
+    async def deliver(
+        self, text: str, title: str = "", source: str = "core", urgent: bool = False
+    ) -> None:
         """Tell the user something now (a reminder, an alert, a briefing): on the terminal
         or the channel in use, and - through the "deliver" event - in every open web chat,
-        as a desktop notification and on WhatsApp, when those are set up."""
+        as a desktop notification and on WhatsApp, when those are set up. In focus mode
+        it is held for the digest at the end, unless it is ``urgent``."""
+        if not urgent and self.focus.active():
+            self.focus.hold(text, title, source)
+            self.stats.record("deliver.held", source=source)
+            return
         message = f"{title}: {text}" if title and not text.startswith(title) else text
         with contextlib.suppress(Exception):
             await self.ui.notify(message)

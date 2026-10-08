@@ -7,3 +7,6 @@ imap_port: 993
 smtp_host: ""      # e.g. smtp.gmail.com, smtp.web.de
 smtp_port: 587
 from_name: ""      # display name on messages you send (optional)
+watch: false       # true: check for new mail in the background (publishes mail.new)
+check_minutes: 5
+notify_from: []    # tell me at once about mail from these, e.g. ["landlord@", "@bank.de"]

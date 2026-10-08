@@ -93,6 +93,19 @@ class MemoryIndex:
         order = np.argsort(-scores)[:top_k]
         return [Hit(self._entries[i], float(scores[i])) for i in order if scores[i] >= min_score]
 
+    def similar_pairs(self, threshold: float) -> list[tuple[MemoryEntry, MemoryEntry, float]]:
+        """Pairs of entries at least ``threshold`` alike, most alike first."""
+        if len(self._entries) < 2:
+            return []
+        scores = self._matrix @ self._matrix.T
+        first, second = np.triu_indices(len(self._entries), k=1)
+        found = [
+            (self._entries[i], self._entries[j], float(scores[i, j]))
+            for i, j in zip(first, second, strict=True)
+            if scores[i, j] >= threshold
+        ]
+        return sorted(found, key=lambda pair: -pair[2])
+
     def __len__(self) -> int:
         return len(self._entries)
 

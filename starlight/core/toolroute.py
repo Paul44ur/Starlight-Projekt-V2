@@ -46,7 +46,7 @@ _STOP = """
     a an and are as at be but by can could do does for from get give go had has have he her
     him his how i if in into is it its just let me my no not now of on or our please she so
     some than that the their them then there these they this to too up us was we what when
-    where which who why will with would you your yours tell show want need make like know
+    where which who why will with would you your yours tell show want need make like
     about any all also one ok okay hey hi hello thanks thank
     der die das ein eine einen einem einer und oder aber ist sind bin bist war mit für von
     zu zum zur im in am an auf aus bei nach über unter vor wie was wer wo wann warum ich du

@@ -1,0 +1,8 @@
+name: watch
+version: 0.1.0
+description: Watch web pages for you - tell you when a page changes, a price drops below what you want, or something appears or disappears
+keywords: ["watch", "monitor", "price", "cheaper", "drop", "deal", "change", "back in stock", "sold out", "beobachten", "überwachen", "Preis", "billiger", "günstiger", "Angebot", "verfügbar"]
+entrypoint: module:WatchModule
+permissions: [safe, confirm]
+dependencies: []
+enabled_by_default: true

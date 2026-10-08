@@ -96,7 +96,7 @@ class Services:
     primary: bool = True
     # Send a message to you on every channel that is open (terminal, web chat, desktop,
     # WhatsApp). Set by the kernel; without one, messages go to ``ui.notify``.
-    deliver: Callable[[str, str, str], Awaitable[None]] | None = None
+    deliver: Callable[..., Awaitable[None]] | None = None  # (text, title, source, urgent)
     embedder: Any = None  # the embedding model memory uses (for modules that index text)
     # Run another module's tool, with the same permission checks, kill switch and audit
     # as when the model calls it (set by the kernel to the dispatcher).
@@ -107,6 +107,7 @@ class Services:
     run_request: Callable[[str], Awaitable[str]] | None = None
     # The user's profile (name, language, home, timezone, preferences), from memory.
     profile: Callable[[], dict[str, str]] | None = None
+    focus: Any = None  # focus mode (starlight.core.focus.Focus): messages held meanwhile
 
 
 PRIMARY_POLL = 1.0  # seconds between checks whether this process became the primary core
@@ -199,6 +200,13 @@ class ModuleContext:
             raise RuntimeError("no agent configured")
         return await self.services.run_request(text)
 
+    @property
+    def focus(self) -> Any:
+        """Focus mode (``starlight.core.focus.Focus``)."""
+        if self.services.focus is None:
+            raise RuntimeError("no focus mode configured")
+        return self.services.focus
+
     def profile(self) -> dict[str, str]:
         """What the user told Starlight about themselves: name, language, home (their
         town), timezone and preferences. Missing fields are simply absent."""
@@ -221,10 +229,12 @@ class ModuleContext:
         """Whether a tool is loaded right now (its module may be disabled)."""
         return self.services.tool_names is not None and tool in self.services.tool_names()
 
-    async def deliver(self, text: str, title: str = "") -> None:
-        """Tell the user something now, on every channel that is open."""
+    async def deliver(self, text: str, title: str = "", urgent: bool = False) -> None:
+        """Tell the user something now, on every channel that is open. In focus mode it
+        waits for the digest at the end, unless ``urgent`` (something about to happen, or
+        a security warning)."""
         if self.services.deliver is not None:
-            await self.services.deliver(text, title, self.name)
+            await self.services.deliver(text, title, self.name, urgent)
             return
         with contextlib.suppress(Exception):
             await self.ui.notify(f"{title}: {text}" if title else text)

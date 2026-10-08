@@ -232,6 +232,59 @@ class Memory:
             saved.append(entry)
         return saved
 
+    # -- tidying -----------------------------------------------------------------------
+
+    def _tidy_candidates(self, entry: MemoryEntry) -> bool:
+        return entry.id != PROFILE_ID and not entry.id.startswith(CONVERSATIONS + "/")
+
+    async def duplicates(self) -> list[tuple[MemoryEntry, MemoryEntry, float]]:
+        """Near-duplicate memories (as alike as memory.merge_threshold), each entry in at
+        most one pair, most alike first."""
+        await self.sync()
+        used: set[str] = set()
+        pairs = []
+        for a, b, score in self.index.similar_pairs(self.config.merge_threshold):
+            if not (self._tidy_candidates(a) and self._tidy_candidates(b)):
+                continue
+            if a.id in used or b.id in used:
+                continue
+            used.update((a.id, b.id))
+            pairs.append((a, b, score))
+        return pairs
+
+    @staticmethod
+    def _combine(a: MemoryEntry, b: MemoryEntry) -> tuple[MemoryEntry, MemoryEntry]:
+        """(the merged entry, the one to delete). The newer statement wins, unless the
+        older one already says it and more."""
+        newer, older = (a, b) if (a.date, len(a.content)) >= (b.date, len(b.content)) else (b, a)
+        content = newer.content
+        if newer.content.strip() in older.content:
+            content = older.content
+        sources = [s.strip() for s in f"{older.source};{newer.source}".split(";") if s.strip()]
+        merged = MemoryEntry(
+            id=newer.id,
+            topic=newer.topic,
+            content=content,
+            source="; ".join(list(dict.fromkeys(sources))[-5:]),
+            date=newer.date,
+            confidence=max(a.confidence, b.confidence),
+            tags=sorted({*a.tags, *b.tags}),
+        )
+        return merged, older
+
+    async def tidy(self) -> list[dict[str, str]]:
+        """Merge every near-duplicate pair. Returns what was merged into what."""
+        merged = []
+        for a, b, _ in await self.duplicates():
+            keep, drop = self._combine(a, b)
+            self.store.write(keep)
+            self.store.delete(drop.id)
+            merged.append({"kept": keep.id, "merged_in": drop.id})
+        if merged:
+            await self.sync(force=True)
+            self._log.info("memory tidied", merged=len(merged))
+        return merged
+
     def export(self, target: Path) -> Path:
         """Everything in one file: JSON if the name ends in .json, otherwise Markdown."""
         entries = self.store.all()
@@ -272,6 +325,38 @@ class Memory:
             """Delete one memory file by id."""
             return "Deleted." if await self.forget(memory_id) else "No such memory."
 
+        async def about_me(limit: int = 40) -> dict[str, Any]:
+            """Everything you know about the user: their profile and what you remember,
+            newest first - for "what do you know about me?"."""
+            await self.sync()
+            entries = [e for e in self.store.all() if self._tidy_candidates(e)]
+            entries.sort(key=lambda e: e.date, reverse=True)
+            return {
+                "profile": self.profile.read(),
+                "count": len(entries),
+                "memories": [
+                    {"id": e.id, "topic": e.topic, "fact": e.content[:300], "date": e.date}
+                    for e in entries[: max(1, min(limit, 100))]
+                ],
+            }
+
+        async def duplicates() -> dict[str, Any]:
+            """Memories that say nearly the same thing, in pairs. memory.tidy merges them."""
+            pairs = await self.duplicates()
+            return {
+                "count": len(pairs),
+                "pairs": [
+                    {"a": a.text[:200], "b": b.text[:200], "similarity": round(score, 3)}
+                    for a, b, score in pairs
+                ],
+            }
+
+        async def tidy() -> dict[str, Any]:
+            """Merge memories that say nearly the same thing (see memory.duplicates): the
+            newer statement is kept, tags and sources are joined. Asks first."""
+            merged = await self.tidy()
+            return {"merged": len(merged), "details": merged}
+
         def profile() -> dict[str, str]:
             """The user's profile: name, language, home place, time zone, preferences."""
             return self.profile.read()
@@ -292,6 +377,9 @@ class Memory:
             make_tool(MODULE, forget, permission=Permission.CONFIRM),
             make_tool(MODULE, profile),
             make_tool(MODULE, set_profile),
+            make_tool(MODULE, about_me),
+            make_tool(MODULE, duplicates),
+            make_tool(MODULE, tidy, permission=Permission.CONFIRM),
         ]
 
     def close(self) -> None:

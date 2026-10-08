@@ -103,8 +103,10 @@ description, start each tool's docstring with one sentence saying what it does, 
 - `ctx.model`: the main model, e.g. to summarize something inside a tool
 - `ctx.model_for("code")`: the model the core routes a kind of work to (`roles:` in the
   config), falling back to the main model
-- `ctx.deliver(text, title="")`: tell the user something now (an alert, a reminder) on
-  every open channel: the terminal, every web chat, a desktop notification and WhatsApp
+- `ctx.deliver(text, title="", urgent=False)`: tell the user something now (an alert, a
+  reminder) on every open channel: the terminal, every web chat, a desktop notification
+  and WhatsApp. In focus mode it is held for the summary at the end, unless `urgent`
+  (something about to happen, or a security warning)
 - `ctx.every(seconds, fn, "name")`: run `fn` (sync or async) on a timer, and
   `ctx.background(coro_fn, "name")` for a long-running task. Both run only in the primary
   Starlight process (so two open Starlights never do the work twice), skip a round while

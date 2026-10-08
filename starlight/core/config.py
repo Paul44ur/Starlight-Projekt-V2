@@ -145,7 +145,8 @@ class RemoteConfig(_Strict):
     confirm: list[str] = Field(
         default_factory=lambda: [
             "desktop.*", "code.*", "commands.*", "apps.close", "apps.open", "dev.git_*",
-            "dev.container_*", "access.*", "automations.*", "files.save*",
+            "dev.container_*", "access.*", "automations.*", "files.save*", "system.sleep",
+            "system.shutdown", "system.restart", "watch.add", "mail.send", "mail.reply",
         ]
     )  # fmt: skip
     # From another device these never run: they would change what Starlight may do (or

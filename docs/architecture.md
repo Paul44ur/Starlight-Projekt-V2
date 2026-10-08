@@ -218,6 +218,20 @@ With a draft model (`model.server.draft_model_path`, set by the launcher for the
 model) llama-server does speculative decoding; if the server will not start with the draft,
 the launcher starts it again without.
 
+**New features (round 2).** `watch` keeps its watches in `data/modules/watch/watches.json`
+and checks due ones every minute in the primary core through `ctx.http` (no cache);
+prices are read with a currency-aware regex (`1.234,56 €`, `$1,234.56`), and a hit fires
+once per crossing, publishing `watch.price` / `watch.changed`. `mail` now names messages
+by IMAP UID, selects the inbox read-only and fetches with `BODY.PEEK`, so nothing is
+marked read; `summary` and `draft_reply` use the `summary` role's model; `reply` sets
+`In-Reply-To`/`References`; with `watch: true` it publishes `mail.new` for unread UIDs not
+seen before (per UIDVALIDITY, in `data/modules/mail/seen.json`). Focus mode lives in the
+core (`core/focus.py`, `data/focus.json`): `Kernel.deliver` holds non-urgent messages
+while it is on, and the heartbeat delivers one digest when it ends. `system` gained
+lock/sleep/shutdown/restart through one command runner per platform; a delayed shutdown
+registers a kill-switch cleanup that cancels it. `memory.duplicates`/`memory.tidy` merge
+near-duplicates found with the index's vectors (never the profile or summaries).
+
 ## Build plan status
 
 | Step | | Status |

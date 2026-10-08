@@ -1,6 +1,9 @@
-"""How your PC is doing: CPU, memory, disk space, battery, uptime and running programs.
+"""How your PC is doing: CPU, memory, disk space, battery, uptime and running programs,
+and power: lock the screen, sleep, shut down or restart (now or in a few minutes).
 
-Reading is safe and needs no confirmation. Closing a program asks first.
+Reading and locking are safe. Closing a program, sleep, shutdown and restart ask first.
+A shutdown or restart Starlight scheduled is cancelled by cancel_shutdown - and by the
+kill switch.
 
 Uses ``psutil`` when it is installed (the ``system`` extra, part of ``all``) for the full
 picture; without it, it still reports what the standard library can.
@@ -11,6 +14,7 @@ from __future__ import annotations
 import os
 import platform
 import shutil
+import subprocess
 import sys
 import time
 from typing import Any
@@ -57,11 +61,120 @@ class Config(BaseModel):
     top_processes: int = Field(default=10, ge=1, le=50)
 
 
+POWER_ACTIONS = ("lock", "sleep", "shutdown", "restart", "cancel")
+
+
+def power_command(action: str, minutes: int, platform_name: str) -> list[str]:
+    """The command for a power action on this kind of system."""
+    seconds = max(0, minutes) * 60
+    if platform_name == "win32":
+        return {
+            "lock": ["rundll32.exe", "user32.dll,LockWorkStation"],
+            "sleep": ["rundll32.exe", "powrprof.dll,SetSuspendState", "0,1,0"],
+            "shutdown": ["shutdown", "/s", "/t", str(seconds)],
+            "restart": ["shutdown", "/r", "/t", str(seconds)],
+            "cancel": ["shutdown", "/a"],
+        }[action]
+    if platform_name == "darwin":
+        if action in ("shutdown", "restart", "cancel") and (minutes or action == "cancel"):
+            raise ToolError("on a Mac, Starlight can only shut down or restart right away")
+        return {
+            "lock": ["pmset", "displaysleepnow"],
+            "sleep": ["pmset", "sleepnow"],
+            "shutdown": ["osascript", "-e", 'tell app "System Events" to shut down'],
+            "restart": ["osascript", "-e", 'tell app "System Events" to restart'],
+        }[action]
+    when = f"+{minutes}" if minutes > 0 else "now"
+    return {
+        "lock": ["loginctl", "lock-session"],
+        "sleep": ["systemctl", "suspend"],
+        "shutdown": ["shutdown", "-h", when],
+        "restart": ["shutdown", "-r", when],
+        "cancel": ["shutdown", "-c"],
+    }[action]
+
+
 class SystemModule(Module):
     Config = Config
 
     async def setup(self, ctx: ModuleContext) -> None:
         self.config: Config = ctx.config
+        self._pending: str | None = None  # a shutdown/restart Starlight scheduled
+
+    # -- power -----------------------------------------------------------------------------
+
+    def _platform(self) -> str:
+        return sys.platform
+
+    def _run(self, command: list[str]) -> None:
+        try:
+            done = subprocess.run(command, capture_output=True, text=True, timeout=20, check=False)
+        except (OSError, subprocess.TimeoutExpired) as exc:
+            raise ToolError(f"could not run {command[0]}: {exc}") from exc
+        if done.returncode != 0:
+            message = (done.stderr or done.stdout).strip()[:300]
+            raise ToolError(f"{command[0]} failed: {message or f'exit code {done.returncode}'}")
+
+    def _power(self, action: str, minutes: int = 0) -> list[str]:
+        command = power_command(action, minutes, self._platform())
+        self.ctx.logger.info("power", action=action, minutes=minutes)
+        self._run(command)
+        return command
+
+    def _cancel_on_kill(self) -> None:
+        """The kill switch also stops a shutdown or restart Starlight scheduled."""
+        if self._pending is not None:
+            import contextlib
+
+            with contextlib.suppress(ToolError, KeyError):
+                self._run(power_command("cancel", 0, self._platform()))
+            self._pending = None
+
+    @tool
+    def lock(self) -> dict[str, Any]:
+        """Lock the screen (your programs keep running)."""
+        self._power("lock")
+        return {"locked": True}
+
+    @tool(name="sleep", permission=Permission.CONFIRM)
+    def sleep_pc(self) -> dict[str, Any]:
+        """Put the PC to sleep now. Asks first."""
+        self._power("sleep")
+        return {"sleeping": True}
+
+    def _schedule(self, action: str, in_minutes: int) -> dict[str, Any]:
+        minutes = max(0, min(in_minutes, 24 * 60))
+        self._power(action, minutes)
+        if minutes:
+            self._pending = action
+            self.ctx.kill_switch.remove_cleanups(self.ctx.name)
+            self.ctx.kill_switch.add_cleanup(self._cancel_on_kill, owner=self.ctx.name)
+        return {
+            action: True,
+            "in_minutes": minutes,
+            "note": "cancel it with system.cancel_shutdown" if minutes else "now",
+        }
+
+    # Not named shutdown(): that is the module's own unload hook.
+    @tool(name="shutdown", permission=Permission.CONFIRM)
+    def shutdown_pc(self, in_minutes: int = 0) -> dict[str, Any]:
+        """Shut the PC down, now or in some minutes. Asks first; unsaved work in open
+        programs may be lost."""
+        return self._schedule("shutdown", in_minutes)
+
+    @tool(name="restart", permission=Permission.CONFIRM)
+    def restart_pc(self, in_minutes: int = 0) -> dict[str, Any]:
+        """Restart the PC, now or in some minutes. Asks first; unsaved work in open
+        programs may be lost."""
+        return self._schedule("restart", in_minutes)
+
+    @tool
+    def cancel_shutdown(self) -> dict[str, Any]:
+        """Cancel a planned shutdown or restart."""
+        self._power("cancel")
+        self._pending = None
+        self.ctx.kill_switch.remove_cleanups(self.ctx.name)
+        return {"cancelled": True}
 
     @tool
     def info(self) -> dict[str, Any]:
