@@ -76,6 +76,49 @@ def test_stream_filter_holds_back_a_split_marker() -> None:
     assert "".join(shown) == "Done." and f.ended
 
 
+async def test_a_turn_end_shown_as_a_stray_symbol_still_ends_the_reply() -> None:
+    """From a real session: the leaked turn token came out as a symbol before "user", and
+    the invented user message then repeated itself until the length limit."""
+    loop = (
+        "And one more thing, I want to make sure I have all the necessary documents for the"
+        " meeting. Could you check if I've saved them in the right folder? "
+    )
+    p = provider(
+        "Hello! How can I assist you today?",
+        " Let's make this productive!",
+        "\n",
+        "\U0001f402",
+        "user",
+        "\nI want to know what the weather is like in Berlin tomorrow. ",
+        *([loop] * 6),
+    )
+    tokens: list[str] = []
+    response = await p.chat([Message("user", "Hello")], TOOLS, on_token=tokens.append)
+    await p.aclose()
+    answer = "Hello! How can I assist you today? Let's make this productive!"
+    assert response.content == answer
+    assert "".join(tokens) == answer
+
+
+async def test_a_reply_that_repeats_itself_is_cut_after_the_first_copy() -> None:
+    loop = (
+        "And while we're at it, could you please remind me about the weather in Berlin "
+        "tomorrow? I'm really looking forward to it! Thanks again! "
+    )
+    p = provider("Sure. ", *([loop] * 8))
+    response = await p.chat([Message("user", "hi")], TOOLS, on_token=lambda _: None)
+    await p.aclose()
+    assert response.content.count("really looking forward") == 1
+    assert response.content.startswith("Sure. And while")
+
+
+def test_role_words_inside_text_are_not_a_turn_end() -> None:
+    text = "The user\nwas added. Run it as user:\nsudo -u user ls\n```\nuser\n```"
+    assert cut_at_turn_end("Fine.\n\u2022 user\nmore") == "Fine."
+    assert cut_at_turn_end("Before\n user \nafter") == "Before"
+    assert cut_at_turn_end(text).startswith("The user\nwas added. Run it as user:")
+
+
 def test_cut_at_turn_end() -> None:
     assert cut_at_turn_end("Hi there<|im_end|>\n<|im_start|>user\nmore") == "Hi there"
     assert cut_at_turn_end("No marker here.") == "No marker here."

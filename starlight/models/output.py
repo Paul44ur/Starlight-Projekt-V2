@@ -1,16 +1,18 @@
 """Keeping a model's reply clean, whatever the model file gets wrong.
 
-Two problems seen with real GGUF files (merged or fine-tuned "uncensored" models in particular):
+Problems seen with real GGUF files (merged or fine-tuned "uncensored" models in particular):
 
 * the end-of-turn token is not marked as a stop, so the model keeps writing: it writes "user"
-  and then invents the user's next message, often in a loop;
+  (sometimes after a stray character or glitch text, which is how a broken special token
+  shows) and then invents the user's next message, often in a loop;
+* it repeats itself: the same passage again and again until the length limit;
 * tool calls are written as text (a ```json block or <tool_call> tags) instead of in the
   server's tool-call format, so they are shown in the chat instead of being run.
 
 ``StreamFilter`` decides what to show while a reply streams in: nothing from an end-of-turn
-marker on, and nothing from where a tool call written as text begins (until the end of the
-reply shows whether it was one). ``recover_tool_calls`` turns such text into real calls when
-it names a known tool.
+marker on, nothing after a passage starts repeating, and nothing from where a tool call
+written as text begins (until the end of the reply shows whether it was one).
+``recover_tool_calls`` turns such text into real calls when it names a known tool.
 """
 
 from __future__ import annotations
@@ -33,6 +35,12 @@ TURN_MARKERS = (
     "<end_of_turn>",
     "\nuser\n",
 )
+# A line that is only a role name, maybe after a stray character or two: a leaked
+# "<|im_start|>user" whose special token came out as a symbol ("\n🐂user\n").
+_ROLE_LINE = re.compile(r"\n[^\w\s]{0,4}[ \t]*(?:user|assistant|system)[ \t]*\n", re.IGNORECASE)
+# A reply that repeats a passage this long word for word is stuck in a loop.
+REPEAT = 160
+
 # How a tool call written as text begins.
 CALL_STARTS = ("```json", "```tool_call", "```\n{", "<tool_call>", '{"name"')
 
@@ -46,11 +54,33 @@ _DECODER = json.JSONDecoder()
 
 
 def cut_at_turn_end(text: str) -> str:
-    """The reply up to the first end-of-turn marker; the rest was never meant to be said."""
-    cut = _first(text, TURN_MARKERS)
+    """The reply up to the first end-of-turn marker, and without a passage repeated over and
+    over; the rest was never meant to be said."""
+    cut = _turn_end(text)
     if cut >= 0:
         text = text[:cut].rstrip()
+    looped = cut_repetition(text)
+    if looped is not None:
+        text = looped
     return text.replace("�", "")
+
+
+def cut_repetition(text: str, size: int = REPEAT) -> str | None:
+    """The text up to where it starts repeating a passage of ``size`` characters, or None
+    when nothing repeats."""
+    for start in range(0, len(text) - size, 20):
+        again = text.find(text[start : start + size], start + 1)
+        if again >= 0:
+            return text[:again].rstrip()
+    return None
+
+
+def _turn_end(text: str) -> int:
+    """Where the turn ends: the first marker or role line, or -1."""
+    marker = _first(text, TURN_MARKERS)
+    role = _ROLE_LINE.search(text)
+    found = [i for i in (marker, role.start() if role else -1) if i >= 0]
+    return min(found) if found else -1
 
 
 def recover_tool_calls(text: str, known: set[str]) -> tuple[list[ToolCall], str]:
@@ -71,15 +101,22 @@ class StreamFilter:
         self.shown = 0  # how much of it was shown
         self.ended = False  # an end-of-turn marker arrived: the turn is over
         self.hold_from: int | None = None  # where a tool call written as text may start
+        self._checked = 0  # length of the text when it was last checked for a loop
 
     def feed(self, piece: str) -> str:
         if self.ended:
             return ""
         self.text += piece.replace("�", "")
-        cut = _first(self.text, TURN_MARKERS)
+        cut = _turn_end(self.text)
         if cut >= 0:
             self.text = self.text[:cut].rstrip()
             self.ended = True
+        elif len(self.text) - self._checked >= 40 and len(self.text) > 2 * REPEAT:
+            self._checked = len(self.text)
+            tail = self.text[-REPEAT:]
+            if self.text.find(tail) < len(self.text) - REPEAT:  # said before: a loop
+                self.text = cut_repetition(self.text) or self.text
+                self.ended = True
         if self.hold_from is None:
             start = _first(self.text, CALL_STARTS)
             if start >= 0:
@@ -119,8 +156,19 @@ def _first(text: str, needles: tuple[str, ...]) -> int:
     return min(found) if found else -1
 
 
+# The start of a role line that is not finished yet ("\n", "\n🐂", "\n🐂us", ...).
+_ROLE_START = re.compile(
+    r"\n[^\w\s]{0,4}[ \t]*(?:u(?:s(?:e(?:r)?)?)?|a(?:s(?:s(?:i(?:s(?:t(?:a(?:n(?:t)?)?)?)?)?)?)?)?"
+    r"|s(?:y(?:s(?:t(?:e(?:m)?)?)?)?)?)?[ \t]*",
+    re.IGNORECASE,
+)
+
+
 def _partial_tail(text: str) -> int:
-    """How many characters at the end could still become a marker."""
+    """How many characters at the end could still become a marker or a role line."""
+    line = text.rfind("\n")
+    if line >= 0 and _ROLE_START.fullmatch(text, line):
+        return len(text) - line
     longest = 0
     for marker in _MARKERS:
         for size in range(min(len(marker) - 1, len(text)), longest, -1):
