@@ -20,10 +20,11 @@ from tests.test_weather import mock_openmeteo
 
 def test_the_situation_text() -> None:
     now = dt.datetime(2026, 10, 8, 14, 5, tzinfo=ZoneInfo("Europe/Vienna"))
-    text = describe(now, Path("/home/paul/Documents/Starlight"), {"name": "Paul"})
+    folder = Path("/home/paul/Documents/Starlight")
+    text = describe(now, folder, {"name": "Paul"})
     assert "Thursday, 8 October 2026, 14:05" in text
     assert "UTC+02:00" in text
-    assert "/home/paul/Documents/Starlight" in text
+    assert str(folder) in text  # with \ on Windows
     assert "name: Paul" in text
     assert "profile" not in describe(now, None, {})
     assert local_now("Asia/Tokyo").utcoffset() == dt.timedelta(hours=9)
