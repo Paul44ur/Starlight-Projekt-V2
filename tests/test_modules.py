@@ -39,7 +39,7 @@ GOOD = """
 
 async def test_template_is_not_loaded(kernel: Kernel) -> None:
     assert "_template" not in kernel.modules.records
-    assert {t.module for t in kernel.dispatcher.tools()} == {"memory", "skills"}
+    assert {t.module for t in kernel.dispatcher.tools()} == {"memory", "skills", "tools"}
 
 
 async def test_module_tools_config_and_events(paths: Paths, write_module: ModuleWriter) -> None:
@@ -85,7 +85,7 @@ async def test_crashing_module_does_not_take_down_core(
         module_tools = [
             t.qualified_name
             for t in kernel.dispatcher.tools()
-            if t.module not in ("memory", "skills")
+            if t.module not in ("memory", "skills", "tools")
         ]
         assert module_tools == ["good.crash", "good.say"]
 

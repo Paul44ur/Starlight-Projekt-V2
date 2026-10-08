@@ -2,6 +2,7 @@
 name: hello
 version: 0.1.0
 description: Example module made from the template (greet, shout)
+keywords: ["greet", "hello"]
 entrypoint: module:HelloModule
 # Highest permission any tool here needs: safe, confirm or blocked (documentation for you).
 permissions: [safe]

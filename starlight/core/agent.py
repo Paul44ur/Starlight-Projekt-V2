@@ -17,10 +17,14 @@ from starlight.core.killswitch import KillSwitch, KillSwitchEngaged
 from starlight.core.logging import AuditLog, get_logger
 from starlight.core.model import Message, ModelProvider, ModelResponse, TokenCallback
 from starlight.core.stats import Stats
+from starlight.core.toolroute import ToolRouter, active_tools
 
 #: Adds context before the model sees a request (e.g. recalled memories). Returns text
 #: for an extra system message, or None.
 type Enricher = Callable[[str], Awaitable[str | None]]
+
+# Ends a tool result that was cut to tools.max_result_chars.
+CUT_RESULT = "\n[... {more} more characters not shown; ask for a part, or use a smaller limit]"
 
 # Added to an answer the model was still writing when it reached max_tokens.
 CUT_OFF = (
@@ -51,8 +55,12 @@ class Agent:
         audit: AuditLog | None = None,
         context: ContextManager | None = None,
         stats: Stats | None = None,
+        router: ToolRouter | None = None,
+        max_result_chars: int = 12000,
     ) -> None:
         self.provider = provider
+        self.router = router
+        self.max_result_chars = max_result_chars
         self.dispatcher = dispatcher
         self.kill_switch = kill_switch
         self.bus = bus
@@ -93,9 +101,14 @@ class Agent:
                         continue
                     if extra:
                         messages.append(Message("system", extra))
+                active = await self._initial_tools(request, history or [])
+                token = active_tools.set(active)
                 messages += [*(history or []), Message("user", request, images=images or [])]
                 result.messages = messages
-                await self._loop(messages, result, on_token)
+                try:
+                    await self._loop(messages, result, on_token)
+                finally:
+                    active_tools.reset(token)
         except (KillSwitchEngaged, asyncio.CancelledError):
             if not self.kill_switch.engaged:  # stopped another way: Ctrl+C, shutdown
                 self.audit.record("task.cancelled", request_id=request_id, steps=result.steps)
@@ -133,8 +146,38 @@ class Agent:
         log.info("task completed", steps=result.steps)
         return result
 
+    async def _initial_tools(self, request: str, history: list[Message]) -> set[str] | None:
+        """The tools this request starts with (None: all of them)."""
+        if self.router is None:
+            return None
+        try:
+            selection = await self.router.select(request, history)
+        except Exception as exc:  # never let routing stop a request: send everything
+            self._log.warning("tool routing failed", error=f"{type(exc).__name__}: {exc}")
+            return None
+        if not self.router.config.tool_routing:
+            return None
+        if self.stats is not None:
+            self.stats.record("agent.tools_offered", len(selection.names))
+        return set(selection.names)
+
+    def _schemas(self) -> list[dict[str, Any]]:
+        """Sorted by name, so the same tools give the same prompt (prefix caching)."""
+        active = active_tools.get()
+        tools = self.dispatcher.tools()
+        if active is not None:
+            tools = [t for t in tools if t.qualified_name in active]
+        return [t.json_schema() for t in tools]
+
+    def _tool_text(self, tool_result: ToolResult) -> str:
+        text = tool_result.to_text()
+        limit = self.max_result_chars
+        if len(text) <= limit:
+            return text
+        return text[:limit] + CUT_RESULT.format(more=len(text) - limit)
+
     async def _chat(self, messages: list[Message], on_token: TokenCallback | None) -> ModelResponse:
-        tools = self.dispatcher.schemas()  # same order every time: prompt prefix caching
+        tools = self._schemas()
         if self.context is not None:
             fitted = await self.context.fit(messages, tools)
             if fitted is not messages:
@@ -178,7 +221,9 @@ class Agent:
                 )
                 result.tool_results.append(tool_result)
                 messages.append(
-                    Message("tool", tool_result.to_text(), tool_call_id=call.id, name=call.name)
+                    Message(
+                        "tool", self._tool_text(tool_result), tool_call_id=call.id, name=call.name
+                    )
                 )
         result.answer = f"Stopped after {self.config.max_steps} steps without a final answer."
 

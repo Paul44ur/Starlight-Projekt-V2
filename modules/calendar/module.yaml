@@ -1,6 +1,7 @@
 name: calendar
 version: 0.1.0
 description: Your calendar - events, agenda and free time, plus read-only calendar feeds (ICS)
+keywords: ["calendar", "event", "appointment", "meeting", "schedule", "agenda", "week", "free", "Kalender", "Termin", "Treffen", "Woche", "frei"]
 entrypoint: module:CalendarModule
 permissions: [safe]
 dependencies: []

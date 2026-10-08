@@ -1,6 +1,7 @@
 name: desktop
 version: 0.1.0
 description: Read the screen (screenshots, OCR, local vision model) and emulate mouse and keyboard
+keywords: ["screen", "screenshot", "mouse", "click", "type", "keyboard", "see", "Bildschirm", "Maus", "klicken", "tippen", "Tastatur"]
 entrypoint: module:DesktopModule
 permissions: [confirm]
 dependencies: []

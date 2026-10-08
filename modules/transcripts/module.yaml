@@ -1,6 +1,7 @@
 name: transcripts
 version: 0.1.0
 description: Get the transcript of a YouTube video and summarize it or answer questions about it
+keywords: ["youtube", "video", "transcript", "subtitles", "Untertitel"]
 entrypoint: module:TranscriptsModule
 permissions: [safe]
 dependencies: []

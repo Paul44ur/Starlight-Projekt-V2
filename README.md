@@ -127,7 +127,9 @@ Starlight will download and set up, inside C:\Starlight:
    - the Chromium browser for web pages and logins ~0.3 GB
    - the llama.cpp model server (vulkan)         ~0.2 GB
    - the model Qwen2.5-14B_Uncensored_Instruct-Q4_K_M.gguf 8.4 GB
-   Needed: about 10.2 GB. Free on this drive: 250.0 GB.
+   - a draft model for faster answers          0.5 GB
+     (uses about 1 GB more video memory; turn off with --no-draft)
+   Needed: about 10.7 GB. Free on this drive: 250.0 GB.
 Continue? [Y/n]
 ```
 
@@ -172,6 +174,7 @@ Run `Starlight.exe --help` in a terminal to see every option. The most useful on
 | `--terminal` | Chat in the window instead of opening the browser. |
 | `--both` | Open the browser chat **and** a terminal chat together — both talk to the same Starlight (one conversation, one kill switch). |
 | `--voice` | Also install speech: talk to Starlight and hear its answers (about 0.6 GB, Windows; `"voice": true` in `launcher.json` keeps it). |
+| `--no-draft` | No draft model. By default a small Qwen2.5-0.5B model guesses a few words ahead and the big model checks them in one go (speculative decoding): the same answers, written faster, for about 1 GB more video memory. |
 | `--no-viewer` | Don't start the statistics viewer. |
 | `--update` | Download the newest uv and llama.cpp again. |
 | `--setup-only` | Download and set up, then exit without starting. |
@@ -196,6 +199,10 @@ of thumb:
 On [Hugging Face](https://huggingface.co), open the model's *Files* tab, copy the
 download link of the `.gguf` file and start `Starlight.exe --model-url <link>`. Or put
 `"model_url": "<link>"` into `config\launcher.json`.
+
+A different model gets no draft model, because the draft must come from the same model
+family. If your model has a small sibling (for example Llama 3.2 1B for Llama 3.1 8B),
+give it with `--draft-url <link>` or `"draft_url"` in `launcher.json`.
 
 ### Other ways to install
 
@@ -353,7 +360,11 @@ before Starlight asks "Allow?" never counts as the answer.
 model speed, GPU use and memory size.
 
 **Memory.** Everything Starlight remembers is a text file in the `memory` folder. Open,
-correct or delete any of them; Starlight picks up the change.
+correct or delete any of them; Starlight picks up the change. `memory/profile.md` is your
+profile: your name, the language you want answers in, where you live, your time zone and
+preferences. Starlight fills it in when you mention these ("I'm Paul, I live in Vienna"),
+and every request uses it, together with today's date and time (so "the weather" means
+the weather at home).
 
 **Files.** Ask Starlight to save what it made ("save it as a file", "make a CSV of
 that"), and it saves it in the **Starlight** folder in your Documents, then tells you

@@ -1,6 +1,7 @@
 name: commands
 version: 0.1.0
 description: Run your own named commands and scripts (only the ones you set up, asks first by default)
+keywords: ["command", "script", "run", "shortcut", "Befehl", "ausführen"]
 entrypoint: module:CommandsModule
 permissions: [confirm]
 dependencies: []

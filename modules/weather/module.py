@@ -61,9 +61,12 @@ class WeatherModule(Module):
         return {"temperature_unit": "celsius", "wind_speed_unit": "kmh", "deg": "°C", "spd": "km/h"}
 
     async def _geocode(self, place: str) -> dict[str, Any]:
-        place = (place or self.config.default_place).strip()
+        place = (place or self.config.default_place or self.ctx.profile().get("home", "")).strip()
         if not place:
-            raise ToolError("which place? (or set default_place in config/modules/weather.yaml)")
+            raise ToolError(
+                "which place? (or tell me where you live, or set default_place in "
+                "config/modules/weather.yaml)"
+            )
         response = await self.ctx.http.get(
             f"{GEOCODE}?name={place}&count=1&language=en&format=json", respect_robots=False
         )

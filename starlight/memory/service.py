@@ -20,9 +20,10 @@ from starlight.core.model import Message, ModelProvider
 from starlight.core.paths import Paths
 from starlight.core.permissions import Permission
 from starlight.core.stats import Stats
-from starlight.core.tools import Tool, make_tool
+from starlight.core.tools import Tool, ToolError, make_tool
 from starlight.memory.embed import Embedder, create_embedder
 from starlight.memory.index import Hit, MemoryIndex
+from starlight.memory.profile import PROFILE_ID, Profile, field_key
 from starlight.memory.store import MemoryEntry, MemoryStore, slugify
 
 MODULE = "memory"
@@ -32,6 +33,9 @@ Below is one exchange between the user and you. List the facts worth remembering
 future conversations: things about the user, their preferences, people, projects, \
 systems and decisions, or lessons learned that will help later. Skip small talk, \
 one-off details and anything already obvious. Never include passwords or other secrets.
+If the user says their name, the language they want answers in, where they live or their \
+time zone, add it as a profile item instead, e.g. {"profile": "home", "value": "Vienna"} \
+(profile fields: name, language, home, timezone, preferences).
 
 Answer with JSON only, a list like
 [{"topic": "short topic", "fact": "one or two sentences", "confidence": 0.9}]
@@ -56,7 +60,11 @@ def parse_facts(text: str) -> list[dict[str, Any]]:
         return []
     facts = []
     for item in data if isinstance(data, list) else []:
-        if isinstance(item, dict) and str(item.get("fact", "")).strip():
+        if not isinstance(item, dict):
+            continue
+        if str(item.get("fact", "")).strip() or (
+            item.get("profile") and str(item.get("value", "")).strip()
+        ):
             facts.append(item)
     return facts
 
@@ -79,6 +87,7 @@ class Memory:
             embedder or create_embedder(self.config.embedder),
             paths.data / "memory_index.sqlite",
         )
+        self.profile = Profile(self.store)
         self._signature: tuple[int, float, int] | None = None
         self._log = get_logger("memory")
 
@@ -105,7 +114,7 @@ class Memory:
         """Agent enricher: relevant memories as an extra system message."""
         if not self.config.enabled:
             return None
-        hits = await self.recall(request)
+        hits = [h for h in await self.recall(request) if h.entry.id != PROFILE_ID]
         if not hits:
             return None
         lines = [f"- {h.entry.text} ({h.entry.date}, id {h.entry.id})" for h in hits]
@@ -133,7 +142,11 @@ class Memory:
         if existing is None:
             hits = await self.index.search(f"{topic}: {content}", 1, self.config.merge_threshold)
             existing = hits[0].entry if hits else None
-        if existing is not None and not existing.id.startswith(CONVERSATIONS + "/"):
+        if (
+            existing is not None
+            and existing.id != PROFILE_ID  # the profile changes only field by field
+            and not existing.id.startswith(CONVERSATIONS + "/")
+        ):
             entry = self._merge(existing, content, source, confidence, tags)
             merged = True
         else:
@@ -199,7 +212,13 @@ class Memory:
         prompt = re.sub(r"\{(request|answer)\}", lambda m: values[m.group(1)], EXTRACT_PROMPT)
         response = await model.chat([Message("user", prompt)], [])
         saved = []
-        for fact in parse_facts(response.content)[:5]:
+        for fact in parse_facts(response.content)[:6]:
+            if fact.get("profile"):
+                key = field_key(str(fact["profile"]))
+                if key is not None:
+                    self.profile.set(key, str(fact.get("value", "")))
+                    self._log.info("profile updated", field=key)
+                continue
             try:
                 confidence = float(fact.get("confidence", 0.8))
             except (TypeError, ValueError):
@@ -253,10 +272,26 @@ class Memory:
             """Delete one memory file by id."""
             return "Deleted." if await self.forget(memory_id) else "No such memory."
 
+        def profile() -> dict[str, str]:
+            """The user's profile: name, language, home place, time zone, preferences."""
+            return self.profile.read()
+
+        async def set_profile(field: str, value: str) -> dict[str, str]:
+            """Set one field of the user's profile (name, language, home, timezone or
+            preferences) when they tell you; an empty value clears it."""
+            try:
+                values = self.profile.set(field, value)
+            except ValueError as exc:
+                raise ToolError(str(exc)) from None
+            await self.sync(force=True)
+            return values
+
         return [
             make_tool(MODULE, remember),
             make_tool(MODULE, recall),
             make_tool(MODULE, forget, permission=Permission.CONFIRM),
+            make_tool(MODULE, profile),
+            make_tool(MODULE, set_profile),
         ]
 
     def close(self) -> None:

@@ -1,6 +1,7 @@
 name: login
 version: 0.1.0
 description: Log in to your own accounts with credentials from the vault (Playwright)
+keywords: ["log in", "sign in", "account", "website login", "anmelden", "einloggen", "Konto"]
 entrypoint: module:LoginModule
 permissions: [confirm]
 dependencies: []

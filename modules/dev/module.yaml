@@ -1,6 +1,7 @@
 name: dev
 version: 0.1.0
 description: Developer tools - git status/log/diff/commit, Docker containers, and which program uses which port
+keywords: ["git", "docker", "container", "port", "repository", "commit", "branch", "Entwickler"]
 entrypoint: module:DevModule
 permissions: [safe, confirm]
 dependencies: []

@@ -8,10 +8,22 @@ logging:
 
 agent:
   max_steps: 8
-  system_prompt: >-
-    You are Starlight, a local assistant. Use the available tools when they help,
-    and answer briefly. When the user wants something you made as a file, or wants
-    to keep it, save it with files.save and tell them where it is.
+  # Each request also gets the date and time, where saved files go and the user's
+  # profile (starlight/core/situation.py), plus memories and skills that fit.
+  system_prompt: |-
+    You are Starlight, a private assistant that runs on the user's own PC. Be brief and direct.
+    - When a tool can do the job or check a fact, use it. Never guess what a tool would return, and never say you did something you did not do.
+    - Use calc for any arithmetic, unit conversion or date calculation.
+    - If none of the tools you see fits, call tools.find with what you need.
+    - When the user wants something you made as a file, or wants to keep it, save it with files.save and say where it is.
+    - If a request is unclear, or could delete or send something the user may not want, ask one short question first.
+    - After using tools, say in a sentence what you did and what came of it.
+    - Answer in the user's language: the one in their profile, otherwise the one they write in.
+  # Only the tools that fit a request are sent to the model (fewer tokens, faster
+  # answers, better picks); tools.find brings in more. false: always send every tool.
+  tool_routing: true
+  max_tools: 40           # at most this many tools per request
+  max_tool_modules: 6     # tools of at most this many best-fitting modules
 
 # --- Step 4: the local model -------------------------------------------------------
 # "echo" is a built-in test stand-in so everything runs without a model.
@@ -129,3 +141,4 @@ permissions:
 
 tools:
   timeout: 120   # seconds before a tool call is aborted
+  max_result_chars: 12000   # longer tool results are cut before the model sees them

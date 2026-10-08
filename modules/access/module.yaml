@@ -1,6 +1,7 @@
 name: access
 version: 0.1.0
 description: Manage from the chat what Starlight may do and reach - servers, logins, secrets and permissions
+keywords: ["permission", "allow", "block", "secret", "password", "server", "Erlaubnis", "erlauben", "sperren", "Zugriff"]
 entrypoint: module:AccessModule
 # All tools either ask a clear question themselves or are read-only, so "safe" here.
 permissions: [safe]

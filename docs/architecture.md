@@ -5,12 +5,17 @@ plan added. To install and use Starlight, see the [README](../README.md).
 
 ## How a request flows
 
-1. Relevant memories are recalled and added to the prompt.
-2. `Agent.run()` sends the conversation and the tool list to the model (summarizing old
+1. The date and time, where saved files go and the user's profile
+   (`core/situation.py`), relevant memories and approved skills are added to the prompt.
+2. The tool router (`core/toolroute.py`) picks the tools that fit the request: the best
+   few modules by words and meaning, tools named in the request, the modules used a
+   moment ago in the conversation, and `memory.*`, `files.save` and `tools.find`. The
+   model can call `tools.find` to get more for the rest of the request.
+3. `Agent.run()` sends the conversation and those tools to the model (summarizing old
    turns first if the context is full).
-3. Each tool call goes through the one `Dispatcher`: kill switch, permissions
+4. Each tool call goes through the one `Dispatcher`: kill switch, permissions
    (safe / confirm / blocked), argument validation, timeout, audit log, statistics.
-4. Results go back to the model until it answers. Afterwards, the model picks what to
+5. Results go back to the model (cut to `tools.max_result_chars`) until it answers. Afterwards, the model picks what to
    remember.
 
 ## Layout
@@ -201,6 +206,17 @@ unload. Event handlers can be `background=True`, so a slow one (a WhatsApp send)
 holds up the event's publisher. `core/safepaths.py` is the one place that decides which of
 your paths a module may use, and `core/schedule.py` understands times and repeating
 schedules for reminders and automations.
+
+**Faster and smarter (round 2).** Sending all 215 tool schemas cost about 18,600 tokens
+per model call; the router sends what fits, typically 5-20 tools and 500-2,000 tokens
+(lexical scoring with English/German stop words and a rough stemmer, module `keywords`,
+plus the memory embedder's similarity; `agent.tool_routing: false` sends everything).
+Module code is kept compiled as hash-checked `.pyc` files, so a start no longer compiles
+every module, and an edit is still picked up on hot-reload. `memory/profile.md` holds the
+user's profile; memory extraction fills it in, and it is never merged with other facts.
+With a draft model (`model.server.draft_model_path`, set by the launcher for the default
+model) llama-server does speculative decoding; if the server will not start with the draft,
+the launcher starts it again without.
 
 ## Build plan status
 

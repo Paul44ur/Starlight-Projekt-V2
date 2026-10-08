@@ -1,6 +1,7 @@
 name: web
 version: 0.1.0
 description: Web search and polite page fetching (max 5 requests/s, robots.txt, caching)
+keywords: ["web", "search", "google", "website", "internet", "look up", "page", "url", "Internet", "suchen", "Webseite", "nachschlagen"]
 entrypoint: module:WebModule
 permissions: [safe]
 dependencies: []

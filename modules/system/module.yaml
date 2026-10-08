@@ -1,6 +1,7 @@
 name: system
 version: 0.1.0
 description: How your PC is doing - CPU, memory, disk, battery, uptime and running programs
+keywords: ["pc", "computer", "cpu", "ram", "memory", "disk", "battery", "performance", "running programs", "Rechner", "Speicher", "Festplatte", "Akku", "Leistung"]
 entrypoint: module:SystemModule
 # Reading is safe; closing a program asks first.
 permissions: [confirm]

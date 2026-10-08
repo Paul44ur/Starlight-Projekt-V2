@@ -1,6 +1,7 @@
 name: mail
 version: 0.1.0
 description: Read and send email from your own mailbox over IMAP and SMTP (app-password in the keyring)
+keywords: ["email", "e-mail", "mail", "inbox", "message", "unread", "send mail", "E-Mail", "Posteingang", "Nachricht", "ungelesen"]
 entrypoint: module:EmailModule
 permissions: [confirm]
 dependencies: []

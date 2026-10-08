@@ -1,6 +1,7 @@
 name: recon
 version: 0.1.0
 description: Security reconnaissance - scan a host you own or are authorized to test (ports, services, TLS, HTTP, DNS)
+keywords: ["scan", "port scan", "nmap", "host", "ip", "security test", "pentest", "scannen", "Sicherheit"]
 entrypoint: module:ReconModule
 # Every scan asks you to confirm you are authorized, so the tools are "safe" by tag.
 permissions: [safe]

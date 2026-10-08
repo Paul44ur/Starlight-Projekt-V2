@@ -1,5 +1,6 @@
 """Start the model server with the settings from Step 4: every layer on the GPU, flash
-attention, a q8 KV cache and the configured context length."""
+attention, a q8 KV cache, the configured context length and, when a draft model is set,
+speculative decoding."""
 
 from __future__ import annotations
 
@@ -49,6 +50,17 @@ def llama_server_command(config: ModelConfig) -> list[str]:
         cmd += ["--flash-attn", "on"]
     if s.kv_cache_type:
         cmd += ["--cache-type-k", s.kv_cache_type, "--cache-type-v", s.kv_cache_type]
+    if s.draft_model_path:  # speculative decoding
+        cmd += [
+            "--model-draft",
+            s.draft_model_path,
+            "--gpu-layers-draft",
+            str(s.gpu_layers_draft),
+            "--draft-max",
+            str(s.draft_max),
+            "--draft-min",
+            str(min(s.draft_min, s.draft_max)),
+        ]
     return cmd + list(s.extra_args)
 
 

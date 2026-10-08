@@ -1,6 +1,7 @@
 name: whatsapp
 version: 0.1.0
 description: Talk to Starlight from your phone (official WhatsApp Business Cloud API)
+keywords: ["whatsapp", "phone", "message", "Handy", "Nachricht"]
 entrypoint: module:WhatsAppModule
 permissions: [safe]
 dependencies: []

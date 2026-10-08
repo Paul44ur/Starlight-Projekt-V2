@@ -1,6 +1,7 @@
 name: certs
 version: 0.1.0
 description: Check TLS/SSL certificates - who they're for, who issued them, and when they expire
+keywords: ["certificate", "tls", "ssl", "https", "expire", "Zertifikat", "abgelaufen"]
 entrypoint: module:CertsModule
 permissions: [safe]
 dependencies: []

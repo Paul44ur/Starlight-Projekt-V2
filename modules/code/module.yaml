@@ -1,6 +1,7 @@
 name: code
 version: 0.1.0
 description: Write, test and run code in a sandbox (write, test, fix loop)
+keywords: ["code", "program", "script", "python", "run", "test", "debug", "Programmieren", "ausführen"]
 entrypoint: module:CodeModule
 permissions: [confirm]
 dependencies: []
