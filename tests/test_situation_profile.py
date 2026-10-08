@@ -94,3 +94,22 @@ async def test_weather_uses_the_home_place(paths: Paths, use_module: Callable[[s
         result = await k.dispatcher.call("weather.now", {})
         assert result.ok and result.output["place"].startswith("Vienna")
         assert any("name=Vienna" in url for url in seen)
+
+
+async def test_extracted_preferences_are_added_and_nothing_is_cleared(paths: Paths) -> None:
+    facts = json.dumps(
+        [
+            {"profile": "preferences", "value": "metric units"},
+            {"profile": "home", "value": "", "fact": "x"},
+            {"profile": "preferences", "value": "Vegetarian"},
+        ]
+    )
+    provider = ScriptedProvider("ok", facts)
+    async with Kernel(paths, provider=provider) as k:
+        k.memory.profile.set("preferences", "vegetarian; short answers")
+        k.memory.profile.set("home", "Vienna")
+        await k.ask("use metric units please")
+        await k.drain()
+        profile = k.memory.profile.read()
+    assert profile["preferences"] == "vegetarian; short answers; metric units"
+    assert profile["home"] == "Vienna"

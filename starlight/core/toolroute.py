@@ -140,7 +140,8 @@ class ToolRouter:
 
     def _rebuild(self) -> None:
         tools = self.dispatcher.tools()
-        signature = tuple(t.qualified_name for t in tools)
+        # Tool objects, not just names: a reloaded module may describe its tools anew.
+        signature = tuple(f"{t.qualified_name}@{id(t)}" for t in tools)
         if signature == self._signature:
             return
         self._signature = signature
@@ -217,10 +218,16 @@ class ToolRouter:
 
     async def scores(self, request: str) -> dict[str, float]:
         """A score per tool: matching words (rarer words count more), plus meaning."""
+        return (await self._scored(request))[1]
+
+    async def _scored(self, request: str) -> tuple[dict[str, _Entry], dict[str, float]]:
+        """(the index as it was, a score per tool in it). The index can be replaced while
+        this waits for the embedder (a module loads or unloads); callers use the copy."""
         self._rebuild()
+        entries = self._entries
         query = set(words(request))
         result: dict[str, float] = {}
-        for name, entry in self._entries.items():
+        for name, entry in entries.items():
             result[name] = sum(
                 entry.words[w] * self._idf.get(w, 0.0) for w in query if w in entry.words
             )
@@ -233,12 +240,12 @@ class ToolRouter:
                 [vector] = await self.embedder.embed([request])
             except Exception as exc:
                 self._embed_failure(exc)
-                return result
-            for name, entry in self._entries.items():
+                return entries, result
+            for name, entry in entries.items():
                 if entry.vector is not None:
                     similarity = float(entry.vector @ vector)
                     result[name] += max(0.0, similarity - 0.1)
-        return result
+        return entries, result
 
     def module_scores(self, request: str) -> dict[str, float]:
         """How well each module as a whole (name, keywords, description) fits, 0 to 1."""
@@ -256,27 +263,27 @@ class ToolRouter:
         self._rebuild()
         if not self.config.tool_routing:
             return Selection(sorted(self._entries))
+        entries, scores = await self._scored(request)
         chosen: list[str] = []
 
         def add(names: Iterable[str]) -> None:
             for name in names:
-                if name in self._entries and name not in chosen:
+                if name in entries and name not in chosen:
                     chosen.append(name)
 
         def module_tools(module: str, order: dict[str, float] | None = None) -> list[str]:
-            names = [n for n, e in self._entries.items() if e.tool.module == module]
+            names = [n for n, e in entries.items() if e.tool.module == module]
             return sorted(names, key=lambda n: -(order or {}).get(n, 0.0))
 
         lowered = request.lower()
-        add(n for n in self._entries if n.lower() in lowered)  # named outright
+        add(n for n in entries if n.lower() in lowered)  # named outright
         add(ALWAYS)
-        modules = {e.tool.module for e in self._entries.values()}
+        modules = {e.tool.module for e in entries.values()}
         named = [m for m in sorted(modules) if re.search(rf"\b{re.escape(m)}\b", lowered)]
         recent = self._recent_modules(history)
-        scores = await self.scores(request)
-        best = self.module_scores(request)
+        best = {m: s for m, s in self.module_scores(request).items() if m in modules}
         for name, score in scores.items():
-            module = self._entries[name].tool.module
+            module = entries[name].tool.module
             best[module] = best.get(module, 0.0) + score / 2
         top = max(best.values(), default=0.0)
         floor = max(0.25, top * 0.4)  # only modules close to the best fit
@@ -304,15 +311,14 @@ class ToolRouter:
     def find_tool(self) -> Tool:
         async def find(need: str, limit: int = 12) -> list[dict[str, str]]:
             """Find more tools for a need (filled in from the loaded modules)."""
-            scores = await self.scores(need)
+            entries, scores = await self._scored(need)
             ranked = sorted((s, n) for n, s in scores.items() if s > 0 and n != FIND_TOOL)
             found = [n for _, n in reversed(ranked)][: max(1, min(limit, 30))]
             active = active_tools.get()
             if active is not None:
                 active.update(found)
             return [
-                {"tool": n, "does": self._entries[n].tool.description.split("\n")[0][:160]}
-                for n in found
+                {"tool": n, "does": entries[n].tool.description.split("\n")[0][:160]} for n in found
             ]
 
         return make_tool("tools", find, name="find")

@@ -179,3 +179,39 @@ async def test_compiled_module_code_is_kept_and_checked_by_hash(
         (folder / "module.py").write_text(dedent(BIG.replace("50_000", "10_000")))
         await k.modules.reload("big")
         assert len((await k.dispatcher.call("big.dump")).output) == 10_000
+
+
+async def test_a_module_unloaded_while_a_request_is_routed(project: Paths) -> None:
+    async with Kernel(project) as k:
+        real = k.router.embedder
+
+        class SlowEmbedder:
+            id = real.id
+
+            async def embed(self, texts: list[str]) -> Any:
+                if texts == ["what's the weather"]:
+                    await k.modules.unload("weather")  # the index is rebuilt meanwhile
+                return await real.embed(texts)
+
+        await k.router.warm()
+        k.router.embedder = SlowEmbedder()
+        selection = await k.router.select("what's the weather")
+        assert "memory.recall" in selection.names  # routed, no KeyError
+
+
+async def test_a_reloaded_module_is_indexed_anew(paths: Paths, write_module: ModuleWriter) -> None:
+    source = """
+        from starlight.core import Module, tool
+
+        class Mod(Module):
+            @tool
+            def go(self) -> str:
+                "{doc}"
+                return "ok"
+    """
+    folder = write_module("thing", source.replace("{doc}", "Water the plants."))
+    async with Kernel(paths) as k:
+        assert "thing" in (await k.router.select("water the plants")).modules
+        (folder / "module.py").write_text(dedent(source.replace("{doc}", "Feed the cat.")))
+        await k.modules.reload("thing")
+        assert "thing" in (await k.router.select("feed the cat")).modules

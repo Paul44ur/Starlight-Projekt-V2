@@ -98,11 +98,10 @@ class MemoryIndex:
         if len(self._entries) < 2:
             return []
         scores = self._matrix @ self._matrix.T
-        first, second = np.triu_indices(len(self._entries), k=1)
+        first, second = np.nonzero(np.triu(scores >= threshold, k=1))
         found = [
             (self._entries[i], self._entries[j], float(scores[i, j]))
-            for i, j in zip(first, second, strict=True)
-            if scores[i, j] >= threshold
+            for i, j in zip(first.tolist(), second.tolist(), strict=True)
         ]
         return sorted(found, key=lambda pair: -pair[2])
 

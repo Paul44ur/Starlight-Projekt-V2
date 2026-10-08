@@ -113,6 +113,24 @@ async def test_power_asks_and_the_kill_switch_cancels_a_planned_shutdown(
         k.kill_switch.reset()
 
 
+async def test_a_planned_shutdown_is_cancelled_by_the_kill_switch_after_a_reload(
+    project: Paths,
+) -> None:
+    async with Kernel(project, ui=User()) as k:
+        ran = fake_runner(k, "linux")
+        assert (await k.dispatcher.call("system.restart", {"in_minutes": 30})).ok
+        await k.modules.reload("system")  # e.g. hot reload, or Starlight restarted
+        ran = fake_runner(k, "linux")
+        k.kill_switch.trigger("test", source="test")
+        assert ran == [["shutdown", "-c"]]
+        k.kill_switch.reset()
+        await k.modules.reload("system")
+        ran = fake_runner(k, "linux")
+        k.kill_switch.trigger("again", source="test")
+        assert ran == []  # already cancelled: nothing left to cancel
+        k.kill_switch.reset()
+
+
 async def test_unloading_the_module_does_not_shut_the_pc_down(project: Paths) -> None:
     async with Kernel(project) as k:
         ran = fake_runner(k, "win32")
