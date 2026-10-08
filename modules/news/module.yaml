@@ -1,6 +1,7 @@
 name: news
 version: 0.1.0
 description: Headlines and topic search from free news feeds (RSS/Atom), no API key
+keywords: ["news", "headlines", "today", "latest", "Nachrichten", "Schlagzeilen", "aktuell"]
 entrypoint: module:NewsModule
 permissions: [safe]
 dependencies: []

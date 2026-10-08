@@ -1,6 +1,7 @@
 name: breach
 version: 0.1.0
 description: Check whether a password is in known breaches (privacy-preserving) and rate its strength
+keywords: ["password", "leak", "pwned", "hacked", "Passwort", "geleakt", "sicher"]
 entrypoint: module:BreachModule
 permissions: [safe]
 dependencies: []

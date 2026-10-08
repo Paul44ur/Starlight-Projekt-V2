@@ -28,6 +28,11 @@ class LoggingConfig(_Strict):
 class AgentConfig(_Strict):
     max_steps: int = Field(default=8, ge=1)
     system_prompt: str = "You are Starlight, a local assistant."
+    # Send the model only the tools that fit a request (faster, fewer wrong picks); the
+    # model can ask for more with tools.find. Off: every tool, every time.
+    tool_routing: bool = True
+    max_tools: int = Field(default=40, ge=5)
+    max_tool_modules: int = Field(default=6, ge=1)
 
 
 class ServerConfig(_Strict):
@@ -42,6 +47,12 @@ class ServerConfig(_Strict):
     kv_cache_type: str = "q8_0"  # quantized KV cache: longer context in the same VRAM
     parallel: int = 1
     threads: int = 0  # CPU threads for prompt processing; 0: all cores (matters on the CPU build)
+    # Speculative decoding (llama.cpp): a small model of the same family guesses a few
+    # tokens ahead and the big one checks them in one go - same answers, faster. Empty: off.
+    draft_model_path: str = ""
+    draft_max: int = Field(default=16, ge=1)  # tokens guessed ahead at most
+    draft_min: int = Field(default=4, ge=0)
+    gpu_layers_draft: int = 999
     extra_args: list[str] = Field(default_factory=list)
 
 
@@ -105,6 +116,8 @@ class PermissionsConfig(_Strict):
 
 class ToolsConfig(_Strict):
     timeout: float = Field(default=120, gt=0)
+    # Longer tool results are cut before the model sees them (the log keeps all of it).
+    max_result_chars: int = Field(default=12000, ge=500)
 
 
 class SkillsConfig(_Strict):
@@ -132,7 +145,8 @@ class RemoteConfig(_Strict):
     confirm: list[str] = Field(
         default_factory=lambda: [
             "desktop.*", "code.*", "commands.*", "apps.close", "apps.open", "dev.git_*",
-            "dev.container_*", "access.*", "automations.*", "files.save*",
+            "dev.container_*", "access.*", "automations.*", "files.save*", "system.sleep",
+            "system.shutdown", "system.restart", "watch.add", "mail.send", "mail.reply",
         ]
     )  # fmt: skip
     # From another device these never run: they would change what Starlight may do (or

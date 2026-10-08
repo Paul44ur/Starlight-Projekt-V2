@@ -1,6 +1,7 @@
 name: finance
 version: 0.1.0
 description: Stock, currency and crypto prices from free sources, no API key
+keywords: ["stock", "share", "price", "bitcoin", "crypto", "currency", "exchange rate", "euro", "dollar", "Aktie", "Kurs", "Preis", "Währung"]
 entrypoint: module:FinanceModule
 permissions: [safe]
 dependencies: []

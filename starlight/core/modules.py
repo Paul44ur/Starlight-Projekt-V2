@@ -19,7 +19,7 @@ import importlib.machinery
 import importlib.util
 import inspect
 import os
-import shutil
+import py_compile
 import subprocess
 import sys
 from collections.abc import Awaitable, Callable
@@ -67,6 +67,9 @@ class ModuleManifest(BaseModel):
     name: str = Field(pattern=NAME_PATTERN)
     version: str = "0.1.0"
     description: str = ""
+    # Extra words that should bring this module's tools to the model, e.g. other languages
+    # or synonyms ("Wetter", "rain").
+    keywords: list[str] = Field(default_factory=list)
     entrypoint: str = Field(default="module:Module", pattern=r"^[\w.]+:\w+$")
     permissions: list[Permission] = Field(default_factory=list)
     dependencies: list[str] = Field(default_factory=list)
@@ -93,7 +96,7 @@ class Services:
     primary: bool = True
     # Send a message to you on every channel that is open (terminal, web chat, desktop,
     # WhatsApp). Set by the kernel; without one, messages go to ``ui.notify``.
-    deliver: Callable[[str, str, str], Awaitable[None]] | None = None
+    deliver: Callable[..., Awaitable[None]] | None = None  # (text, title, source, urgent)
     embedder: Any = None  # the embedding model memory uses (for modules that index text)
     # Run another module's tool, with the same permission checks, kill switch and audit
     # as when the model calls it (set by the kernel to the dispatcher).
@@ -102,6 +105,9 @@ class Services:
     tool_lookup: Callable[[str], Tool | None] | None = None
     # Run a request through the agent (one-shot, no shared history) and get its answer.
     run_request: Callable[[str], Awaitable[str]] | None = None
+    # The user's profile (name, language, home, timezone, preferences), from memory.
+    profile: Callable[[], dict[str, str]] | None = None
+    focus: Any = None  # focus mode (starlight.core.focus.Focus): messages held meanwhile
 
 
 PRIMARY_POLL = 1.0  # seconds between checks whether this process became the primary core
@@ -194,6 +200,23 @@ class ModuleContext:
             raise RuntimeError("no agent configured")
         return await self.services.run_request(text)
 
+    @property
+    def focus(self) -> Any:
+        """Focus mode (``starlight.core.focus.Focus``)."""
+        if self.services.focus is None:
+            raise RuntimeError("no focus mode configured")
+        return self.services.focus
+
+    def profile(self) -> dict[str, str]:
+        """What the user told Starlight about themselves: name, language, home (their
+        town), timezone and preferences. Missing fields are simply absent."""
+        if self.services.profile is None:
+            return {}
+        try:
+            return dict(self.services.profile())
+        except Exception:
+            return {}
+
     def permission_of(self, tool: str) -> Permission:
         """What happens when this tool is called: safe, confirm (asks first) or blocked,
         after your permission rules."""
@@ -206,10 +229,12 @@ class ModuleContext:
         """Whether a tool is loaded right now (its module may be disabled)."""
         return self.services.tool_names is not None and tool in self.services.tool_names()
 
-    async def deliver(self, text: str, title: str = "") -> None:
-        """Tell the user something now, on every channel that is open."""
+    async def deliver(self, text: str, title: str = "", urgent: bool = False) -> None:
+        """Tell the user something now, on every channel that is open. In focus mode it
+        waits for the digest at the end, unless ``urgent`` (something about to happen, or
+        a security warning)."""
         if self.services.deliver is not None:
-            await self.services.deliver(text, title, self.name)
+            await self.services.deliver(text, title, self.name, urgent)
             return
         with contextlib.suppress(Exception):
             await self.ui.notify(f"{title}: {text}" if title else text)
@@ -397,13 +422,42 @@ def _ensure_package(name: str, path: Path | None) -> None:
             raise
 
 
+def _hash_checked_bytecode(path: Path) -> None:
+    """Make the module's cached bytecode checked against the source's hash.
+
+    Normal .pyc files are checked by modification time (to the second) and size, so a quick
+    edit can be missed on hot-reload. Hash-checked ones are reused as long as the source is
+    the same - no compiling on every start - and Python rewrites them, hash-checked again,
+    whenever the source changes. Only files still cached the old way are compiled here.
+    """
+    for source in path.rglob("*.py"):
+        if "__pycache__" in source.parts:
+            continue
+        try:
+            cached = Path(importlib.util.cache_from_source(str(source)))
+        except NotImplementedError:  # sys.dont_write_bytecode / no cache tag
+            return
+        try:
+            with cached.open("rb") as f:
+                header = f.read(8)
+            flags = int.from_bytes(header[4:8], "little")
+        except OSError:
+            flags = 0
+        if flags == 0b11:  # hash-based and checked
+            continue
+        with contextlib.suppress(OSError, py_compile.PyCompileError):
+            py_compile.compile(
+                str(source),
+                cfile=str(cached),
+                doraise=True,
+                invalidation_mode=py_compile.PycInvalidationMode.CHECKED_HASH,
+            )
+
+
 def import_module_class(manifest: ModuleManifest, path: Path) -> type[Module]:
     package = f"{PACKAGE_ROOT}.{manifest.name}"
     _forget(package)
-    # Cached bytecode is keyed on mtime (1 s) and size, so a quick edit can be missed on
-    # hot-reload. Module folders are small; always compile from source.
-    for cache in path.rglob("__pycache__"):
-        shutil.rmtree(cache, ignore_errors=True)
+    _hash_checked_bytecode(path)
     importlib.invalidate_caches()
     _ensure_package(PACKAGE_ROOT, None)
     _ensure_package(package, path)

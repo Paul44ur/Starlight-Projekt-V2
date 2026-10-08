@@ -1,6 +1,7 @@
 name: lan
 version: 0.1.0
 description: Which devices are on your home network, with names you give them, and a warning when a new one appears
+keywords: ["network devices", "wifi", "router", "who is online", "new device", "Netzwerk", "Geräte", "WLAN"]
 entrypoint: module:LanModule
 permissions: [safe]
 dependencies: []

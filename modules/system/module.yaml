@@ -1,8 +1,9 @@
 name: system
 version: 0.1.0
-description: How your PC is doing - CPU, memory, disk, battery, uptime and running programs
+description: How your PC is doing - CPU, memory, disk, battery, uptime and running programs - and power (lock, sleep, shut down, restart)
+keywords: ["pc", "computer", "cpu", "ram", "memory", "disk", "battery", "performance", "running programs", "Rechner", "Speicher", "Festplatte", "Akku", "Leistung", "shutdown", "shut down", "restart", "reboot", "sleep", "lock", "power", "herunterfahren", "neu starten", "Neustart", "sperren", "Ruhezustand"]
 entrypoint: module:SystemModule
-# Reading is safe; closing a program asks first.
+# Reading and locking are safe; closing a program, sleep, shutdown and restart ask first.
 permissions: [confirm]
 dependencies: []
 enabled_by_default: true

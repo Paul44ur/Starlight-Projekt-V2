@@ -1,6 +1,7 @@
 name: automations
 version: 0.1.0
 description: 'When X, do Y: run tools, questions or messages on a schedule or when something happens'
+keywords: ["automation", "when", "every", "schedule", "trigger", "routine", "Automatisierung", "wenn", "jeden", "immer"]
 entrypoint: module:AutomationsModule
 permissions: [safe]
 dependencies: []

@@ -349,7 +349,7 @@ def create_app(paths: Paths | None = None) -> Any:
         kernel().audit.record("web.pair", ok=token is not None, client=client)
         if token is None:
             raise HTTPException(status_code=403, detail="wrong or expired code (or too many tries)")
-        await kernel().deliver(f"A new device was paired with Starlight: {name[:60]}")
+        await kernel().deliver(f"A new device was paired with Starlight: {name[:60]}", urgent=True)
         response = JSONResponse({"paired": True})
         response.set_cookie(
             COOKIE, token, max_age=365 * 86400, httponly=True, secure=True, samesite="strict"

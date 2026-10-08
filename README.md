@@ -25,14 +25,16 @@ and answer you on WhatsApp. Anything risky asks you first, and one key press sto
 | --- | --- |
 | **Chat in a browser or the terminal** | A clean web chat (the default) or a colored terminal chat. Both stream answers and ask before risky actions. |
 | **Chat with a local model** | Runs a model such as Qwen2.5-14B on your GPU. Long conversations are summarized, not cut off. |
-| **Remember** | Keeps what it learns as plain text files in the `memory` folder. You can read, edit or delete them. |
+| **Remember** | Keeps what it learns as plain text files in the `memory` folder. You can read, edit or delete them. Knows your name, language and home town from your profile, tells you what it knows about you, and tidies up memories that say the same thing (asks first). |
 | **Use the web** | Searches, reads pages and logs in to your accounts. It makes at most 5 requests per second and respects robots.txt. |
 | **Check your servers** | Pings your servers, checks disk space and services over SSH, and alerts you when one goes down. |
 | **Scan your network** | On hosts you own or are authorized to test: open ports, services, TLS certs, HTTP headers, DNS. Asks first; recon only, never attacks. |
 | **Look up vulnerabilities** | Checks a service or product against the public CVE database (NVD). Pairs with a scan. Free, no key. |
 | **Check certificates** | Reads your servers' TLS certificates and warns when one is about to expire. |
 | **Check passwords** | Tells you if a password is in known breaches — the password never leaves your PC (only a short hash prefix is sent). |
-| **Check your PC** | CPU, memory, disk space, battery, uptime and running programs. Can close a program (asks first). |
+| **Check your PC** | CPU, memory, disk space, battery, uptime and running programs. Can close a program, and lock, sleep, shut down or restart the PC, now or in a few minutes (asks first, except locking; the kill switch also cancels a planned shutdown). |
+| **Focus mode** | "Focus for 90 minutes" — holds back reminders, alerts and messages while you work, then gives you one summary. Urgent things (an event about to start, a server down, an unknown device on your WiFi) still come through. |
+| **Watch pages and prices** | "Tell me when this kettle costs less than 50 €", "… when 'sold out' is gone", "… when this page changes" — checks the page every so often (at least 15 minutes apart, robots.txt respected) and tells you on every channel. |
 | **Use the clipboard** | Reads what you copied and copies things for you. |
 | **Weather** | Current weather and a short forecast for any place — free, no account or API key. |
 | **News** | Headlines and topic search from free news feeds (RSS). No account or API key. |
@@ -46,7 +48,7 @@ and answer you on WhatsApp. Anything risky asks you first, and one key press sto
 | **Exact maths** | Calculations, unit conversion (km/mi, °C/°F, GB/MB, …) and date maths ("days until 24.12.") worked out exactly, not guessed. |
 | **Translate** | Translates text with your own model — offline, nothing leaves the PC. |
 | **Desktop notifications** | Pops a notification on your screen to get your attention. |
-| **Email** | Reads your inbox and sends mail from your own account (asks before sending). |
+| **Email** | Reads your inbox and sends mail from your own account. Shows what's unread without marking it read, sorts it into important / can wait / probably spam, drafts replies for you to check, and replies in the same thread (asks before sending). Can tell you right away when someone you choose writes. |
 | **PDFs** | Reads text from PDF files and makes simple PDFs from text. |
 | **Open programs** | "Open Spotify", "open my budget sheet", "bring Outlook to the front" — starts any installed program (asks the first time only), opens files and links, and arranges or closes windows. |
 | **Music and volume** | Play/pause, next/previous track and volume, like the media keys. |
@@ -127,7 +129,9 @@ Starlight will download and set up, inside C:\Starlight:
    - the Chromium browser for web pages and logins ~0.3 GB
    - the llama.cpp model server (vulkan)         ~0.2 GB
    - the model Qwen2.5-14B_Uncensored_Instruct-Q4_K_M.gguf 8.4 GB
-   Needed: about 10.2 GB. Free on this drive: 250.0 GB.
+   - a draft model for faster answers          0.5 GB
+     (uses about 1 GB more video memory; turn off with --no-draft)
+   Needed: about 10.7 GB. Free on this drive: 250.0 GB.
 Continue? [Y/n]
 ```
 
@@ -172,6 +176,7 @@ Run `Starlight.exe --help` in a terminal to see every option. The most useful on
 | `--terminal` | Chat in the window instead of opening the browser. |
 | `--both` | Open the browser chat **and** a terminal chat together — both talk to the same Starlight (one conversation, one kill switch). |
 | `--voice` | Also install speech: talk to Starlight and hear its answers (about 0.6 GB, Windows; `"voice": true` in `launcher.json` keeps it). |
+| `--no-draft` | No draft model. By default a small Qwen2.5-0.5B model guesses a few words ahead and the big model checks them in one go (speculative decoding): the same answers, written faster, for about 1 GB more video memory. |
 | `--no-viewer` | Don't start the statistics viewer. |
 | `--update` | Download the newest uv and llama.cpp again. |
 | `--setup-only` | Download and set up, then exit without starting. |
@@ -196,6 +201,10 @@ of thumb:
 On [Hugging Face](https://huggingface.co), open the model's *Files* tab, copy the
 download link of the `.gguf` file and start `Starlight.exe --model-url <link>`. Or put
 `"model_url": "<link>"` into `config\launcher.json`.
+
+A different model gets no draft model, because the draft must come from the same model
+family. If your model has a small sibling (for example Llama 3.2 1B for Llama 3.1 8B),
+give it with `--draft-url <link>` or `"draft_url"` in `launcher.json`.
 
 ### Other ways to install
 
@@ -353,7 +362,11 @@ before Starlight asks "Allow?" never counts as the answer.
 model speed, GPU use and memory size.
 
 **Memory.** Everything Starlight remembers is a text file in the `memory` folder. Open,
-correct or delete any of them; Starlight picks up the change.
+correct or delete any of them; Starlight picks up the change. `memory/profile.md` is your
+profile: your name, the language you want answers in, where you live, your time zone and
+preferences. Starlight fills it in when you mention these ("I'm Paul, I live in Vienna"),
+and every request uses it, together with today's date and time (so "the weather" means
+the weather at home).
 
 **Files.** Ask Starlight to save what it made ("save it as a file", "make a CSV of
 that"), and it saves it in the **Starlight** folder in your Documents, then tells you
@@ -408,8 +421,9 @@ once with a code shown on your PC.
 What is different on the phone:
 - Things that could do harm **always ask on the phone**, even if they run on their own at
   home: desktop control, running code and your commands, closing or opening programs,
-  git and Docker changes, changing access, and automations (`web: remote: confirm:` in the
-  config).
+  git and Docker changes, changing access, automations, sending or answering email,
+  watching a page, and sleep, shutdown or restart of the PC (`web: remote: confirm:` in
+  the config).
 - Some things only change **on the PC**: permission rules, modules, paired devices,
   skills, and releasing the kill switch (the phone can engage it). From the phone,
   Starlight also won't loosen its own rules, add secrets, servers, logins, commands,

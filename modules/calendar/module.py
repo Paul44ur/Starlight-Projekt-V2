@@ -366,7 +366,7 @@ class CalendarModule(Module):
             left = max(0, int((when - moment).total_seconds() // 60))
             place = f" ({event.location})" if event.location else ""
             text = f"{event.title}{place} starts at {when:%H:%M} (in {left} min)"
-            await self.ctx.deliver(text, title="Calendar")
+            await self.ctx.deliver(text, title="Calendar", urgent=left <= 5)
             await self.ctx.publish(
                 "calendar.soon", {"title": event.title, "start": when.isoformat()}
             )

@@ -1,6 +1,7 @@
 name: home
 version: 0.1.0
 description: Your smart home through Home Assistant - lights, switches, scenes, sensors and more
+keywords: ["light", "lamp", "switch", "heating", "thermostat", "smart home", "home assistant", "scene", "sensor", "Licht", "Lampe", "Heizung", "einschalten", "ausschalten", "Wohnzimmer"]
 entrypoint: module:HomeModule
 permissions: [safe, confirm]
 dependencies: []

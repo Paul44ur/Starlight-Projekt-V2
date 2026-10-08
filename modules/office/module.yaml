@@ -1,6 +1,7 @@
 name: office
 version: 0.1.0
 description: Read and write Word (.docx) and Excel (.xlsx) files
+keywords: ["word", "excel", "docx", "xlsx", "spreadsheet", "table", "Tabelle"]
 entrypoint: module:OfficeModule
 permissions: [safe]
 dependencies: []

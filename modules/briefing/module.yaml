@@ -1,6 +1,7 @@
 name: briefing
 version: 0.1.0
 description: Your day at a glance - calendar, to-dos, reminders, weather, news, mail and alerts in one short summary
+keywords: ["briefing", "morning", "day", "overview", "summary", "Tag", "Morgen", "Überblick", "Zusammenfassung"]
 entrypoint: module:BriefingModule
 permissions: [safe]
 dependencies: []

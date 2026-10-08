@@ -225,5 +225,6 @@ class LanModule(Module):
                 f"A new device joined your network: {device['ip']} ({device['mac']}). "
                 "If you don't know it, check your WiFi.",
                 title="Network",
+                urgent=True,
             )
         return new

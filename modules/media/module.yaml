@@ -1,6 +1,7 @@
 name: media
 version: 0.1.0
 description: Play, pause and skip music or videos, and change the volume on this PC
+keywords: ["music", "song", "play", "pause", "skip", "next", "volume", "louder", "quieter", "video", "Musik", "Lied", "abspielen", "lauter", "leiser", "Lautstärke"]
 entrypoint: module:MediaModule
 permissions: [safe]
 dependencies: []

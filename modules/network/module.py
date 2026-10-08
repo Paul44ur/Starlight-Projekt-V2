@@ -484,5 +484,5 @@ class NetworkModule(Module):
             event = "network.server_up" if up else "network.server_down"
             self.ctx.logger.warning(event, server=name, host=srv.host)
             await self.ctx.publish(event, {"server": name, "host": srv.host})
-            await self.ctx.deliver(f"Server {name} is {'back up' if up else 'DOWN'}")
+            await self.ctx.deliver(f"Server {name} is {'back up' if up else 'DOWN'}", urgent=not up)
         return states

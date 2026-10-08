@@ -3,7 +3,15 @@
 Set it up once from the chat ("set up my email ..."): the password (use an app-password, not
 your main password) goes into the OS keyring, and the server settings into
 config/modules/mail.yaml - no project files to edit by hand. Reading your inbox is allowed
-freely; sending a message always asks first.
+freely and never marks anything as read; sending or replying always asks first.
+
+Beyond reading and sending, it helps with the inbox: what is unread, a summary sorted into
+important / can wait / probably spam (by your local model), a draft reply you can change
+before it goes out, and replies that stay in the same thread. With ``watch: true`` it
+checks for new mail every few minutes, publishes ``mail.new`` (automations can react) and
+tells you at once about mail from the senders in ``notify_from``.
+
+Messages are named by their IMAP UID, which stays the same across sessions.
 
 Uses only the Python standard library; no third-party packages.
 """
@@ -14,6 +22,8 @@ import asyncio
 import email
 import email.utils
 import imaplib
+import json
+import re
 import smtplib
 from email import message_from_bytes
 from email.header import decode_header, make_header
@@ -24,6 +34,7 @@ from pydantic import BaseModel, Field
 
 from starlight.core import Module, ModuleContext, Permission, ToolError, tool
 from starlight.core.config import write_yaml_config
+from starlight.core.model import Message as ChatMessage
 
 PASSWORD_KEY = "mail.password"
 
@@ -36,6 +47,29 @@ class Config(BaseModel):
     smtp_port: int = 587
     from_name: str = ""  # the display name on messages you send
     max_body_chars: int = Field(default=20_000, ge=1000)
+    watch: bool = False  # check for new mail in the background
+    check_minutes: int = Field(default=5, ge=1)
+    # Tell me at once about new mail from these (addresses or parts of them, e.g. "@bank.de").
+    notify_from: list[str] = Field(default_factory=list)
+
+
+SUMMARY_PROMPT = """\
+Sort these unread emails for a busy person. Write three short sections - Important,
+Can wait, Probably spam - with one line per email: sender, what it is about, and what (if
+anything) they need to do. Leave out empty sections. Do not invent anything.
+
+{mails}"""
+
+DRAFT_PROMPT = """\
+Write a reply to the email below, as {me}. {instructions}
+Write only the body of the reply (no subject line), in the language of the email unless
+the instructions say otherwise. Keep it short and polite. Do not invent facts, dates or
+promises; leave a [placeholder] where you would need something you do not know.
+
+From: {sender}
+Subject: {subject}
+
+{body}"""
 
 
 class EmailError(ToolError):
@@ -47,6 +81,9 @@ class EmailModule(Module):
 
     async def setup(self, ctx: ModuleContext) -> None:
         self.config: Config = ctx.config
+        self.seen_file = ctx.data_dir / "seen.json"
+        if self.config.watch:
+            ctx.every(self.config.check_minutes * 60, self.check_new, "mail-watch", first_delay=30)
 
     # -- configuration -------------------------------------------------------------------
 
@@ -111,8 +148,8 @@ class EmailModule(Module):
 
     @tool
     async def inbox(self, limit: int = 10) -> dict[str, Any]:
-        """The most recent messages in your inbox: who from, the subject and the date. Use
-        mail.read with an id to see a message's text."""
+        """The most recent messages in your inbox: who from, the subject, the date and
+        whether it is unread. Use mail.read with an id to see a message's text."""
         password = self._require()
         count = max(1, min(limit, 50))
         messages = await asyncio.to_thread(self._imap_list, password, count)
@@ -128,6 +165,60 @@ class EmailModule(Module):
         message = await asyncio.to_thread(self._imap_fetch, password, id.strip())
         return message
 
+    @tool
+    async def unread(self, limit: int = 15) -> dict[str, Any]:
+        """Unread messages, newest first: sender, subject, date and the first lines. Does
+        not mark anything as read."""
+        password = self._require()
+        count = max(1, min(limit, 50))
+        messages = await asyncio.to_thread(self._imap_list, password, count, True)
+        return {"count": len(messages), "messages": messages}
+
+    @tool
+    async def summary(self, limit: int = 20) -> dict[str, Any]:
+        """A short overview of unread mail, sorted into important, can wait and probably
+        spam. Nothing is marked as read."""
+        password = self._require()
+        count = max(1, min(limit, 40))
+        messages = await asyncio.to_thread(self._imap_list, password, count, True)
+        if not messages:
+            return {"count": 0, "summary": "No unread mail."}
+        lines = [
+            f"- [{m['id']}] from {m['from']}, subject: {m['subject']}. {m.get('snippet', '')}"
+            for m in messages
+        ]
+        text = await self._write(SUMMARY_PROMPT.replace("{mails}", "\n".join(lines)))
+        return {"count": len(messages), "summary": text}
+
+    @tool
+    async def draft_reply(self, id: str, instructions: str = "") -> dict[str, Any]:
+        """Draft a reply to a message (by its id) and show it; nothing is sent. Use
+        mail.reply to send it, changed or as it is. `instructions`: what the reply should
+        say, e.g. "accept, but only after 5pm"."""
+        password = self._require()
+        original = await asyncio.to_thread(self._imap_fetch, password, id.strip())
+        prompt = (
+            DRAFT_PROMPT.replace("{me}", self.config.from_name or self.config.username)
+            .replace("{instructions}", f"What to say: {instructions}" if instructions else "")
+            .replace("{sender}", original["from"])
+            .replace("{subject}", original["subject"])
+            .replace("{body}", original["body"][:6000])
+        )
+        draft = await self._write(prompt)
+        return {
+            "to": original.get("reply_to") or original["from"],
+            "subject": _reply_subject(original["subject"]),
+            "body": draft,
+            "note": "Nothing was sent. Send it with mail.reply (it asks first).",
+        }
+
+    async def _write(self, prompt: str) -> str:
+        model = self.ctx.model_for("summary")
+        if model is None:
+            raise EmailError("no model is available to write this")
+        response = await model.chat([ChatMessage("user", prompt)], [])
+        return response.content.strip()
+
     # -- sending (asks first) ------------------------------------------------------------
 
     @tool(permission=Permission.CONFIRM)
@@ -141,6 +232,63 @@ class EmailModule(Module):
         self.ctx.logger.info("email sent", to=to.strip())
         return {"sent": True, "to": to.strip(), "subject": subject}
 
+    @tool(permission=Permission.CONFIRM)
+    async def reply(self, id: str, body: str, reply_all: bool = False) -> dict[str, Any]:
+        """Reply to a message (by its id), in the same thread. Asks for confirmation
+        first. `body` is the text of the reply."""
+        password = self._require()
+        if not body.strip():
+            raise EmailError("what should the reply say?")
+        original = await asyncio.to_thread(self._imap_fetch, password, id.strip())
+        to = original.get("reply_to") or original["from"]
+        if reply_all:
+            me = self.config.username.lower()
+            everyone = _addresses(original.get("to", ""), original.get("cc", ""))
+            others = [a for a in everyone if a.lower() != me]
+            to = ", ".join(dict.fromkeys([to, *others]))
+        headers = {}
+        if original.get("message_id"):
+            headers["In-Reply-To"] = original["message_id"]
+            headers["References"] = " ".join(
+                p for p in (original.get("references", ""), original["message_id"]) if p
+            )
+        subject = _reply_subject(original["subject"])
+        await asyncio.to_thread(self._smtp_send, password, to, subject, body, headers)
+        self.ctx.logger.info("email reply sent", uid=id.strip())
+        return {"sent": True, "to": to, "subject": subject, "in_reply_to": id.strip()}
+
+    # -- new mail (background) -----------------------------------------------------------
+
+    def _load_seen(self) -> dict[str, Any] | None:
+        try:
+            data = json.loads(self.seen_file.read_text("utf-8"))
+        except (OSError, json.JSONDecodeError):
+            return None
+        return data if isinstance(data, dict) else None
+
+    async def check_new(self) -> list[dict[str, Any]]:
+        """Look for unread mail not seen before; publish mail.new for each one, and tell
+        the user about mail from senders in notify_from. The first look only takes note
+        of what is there."""
+        if not (self.config.username and self.config.imap_host and self._password()):
+            return []
+        password = self._require()
+        validity, unseen = await asyncio.to_thread(self._imap_unseen, password)
+        state = self._load_seen()
+        known = set(state.get("uids", [])) if state and state.get("validity") == validity else None
+        fresh = [] if known is None else [m for m in unseen if m["id"] not in known]
+        remembered = sorted({*(known or set()), *(m["id"] for m in unseen)}, key=int)[-2000:]
+        self.seen_file.parent.mkdir(parents=True, exist_ok=True)
+        self.seen_file.write_text(json.dumps({"validity": validity, "uids": remembered}))
+        for message in fresh:
+            await self.ctx.publish("mail.new", dict(message))
+            sender = message["from"].lower()
+            if any(n.strip().lower() in sender for n in self.config.notify_from if n.strip()):
+                await self.ctx.deliver(
+                    f"New mail from {message['from']}: {message['subject']}", title="Mail"
+                )
+        return fresh
+
     # -- IMAP/SMTP (blocking; run via asyncio.to_thread; stubbable in tests) --------------
 
     def _imap_connect(self, password: str) -> imaplib.IMAP4_SSL:
@@ -148,39 +296,83 @@ class EmailModule(Module):
         client.login(self.config.username, password)
         return client
 
-    def _imap_list(self, password: str, count: int) -> list[dict[str, Any]]:
+    def _imap_session(self, password: str) -> imaplib.IMAP4_SSL:
         try:
             client = self._imap_connect(password)
+            client.select("INBOX", readonly=True)  # read-only: nothing is marked as read
         except (imaplib.IMAP4.error, OSError) as exc:
             raise EmailError(f"could not reach the mailbox: {exc}") from exc
+        return client
+
+    @staticmethod
+    def _uids(client: imaplib.IMAP4_SSL, criteria: str) -> list[str]:
+        _, data = client.uid("SEARCH", None, criteria)  # type: ignore[arg-type]
+        return [u.decode() for u in (data[0].split() if data and data[0] else [])]
+
+    @staticmethod
+    def _flags(client: imaplib.IMAP4_SSL, uids: list[str]) -> set[str]:
+        """Which of these UIDs are unread."""
+        if not uids:
+            return set()
+        _, data = client.uid("SEARCH", None, f"UID {','.join(uids)} UNSEEN")  # type: ignore[arg-type]
+        return {u.decode() for u in (data[0].split() if data and data[0] else [])}
+
+    def _imap_list(self, password: str, count: int, unseen: bool = False) -> list[dict[str, Any]]:
+        client = self._imap_session(password)
         try:
-            client.select("INBOX", readonly=True)
-            _, data = client.search(None, "ALL")
-            ids = (data[0].split() if data and data[0] else [])[-count:]
+            uids = self._uids(client, "UNSEEN" if unseen else "ALL")[-count:]
+            unread = set(uids) if unseen else self._flags(client, uids)
             messages: list[dict[str, Any]] = []
-            for raw_id in reversed(ids):
-                _, fetched = client.fetch(raw_id.decode(), "(BODY.PEEK[HEADER])")
+            for uid in reversed(uids):
+                # PEEK: reading never sets the "seen" flag. Unread mail: the start of the
+                # message too (headers and the first text), for a snippet.
+                spec = "(BODY.PEEK[]<0.65536>)" if unseen else "(BODY.PEEK[HEADER])"
+                _, fetched = client.uid("FETCH", uid, spec)
+                parsed = message_from_bytes(_payload(fetched))
+                item = {
+                    "id": uid,
+                    "from": _decode(parsed.get("From", "")),
+                    "subject": _decode(parsed.get("Subject", "")),
+                    "date": parsed.get("Date", ""),
+                    "unread": uid in unread,
+                }
+                if unseen:
+                    item["snippet"] = " ".join(_body(parsed).split())[:240]
+                messages.append(item)
+            return messages
+        finally:
+            _logout(client)
+
+    def _imap_unseen(self, password: str) -> tuple[str, list[dict[str, Any]]]:
+        """(UIDVALIDITY, the newest unread messages' headers)."""
+        client = self._imap_session(password)
+        try:
+            _, data = client.response("UIDVALIDITY")
+            validity = data[0].decode() if data and isinstance(data[0], bytes) else ""
+            messages = []
+            for uid in self._uids(client, "UNSEEN")[-50:]:
+                _, fetched = client.uid(
+                    "FETCH", uid, "(BODY.PEEK[HEADER.FIELDS (FROM SUBJECT DATE)])"
+                )
                 parsed = message_from_bytes(_payload(fetched))
                 messages.append(
                     {
-                        "id": raw_id.decode(),
+                        "id": uid,
                         "from": _decode(parsed.get("From", "")),
                         "subject": _decode(parsed.get("Subject", "")),
                         "date": parsed.get("Date", ""),
                     }
                 )
-            return messages
+            return validity, messages
         finally:
             _logout(client)
 
     def _imap_fetch(self, password: str, message_id: str) -> dict[str, Any]:
+        if not message_id.isdigit():
+            raise EmailError(f"'{message_id}' is not a message id (see mail.inbox)")
+        client = self._imap_session(password)
         try:
-            client = self._imap_connect(password)
-        except (imaplib.IMAP4.error, OSError) as exc:
-            raise EmailError(f"could not reach the mailbox: {exc}") from exc
-        try:
-            client.select("INBOX", readonly=True)
-            _, fetched = client.fetch(message_id, "(RFC822)")
+            _, fetched = client.uid("FETCH", message_id, "(BODY.PEEK[])")
             raw = _payload(fetched)
             if not raw:
                 raise EmailError(f"no message with id '{message_id}'")
@@ -189,14 +381,25 @@ class EmailModule(Module):
                 "id": message_id,
                 "from": _decode(parsed.get("From", "")),
                 "to": _decode(parsed.get("To", "")),
+                "cc": _decode(parsed.get("Cc", "")),
+                "reply_to": _decode(parsed.get("Reply-To", "")),
                 "subject": _decode(parsed.get("Subject", "")),
                 "date": parsed.get("Date", ""),
+                "message_id": str(parsed.get("Message-ID", "")).strip(),
+                "references": " ".join(str(parsed.get("References", "")).split()),
                 "body": _body(parsed)[: self.config.max_body_chars],
             }
         finally:
             _logout(client)
 
-    def _smtp_send(self, password: str, to: str, subject: str, body: str) -> None:
+    def _smtp_send(
+        self,
+        password: str,
+        to: str,
+        subject: str,
+        body: str,
+        headers: dict[str, str] | None = None,
+    ) -> None:
         message = EmailMessage()
         sender = self.config.username
         if self.config.from_name:
@@ -204,6 +407,8 @@ class EmailModule(Module):
         message["From"] = sender
         message["To"] = to
         message["Subject"] = subject
+        for key, value in (headers or {}).items():
+            message[key] = value
         message.set_content(body)
         try:
             with smtplib.SMTP(self.config.smtp_host, self.config.smtp_port, timeout=30) as server:
@@ -222,6 +427,14 @@ def _payload(fetched: Any) -> bytes:
     first = fetched[0]
     part = first[1] if isinstance(first, tuple) and len(first) > 1 else first
     return bytes(part) if isinstance(part, (bytes, bytearray)) else b""
+
+
+def _reply_subject(subject: str) -> str:
+    return subject if re.match(r"(?i)\s*(re|aw|sv)\s*:", subject) else f"Re: {subject}"
+
+
+def _addresses(*fields: str) -> list[str]:
+    return [address for _, address in email.utils.getaddresses(list(fields)) if address]
 
 
 def _decode(value: str) -> str:

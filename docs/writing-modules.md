@@ -24,6 +24,7 @@ modules/weather/
 name: weather              # must match the folder name: lowercase, digits, _
 version: 0.1.0
 description: Current weather for a city
+keywords: [rain, forecast, Wetter]  # extra words (synonyms, other languages) for routing
 entrypoint: module:WeatherModule   # file:class
 permissions: [safe]        # the highest permission any of its tools needs
 dependencies: []           # modules that must load first
@@ -75,6 +76,12 @@ The interface:
 | `on_event(event)` | for each event matching `subscriptions` (glob patterns like `web.*`) |
 | `shutdown()` | on disable, reload and core shutdown |
 
+The model does not see every tool on every request: Starlight sends the tools of the
+modules that fit the request (by their names, `description`, `keywords` and tool
+docstrings), and the model can ask for more with `tools.find`. So give the module a clear
+description, start each tool's docstring with one sentence saying what it does, and add
+`keywords` for words people use that are not in those texts (including other languages).
+
 `ctx` gives you:
 
 - `ctx.config`: your validated config
@@ -96,8 +103,10 @@ The interface:
 - `ctx.model`: the main model, e.g. to summarize something inside a tool
 - `ctx.model_for("code")`: the model the core routes a kind of work to (`roles:` in the
   config), falling back to the main model
-- `ctx.deliver(text, title="")`: tell the user something now (an alert, a reminder) on
-  every open channel: the terminal, every web chat, a desktop notification and WhatsApp
+- `ctx.deliver(text, title="", urgent=False)`: tell the user something now (an alert, a
+  reminder) on every open channel: the terminal, every web chat, a desktop notification
+  and WhatsApp. In focus mode it is held for the summary at the end, unless `urgent`
+  (something about to happen, or a security warning)
 - `ctx.every(seconds, fn, "name")`: run `fn` (sync or async) on a timer, and
   `ctx.background(coro_fn, "name")` for a long-running task. Both run only in the primary
   Starlight process (so two open Starlights never do the work twice), skip a round while
@@ -109,6 +118,9 @@ The interface:
 - `await ctx.run_request("...")`: ask the assistant something (one-shot) and get its answer
 - `ctx.embedder`: the embedding model memory uses: `await ctx.embedder.embed(["text"])`
 - `ctx.output_dir`: your Starlight folder for files made for the user
+- `ctx.profile()`: what the user told Starlight about themselves - `name`, `language`,
+  `home` (their town), `timezone`, `preferences` - for sensible defaults (the weather
+  module uses `home` when no place is given). Missing fields are simply absent
 
 Shared helpers:
 

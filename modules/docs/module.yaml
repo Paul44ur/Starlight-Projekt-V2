@@ -1,6 +1,7 @@
 name: docs
 version: 0.1.0
 description: A private knowledge base over folders you choose - ask questions about your own documents and get answers with sources
+keywords: ["documents", "knowledge", "search my files", "ask documents", "Dokumente", "Wissen", "Unterlagen"]
 entrypoint: module:DocsModule
 permissions: [safe]
 dependencies: []

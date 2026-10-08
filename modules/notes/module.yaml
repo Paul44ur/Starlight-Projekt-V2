@@ -1,6 +1,7 @@
 name: notes
 version: 0.1.0
 description: Quick notes as Markdown files in your Starlight folder - write, add to, find and read them
+keywords: ["note", "notes", "jot", "write down", "Notiz", "Notizen", "aufschreiben", "merken"]
 entrypoint: module:NotesModule
 permissions: [safe]
 dependencies: []

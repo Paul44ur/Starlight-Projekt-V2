@@ -1,0 +1,8 @@
+name: focus
+version: 0.1.0
+description: Focus mode - hold back reminders, alerts and messages while you concentrate, then get one summary
+keywords: ["focus", "do not disturb", "quiet", "concentrate", "deep work", "busy", "nicht stören", "Ruhe", "konzentrieren", "Fokus"]
+entrypoint: module:FocusModule
+permissions: [safe]
+dependencies: []
+enabled_by_default: true

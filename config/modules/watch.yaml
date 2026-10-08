@@ -1,0 +1,4 @@
+# The watch module (modules/watch): web pages Starlight checks for you.
+check_interval: 60      # seconds between looking for watches that are due (0: off)
+min_every_minutes: 15   # the shortest interval a watch may use (be polite to sites)
+max_watches: 50

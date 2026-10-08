@@ -1,6 +1,7 @@
 name: translate
 version: 0.1.0
 description: Translate text between languages with your local model - offline and private
+keywords: ["translate", "translation", "language", "english", "german", "french", "spanish", "übersetzen", "Übersetzung", "Sprache", "englisch", "deutsch"]
 entrypoint: module:TranslateModule
 permissions: [safe]
 dependencies: []

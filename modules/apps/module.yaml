@@ -1,6 +1,7 @@
 name: apps
 version: 0.1.0
 description: Open programs, files and links, and switch between, arrange or close windows on this PC
+keywords: ["program", "app", "launch", "start", "window", "close", "spotify", "chrome", "browser", "Programm", "öffnen", "starten", "Fenster", "schließen"]
 entrypoint: module:AppsModule
 permissions: [safe, confirm]
 dependencies: []
