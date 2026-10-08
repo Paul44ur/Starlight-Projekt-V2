@@ -24,6 +24,8 @@ _NO_PROGRAMS = {
     "os.startfile",
     "os.fork",
     "os.forkpty",
+    "_winapi.CreateProcess",  # Windows, below subprocess
+    "ctypes.dlopen",  # loading a C library by hand (e.g. libc's system())
 }
 _FILE_EVENTS = {"open", "os.listdir", "os.scandir", "os.remove", "os.rename", "shutil.rmtree"}
 _SSH = os.path.normcase(os.path.join(os.path.expanduser("~"), ".ssh"))
@@ -58,6 +60,18 @@ if _settings.get("memory_mb") and sys.platform != "win32":
 
     _limit = int(_settings["memory_mb"]) * 2**20  # set here, before any user code runs
     resource.setrlimit(resource.RLIMIT_AS, (_limit, _limit))
+
+
+def _no_fork_exec(*args: object, **kwargs: object) -> None:
+    raise PermissionError("sandbox: starting programs is not allowed (fork_exec)")
+
+
+try:  # below subprocess on Linux/macOS, without an audit event of its own
+    import _posixsubprocess
+
+    _posixsubprocess.__dict__["fork_exec"] = _no_fork_exec
+except ImportError:  # Windows
+    pass
 
 sys.addaudithook(_hook)
 sys.path.insert(0, os.getcwd())  # -I leaves the working folder off the path

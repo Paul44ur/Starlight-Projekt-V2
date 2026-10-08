@@ -56,14 +56,60 @@ class Config(BaseModel):
     max_output: int = Field(default=8000, ge=500)
     commands: dict[str, Command] = Field(default_factory=dict)
     shell: bool = False  # True: commands.shell may run any command line
-    shell_timeout: float = Field(default=300, gt=0, le=24 * 3600)  # seconds, the most allowed
+    # Seconds a command line may run at most. Keep it under tools.timeout (120 s by
+    # default), which stops any tool, so the output so far still comes back.
+    shell_timeout: float = Field(default=110, gt=0, le=24 * 3600)
+
+
+# PowerShell writes its own output as UTF-8 then (umlauts survive the pipe).
+_UTF8 = "[Console]::OutputEncoding=[System.Text.Encoding]::UTF8; "
 
 
 def shell_argv(line: str, platform: str = sys.platform) -> list[str]:
     """The program that runs a command line: PowerShell on Windows, /bin/sh elsewhere."""
     if platform == "win32":
-        return ["powershell.exe", "-NoProfile", "-NonInteractive", "-Command", line]
+        return ["powershell.exe", "-NoProfile", "-NonInteractive", "-Command", _UTF8 + line]
     return ["/bin/sh", "-c", line]
+
+
+def decode_output(data: bytes) -> str:
+    """Program output as text: UTF-8, else (older Windows programs) the console's own code
+    page, e.g. cp850 on a German Windows."""
+    try:
+        return data.decode("utf-8")
+    except UnicodeDecodeError:
+        pass
+    if sys.platform == "win32":
+        import ctypes
+
+        page = f"cp{ctypes.windll.kernel32.GetOEMCP()}"
+        with contextlib.suppress(LookupError):
+            return data.decode(page, errors="replace")
+    return data.decode("utf-8", errors="replace")
+
+
+def kill_tree(process: asyncio.subprocess.Process) -> None:
+    """Stop a program and everything it started (a shell's children would otherwise keep
+    running, and keep its output open)."""
+    if process.returncode is not None:
+        return
+    if sys.platform == "win32":
+        import subprocess
+
+        subprocess.run(
+            ["taskkill", "/T", "/F", "/PID", str(process.pid)],
+            capture_output=True,
+            check=False,
+            creationflags=0x08000000,  # CREATE_NO_WINDOW
+        )
+    else:
+        import os
+        import signal
+
+        with contextlib.suppress(ProcessLookupError, PermissionError):
+            os.killpg(process.pid, signal.SIGKILL)  # its own process group, see _execute
+    with contextlib.suppress(ProcessLookupError):
+        process.kill()
 
 
 class CommandsModule(Module):
@@ -76,8 +122,7 @@ class CommandsModule(Module):
 
     def _kill_all(self) -> None:
         for process in list(self._running):
-            with contextlib.suppress(ProcessLookupError):
-                process.kill()
+            kill_tree(process)
 
     def _get(self, name: str) -> tuple[str, Command]:
         key = name.strip().lower()
@@ -173,6 +218,7 @@ class CommandsModule(Module):
                 stderr=asyncio.subprocess.STDOUT,
                 cwd=command.cwd or None,
                 creationflags=flags,
+                start_new_session=sys.platform != "win32",  # one group to stop
             )
         except OSError as exc:
             raise ToolError(f"could not start {argv[0]}: {exc}") from exc
@@ -182,14 +228,14 @@ class CommandsModule(Module):
             output, _ = await asyncio.wait_for(process.communicate(), command.timeout)
         except TimeoutError:
             timed_out = True
-            process.kill()
+            kill_tree(process)
             output, _ = await process.communicate()
         except asyncio.CancelledError:
-            process.kill()
+            kill_tree(process)
             raise
         finally:
             self._running.discard(process)
-        text = output.decode("utf-8", errors="replace")
+        text = decode_output(output)
         limit = self.config.max_output
         if len(text) > limit:
             text = "…" + text[-limit:]

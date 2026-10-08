@@ -170,6 +170,13 @@ async def test_process_sandbox_blocks_what_matters(tmp_path: Path) -> None:
     assert "keyring" in await run("import keyring")
     assert "outside the sandbox" in await run(f"open({str(secret / 'vault_index.yaml')!r})")
     assert "starting programs" in await run("import os; os.system('echo hi')")
+    # Around subprocess: a C library loaded by hand, or the fork/exec helper itself.
+    assert "starting programs" in await run("import ctypes; ctypes.CDLL(None).system(b'id')")
+    if sys.platform != "win32":
+        assert "starting programs" in await run(
+            "import _posixsubprocess; _posixsubprocess.fork_exec()"
+        )
+    assert await run("import numpy; print(numpy.arange(4).sum())") == "OK 6"
     assert await run("while True: pass", timeout=1) == "TIMEOUT"
     assert list((tmp_path / "sb").iterdir()) == []  # nothing left behind
 

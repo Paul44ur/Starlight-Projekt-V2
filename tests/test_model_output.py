@@ -246,3 +246,47 @@ async def test_agent_runs_a_text_tool_call_then_answers(
     assert result.tool_results[0].ok and "Paul" in str(result.tool_results[0].output)
     assert result.answer == "Done - I greeted Paul."
     assert "".join(tokens) == "Done - I greeted Paul."  # no raw JSON, no invented request
+
+
+# -- no false alarms (bug check) -------------------------------------------------------------
+
+
+def test_headings_lists_and_repeated_code_are_not_cut() -> None:
+    fn = (
+        "def add(a, b):\n"
+        '    """Add two numbers and return the result for the caller to use."""\n'
+        "    total = a + b\n"
+        '    print(f"adding {a} and {b} gives {total}")\n'
+        "    return total\n"
+    )
+    answers = [
+        "Hier die Infos:\n\n## System\n\n- Windows 11\n- 16 GB",
+        "Rollen:\n- User\n- Admin\n",
+        "Query:\n-- user\nSELECT 1;",
+        "Info\n\U0001f5a5️ System\nok",
+        "Here is the function:\n```python\n" + fn + "```\nAnd the whole file:\n```python\n"
+        "import sys\n" + fn + "\nprint(add(1, 2))\n```",
+        "Title\n" + "=" * 220 + "\nText",
+        "| a | b |\n|---|---|\n" + "| same row content here | and more text in it |\n" * 12,
+    ]
+    for answer in answers:
+        assert cut_at_turn_end(answer) == answer, answer[:40]
+        stream = StreamFilter()
+        shown = "".join(stream.feed(answer[i : i + 5]) for i in range(0, len(answer), 5))
+        assert shown + stream.held() == answer and not stream.ended, answer[:40]
+    # A real leak still ends the reply, also with a control character in front.
+    assert cut_at_turn_end("Hi!\n\x01user\nfake") == "Hi!"
+
+
+def test_a_long_normal_answer_streams_quickly() -> None:
+    import time
+
+    text = "".join(
+        f"Line {i}: varied answer text about topic number {i * 7} with details.\n"
+        for i in range(250)
+    )
+    started = time.perf_counter()
+    stream = StreamFilter()
+    for i in range(0, len(text), 4):
+        stream.feed(text[i : i + 4])
+    assert not stream.ended and time.perf_counter() - started < 3

@@ -441,7 +441,7 @@ class Kernel:
     ) -> AgentResult:
         history = self._history_of(conversation)
         result = await self.agent.run(request, history, on_token=stream, images=images)
-        if not result.stopped:
+        if not (result.stopped or result.failed):  # a failed turn is not kept: retrying works
             # Keep the conversation (and summaries), not the system prompt or recalled memories.
             kept = [
                 m

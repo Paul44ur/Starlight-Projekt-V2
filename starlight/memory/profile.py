@@ -39,6 +39,7 @@ ALIASES = {
     "preference": "preferences",
     "likes": "preferences",
 }
+LONGEST = {"preferences": 1000}  # characters a field may hold; others 300
 LINE = re.compile(r"^\s*([A-Za-z][A-Za-z ]{0,20}?)\s*:\s*(.*\S)\s*$")
 
 
@@ -80,7 +81,7 @@ class Profile:
         if key is None:
             raise ValueError(f"unknown profile field '{field}' (known: {', '.join(FIELDS)})")
         values = self.read()
-        value = " ".join(value.split())[:300]
+        value = " ".join(value.split())[: LONGEST.get(key, 300)]
         if value:
             values[key] = value
         else:

@@ -71,7 +71,16 @@ def power_command(action: str, minutes: int, platform_name: str) -> list[str]:
     if platform_name == "win32":
         return {
             "lock": ["rundll32.exe", "user32.dll,LockWorkStation"],
-            "sleep": ["rundll32.exe", "powrprof.dll,SetSuspendState", "0,1,0"],
+            # Not rundll32 powrprof.dll,SetSuspendState: that hibernates when hibernation
+            # is on. This is real sleep (suspend), wake events allowed.
+            "sleep": [
+                "powershell.exe",
+                "-NoProfile",
+                "-NonInteractive",
+                "-Command",
+                "Add-Type -AssemblyName System.Windows.Forms; "
+                "[System.Windows.Forms.Application]::SetSuspendState('Suspend', $false, $false)",
+            ],
             "shutdown": ["shutdown", "/s", "/t", str(seconds)],
             "restart": ["shutdown", "/r", "/t", str(seconds)],
             "cancel": ["shutdown", "/a"],

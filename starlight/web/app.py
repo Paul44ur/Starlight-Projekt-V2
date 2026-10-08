@@ -176,7 +176,10 @@ def extract_text(name: str, data: bytes) -> str:
 
     suffix = Path(name).suffix.lower()
     if suffix in TEXTS:
-        text = data.decode("utf-8", errors="replace")
+        try:
+            text = data.decode("utf-8-sig")
+        except UnicodeDecodeError:  # older Windows files and German Excel CSVs
+            text = data.decode("cp1252", errors="replace")
         if suffix in {".html", ".htm"}:
             from starlight.text import html_to_text
 

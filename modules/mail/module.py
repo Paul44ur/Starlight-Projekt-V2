@@ -464,26 +464,47 @@ def _named(name: str, address: str) -> str:
 
 
 def _decode(value: str) -> str:
+    """A header as one line of text: encoded words decoded, folding (line breaks a long
+    header is wrapped with) removed, so it can be shown and reused in a reply."""
     try:
-        return str(make_header(decode_header(value)))
-    except (ValueError, UnicodeDecodeError):
-        return value
+        text = str(make_header(decode_header(value)))
+    except (ValueError, UnicodeDecodeError, LookupError):
+        text = value
+    return " ".join(text.split())
+
+
+def _text_of(part: Message) -> str:
+    payload = part.get_payload(decode=True)
+    if not isinstance(payload, bytes):
+        return str(part.get_payload())
+    try:
+        return payload.decode(part.get_content_charset() or "utf-8", errors="replace")
+    except LookupError:  # a charset Python does not know, e.g. "unknown-8bit"
+        return payload.decode("utf-8", errors="replace")
 
 
 def _body(message: Message) -> str:
-    if message.is_multipart():
-        for part in message.walk():
-            if part.get_content_type() == "text/plain" and "attachment" not in str(
-                part.get("Content-Disposition", "")
-            ):
-                payload = part.get_payload(decode=True)
-                if isinstance(payload, bytes):
-                    return payload.decode(part.get_content_charset() or "utf-8", errors="replace")
-        return "(no plain-text part)"
-    payload = message.get_payload(decode=True)
-    if isinstance(payload, bytes):
-        return payload.decode(message.get_content_charset() or "utf-8", errors="replace")
-    return str(message.get_payload())
+    """The message's text: its plain-text part, else its HTML part as text."""
+    if not message.is_multipart():
+        text = _text_of(message)
+        if message.get_content_type() == "text/html":
+            from starlight.text import html_to_text
+
+            text = html_to_text(text).text
+        return text
+    html = None
+    for part in message.walk():
+        if "attachment" in str(part.get("Content-Disposition", "")):
+            continue
+        if part.get_content_type() == "text/plain":
+            return _text_of(part)
+        if part.get_content_type() == "text/html" and html is None:
+            html = part
+    if html is not None:
+        from starlight.text import html_to_text
+
+        return html_to_text(_text_of(html)).text
+    return "(no text part)"
 
 
 def _logout(client: imaplib.IMAP4_SSL) -> None:
