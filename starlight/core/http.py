@@ -218,9 +218,9 @@ class PoliteHttp:
             response = await self._send(
                 "GET", f"{origin}/robots.txt", host, self.config.per_domain_interval
             )
-            if response.status in (401, 403):
-                parser.parse(["User-agent: *", "Disallow: /"])
-            elif response.ok:
+            # RFC 9309: robots.txt that cannot be read for a 4xx reason (401 and 403
+            # included) means there are no rules for crawlers.
+            if response.ok:
                 parser.parse(response.text.splitlines())
             else:
                 parser.parse([])  # no robots.txt: everything allowed

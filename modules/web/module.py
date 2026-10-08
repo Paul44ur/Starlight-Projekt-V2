@@ -40,6 +40,10 @@ class Config(BaseModel):
     max_chars: int = 8000
     browser_fallback: bool = True  # use the headless browser when a page needs JS
     headless: bool = True
+    # web.fetch reads the one page asked for, like a browser would. False: it skips the
+    # site's robots.txt (which is meant for crawlers); fetch_many, research, page watches
+    # and news always follow it.
+    respect_robots_on_fetch: bool = True
 
 
 class WebModule(Module):
@@ -100,11 +104,16 @@ class WebModule(Module):
     @tool
     async def fetch(self, url: str, render_js: bool = False, max_chars: int = 0) -> dict[str, Any]:
         """Read a web page as text. Set render_js only for pages that need JavaScript."""
+        return await self._fetch(url, render_js, max_chars, self.config.respect_robots_on_fetch)
+
+    async def _fetch(
+        self, url: str, render_js: bool, max_chars: int, robots: bool
+    ) -> dict[str, Any]:
         limit = max_chars or self.config.max_chars
         try:
             if render_js:
-                return await self._render(url, limit)
-            response = await self.ctx.http.get(url)
+                return await self._render(url, limit, robots)
+            response = await self.ctx.http.get(url, respect_robots=robots)
         except RobotsDisallowed as exc:
             return {"url": url, "error": str(exc)}
         if not response.ok:
@@ -128,7 +137,7 @@ class WebModule(Module):
         page = html_to_text(response.text, response.url, limit)
         if self.config.browser_fallback and self._needs_js(page.text):
             try:
-                return await self._render(url, limit)
+                return await self._render(url, limit, robots)
             except BrowserUnavailable:
                 pass
         await self.ctx.publish("web.fetched", {"url": response.url, "status": response.status})
@@ -146,11 +155,11 @@ class WebModule(Module):
         lowered = text.lower()
         return len(text) < 200 or any(h in lowered for h in JS_HINTS)
 
-    async def _render(self, url: str, limit: int) -> dict[str, Any]:
+    async def _render(self, url: str, limit: int, robots: bool | None = None) -> dict[str, Any]:
         context = await self.browser.new_context()
         try:
             page = await context.new_page()
-            status = await self.browser.goto(page, url)
+            status = await self.browser.goto(page, url, robots)
             await page.wait_for_load_state("networkidle", timeout=15000)
             html = await page.content()
             final_url = page.url
@@ -173,7 +182,8 @@ class WebModule(Module):
 
         async def one(url: str) -> dict[str, Any]:
             try:
-                return await self.fetch(url, max_chars=max_chars_each)
+                # Crawling several pages always follows robots.txt.
+                return await self._fetch(url, False, max_chars_each, True)
             except HttpError as exc:
                 return {"url": url, "error": str(exc)}
 

@@ -1,4 +1,5 @@
 # The apps module (modules/apps): open programs, files and links; list, focus, arrange and
-# close windows. Opening a program the first time asks; after a yes it opens without asking
-# (the list is in data/modules/apps/allowed.json; `apps.forget` removes one).
+# close windows. Installed programs open without asking; with ask_first_open: true the
+# first time each one asks (the yes-list is in data/modules/apps/allowed.json).
 extra_folders: []     # more folders with program shortcuts (.lnk / .desktop) to index
+ask_first_open: false

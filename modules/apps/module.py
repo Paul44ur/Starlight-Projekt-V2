@@ -32,6 +32,7 @@ RUNNABLE = {
 
 class Config(BaseModel):
     extra_folders: list[str] = Field(default_factory=list)
+    ask_first_open: bool = True  # ask the first time each program is opened
 
 
 class AppsModule(Module):
@@ -116,7 +117,7 @@ class AppsModule(Module):
         time asks; after a yes that program opens without asking."""
         program = self._match(name)
         allowed = self._allowed()
-        if program.name not in allowed:
+        if self.config.ask_first_open and program.name not in allowed:
             if not await self.ctx.ui.confirm(
                 f"Open {program.name}? (Next time it opens without asking.)"
             ):

@@ -79,6 +79,9 @@ def how_to_add(host: str) -> str:
 
 class Config(BaseModel):
     timeout: float = 5.0
+    # True: any host may be pinged, checked and contacted, not only the servers listed in
+    # servers.yaml (SSH still needs the login settings there).
+    any_host: bool = False
     watch: bool = False  # ping every server on a schedule and alert when one goes down
     watch_interval: float = 60.0
 
@@ -129,6 +132,8 @@ class NetworkModule(Module):
         for key, server in servers.items():
             if server.host == name:
                 return key, server
+        if self.config.any_host and name.strip():
+            return name.strip(), Server(host=name.strip())
         raise NotAllowed(
             f"'{name}' is not in {SERVERS_FILE} (Starlight's config folder), so Starlight will "
             "not touch it. To allow it, the user can add it to that file, indented exactly "

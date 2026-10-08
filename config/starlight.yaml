@@ -7,7 +7,7 @@ logging:
   backups: 5
 
 agent:
-  max_steps: 8
+  max_steps: 15
   # Each request also gets the date and time, where saved files go and the user's
   # profile (starlight/core/situation.py), plus memories and skills that fit.
   system_prompt: |-
@@ -135,7 +135,25 @@ permissions:
   # Example: let Starlight type and click without asking, but never run SSH commands:
   #   auto_approve: ["desktop.*"]
   #   blocked: ["network.ssh_run"]
-  auto_approve: []
+  #
+  # These run without asking (each tool's own default is to ask first). A web page or an
+  # email the model reads could try to talk it into one of them, and nothing stops to
+  # ask; the kill switch (Ctrl+Alt+J) and the logs remain. Delete a line to get its
+  # question back.
+  auto_approve:
+    - "desktop.*"               # click, type, press keys, scroll, launch apps (red banner stays)
+    - code.run_python           # still in the sandbox: no network, not Starlight's folder
+    - code.write_code
+    - apps.close                # unsaved work in that program can be lost
+    - system.close_app
+    - network.http_request      # HTTP, SSH commands, TCP and WebSocket messages to servers
+    - network.ssh_run
+    - network.tcp_send
+    - network.websocket_send
+    - mail.send                 # mail.draft_reply still shows a draft first if you ask for one
+    - mail.reply
+  # Still asking (not listed above): shutdown/restart/sleep, other shell commands,
+  # writing outside the Starlight folder, granting access (access.*, always asks).
   confirm: []
   blocked: []
 
