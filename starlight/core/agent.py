@@ -40,6 +40,7 @@ class AgentResult:
     tool_results: list[ToolResult] = field(default_factory=list)
     steps: int = 0
     stopped: bool = False  # True if the kill switch ended the run
+    failed: bool = False  # True if the model could not be reached or refused the request
     messages: list[Message] = field(default_factory=list)
     usage: list[dict[str, Any]] = field(default_factory=list)
 
@@ -200,11 +201,20 @@ class Agent:
                 self._log.exception("model call failed", provider=self.provider.name)
                 if self.stats is not None:
                     self.stats.record("errors", source="model")
-                result.answer = (
-                    f"The model ({self.provider.name}) is not available: "
-                    f"{type(exc).__name__}: {exc}. Is the model server running? "
-                    "Try `starlight model serve`."
-                )
+                result.failed = True
+                status = getattr(getattr(exc, "response", None), "status_code", None)
+                if status == 400:  # llama-server: the prompt does not fit the context
+                    result.answer = (
+                        f"The model ({self.provider.name}) turned the request down, most "
+                        "likely because it is too long for its context window. Send less "
+                        "(a shorter text or fewer files), or start a new conversation."
+                    )
+                else:
+                    result.answer = (
+                        f"The model ({self.provider.name}) is not available: "
+                        f"{type(exc).__name__}: {exc}. Is the model server running? "
+                        "Try `starlight model serve`."
+                    )
                 return
             self._record_usage(response, result)
             messages.append(Message("assistant", response.content, tool_calls=response.tool_calls))

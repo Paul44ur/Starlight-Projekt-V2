@@ -188,6 +188,7 @@ class Kernel:
         # turns so no exchange is lost from it.
         self.conversations = ConversationStore(self.paths.data / "conversations")
         self._histories: dict[str, list[Message]] = {}
+        self._taken_back: dict[str, tuple[int, list[Message]]] = {}  # see take_back
         self._conversation_locks: dict[str, asyncio.Lock] = {}
         self._hotkey = hotkey
         self._watcher: asyncio.Task[None] | None = None
@@ -441,7 +442,7 @@ class Kernel:
     ) -> AgentResult:
         history = self._history_of(conversation)
         result = await self.agent.run(request, history, on_token=stream, images=images)
-        if not result.stopped:
+        if not (result.stopped or result.failed):  # a failed turn is not kept: retrying works
             # Keep the conversation (and summaries), not the system prompt or recalled memories.
             kept = [
                 m
@@ -459,6 +460,38 @@ class Kernel:
     def history(self) -> list[Message]:
         """The current conversation's messages."""
         return self._history_of(self.conversations.current)
+
+    async def take_back(self, conversation: str | None = None) -> str | None:
+        """Remove the last exchange (your last message and everything after it) from a
+        conversation, to ask it again. Returns that message, or None if there is none;
+        `put_back` undoes it."""
+        name = conversation or self.conversations.current
+        lock = self._conversation_locks.setdefault(name, asyncio.Lock())
+        async with lock:
+            history = self._history_of(name)
+            last = next(
+                (i for i in range(len(history) - 1, -1, -1) if history[i].role == "user"), -1
+            )
+            if last < 0:
+                return None
+            self._histories[name] = history[:last]
+            self._taken_back[name] = (last, history[last:])
+            self.conversations.save(name, self._histories[name])
+            return history[last].content
+
+    async def put_back(self, conversation: str | None = None) -> None:
+        """Restore what `take_back` removed, when asking again was stopped or failed and so
+        kept nothing. Does nothing if the conversation has moved on since."""
+        name = conversation or self.conversations.current
+        lock = self._conversation_locks.setdefault(name, asyncio.Lock())
+        async with lock:
+            length, removed = self._taken_back.pop(name, (-1, []))
+            history = self._history_of(name)
+            if not removed or len(history) != length:
+                return
+            self._histories[name] = [*history, *removed]
+            with contextlib.suppress(OSError, KeyError):  # deleted meanwhile
+                self.conversations.save(name, self._histories[name])
 
     def new_conversation(self, title: str = "") -> str:
         """Start a fresh conversation and make it the current one."""

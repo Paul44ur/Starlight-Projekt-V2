@@ -6,6 +6,7 @@ python -I _starlight_guard.py -m pytest -q
 
 import json
 import os
+import re
 import runpy
 import sys
 
@@ -24,7 +25,15 @@ _NO_PROGRAMS = {
     "os.startfile",
     "os.fork",
     "os.forkpty",
+    "_winapi.CreateProcess",  # Windows, below subprocess
 }
+# C functions that start programs, reached through ctypes (e.g. libc's system()). Loading
+# libraries stays allowed: numpy and others load theirs that way.
+_PROGRAM_FUNCTIONS = re.compile(
+    r"_?w?(system|popen|exec\w*|spawn\w*)|fork|vfork|forkpty|posix_spawnp?|clone3?|syscall"
+    r"|CreateProcess\w*|WinExec|ShellExecute\w*",
+    re.IGNORECASE,
+)
 _FILE_EVENTS = {"open", "os.listdir", "os.scandir", "os.remove", "os.rename", "shutil.rmtree"}
 _SSH = os.path.normcase(os.path.join(os.path.expanduser("~"), ".ssh"))
 
@@ -45,6 +54,9 @@ def _denied_path(path: object) -> bool:
 def _hook(event: str, args: tuple[object, ...]) -> None:
     if event in _NO_PROGRAMS:
         raise PermissionError(f"sandbox: starting programs is not allowed ({event})")
+    symbol = args[1] if event.startswith("ctypes.dlsym") and len(args) > 1 else None
+    if isinstance(symbol, str) and _PROGRAM_FUNCTIONS.fullmatch(symbol):
+        raise PermissionError(f"sandbox: starting programs is not allowed ({symbol})")
     if not _NETWORK and event in _NO_NETWORK:
         raise PermissionError("sandbox: network access is not allowed")
     if event == "import" and args and str(args[0]).split(".")[0] in _BLOCKED_MODULES:
@@ -58,6 +70,18 @@ if _settings.get("memory_mb") and sys.platform != "win32":
 
     _limit = int(_settings["memory_mb"]) * 2**20  # set here, before any user code runs
     resource.setrlimit(resource.RLIMIT_AS, (_limit, _limit))
+
+
+def _no_fork_exec(*args: object, **kwargs: object) -> None:
+    raise PermissionError("sandbox: starting programs is not allowed (fork_exec)")
+
+
+try:  # below subprocess on Linux/macOS, without an audit event of its own
+    import _posixsubprocess
+
+    _posixsubprocess.__dict__["fork_exec"] = _no_fork_exec
+except ImportError:  # Windows
+    pass
 
 sys.addaudithook(_hook)
 sys.path.insert(0, os.getcwd())  # -I leaves the working folder off the path

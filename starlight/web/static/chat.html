@@ -129,14 +129,41 @@ function addMsg(who, text, files) {
     const tools = el("div", "tools");
     const copy = el("button", "icon", "Copy");
     copy.onclick = () => navigator.clipboard.writeText(body.textContent).then(() => toast("Copied"));
-    const retry = el("button", "icon", "Retry");
-    retry.onclick = () => { if (lastQuestion) ask(lastQuestion, []); };
+    const retry = el("button", "icon regen", "Regenerate");
+    retry.title = "Ask the last message again and replace this answer";
+    retry.onclick = () => regenerate(m);
     tools.append(copy, retry);
     m.appendChild(tools);
   }
   log.appendChild(m);
   if (stick) scroll();
   return body;
+}
+// Only the latest answer can be regenerated: it replaces that answer. An answer that was
+// stopped or failed was never kept, so for that one the question is simply asked again.
+function regenerate(msg) {
+  const answers = log.querySelectorAll(".msg.bot");
+  if (msg !== answers[answers.length - 1]) { toast("Only the latest answer can be regenerated"); return; }
+  if (current) { toast("Wait until this answer is finished"); return; }
+  if (!ws || ws.readyState !== 1) { toast("Not connected"); return; }
+  if (msg.dataset.kept) {
+    msg.remove();
+    ws.send(JSON.stringify({ type: "regenerate", conversation }));
+    return;
+  }
+  let q = msg.previousElementSibling;
+  while (q && !q.classList.contains("you")) q = q.previousElementSibling;
+  const text = q ? q.querySelector(".body").textContent : lastQuestion;
+  if (!text) { toast("Nothing to ask again"); return; }
+  msg.remove();
+  ws.send(JSON.stringify({ type: "ask", text, conversation }));
+}
+function addStats(body, stats) {
+  if (!stats || !stats.seconds) return;
+  const parts = [];
+  if (stats.tokens_per_second) parts.push(stats.tokens_per_second + " tok/s");
+  parts.push(stats.seconds + " s");
+  body.parentElement.appendChild(el("div", "att", parts.join(" · ")));
 }
 function addSys(text) { const stick = atBottom(); log.appendChild(el("div", "msg sys", text)); if (stick) scroll(); }
 
@@ -157,6 +184,8 @@ function handle(m) {
     // The final answer replaces what streamed in: it is the cleaned one (a reply cut
     // where the model started repeating itself may have streamed a little too far).
     if (m.text || !current) (current || (current = addMsg("bot", ""))).textContent = m.text;
+    addStats(current, m.stats);
+    if (!m.stopped && !m.failed) current.parentElement.dataset.kept = "1";
     if (m.stopped) addSys("Kill switch engaged. Press Resume on the PC to continue.");
     else if (speakAnswers) say(m.text);
     current = null; loadList();
@@ -326,7 +355,14 @@ async function loadList() {
     ren.onclick = async (e) => { e.stopPropagation(); const title = prompt("New name", c.title); if (title) { await api("/api/conversations/" + c.id, { method: "PATCH", body: { title } }); loadList(); } };
     const del = el("button", "icon", "🗑"); del.title = "Delete";
     del.onclick = async (e) => { e.stopPropagation(); if (confirm("Delete \"" + c.title + "\"?")) { await api("/api/conversations/" + c.id, { method: "DELETE" }); if (c.id === conversation) { conversation = null; log.innerHTML = ""; } loadList(); } };
-    acts.append(ren, del); row.append(t, acts);
+    const exp = el("button", "icon", "⤓"); exp.title = "Download as a Markdown file";
+    exp.onclick = (e) => {
+      e.stopPropagation();
+      const a = document.createElement("a");
+      a.href = "/api/conversations/" + c.id + "/export"; a.download = "";
+      document.body.appendChild(a); a.click(); a.remove();
+    };
+    acts.append(ren, exp, del); row.append(t, acts);
     row.onclick = () => open(c.id);
     list.appendChild(row);
   });
@@ -336,7 +372,10 @@ async function open(id) {
   let data;
   try { data = await api("/api/conversations/" + id); } catch (e) { toast(e.message); return; }
   conversation = id; log.innerHTML = ""; current = null;
-  data.messages.forEach(m => addMsg(m.role === "user" ? "you" : "bot", m.content));
+  data.messages.forEach(m => {
+    const body = addMsg(m.role === "user" ? "you" : "bot", m.content);
+    if (m.role !== "user") body.parentElement.dataset.kept = "1";
+  });
   if (!data.messages.length) addSys("New conversation. Ask anything.");
   loadList(); scroll();
 }

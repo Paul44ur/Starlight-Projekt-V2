@@ -35,11 +35,16 @@ TURN_MARKERS = (
     "<end_of_turn>",
     "\nuser\n",
 )
-# A line that is only a role name, maybe after a stray character or two: a leaked
-# "<|im_start|>user" whose special token came out as a symbol ("\n🐂user\n").
-_ROLE_LINE = re.compile(r"\n[^\w\s]{0,4}[ \t]*(?:user|assistant|system)[ \t]*\n", re.IGNORECASE)
-# A reply that repeats a passage this long word for word is stuck in a loop.
-REPEAT = 160
+# A line that is only a lowercase role name, maybe after a stray symbol or control
+# character: a leaked "<|im_start|>user" whose special token came out as a symbol
+# ("\n🐂user\n"). Never markdown or ASCII punctuation, so "## System", "- User" or
+# "-- user" in an answer stay; leaked roles are lowercase, headings are not.
+_STRAY = r"(?:[^\x00-\x7f\w\s]|[\x00-\x08\x0b\x0c\x0e-\x1f])"
+_ROLE_LINE = re.compile(rf"\n{_STRAY}{{0,4}}[ \t]*(?:user|assistant|system)[ \t]*\n")
+# A reply stuck in a loop repeats a passage this long, word for word, at least LOOPS
+# times. Saying something twice (a function, then the whole file) is not a loop.
+REPEAT = 200
+LOOPS = 3
 
 # How a tool call written as text begins.
 CALL_STARTS = ("```json", "```tool_call", "```\n{", "<tool_call>", '{"name"')
@@ -65,20 +70,60 @@ def cut_at_turn_end(text: str) -> str:
     return text.replace("�", "")
 
 
-def cut_repetition(text: str, size: int = REPEAT) -> str | None:
-    """The text up to where it starts repeating a passage of ``size`` characters, or None
-    when nothing repeats."""
-    for start in range(0, len(text) - size, 20):
-        again = text.find(text[start : start + size], start + 1)
-        if again >= 0:
-            return text[:again].rstrip()
+def cut_repetition(text: str, size: int = REPEAT, loops: int = LOOPS) -> str | None:
+    """The text up to the second copy of a passage of ``size`` characters that comes
+    ``loops`` times (without overlapping), or None when nothing repeats like that."""
+    for start in range(0, len(text) - size * loops + 1, 20):
+        if _copies(text, start, size, loops):
+            return _cut_loop(text, start, size)
     return None
 
 
+def _cut_loop(text: str, at: int, size: int) -> str:
+    """The text up to the second turn of the loop that the passage at ``at`` is part of."""
+    chunk = text[at : at + size]
+    period = text.find(chunk, at + 1) - at  # one turn of the loop
+    first = at  # move back to where the loop really began
+    while first > 0 and text[first - 1] == text[first - 1 + period]:
+        first -= 1
+    return text[: first + period].rstrip()
+
+
+def _copies(text: str, start: int, size: int, loops: int) -> list[int]:
+    """Where the passage at ``start`` and its next copies begin, if it comes ``loops``
+    times. Passages of a few repeated characters (a ===== rule) never count."""
+    chunk = text[start : start + size]
+    if len(set(chunk)) < 20:
+        return []
+    found = [start]
+    while len(found) < loops:
+        again = text.find(chunk, found[-1] + size)
+        if again < 0:
+            return []
+        found.append(again)
+    return found
+
+
+def _tail_loop(text: str, size: int = REPEAT, loops: int = LOOPS) -> int:
+    """Where the earliest of ``loops`` copies (no overlap) of the last ``size`` characters
+    begins, or -1 when they did not come that often."""
+    chunk = text[-size:]
+    if len(chunk) < size or len(set(chunk)) < 20:
+        return -1
+    seen, end, at = 0, len(text), -1
+    while seen < loops:
+        at = text.rfind(chunk, 0, end)
+        if at < 0:
+            return -1
+        seen, end = seen + 1, at
+    return at
+
+
 def _turn_end(text: str) -> int:
-    """Where the turn ends: the first marker or role line, or -1."""
+    """Where the turn ends: the first marker or role line, or -1. A role line at the very
+    start is not an end (nothing was said yet)."""
     marker = _first(text, TURN_MARKERS)
-    role = _ROLE_LINE.search(text)
+    role = _ROLE_LINE.search(text, 1)
     found = [i for i in (marker, role.start() if role else -1) if i >= 0]
     return min(found) if found else -1
 
@@ -111,11 +156,11 @@ class StreamFilter:
         if cut >= 0:
             self.text = self.text[:cut].rstrip()
             self.ended = True
-        elif len(self.text) - self._checked >= 40 and len(self.text) > 2 * REPEAT:
+        elif len(self.text) - self._checked >= 40 and len(self.text) >= LOOPS * REPEAT:
             self._checked = len(self.text)
-            tail = self.text[-REPEAT:]
-            if self.text.find(tail) < len(self.text) - REPEAT:  # said before: a loop
-                self.text = cut_repetition(self.text) or self.text
+            at = _tail_loop(self.text)
+            if at >= 0:  # the model is going round in circles
+                self.text = _cut_loop(self.text, at, REPEAT)
                 self.ended = True
         if self.hold_from is None:
             start = _first(self.text, CALL_STARTS)
@@ -158,9 +203,9 @@ def _first(text: str, needles: tuple[str, ...]) -> int:
 
 # The start of a role line that is not finished yet ("\n", "\n🐂", "\n🐂us", ...).
 _ROLE_START = re.compile(
-    r"\n[^\w\s]{0,4}[ \t]*(?:u(?:s(?:e(?:r)?)?)?|a(?:s(?:s(?:i(?:s(?:t(?:a(?:n(?:t)?)?)?)?)?)?)?)?"
-    r"|s(?:y(?:s(?:t(?:e(?:m)?)?)?)?)?)?[ \t]*",
-    re.IGNORECASE,
+    rf"\n{_STRAY}{{0,4}}[ \t]*"
+    r"(?:u(?:s(?:e(?:r)?)?)?|a(?:s(?:s(?:i(?:s(?:t(?:a(?:n(?:t)?)?)?)?)?)?)?)?"
+    r"|s(?:y(?:s(?:t(?:e(?:m)?)?)?)?)?)?[ \t]*"
 )
 
 

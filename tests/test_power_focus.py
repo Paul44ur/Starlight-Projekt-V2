@@ -63,7 +63,15 @@ def fake_runner(k: Kernel, platform: str) -> list[list[str]]:
             "win32",
             [
                 ["rundll32.exe", "user32.dll,LockWorkStation"],
-                ["rundll32.exe", "powrprof.dll,SetSuspendState", "0,1,0"],
+                [
+                    "powershell.exe",
+                    "-NoProfile",
+                    "-NonInteractive",
+                    "-Command",
+                    "Add-Type -AssemblyName System.Windows.Forms; "
+                    "[System.Windows.Forms.Application]::SetSuspendState("
+                    "'Suspend', $false, $false)",
+                ],
                 ["shutdown", "/s", "/t", "600"],
                 ["shutdown", "/r", "/t", "0"],
                 ["shutdown", "/a"],

@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import Any
 
 import yaml
-from pydantic import BaseModel, ConfigDict, Field, ValidationError
+from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_validator
 
 from starlight.core.paths import Paths
 
@@ -35,6 +35,9 @@ class AgentConfig(_Strict):
     max_tool_modules: int = Field(default=6, ge=1)
 
 
+REMOVED_SERVER_SETTINGS = ("draft_model_path", "draft_max", "draft_min", "gpu_layers_draft")
+
+
 class ServerConfig(_Strict):
     """How `starlight model serve` starts the model server."""
 
@@ -47,13 +50,16 @@ class ServerConfig(_Strict):
     kv_cache_type: str = "q8_0"  # quantized KV cache: longer context in the same VRAM
     parallel: int = 1
     threads: int = 0  # CPU threads for prompt processing; 0: all cores (matters on the CPU build)
-    # Speculative decoding (llama.cpp): a small model of the same family guesses a few
-    # tokens ahead and the big one checks them in one go - same answers, faster. Empty: off.
-    draft_model_path: str = ""
-    draft_max: int = Field(default=16, ge=1)  # tokens guessed ahead at most
-    draft_min: int = Field(default=4, ge=0)
-    gpu_layers_draft: int = 999
     extra_args: list[str] = Field(default_factory=list)
+
+    @model_validator(mode="before")
+    @classmethod
+    def _drop_removed_settings(cls, data: Any) -> Any:
+        """Older versions had a draft model (speculative decoding); config files an older
+        Starlight.exe wrote still name it. Those settings are ignored now."""
+        if isinstance(data, dict):
+            data = {k: v for k, v in data.items() if k not in REMOVED_SERVER_SETTINGS}
+        return data
 
 
 class ModelConfig(_Strict):

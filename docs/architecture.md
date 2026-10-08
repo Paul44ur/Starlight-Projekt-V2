@@ -214,9 +214,9 @@ plus the memory embedder's similarity; `agent.tool_routing: false` sends everyth
 Module code is kept compiled as hash-checked `.pyc` files, so a start no longer compiles
 every module, and an edit is still picked up on hot-reload. `memory/profile.md` holds the
 user's profile; memory extraction fills it in, and it is never merged with other facts.
-With a draft model (`model.server.draft_model_path`, set by the launcher for the default
-model) llama-server does speculative decoding; if the server will not start with the draft,
-the launcher starts it again without.
+(A draft model for speculative decoding was tried and removed again: the launcher deletes
+an old `models/draft` folder, and the `draft_*` server settings older config files name
+are ignored.)
 
 **New features (round 2).** `watch` keeps its watches in `data/modules/watch/watches.json`
 and checks due ones every minute in the primary core through `ctx.http` (no cache);

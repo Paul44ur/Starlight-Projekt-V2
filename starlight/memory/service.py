@@ -38,8 +38,9 @@ time zone, add it as a profile item instead, e.g. {"profile": "home", "value": "
 (profile fields: name, language, home, timezone, preferences).
 
 Answer with JSON only, a list like
-[{"topic": "short topic", "fact": "one or two sentences", "confidence": 0.9}]
-or [] if nothing is worth keeping.
+[{"topic": "a specific topic", "fact": "one or two sentences", "confidence": 0.9}]
+or [] if nothing is worth keeping. A fact on the same topic replaces the old one, so make \
+topics specific ("Sister's name", "Preferred editor"), not broad ("Family", "Tools").
 
 User: {request}
 Assistant: {answer}"""
@@ -292,7 +293,10 @@ class Memory:
             current = self.profile.read().get("preferences", "")
             if value.lower() in current.lower():
                 return
-            value = f"{current}; {value}" if current else value
+            items = [p for p in current.split("; ") if p] + [value]
+            while len(items) > 1 and len("; ".join(items)) > 1000:
+                items.pop(0)  # the oldest go first, so a new one always fits
+            value = "; ".join(items)
         self.profile.set(key, value)
         self._log.info("profile updated", field=key)
 

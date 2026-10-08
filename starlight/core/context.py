@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import json
 from collections.abc import Awaitable, Callable
+from dataclasses import replace
 from typing import Any
 
 from starlight.core.config import ModelConfig
@@ -17,6 +18,7 @@ from starlight.core.logging import get_logger
 from starlight.core.model import Message, ModelProvider
 
 SUMMARY_PREFIX = "Summary of the earlier conversation:\n"
+CUT_NOTE = "\n[... {more} more characters cut: too long for the model's context window]"
 SUMMARIZE_PROMPT = (
     "Summarize this conversation for your own later use. Keep facts, decisions, names, "
     "numbers, open tasks and tool results that still matter. Be concise. Write plain text."
@@ -68,14 +70,33 @@ class ContextManager:
         if estimate_tokens(messages, tools) <= self.budget:
             return messages
         cut = self._cut_index(messages)
-        if cut <= 1:
-            return messages  # nothing old enough to summarize
-        head, old, recent = messages[:1], messages[1:cut], messages[cut:]
-        summary = await self.summarize(old)
-        self._log.info("summarized", messages=len(old), chars=len(summary))
-        if self.on_summary is not None:
-            await self.on_summary(summary)
-        return [*head, Message("system", SUMMARY_PREFIX + summary), *recent]
+        if cut > 1:
+            head, old, recent = messages[:1], messages[1:cut], messages[cut:]
+            summary = await self.summarize(old)
+            self._log.info("summarized", messages=len(old), chars=len(summary))
+            if self.on_summary is not None:
+                await self.on_summary(summary)
+            messages = [*head, Message("system", SUMMARY_PREFIX + summary), *recent]
+        return self._shorten(messages, tools)
+
+    def _shorten(self, messages: list[Message], tools: list[dict[str, Any]]) -> list[Message]:
+        """Still too long (e.g. one huge pasted text or file): cut the longest messages,
+        never the system prompt, until the prompt fits."""
+        over = estimate_tokens(messages, tools) - self.budget
+        if over <= 0:
+            return messages
+        messages = list(messages)
+        while over > 0:
+            index = max(range(1, len(messages)), key=lambda i: len(messages[i].content), default=0)
+            if index == 0 or len(messages[index].content) < 2000:
+                break  # nothing big left to cut
+            message = messages[index]
+            keep = max(1000, len(message.content) - int(over * 3.5) - 500)
+            text = message.content[:keep] + CUT_NOTE.format(more=len(message.content) - keep)
+            messages[index] = replace(message, content=text)
+            self._log.warning("message cut to fit the context", role=message.role, kept=keep)
+            over = estimate_tokens(messages, tools) - self.budget
+        return messages
 
     async def summarize(self, messages: list[Message]) -> str:
         lines = []

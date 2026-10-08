@@ -195,7 +195,10 @@ class FilesModule(Module):
                 f"too large ({size_text(size)}); the limit is {self.config.max_file_mb:g} MB"
             )
 
-        free = target.free or (target.new_free and mode in ("new", "rename"))
+        # A new file anywhere is fine (write_anywhere), but never one Windows can run when
+        # it is opened: in the wrong folder (Startup) that runs at every login.
+        new_ok = target.new_free and mode in ("new", "rename")
+        free = target.free or (new_ok and dest.suffix.lower() not in _RUNNABLE)
         question = self._save_question(dest, mode, size, free)
         if question is not None and not await self.ctx.ui.confirm(question):
             raise FileError(f"the user did not allow this, so nothing was saved to {dest}")

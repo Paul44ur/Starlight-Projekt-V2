@@ -50,13 +50,20 @@ DEFAULT_MODEL_URL = (
     "https://huggingface.co/bartowski/Qwen2.5-14B_Uncensored_Instruct-GGUF/resolve/main/"
     "Qwen2.5-14B_Uncensored_Instruct-Q4_K_M.gguf"
 )
-# Speculative decoding: this small model of the same family (same tokenizer) guesses a few
-# tokens ahead and the big model checks them in one pass - the same answers, written
-# faster. Used with the default model only (or a draft_url you choose); --no-draft: off.
-DEFAULT_DRAFT_URL = (
-    "https://huggingface.co/Qwen/Qwen2.5-0.5B-Instruct-GGUF/resolve/main/"
-    "qwen2.5-0.5b-instruct-q8_0.gguf"
-)
+# --model NAME (or "model" in config/launcher.json) picks one of these; --model-url any other.
+MODEL_PRESETS = {
+    "qwen14b-uncensored": DEFAULT_MODEL_URL,  # the default
+    # The original Qwen2.5-14B-Instruct: same size, more careful, cleaner turn endings.
+    "qwen14b": (
+        "https://huggingface.co/bartowski/Qwen2.5-14B-Instruct-GGUF/resolve/main/"
+        "Qwen2.5-14B-Instruct-Q4_K_M.gguf"
+    ),
+    # Half the video memory (~5 GB) and about twice as fast, for smaller graphics cards.
+    "qwen7b": (
+        "https://huggingface.co/bartowski/Qwen2.5-7B-Instruct-GGUF/resolve/main/"
+        "Qwen2.5-7B-Instruct-Q4_K_M.gguf"
+    ),
+}
 # Voice (optional, --voice): speech-to-text with whisper.cpp and text-to-speech with Piper,
 # both running on this PC. The URLs can be changed in config/launcher.json.
 WHISPER_URL = "https://github.com/ggml-org/whisper.cpp/releases/latest/download/whisper-bin-x64.zip"
@@ -98,8 +105,6 @@ class Settings:
     whisper_url: str = WHISPER_URL
     whisper_model_url: str = WHISPER_MODEL_URL
     piper_url: str = PIPER_URL
-    draft: bool = True  # speculative decoding with a small draft model (see DEFAULT_DRAFT_URL)
-    draft_url: str = ""  # empty: the default draft, and only for the default model
     github_token: str | None = field(default=None, repr=False)
 
     @property
@@ -113,21 +118,6 @@ class Settings:
     @property
     def model_file(self) -> Path:
         return self.models / _file_name(self.model_url)
-
-    @property
-    def draft_source(self) -> str | None:
-        """The draft model to download, or None (off, no model, or a model of another
-        family, whose tokens a Qwen draft could not guess)."""
-        if not (self.draft and self.use_model):
-            return None
-        if self.draft_url:
-            return self.draft_url
-        return DEFAULT_DRAFT_URL if self.model_url == DEFAULT_MODEL_URL else None
-
-    @property
-    def draft_file(self) -> Path | None:
-        source = self.draft_source
-        return self.models / "draft" / _file_name(source) if source else None
 
 
 def _file_name(url: str) -> str:
@@ -148,6 +138,14 @@ def find_root(start: Path) -> Path:
     )
 
 
+def preset_url(name: str) -> str:
+    """The download link of a model preset (see MODEL_PRESETS)."""
+    url = MODEL_PRESETS.get(name.strip().lower())
+    if url is None:
+        raise LauncherError(f"unknown model '{name}' (known: {', '.join(MODEL_PRESETS)})")
+    return url
+
+
 def load_settings(args: argparse.Namespace) -> Settings:
     if args.root:
         start = Path(args.root).resolve()
@@ -159,7 +157,12 @@ def load_settings(args: argparse.Namespace) -> Settings:
     saved = settings.root / "config" / "launcher.json"  # optional, for your own defaults
     if saved.is_file():
         try:
-            for key, value in json.loads(saved.read_text(encoding="utf-8")).items():
+            data = json.loads(saved.read_text(encoding="utf-8"))
+            if not isinstance(data, dict):
+                raise ValueError("expected an object")
+            if "model" in data and "model_url" not in data:  # a preset; model_url wins
+                settings.model_url = preset_url(str(data["model"]))
+            for key, value in data.items():
                 if key in (
                     "model_url",
                     "context",
@@ -174,12 +177,12 @@ def load_settings(args: argparse.Namespace) -> Settings:
                     "whisper_url",
                     "whisper_model_url",
                     "piper_url",
-                    "draft",
-                    "draft_url",
                 ):
                     setattr(settings, key, value)
         except (OSError, ValueError) as exc:
             raise LauncherError(f"{saved} is not valid JSON: {exc}") from exc
+    if getattr(args, "model", None):
+        settings.model_url = preset_url(args.model)
     for key in ("model_url", "context", "variant", "llama_release", "port"):
         value = getattr(args, key)
         if value is not None:
@@ -196,10 +199,6 @@ def load_settings(args: argparse.Namespace) -> Settings:
         settings.tesseract = True
     if args.voice:
         settings.voice = True
-    if args.no_draft:
-        settings.draft = False
-    if args.draft_url:
-        settings.draft_url = args.draft_url
     settings.github_token = os.environ.get("GITHUB_TOKEN") or None
     # Keep uv's cache on the same drive as the install, so it can hardlink packages into .venv
     # instead of copying them (which is slow and prints "Failed to hardlink files" when the
@@ -575,24 +574,19 @@ def ensure_model(settings: Settings, ui: Ui, remote: RemoteFile | None) -> Path:
     return download(settings.model_url, dest, ui, sha256=remote.sha256 if remote else None)
 
 
-def ensure_draft(settings: Settings, ui: Ui, remote: RemoteFile | None) -> Path | None:
-    dest = settings.draft_file
-    source = settings.draft_source
-    if dest is None or source is None:
-        return None
-    if dest.is_file() and (remote is None or remote.size in (None, dest.stat().st_size)):
-        return dest
-    ui.step(f"Downloading the draft model {dest.name} (faster answers)")
-    try:
-        return download(source, dest, ui, sha256=remote.sha256 if remote else None)
-    except (LauncherError, urllib.error.URLError, TimeoutError, OSError) as exc:
-        ui.say(f"   no draft model ({exc}); Starlight runs without it, just a little slower")
-        return None
+def remove_old_draft(settings: Settings, ui: Ui) -> None:
+    """Earlier versions downloaded a small "draft" model for speculative decoding into
+    models/draft. It is no longer used: delete it to free the space."""
+    folder = settings.models / "draft"
+    if not folder.is_dir():
+        return
+    size = sum(f.stat().st_size for f in folder.rglob("*") if f.is_file())
+    shutil.rmtree(folder, ignore_errors=True)
+    if not folder.exists():
+        ui.say(f"   removed the old draft model (no longer used), freed {size / GB:.1f} GB")
 
 
-def write_launcher_config(
-    settings: Settings, server: Path | None, model: Path | None, draft: Path | None = None
-) -> Path:
+def write_launcher_config(settings: Settings, server: Path | None, model: Path | None) -> Path:
     """config/starlight.launcher.yaml: the model server for Starlight. JSON is valid YAML,
     and your own config/starlight.local.yaml still overrides it."""
     if settings.use_model and server is not None and model is not None:
@@ -609,7 +603,6 @@ def write_launcher_config(
                     "model_path": str(model),
                     "port": settings.port,
                     "gpu_layers": 999,
-                    "draft_model_path": str(draft) if draft is not None else "",
                 },
             }
         }
@@ -804,30 +797,17 @@ class Installed:
     uv: Path
     server: Path | None = None
     model: Path | None = None
-    draft: Path | None = None
 
 
 def setup(settings: Settings, ui: Ui) -> Installed:
     """Install whatever is missing."""
     first_run = not (settings.tools / "uv" / exe("uv")).is_file()
-    remote = draft_remote = None
+    remote = None
     if settings.use_model and not settings.model_file.is_file():
         remote = probe(settings.model_url)
-    draft_file, draft_source = settings.draft_file, settings.draft_source
-    if draft_file is not None and draft_source is not None and not draft_file.is_file():
-        try:
-            draft_remote = probe(draft_source)
-        except (LauncherError, urllib.error.URLError, TimeoutError, OSError):
-            draft_remote = None  # ensure_draft says so; never block the start for it
-    if first_run or (remote is not None) or (draft_remote is not None):
+    if first_run or (remote is not None):
         model_size = (remote.size or 0) if remote else 0
-        draft_size = (draft_remote.size or 0) if draft_remote else 0
-        need = (
-            (1.6 * GB if first_run else 0)
-            + (0.2 * GB if settings.use_model else 0)
-            + model_size
-            + draft_size
-        )
+        need = (1.6 * GB if first_run else 0) + (0.2 * GB if settings.use_model else 0) + model_size
         free = shutil.disk_usage(settings.root).free
         ui.say("Starlight will download and set up, inside " + str(settings.root) + ":")
         if first_run:
@@ -837,9 +817,6 @@ def setup(settings: Settings, ui: Ui) -> Installed:
             ui.say(f"   - the llama.cpp model server ({settings.variant})         ~0.2 GB")
         if remote is not None:
             ui.say(f"   - the model {settings.model_file.name:<34} {model_size / GB:.1f} GB")
-        if draft_remote is not None:
-            ui.say(f"   - a draft model for faster answers          {draft_size / GB:.1f} GB")
-            ui.say("     (uses about 1 GB more video memory; turn off with --no-draft)")
         ui.say(f"   Needed: about {need / GB:.1f} GB. Free on this drive: {free / GB:.1f} GB.")
         if free < need + GB:
             raise LauncherError("not enough free disk space for the download")
@@ -860,10 +837,10 @@ def setup(settings: Settings, ui: Ui) -> Installed:
     if settings.use_model:
         installed.server = ensure_llama(settings, ui)
         installed.model = ensure_model(settings, ui, remote)
-        installed.draft = ensure_draft(settings, ui, draft_remote)
+    remove_old_draft(settings, ui)
     maybe_tesseract(settings, ui)
     ensure_voice(settings, ui)
-    write_launcher_config(settings, installed.server, installed.model, installed.draft)
+    write_launcher_config(settings, installed.server, installed.model)
     return installed
 
 
@@ -926,23 +903,7 @@ def start(settings: Settings, ui: Ui, installed: Installed, ask: str | None) -> 
                 server_process = None
             else:
                 server_process = group.start(starlight(uv, "model", "serve"), log, settings.root)
-            try:
-                wait_for_model(settings.port, server_process, log, ui)
-            except LauncherError:
-                if installed.draft is None or server_process is None:
-                    raise
-                if server_process.poll() is None:  # still loading after the timeout
-                    raise
-                # E.g. a draft that does not match the model: run without it rather than
-                # not at all. The next start tries the draft again.
-                print()
-                ui.say(
-                    "   the model server did not start with the draft model; starting it without"
-                )
-                installed.draft = None
-                write_launcher_config(settings, installed.server, installed.model, None)
-                server_process = group.start(starlight(uv, "model", "serve"), log, settings.root)
-                wait_for_model(settings.port, server_process, log, ui)
+            wait_for_model(settings.port, server_process, log, ui)
         if settings.viewer and ask is None:
             viewer_port = 8765
             if not port_in_use(viewer_port):
@@ -1006,11 +967,15 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--voice", action="store_true", help="install speech input and output (about 0.6 GB)"
     )
-    parser.add_argument("--model-url", help="GGUF model to use (a direct download link)")
     parser.add_argument(
-        "--no-draft", action="store_true", help="no draft model (speculative decoding off)"
+        "--model",
+        choices=list(MODEL_PRESETS),
+        help="a ready-made model choice (default qwen14b-uncensored)",
     )
-    parser.add_argument("--draft-url", help="GGUF draft model of the same family as the model")
+    parser.add_argument("--model-url", help="GGUF model to use (a direct download link)")
+    # Accepted so older shortcuts keep working; the draft model was removed.
+    parser.add_argument("--no-draft", action="store_true", help=argparse.SUPPRESS)
+    parser.add_argument("--draft-url", help=argparse.SUPPRESS)
     parser.add_argument("--context", type=int, help="context window in tokens")
     parser.add_argument("--variant", choices=["vulkan", "cpu"], help="llama.cpp build")
     parser.add_argument("--llama-release", help='llama.cpp release tag (default "latest")')

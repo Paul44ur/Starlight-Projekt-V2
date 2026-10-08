@@ -129,9 +129,7 @@ Starlight will download and set up, inside C:\Starlight:
    - the Chromium browser for web pages and logins ~0.3 GB
    - the llama.cpp model server (vulkan)         ~0.2 GB
    - the model Qwen2.5-14B_Uncensored_Instruct-Q4_K_M.gguf 8.4 GB
-   - a draft model for faster answers          0.5 GB
-     (uses about 1 GB more video memory; turn off with --no-draft)
-   Needed: about 10.7 GB. Free on this drive: 250.0 GB.
+   Needed: about 10.2 GB. Free on this drive: 250.0 GB.
 Continue? [Y/n]
 ```
 
@@ -170,13 +168,13 @@ Run `Starlight.exe --help` in a terminal to see every option. The most useful on
 
 | Option | What it does |
 | --- | --- |
+| `--model qwen7b` | Use a ready-made model choice instead of the default (see [A different model](#a-different-model)). |
 | `--model-url <link>` | Use another model (a direct download link to a `.gguf` file). |
 | `--context 16384` | A smaller context window: uses less video memory. |
 | `--variant cpu` | Run without a graphics card (slow). |
 | `--terminal` | Chat in the window instead of opening the browser. |
 | `--both` | Open the browser chat **and** a terminal chat together — both talk to the same Starlight (one conversation, one kill switch). |
 | `--voice` | Also install speech: talk to Starlight and hear its answers (about 0.6 GB, Windows; `"voice": true` in `launcher.json` keeps it). |
-| `--no-draft` | No draft model. By default a small Qwen2.5-0.5B model guesses a few words ahead and the big model checks them in one go (speculative decoding): the same answers, written faster, for about 1 GB more video memory. |
 | `--no-viewer` | Don't start the statistics viewer. |
 | `--update` | Download the newest uv and llama.cpp again. |
 | `--setup-only` | Download and set up, then exit without starting. |
@@ -189,7 +187,16 @@ To use options every time, put them into `config\launcher.json`, for example:
 
 #### A different model
 
-Any GGUF model with tool calling works, such as Qwen2.5 or Llama 3.1 Instruct. As a rule
+Three models are ready to pick with `--model <name>`, or `"model": "<name>"` in
+`config\launcher.json`. Each is downloaded the first time it is used:
+
+| Name | Model | Video memory |
+| --- | --- | --- |
+| `qwen14b-uncensored` | Qwen2.5-14B Instruct, uncensored (the default) | about 10 GB |
+| `qwen14b` | Qwen2.5-14B Instruct, the original: more careful, cleaner turn endings | about 10 GB |
+| `qwen7b` | Qwen2.5-7B Instruct: about twice as fast, a little less capable | about 5 GB |
+
+Any other GGUF model with tool calling works too, such as Llama 3.1 Instruct. As a rule
 of thumb:
 
 | Video memory | Model size at Q4_K_M |
@@ -200,11 +207,8 @@ of thumb:
 
 On [Hugging Face](https://huggingface.co), open the model's *Files* tab, copy the
 download link of the `.gguf` file and start `Starlight.exe --model-url <link>`. Or put
-`"model_url": "<link>"` into `config\launcher.json`.
-
-A different model gets no draft model, because the draft must come from the same model
-family. If your model has a small sibling (for example Llama 3.2 1B for Llama 3.1 8B),
-give it with `--draft-url <link>` or `"draft_url"` in `launcher.json`.
+`"model_url": "<link>"` into `config\launcher.json` (a link wins over a `model` name).
+Models you no longer use stay in `models\`; delete their `.gguf` files to free the space.
 
 ### Other ways to install
 
@@ -282,7 +286,10 @@ colored terminal chat. Both use the same assistant, settings and safeguards.
 **The web chat.** Your conversations are saved: the list on the left reopens, renames,
 searches and deletes them (the terminal continues the most recent one). Drop pictures or
 documents (PDF, Word, Excel, text) onto the chat, or press 📎, to send them with your
-message. Every answer has **Copy** and **Retry**. **Settings** shows what each tool may do
+message. Every answer has **Copy**, and the latest one **Regenerate** (asks the same
+question again and replaces that answer); under it you see how fast it was written
+(tokens per second) and how long it took. ⤓ next to a conversation downloads it as a
+Markdown file. **Settings** shows what each tool may do
 (change it with one click), turns modules on and off, and pairs your phone. **Memory**
 lets you read, correct and delete what Starlight remembers, and approve or undo the skills
 it learned. ◐ switches between light, dark and your system's theme.
