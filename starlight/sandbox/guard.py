@@ -6,6 +6,7 @@ python -I _starlight_guard.py -m pytest -q
 
 import json
 import os
+import re
 import runpy
 import sys
 
@@ -25,8 +26,14 @@ _NO_PROGRAMS = {
     "os.fork",
     "os.forkpty",
     "_winapi.CreateProcess",  # Windows, below subprocess
-    "ctypes.dlopen",  # loading a C library by hand (e.g. libc's system())
 }
+# C functions that start programs, reached through ctypes (e.g. libc's system()). Loading
+# libraries stays allowed: numpy and others load theirs that way.
+_PROGRAM_FUNCTIONS = re.compile(
+    r"_?w?(system|popen|exec\w*|spawn\w*)|fork|vfork|forkpty|posix_spawnp?|clone3?|syscall"
+    r"|CreateProcess\w*|WinExec|ShellExecute\w*",
+    re.IGNORECASE,
+)
 _FILE_EVENTS = {"open", "os.listdir", "os.scandir", "os.remove", "os.rename", "shutil.rmtree"}
 _SSH = os.path.normcase(os.path.join(os.path.expanduser("~"), ".ssh"))
 
@@ -47,6 +54,9 @@ def _denied_path(path: object) -> bool:
 def _hook(event: str, args: tuple[object, ...]) -> None:
     if event in _NO_PROGRAMS:
         raise PermissionError(f"sandbox: starting programs is not allowed ({event})")
+    symbol = args[1] if event.startswith("ctypes.dlsym") and len(args) > 1 else None
+    if isinstance(symbol, str) and _PROGRAM_FUNCTIONS.fullmatch(symbol):
+        raise PermissionError(f"sandbox: starting programs is not allowed ({symbol})")
     if not _NETWORK and event in _NO_NETWORK:
         raise PermissionError("sandbox: network access is not allowed")
     if event == "import" and args and str(args[0]).split(".")[0] in _BLOCKED_MODULES:
