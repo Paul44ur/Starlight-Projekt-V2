@@ -176,8 +176,15 @@ class KillSwitch:
             self._stop_everything()
 
     def _stop_everything(self) -> None:
+        try:
+            current = asyncio.current_task()
+        except RuntimeError:  # no running loop (a thread)
+            current = None
         for task in list(self._tasks):
-            if not task.done():
+            # The task running now found the switch itself (check() raises in it): a
+            # cancel on top would stay pending and hit its next await after the kill was
+            # already handled.
+            if not task.done() and task is not current:
                 task.cancel(msg="kill switch")
         for owner, callbacks in list(self._cleanups.items()):
             for callback in callbacks:
