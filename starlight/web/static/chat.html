@@ -154,7 +154,9 @@ function handle(m) {
   }
   else if (m.type === "token") { if (!current) current = addMsg("bot", ""); const s = atBottom(); current.textContent += m.text; if (s) scroll(); }
   else if (m.type === "answer") {
-    if (!current || current.textContent.trim() === "") (current || (current = addMsg("bot", ""))).textContent = m.text;
+    // The final answer replaces what streamed in: it is the cleaned one (a reply cut
+    // where the model started repeating itself may have streamed a little too far).
+    if (m.text || !current) (current || (current = addMsg("bot", ""))).textContent = m.text;
     if (m.stopped) addSys("Kill switch engaged. Press Resume on the PC to continue.");
     else if (speakAnswers) say(m.text);
     current = null; loadList();
