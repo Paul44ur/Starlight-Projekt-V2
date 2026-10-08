@@ -73,9 +73,10 @@ class Browser:
             await self.http.count_request(request.url)
         await route.continue_()
 
-    async def goto(self, page: Page, url: str) -> int | None:
+    async def goto(self, page: Page, url: str, respect_robots: bool | None = None) -> int | None:
         """Navigate under the polite limits. Returns the HTTP status if known."""
-        await self.http.navigation_permit(url, self.respect_robots)
+        robots = self.respect_robots if respect_robots is None else respect_robots
+        await self.http.navigation_permit(url, robots)
         response = await page.goto(url, wait_until="domcontentloaded")
         return response.status if response is not None else None
 

@@ -140,15 +140,10 @@ class RemoteConfig(_Strict):
     enabled: bool = False
     # Host names the chat answers to besides this PC, e.g. "my-pc.tail1234.ts.net".
     hosts: list[str] = Field(default_factory=list)
-    # From another device these always ask on that device first, even if they normally
-    # run on their own.
-    confirm: list[str] = Field(
-        default_factory=lambda: [
-            "desktop.*", "code.*", "commands.*", "apps.close", "apps.open", "dev.git_*",
-            "dev.container_*", "access.*", "automations.*", "files.save*", "system.sleep",
-            "system.shutdown", "system.restart", "watch.add", "mail.send", "mail.reply",
-        ]
-    )  # fmt: skip
+    # From another device these always ask on that device first, even if they run on
+    # their own at the PC. Empty: the phone asks exactly when the PC asks. For example
+    # ["desktop.*", "mail.send"] brings the extra questions back.
+    confirm: list[str] = Field(default_factory=list)
     # From another device these never run: they would change what Starlight may do (or
     # set up actions that later run on the PC), which stays a decision made at the PC.
     blocked: list[str] = Field(

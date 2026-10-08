@@ -26,8 +26,8 @@ and answer you on WhatsApp. Anything risky asks you first, and one key press sto
 | **Chat in a browser or the terminal** | A clean web chat (the default) or a colored terminal chat. Both stream answers and ask before risky actions. |
 | **Chat with a local model** | Runs a model such as Qwen2.5-14B on your GPU. Long conversations are summarized, not cut off. |
 | **Remember** | Keeps what it learns as plain text files in the `memory` folder. You can read, edit or delete them. Knows your name, language and home town from your profile, tells you what it knows about you, and tidies up memories that say the same thing (asks first). |
-| **Use the web** | Searches, reads pages and logs in to your accounts. It makes at most 5 requests per second and respects robots.txt. |
-| **Check your servers** | Pings your servers, checks disk space and services over SSH, and alerts you when one goes down. |
+| **Use the web** | Searches, reads pages and logs in to your accounts. It makes at most 5 requests per second. A page you ask for is read like a browser would; crawling several pages (research, page watches) respects robots.txt. |
+| **Check your servers** | Pings and checks any server, runs commands over SSH, and alerts you when one of yours goes down. |
 | **Scan your network** | On hosts you own or are authorized to test: open ports, services, TLS certs, HTTP headers, DNS. Asks first; recon only, never attacks. |
 | **Look up vulnerabilities** | Checks a service or product against the public CVE database (NVD). Pairs with a scan. Free, no key. |
 | **Check certificates** | Reads your servers' TLS certificates and warns when one is about to expire. |
@@ -50,7 +50,7 @@ and answer you on WhatsApp. Anything risky asks you first, and one key press sto
 | **Desktop notifications** | Pops a notification on your screen to get your attention. |
 | **Email** | Reads your inbox and sends mail from your own account. Shows what's unread without marking it read, sorts it into important / can wait / probably spam, drafts replies for you to check, and replies in the same thread (asks before sending). Can tell you right away when someone you choose writes. |
 | **PDFs** | Reads text from PDF files and makes simple PDFs from text. |
-| **Open programs** | "Open Spotify", "open my budget sheet", "bring Outlook to the front" — starts any installed program (asks the first time only), opens files and links, and arranges or closes windows. |
+| **Open programs** | "Open Spotify", "open my budget sheet", "bring Outlook to the front" — starts any installed program, opens files and links, and arranges or closes windows. |
 | **Music and volume** | Play/pause, next/previous track and volume, like the media keys. |
 | **Your own commands** | Name your own scripts once ("backup-photos", "restart the game server") and run them by name. Starlight can run only those, and asks first unless you say otherwise. |
 | **Word and Excel** | Reads .docx and .xlsx files and makes new ones (letters, lists, tables). |
@@ -419,11 +419,9 @@ once with a code shown on your PC.
    to use it like an app.
 
 What is different on the phone:
-- Things that could do harm **always ask on the phone**, even if they run on their own at
-  home: desktop control, running code and your commands, closing or opening programs,
-  git and Docker changes, changing access, automations, sending or answering email,
-  watching a page, and sleep, shutdown or restart of the PC (`web: remote: confirm:` in
-  the config).
+- Actions ask on the phone exactly when they would ask at the PC. To make some always ask
+  on the phone, list them under `web: remote: confirm:` in the config (for example
+  `["desktop.*", "mail.send"]`).
 - Some things only change **on the PC**: permission rules, modules, paired devices,
   skills, and releasing the kill switch (the phone can engage it). From the phone,
   Starlight also won't loosen its own rules, add secrets, servers, logins, commands,
@@ -443,12 +441,21 @@ off with `starlight remote disable`.
   use the internet.
 - **You decide what runs.** Every action is *allowed*, *asks first* or *blocked*. You can
   change this in `config\starlight.yaml` under `permissions`.
+- **What runs without asking, out of the box.** Desktop clicks and typing, running code
+  (in the sandbox), closing programs, network tasks (HTTP, SSH, TCP and WebSocket to any
+  server), and sending or answering email. These are listed under `permissions:
+  auto_approve:` — delete a line and that action asks again. Still asking: shutdown,
+  restart and sleep, your named commands, writing outside the Starlight folder, and
+  granting access. **Be aware:** a web page or an email the model reads could try to talk
+  it into one of these actions, and nothing stops to ask. The kill switch (Ctrl+Alt+J or
+  a screen corner) and `logs\audit.log` remain.
 - **Passwords stay out of files.** Passwords and keys are kept in the Windows Credential
   Manager, never in config files. They are hidden in every log line, and
   `starlight logs scan` checks for leaks.
-- **Servers are on an allow-list.** Starlight only talks to, scans or pings hosts you
-  listed. Read-only commands such as `df` and `uptime` run freely; anything else asks
-  first. A scan of a host you haven't allowed asks you to confirm you're authorized.
+- **Any server, your logins.** Starlight may ping, check and contact any host
+  (`any_host: true` in `config\modules\network.yaml`; `false` limits it to the servers in
+  `config\servers.yaml` again). SSH works with the logins kept there. A scan of a host
+  you haven't allowed still asks you to confirm you're authorized.
 - **Nothing can flood your machine.** When Starlight fetches, pings or scans, responses
   are capped in size and time and connections are limited, so a hostile server can't
   turn a request into a flood against you. Scanning is reconnaissance only — it never
@@ -461,7 +468,8 @@ off with `starlight remote disable`.
   you chose and returns its answer as-is — it adds no filter of its own. How the model
   behaves is down to the model file, which runs entirely on your PC.
 - **Your phone, privately.** Remote use goes only through Tailscale (no open router
-  port), every device is paired with a one-time code, and risky actions ask on the phone.
+  port), every device is paired with a one-time code, and the rules can only be changed
+  at the PC.
   See [Use Starlight from your phone](#use-starlight-from-your-phone).
 - **Everything is logged.** Every action Starlight takes is recorded in
   `logs\audit.log`.

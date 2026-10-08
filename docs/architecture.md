@@ -232,6 +232,17 @@ lock/sleep/shutdown/restart through one command runner per platform; a delayed s
 registers a kill-switch cleanup that cancels it. `memory.duplicates`/`memory.tidy` merge
 near-duplicates found with the index's vectors (never the profile or summaries).
 
+**Fewer questions (safeguards, round 1).** The shipped `config/starlight.yaml` lists the
+tools that no longer ask under `permissions.auto_approve` (desktop.*, code.run_python /
+write_code, apps.close, system.close_app, network.http_request / ssh_run / tcp_send /
+websocket_send, mail.send / reply); the tools' own CONFIRM tags are unchanged, so removing
+a line restores the question. `access.*` asks regardless. `network.any_host` lets the
+network tools reach unlisted hosts; `web.remote.confirm` defaults to empty (the phone asks
+like the PC; `web.remote.blocked` is unchanged); `web.respect_robots_on_fetch: false`
+lets `web.fetch` read the page asked for like a browser while `fetch_many` (research),
+page watches and news follow robots.txt; a robots.txt answering 401/403 means no rules
+(RFC 9309); `apps.ask_first_open: false`; `agent.max_steps` is 15.
+
 ## Build plan status
 
 | Step | | Status |
