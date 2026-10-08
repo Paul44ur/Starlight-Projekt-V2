@@ -39,7 +39,12 @@ from starlight.text import html_to_text
 HISTORY = 50
 
 CURRENCY = r"(?:€|\$|£|¥|EUR|USD|GBP|CHF|CAD|AUD|JPY|SEK|NOK|DKK|PLN|CZK|Fr\.)"
-NUMBER = r"\d{1,3}(?:[.,'\u00a0\u202f]\d{3})*(?:[.,]\d{1,2})?|\d+(?:[.,]\d{1,2})?"
+# With thousands separators (1.234,56 / 1,234.56), or plain digits (1299, 49,99). The first
+# needs at least one group, or "1299" would stop after "129".
+NUMBER = (
+    r"\d{1,3}(?:[.,'\u00a0\u202f]\d{3})+(?:[.,]\d{1,2})?(?!\d)"
+    r"|\d+(?:[.,]\d{1,2})?(?!\d)"
+)
 PRICE = re.compile(
     rf"(?:{CURRENCY}\s?(?P<a>{NUMBER}))|(?:(?P<b>{NUMBER})\s?(?:,-|\.-)?\s?{CURRENCY})"
 )

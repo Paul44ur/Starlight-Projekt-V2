@@ -156,3 +156,26 @@ async def test_polite_and_careful(project: Paths, site: Site) -> None:
         assert not nothing.ok and "nothing on the page matches" in (nothing.error or "")
         assert (await call(k, "watch.list"))["count"] == 0
         assert k.dispatcher.get("watch.add").permission.value == "confirm"  # type: ignore[union-attr]
+
+
+def test_prices_with_the_currency_first() -> None:
+    import sys
+
+    sys.path.append(str(Path(__file__).resolve().parent.parent / "modules"))
+    try:
+        from watch.module import find_price  # type: ignore[import-not-found]
+    finally:
+        sys.path.pop()
+    cases = {
+        "€1299": 1299.0,
+        "$1299.99": 1299.99,
+        "EUR 1299,00": 1299.0,
+        "CHF 2500.-": 2500.0,
+        "USD 10000": 10000.0,
+        "1299 €": 1299.0,
+        "Nur 1.234,56 € heute": 1234.56,
+        "$1,234.56": 1234.56,
+        "Size 42 129,99 €": 129.99,
+        "12.500 €": 12500.0,
+    }
+    assert {text: find_price(text) for text in cases} == cases

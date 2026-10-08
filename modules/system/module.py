@@ -11,6 +11,7 @@ picture; without it, it still reports what the standard library can.
 
 from __future__ import annotations
 
+import json
 import os
 import platform
 import shutil
@@ -99,7 +100,30 @@ class SystemModule(Module):
 
     async def setup(self, ctx: ModuleContext) -> None:
         self.config: Config = ctx.config
-        self._pending: str | None = None  # a shutdown/restart Starlight scheduled
+        # A shutdown/restart Starlight scheduled, kept on disk: after a reload or restart
+        # of Starlight the kill switch must still be able to cancel it.
+        self._pending_file = ctx.data_dir / "pending_shutdown.json"
+        self._pending: str | None = None
+        try:
+            saved = json.loads(self._pending_file.read_text("utf-8"))
+        except (OSError, ValueError):
+            saved = None
+        if isinstance(saved, dict) and float(saved.get("due", 0)) > time.time():
+            self._set_pending(str(saved.get("action", "shutdown")), float(saved["due"]))
+        else:
+            self._clear_pending()
+
+    def _set_pending(self, action: str, due: float) -> None:
+        self._pending = action
+        self._pending_file.parent.mkdir(parents=True, exist_ok=True)
+        self._pending_file.write_text(json.dumps({"action": action, "due": due}))
+        self.ctx.kill_switch.remove_cleanups(self.ctx.name)
+        self.ctx.kill_switch.add_cleanup(self._cancel_on_kill, owner=self.ctx.name)
+
+    def _clear_pending(self) -> None:
+        self._pending = None
+        self._pending_file.unlink(missing_ok=True)
+        self.ctx.kill_switch.remove_cleanups(self.ctx.name)
 
     # -- power -----------------------------------------------------------------------------
 
@@ -129,6 +153,7 @@ class SystemModule(Module):
             with contextlib.suppress(ToolError, KeyError):
                 self._run(power_command("cancel", 0, self._platform()))
             self._pending = None
+            self._pending_file.unlink(missing_ok=True)
 
     @tool
     def lock(self) -> dict[str, Any]:
@@ -146,9 +171,7 @@ class SystemModule(Module):
         minutes = max(0, min(in_minutes, 24 * 60))
         self._power(action, minutes)
         if minutes:
-            self._pending = action
-            self.ctx.kill_switch.remove_cleanups(self.ctx.name)
-            self.ctx.kill_switch.add_cleanup(self._cancel_on_kill, owner=self.ctx.name)
+            self._set_pending(action, time.time() + minutes * 60)
         return {
             action: True,
             "in_minutes": minutes,
@@ -172,8 +195,7 @@ class SystemModule(Module):
     def cancel_shutdown(self) -> dict[str, Any]:
         """Cancel a planned shutdown or restart."""
         self._power("cancel")
-        self._pending = None
-        self.ctx.kill_switch.remove_cleanups(self.ctx.name)
+        self._clear_pending()
         return {"cancelled": True}
 
     @tool

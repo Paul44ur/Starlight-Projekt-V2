@@ -135,6 +135,9 @@ class EmailModule(Module):
                 "smtp_host": smtp_host,
                 "smtp_port": smtp_port,
                 "from_name": self.config.from_name,
+                "watch": self.config.watch,
+                "check_minutes": self.config.check_minutes,
+                "notify_from": list(self.config.notify_from),
             },
             "# The email module (modules/email). The app-password is in the keyring, not here.",
         )
@@ -206,7 +209,7 @@ class EmailModule(Module):
         )
         draft = await self._write(prompt)
         return {
-            "to": original.get("reply_to") or original["from"],
+            "to": original["reply_target"],
             "subject": _reply_subject(original["subject"]),
             "body": draft,
             "note": "Nothing was sent. Send it with mail.reply (it asks first).",
@@ -240,11 +243,10 @@ class EmailModule(Module):
         if not body.strip():
             raise EmailError("what should the reply say?")
         original = await asyncio.to_thread(self._imap_fetch, password, id.strip())
-        to = original.get("reply_to") or original["from"]
+        to = original["reply_target"]
         if reply_all:
-            me = self.config.username.lower()
-            everyone = _addresses(original.get("to", ""), original.get("cc", ""))
-            others = [a for a in everyone if a.lower() != me]
+            skip = {self.config.username.lower(), *(a.lower() for a in _raw_addresses([to]))}
+            others = [a for a in original["recipients"] if a.lower() not in skip]
             to = ", ".join(dict.fromkeys([to, *others]))
         headers = {}
         if original.get("message_id"):
@@ -383,6 +385,10 @@ class EmailModule(Module):
                 "to": _decode(parsed.get("To", "")),
                 "cc": _decode(parsed.get("Cc", "")),
                 "reply_to": _decode(parsed.get("Reply-To", "")),
+                # Where a reply goes, and who else got it: from the raw headers, so a name
+                # like "Müller, Hans" (encoded on the wire) is never split at its comma.
+                "reply_target": _reply_target(parsed),
+                "recipients": _raw_addresses(parsed.get_all("To", []), parsed.get_all("Cc", [])),
                 "subject": _decode(parsed.get("Subject", "")),
                 "date": parsed.get("Date", ""),
                 "message_id": str(parsed.get("Message-ID", "")).strip(),
@@ -433,8 +439,28 @@ def _reply_subject(subject: str) -> str:
     return subject if re.match(r"(?i)\s*(re|aw|sv)\s*:", subject) else f"Re: {subject}"
 
 
-def _addresses(*fields: str) -> list[str]:
-    return [address for _, address in email.utils.getaddresses(list(fields)) if address]
+def _raw_addresses(*fields: list[Any]) -> list[str]:
+    """The bare addresses in raw (still encoded) header values."""
+    values = [str(v) for field in fields for v in field]
+    return [address for _, address in email.utils.getaddresses(values) if "@" in address]
+
+
+def _reply_target(parsed: Message) -> str:
+    """Reply-To, else From, as "Name <address>" with the name decoded."""
+    raw = parsed.get_all("Reply-To") or parsed.get_all("From") or []
+    pairs = [(n, a) for n, a in email.utils.getaddresses([str(v) for v in raw]) if "@" in a]
+    return ", ".join(_named(_decode(n), a) for n, a in pairs)
+
+
+def _named(name: str, address: str) -> str:
+    """'"Müller, Hans" <hans@x.de>': readable, and still one address (quoted name)."""
+    name = " ".join(name.split())
+    if not name:
+        return address
+    if not re.search(r'[][\\()<>@,:;".]', name):  # nothing that needs quoting
+        return f"{name} <{address}>"
+    quoted = name.replace("\\", "\\\\").replace('"', '\\"')
+    return f'"{quoted}" <{address}>'
 
 
 def _decode(value: str) -> str:

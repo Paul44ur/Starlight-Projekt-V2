@@ -214,10 +214,7 @@ class Memory:
         saved = []
         for fact in parse_facts(response.content)[:6]:
             if fact.get("profile"):
-                key = field_key(str(fact["profile"]))
-                if key is not None:
-                    self.profile.set(key, str(fact.get("value", "")))
-                    self._log.info("profile updated", field=key)
+                self._update_profile(str(fact["profile"]), str(fact.get("value", "")))
                 continue
             try:
                 confidence = float(fact.get("confidence", 0.8))
@@ -284,6 +281,20 @@ class Memory:
             await self.sync(force=True)
             self._log.info("memory tidied", merged=len(merged))
         return merged
+
+    def _update_profile(self, field: str, value: str) -> None:
+        """A profile fact the model picked up. Never clears a field, and adds to the
+        preferences instead of replacing them."""
+        key, value = field_key(field), " ".join(value.split())
+        if key is None or not value:
+            return
+        if key == "preferences":
+            current = self.profile.read().get("preferences", "")
+            if value.lower() in current.lower():
+                return
+            value = f"{current}; {value}" if current else value
+        self.profile.set(key, value)
+        self._log.info("profile updated", field=key)
 
     def export(self, target: Path) -> Path:
         """Everything in one file: JSON if the name ends in .json, otherwise Markdown."""

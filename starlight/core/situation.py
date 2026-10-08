@@ -22,7 +22,7 @@ def local_now(timezone: str = "") -> dt.datetime:
 def describe(now: dt.datetime, output_dir: Path | None, profile: dict[str, str]) -> str:
     offset = now.strftime("%z")
     zone = f"UTC{offset[:3]}:{offset[3:]}" if offset else ""
-    name = profile.get("timezone") or now.tzname() or ""
+    name = getattr(now.tzinfo, "key", None) or now.tzname() or ""  # the zone actually used
     when = f"{now:%A}, {now.day} {now:%B %Y}, {now:%H:%M}"
     lines = [f"Now: {when} ({', '.join(p for p in (name, zone) if p)})."]
     if output_dir is not None:

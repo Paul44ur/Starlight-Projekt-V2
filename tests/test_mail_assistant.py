@@ -200,3 +200,24 @@ async def test_new_mail_is_published_once_and_announced(project: Paths, inbox: F
         inbox.messages[16] = mail(16, "Landlord <landlord@haus.at>", "Again", "Hi")
         inbox.unseen.add(16)
         assert await module.check_new() == []  # starts over quietly
+
+
+async def test_reply_to_a_name_with_a_comma(project: Paths, inbox: FakeIMAP) -> None:
+    inbox.messages[20] = mail(
+        20,
+        "=?iso-8859-1?Q?M=FCller=2C_Hans?= <hans@x.de>",
+        "Termin",
+        "Passt Dienstag?",
+        Cc="=?utf-8?Q?Schmidt=2C_Eva?= <eva@x.de>, me@web.de",
+    )
+    sent: list[tuple[Any, ...]] = []
+    async with Kernel(project, ui=User(), vault_backend=MemoryBackend()) as k:
+        module = connect(k, inbox)
+        module._smtp_send = lambda *args: sent.append(args)
+        draft = await call(k, "mail.draft_reply", id="20")
+        assert "hans@x.de" in draft["to"] and "Müller, Hans" in draft["to"]
+        await call(k, "mail.reply", id="20", body="Ja!", reply_all=True)
+    to = sent[0][1]
+    from email.utils import getaddresses
+
+    assert [a for _, a in getaddresses([to])] == ["hans@x.de", "eva@x.de"]
