@@ -171,8 +171,15 @@ async def test_process_sandbox_blocks_what_matters(tmp_path: Path) -> None:
     assert "outside the sandbox" in await run(f"open({str(secret / 'vault_index.yaml')!r})")
     assert "starting programs" in await run("import os; os.system('echo hi')")
     # Around subprocess: a C library loaded by hand, or the fork/exec helper itself.
-    assert "starting programs" in await run("import ctypes; ctypes.CDLL(None).system(b'id')")
-    if sys.platform != "win32":
+    if sys.platform == "win32":
+        assert "starting programs" in await run(
+            "import ctypes; ctypes.CDLL('msvcrt').system(b'echo hi')"
+        )
+        assert "starting programs" in await run(
+            "import ctypes; ctypes.windll.kernel32.WinExec(b'cmd /c echo hi', 0)"
+        )
+    else:
+        assert "starting programs" in await run("import ctypes; ctypes.CDLL(None).system(b'id')")
         assert "starting programs" in await run(
             "import _posixsubprocess; _posixsubprocess.fork_exec()"
         )
