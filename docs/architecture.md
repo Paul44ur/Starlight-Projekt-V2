@@ -243,6 +243,16 @@ lets `web.fetch` read the page asked for like a browser while `fetch_many` (rese
 page watches and news follow robots.txt; a robots.txt answering 401/403 means no rules
 (RFC 9309); `apps.ask_first_open: false`; `agent.max_steps` is 15.
 
+**Round 2.** `commands.shell` runs any command line (`powershell -NoProfile -Command` on
+Windows, `/bin/sh -c` elsewhere) through the same runner, kill-switch cleanup and output
+cap as named commands; it is CONFIRM, needs `shell: true` in commands.yaml, and is in
+`web.remote.blocked` (a shell could rewrite Starlight's own config). `output.write_anywhere`
+makes `PathGuard` mark new files anywhere but Starlight's own folder as `new_free`:
+files.save (new or renamed), pdf.to_pdf and office's new files need no question, while
+replacing, appending and reading outside the Starlight folder still ask. `http` allows 10
+requests/s with 0.5 s per site (a site's crawl-delay still wins), and page watches may run
+every 5 minutes.
+
 ## Build plan status
 
 | Step | | Status |

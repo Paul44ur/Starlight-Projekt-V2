@@ -169,6 +169,7 @@ class Kernel:
             skills=self.skills,
             output_dir=output_dir,
             output_error=output_error,
+            write_anywhere=self.config.output.write_anywhere,
             policy=self.policy,
             deliver=self.deliver,
             embedder=self.memory.index.embedder,

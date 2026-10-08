@@ -90,6 +90,7 @@ class Services:
     skills: Any = None  # the skill manager (Step 9)
     output_dir: Path | None = None  # where files made for the user go (output.folder)
     output_error: str | None = None  # why output.folder can't be used, if it can't
+    write_anywhere: bool = False  # output.write_anywhere: new files anywhere, no question
     policy: PermissionPolicy | None = None  # the running permission rules (access module)
     # This process runs the background parts (webhook, watchers). False while another
     # Starlight core does; the event "core.primary" announces a takeover.
@@ -168,6 +169,12 @@ class ModuleContext:
         if self.services.output_dir is not None:
             return self.services.output_dir
         return resolve_output_folder("", self.paths.root)
+
+    @property
+    def write_anywhere(self) -> bool:
+        """Whether new files may be saved anywhere (but Starlight's own folder) without
+        asking first (``output.write_anywhere``)."""
+        return self.services.write_anywhere
 
     def model_for(self, role: str) -> ModelProvider | None:
         """The model the core routes this kind of work to (``roles:`` in the config)."""

@@ -50,7 +50,7 @@ class PdfModule(Module):
         self.config: Config = ctx.config
         self.root = ctx.paths.root.resolve()
         self.output = ctx.output_dir
-        self.guard = PathGuard(self.root, self.output, error=PdfError)
+        self.guard = PathGuard(self.root, self.output, error=PdfError, anywhere=ctx.write_anywhere)
 
     def _resolve(self, path: str) -> tuple[Path, bool]:
         # A bare or relative name goes in the Starlight folder; a full path is used as given.
@@ -99,7 +99,8 @@ class PdfModule(Module):
             raise PdfError("making PDFs needs the 'pdf' extra (reportlab). Install it to use this.")
         if not content.strip():
             raise PdfError("give some text to put in the PDF")
-        file, free = self._resolve(path)
+        found = self.guard.resolve(path)
+        file, free = found.path, found.new_free  # always a new file (renamed if taken)
         if file.suffix.lower() != ".pdf":
             file = file.with_suffix(".pdf")
         if not free and not await self.ctx.ui.confirm(

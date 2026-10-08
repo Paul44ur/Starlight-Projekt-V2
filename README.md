@@ -26,7 +26,7 @@ and answer you on WhatsApp. Anything risky asks you first, and one key press sto
 | **Chat in a browser or the terminal** | A clean web chat (the default) or a colored terminal chat. Both stream answers and ask before risky actions. |
 | **Chat with a local model** | Runs a model such as Qwen2.5-14B on your GPU. Long conversations are summarized, not cut off. |
 | **Remember** | Keeps what it learns as plain text files in the `memory` folder. You can read, edit or delete them. Knows your name, language and home town from your profile, tells you what it knows about you, and tidies up memories that say the same thing (asks first). |
-| **Use the web** | Searches, reads pages and logs in to your accounts. It makes at most 5 requests per second. A page you ask for is read like a browser would; crawling several pages (research, page watches) respects robots.txt. |
+| **Use the web** | Searches, reads pages and logs in to your accounts. It makes at most 10 requests per second, with a short pause between pages of the same site. A page you ask for is read like a browser would; crawling several pages (research, page watches) respects robots.txt. |
 | **Check your servers** | Pings and checks any server, runs commands over SSH, and alerts you when one of yours goes down. |
 | **Scan your network** | On hosts you own or are authorized to test: open ports, services, TLS certs, HTTP headers, DNS. Asks first; recon only, never attacks. |
 | **Look up vulnerabilities** | Checks a service or product against the public CVE database (NVD). Pairs with a scan. Free, no key. |
@@ -34,7 +34,7 @@ and answer you on WhatsApp. Anything risky asks you first, and one key press sto
 | **Check passwords** | Tells you if a password is in known breaches — the password never leaves your PC (only a short hash prefix is sent). |
 | **Check your PC** | CPU, memory, disk space, battery, uptime and running programs. Can close a program, and lock, sleep, shut down or restart the PC, now or in a few minutes (asks first, except locking; the kill switch also cancels a planned shutdown). |
 | **Focus mode** | "Focus for 90 minutes" — holds back reminders, alerts and messages while you work, then gives you one summary. Urgent things (an event about to start, a server down, an unknown device on your WiFi) still come through. |
-| **Watch pages and prices** | "Tell me when this kettle costs less than 50 €", "… when 'sold out' is gone", "… when this page changes" — checks the page every so often (at least 15 minutes apart, robots.txt respected) and tells you on every channel. |
+| **Watch pages and prices** | "Tell me when this kettle costs less than 50 €", "… when 'sold out' is gone", "… when this page changes" — checks the page every so often (at least 5 minutes apart, robots.txt respected) and tells you on every channel. |
 | **Use the clipboard** | Reads what you copied and copies things for you. |
 | **Weather** | Current weather and a short forecast for any place — free, no account or API key. |
 | **News** | Headlines and topic search from free news feeds (RSS). No account or API key. |
@@ -52,7 +52,7 @@ and answer you on WhatsApp. Anything risky asks you first, and one key press sto
 | **PDFs** | Reads text from PDF files and makes simple PDFs from text. |
 | **Open programs** | "Open Spotify", "open my budget sheet", "bring Outlook to the front" — starts any installed program, opens files and links, and arranges or closes windows. |
 | **Music and volume** | Play/pause, next/previous track and volume, like the media keys. |
-| **Your own commands** | Name your own scripts once ("backup-photos", "restart the game server") and run them by name. Starlight can run only those, and asks first unless you say otherwise. |
+| **Your own commands** | Name your own scripts once ("backup-photos", "restart the game server") and run them by name; they ask first unless you say otherwise. Starlight can also run any command line (PowerShell on Windows) — it shows you the exact command and asks every time, and never from the phone. |
 | **Word and Excel** | Reads .docx and .xlsx files and makes new ones (letters, lists, tables). |
 | **Developer tools** | Git status/log/diff/commit, Docker containers and their logs, and which program uses which network port. Changes ask first. |
 | **Research** | "Find out whether …" — searches, reads several pages and writes a short report with numbered sources you can check. |
@@ -443,10 +443,11 @@ off with `starlight remote disable`.
   change this in `config\starlight.yaml` under `permissions`.
 - **What runs without asking, out of the box.** Desktop clicks and typing, running code
   (in the sandbox), closing programs, network tasks (HTTP, SSH, TCP and WebSocket to any
-  server), and sending or answering email. These are listed under `permissions:
-  auto_approve:` — delete a line and that action asks again. Still asking: shutdown,
-  restart and sleep, your named commands, writing outside the Starlight folder, and
-  granting access. **Be aware:** a web page or an email the model reads could try to talk
+  server), sending or answering email, and saving new files in any folder. These are
+  listed under `permissions: auto_approve:` (and `output: write_anywhere:`) — delete a
+  line and that action asks again. Still asking: any command line (it shows you the exact
+  command), shutdown, restart and sleep, your named commands, replacing, adding to or
+  reading a file outside the Starlight folder, and granting access. **Be aware:** a web page or an email the model reads could try to talk
   it into one of these actions, and nothing stops to ask. The kill switch (Ctrl+Alt+J or
   a screen corner) and `logs\audit.log` remain.
 - **Passwords stay out of files.** Passwords and keys are kept in the Windows Credential
@@ -460,10 +461,11 @@ off with `starlight remote disable`.
   are capped in size and time and connections are limited, so a hostile server can't
   turn a request into a flood against you. Scanning is reconnaissance only — it never
   attacks, and it does one host at a time.
-- **Files stay where you expect.** Starlight saves on its own only into its folder in
-  your Documents. Anywhere else, and replacing an existing file, it asks first. Its own
-  install folder, which holds its settings and data, is off-limits, so it can't change
-  its own permissions.
+- **Files stay where you expect.** Starlight saves new files where you say, in its folder
+  in your Documents by default. Replacing or adding to an existing file outside that
+  folder, and reading one, asks first. Its own install folder, which holds its settings
+  and data, is off-limits, so it can't change its own permissions that way (a command
+  line could, which is why every command line asks and the phone can't run them).
 - **The model is yours, unchanged.** Starlight sends your messages to the local model
   you chose and returns its answer as-is — it adds no filter of its own. How the model
   behaves is down to the model file, which runs entirely on your PC.

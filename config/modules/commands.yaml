@@ -1,5 +1,5 @@
-# The commands module (modules/commands): your own named commands. Starlight can only run
-# what is listed here - never any other command. Add one from the chat ("add a command
+# The commands module (modules/commands): your own named commands, plus any command line
+# with commands.shell (below). Add a named command from the chat ("add a command
 # 'backup-photos' that runs ...") or here:
 #
 # commands:
@@ -12,4 +12,8 @@
 #     run: ["powershell", "-File", "C:\\scripts\\restart.ps1", "{name}"]   # {name}: an argument
 #     description: Restart a game server by name
 max_output: 8000   # characters of output kept
+# commands.shell: any command line (PowerShell on Windows). It asks before every command
+# and shows it to you; false switches it off entirely.
+shell: true
+shell_timeout: 300 # seconds a command line may run at most
 commands: {}

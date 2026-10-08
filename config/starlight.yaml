@@ -94,11 +94,14 @@ output:
   # Empty: a "Starlight" folder in your Documents. A full path such as D:/Starlight files
   # works too, but never Starlight's own folder.
   folder: ""
+  # New files may be saved in any folder without asking; replacing or adding to a file
+  # outside the Starlight folder, and reading one, still ask. false: saving elsewhere asks.
+  write_anywhere: true
 
 # --- Step 6: polite web access, shared by every module ------------------------------
 http:
-  max_requests_per_second: 5   # in any one-second window, across all modules
-  per_domain_interval: 1.0     # seconds between requests to the same site
+  max_requests_per_second: 10  # in any one-second window, across all modules
+  per_domain_interval: 0.5     # seconds between requests to the same site (its crawl-delay wins)
   respect_robots: true
   cache_ttl: 3600              # seconds a fetched page is reused
   max_retries: 3               # on HTTP 429 / 503, honouring Retry-After
@@ -152,8 +155,9 @@ permissions:
     - network.websocket_send
     - mail.send                 # mail.draft_reply still shows a draft first if you ask for one
     - mail.reply
-  # Still asking (not listed above): shutdown/restart/sleep, other shell commands,
-  # writing outside the Starlight folder, granting access (access.*, always asks).
+  # Still asking (not listed above): any command line (commands.shell, shows the exact
+  # command each time), shutdown/restart/sleep, replacing or reading files outside the
+  # Starlight folder, granting access (access.*, always asks).
   confirm: []
   blocked: []
 
