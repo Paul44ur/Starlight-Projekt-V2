@@ -18,13 +18,15 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import json
+import re
 import time
+import unicodedata
 import uuid
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
-from urllib.parse import unquote, urlsplit
+from urllib.parse import quote, unquote, urlsplit
 
 from fastapi import FastAPI, HTTPException, Request, Response, WebSocket, WebSocketDisconnect
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
@@ -439,6 +441,28 @@ def create_app(paths: Paths | None = None) -> Any:
         except KeyError as exc:
             raise HTTPException(status_code=404, detail="no such conversation") from exc
 
+    @app.get("/api/conversations/{conversation}/export")
+    def export_conversation(conversation: str, request: Request) -> Response:
+        """The conversation as a Markdown file to download."""
+        viewer(request)
+        store = kernel().conversations
+        try:
+            text = store.markdown(conversation)
+            title = store.get(conversation)["title"]
+        except KeyError as exc:
+            raise HTTPException(status_code=404, detail="no such conversation") from exc
+        name = re.sub(r"[^\w\- ]+", "", title).strip()[:60] or "conversation"
+        ascii_name = unicodedata.normalize("NFKD", name)  # "ü" -> "u" for old browsers
+        plain = re.sub(r"[^\w\- ]+", "", ascii_name, flags=re.ASCII).strip() or "conversation"
+        return Response(
+            text,
+            media_type="text/markdown; charset=utf-8",
+            headers={
+                "Content-Disposition": f'attachment; filename="{plain}.md"; '
+                f"filename*=UTF-8''{quote(name + '.md')}"
+            },
+        )
+
     @app.patch("/api/conversations/{conversation}")
     async def rename_conversation(conversation: str, request: Request) -> dict[str, Any]:
         viewer(request)
@@ -752,6 +776,31 @@ def create_app(paths: Paths | None = None) -> Any:
                             block_more,
                         )
                     )
+                elif kind == "regenerate":
+                    if ask_task is not None and not ask_task.done():
+                        await send({"type": "busy"})
+                        continue
+                    conversation = message.get("conversation") or None
+                    try:
+                        again = await k.take_back(conversation)
+                    except KeyError:
+                        again = None
+                    if not again:
+                        await send({"type": "error", "text": "nothing to ask again"})
+                        continue
+                    ask_task = asyncio.create_task(
+                        _run_ask(
+                            k,
+                            web_ui,
+                            send,
+                            again,
+                            None,
+                            conversation,
+                            confirm_more,
+                            block_more,
+                            regenerating=True,
+                        )
+                    )
                 elif kind == "reply":
                     web_ui.resolve(message.get("id", ""), message.get("value", ""))
                 elif kind == "stop" and ask_task is not None and not ask_task.done():
@@ -767,6 +816,17 @@ def create_app(paths: Paths | None = None) -> Any:
     return app
 
 
+def answer_stats(usage: list[dict[str, Any]]) -> dict[str, Any]:
+    """How long the model took for an answer, and how fast it wrote (over all steps)."""
+    seconds = sum(float(u.get("duration_s") or 0) for u in usage)
+    tokens = sum(int(u.get("completion_tokens") or 0) for u in usage)
+    speeds = [float(u["tokens_per_second"]) for u in usage if u.get("tokens_per_second")]
+    stats: dict[str, Any] = {"seconds": round(seconds, 1), "tokens": tokens}
+    if speeds:
+        stats["tokens_per_second"] = round(speeds[-1], 1)
+    return stats
+
+
 async def _run_ask(
     kernel: Kernel,
     web_ui: WebUI,
@@ -776,7 +836,10 @@ async def _run_ask(
     conversation: str | None = None,
     confirm_more: tuple[str, ...] = (),
     block_more: tuple[str, ...] = (),
+    regenerating: bool = False,
 ) -> None:
+    """One request from the browser. `regenerating`: the last exchange was taken back to
+    ask again (Kernel.take_back); if this answer is stopped or fails, it is put back."""
     queue: asyncio.Queue[str | None] = asyncio.Queue()
 
     def on_token(token: str) -> None:
@@ -800,10 +863,12 @@ async def _run_ask(
     confirm_ctx = extra_confirm.set(confirm_more)
     block_ctx = extra_blocked.set(block_more)
     pumper = asyncio.create_task(pump())
+    kept = False
     try:
         result = await kernel.ask(
             text, keep_history=True, on_token=on_token, images=images or None, conversation=name
         )
+        kept = not (result.stopped or result.failed)
         queue.put_nowait(None)
         await pumper
         await send(
@@ -811,7 +876,9 @@ async def _run_ask(
                 "type": "answer",
                 "text": result.answer,
                 "stopped": result.stopped,
+                "failed": result.failed,  # stopped or failed: not kept in the conversation
                 "conversation": name,
+                "stats": answer_stats(result.usage),
             }
         )
     except asyncio.CancelledError:
@@ -825,6 +892,9 @@ async def _run_ask(
             await pumper
         await send({"type": "error", "text": f"{type(exc).__name__}: {exc}"})
     finally:
+        if regenerating and not kept:
+            with contextlib.suppress(Exception):
+                await kernel.put_back(name)
         extra_blocked.reset(block_ctx)
         extra_confirm.reset(confirm_ctx)
         current_ui.reset(token_ctx)

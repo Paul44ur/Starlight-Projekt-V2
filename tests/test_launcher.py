@@ -502,3 +502,32 @@ def test_voice_is_installed_only_when_asked(
     L.ensure_voice(settings, ui)  # a failed download is reported, not fatal
     assert any("works without it" in line for line in ui.lines)
     assert L.build_parser().parse_args(["--voice"]).voice is True
+
+
+def test_model_presets_from_file_and_flags(tmp_path: Path) -> None:
+    """--model NAME (or "model" in launcher.json) picks a ready-made model; a model_url wins
+    over a preset, and the default stays the uncensored 14B."""
+    root = tmp_path / "Starlight"
+    (root / "config").mkdir(parents=True)
+    (root / "pyproject.toml").write_text('[project]\nname = "starlight"\n')
+    saved = root / "config" / "launcher.json"
+
+    def url(*flags: str) -> str:
+        return L.load_settings(L.build_parser().parse_args(["--root", str(root), *flags])).model_url
+
+    assert url() == L.DEFAULT_MODEL_URL == L.MODEL_PRESETS["qwen14b-uncensored"]
+    saved.write_text(json.dumps({"model": "QWEN7B"}))
+    assert url() == L.MODEL_PRESETS["qwen7b"]  # names are not case-sensitive in the file
+    assert url("--model", "qwen14b") == L.MODEL_PRESETS["qwen14b"]  # the flag beats the file
+    assert url("--model", "qwen14b", "--model-url", "https://x/m.gguf") == "https://x/m.gguf"
+    saved.write_text(json.dumps({"model": "qwen7b", "model_url": "https://x/own.gguf"}))
+    assert url() == "https://x/own.gguf"
+    saved.write_text(json.dumps({"model": "llama-9000"}))
+    with pytest.raises(L.LauncherError, match=r"unknown model 'llama-9000'.*qwen7b"):
+        url()
+    saved.write_text("[1, 2]")
+    with pytest.raises(L.LauncherError, match="not valid JSON"):
+        url()
+    with pytest.raises(SystemExit):  # an unknown name on the command line is refused
+        L.build_parser().parse_args(["--model", "nope"])
+    assert all(u.endswith(".gguf") and u.startswith("https://") for u in L.MODEL_PRESETS.values())

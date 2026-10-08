@@ -145,6 +145,17 @@ class ConversationStore:
             ],
         }
 
+    def markdown(self, conversation: str) -> str:
+        """The conversation as a Markdown document (your messages and the answers)."""
+        data = self.get(conversation)
+        lines = [f"# {data['title']}", ""]
+        if data.get("created"):
+            lines += [f"*{str(data['created'])[:16].replace('T', ' ')}*", ""]
+        for message in data["messages"]:
+            who = "You" if message["role"] == "user" else "Starlight"
+            lines += [f"**{who}:**", "", str(message["content"]).strip(), ""]
+        return "\n".join(lines).rstrip() + "\n"
+
     def list(self, search: str = "", limit: int = 200) -> list[dict[str, Any]]:
         wanted = search.strip().lower()
         found: list[dict[str, Any]] = []

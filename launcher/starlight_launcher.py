@@ -50,6 +50,20 @@ DEFAULT_MODEL_URL = (
     "https://huggingface.co/bartowski/Qwen2.5-14B_Uncensored_Instruct-GGUF/resolve/main/"
     "Qwen2.5-14B_Uncensored_Instruct-Q4_K_M.gguf"
 )
+# --model NAME (or "model" in config/launcher.json) picks one of these; --model-url any other.
+MODEL_PRESETS = {
+    "qwen14b-uncensored": DEFAULT_MODEL_URL,  # the default
+    # The original Qwen2.5-14B-Instruct: same size, more careful, cleaner turn endings.
+    "qwen14b": (
+        "https://huggingface.co/bartowski/Qwen2.5-14B-Instruct-GGUF/resolve/main/"
+        "Qwen2.5-14B-Instruct-Q4_K_M.gguf"
+    ),
+    # Half the video memory (~5 GB) and about twice as fast, for smaller graphics cards.
+    "qwen7b": (
+        "https://huggingface.co/bartowski/Qwen2.5-7B-Instruct-GGUF/resolve/main/"
+        "Qwen2.5-7B-Instruct-Q4_K_M.gguf"
+    ),
+}
 # Voice (optional, --voice): speech-to-text with whisper.cpp and text-to-speech with Piper,
 # both running on this PC. The URLs can be changed in config/launcher.json.
 WHISPER_URL = "https://github.com/ggml-org/whisper.cpp/releases/latest/download/whisper-bin-x64.zip"
@@ -124,6 +138,14 @@ def find_root(start: Path) -> Path:
     )
 
 
+def preset_url(name: str) -> str:
+    """The download link of a model preset (see MODEL_PRESETS)."""
+    url = MODEL_PRESETS.get(name.strip().lower())
+    if url is None:
+        raise LauncherError(f"unknown model '{name}' (known: {', '.join(MODEL_PRESETS)})")
+    return url
+
+
 def load_settings(args: argparse.Namespace) -> Settings:
     if args.root:
         start = Path(args.root).resolve()
@@ -135,7 +157,12 @@ def load_settings(args: argparse.Namespace) -> Settings:
     saved = settings.root / "config" / "launcher.json"  # optional, for your own defaults
     if saved.is_file():
         try:
-            for key, value in json.loads(saved.read_text(encoding="utf-8")).items():
+            data = json.loads(saved.read_text(encoding="utf-8"))
+            if not isinstance(data, dict):
+                raise ValueError("expected an object")
+            if "model" in data and "model_url" not in data:  # a preset; model_url wins
+                settings.model_url = preset_url(str(data["model"]))
+            for key, value in data.items():
                 if key in (
                     "model_url",
                     "context",
@@ -154,6 +181,8 @@ def load_settings(args: argparse.Namespace) -> Settings:
                     setattr(settings, key, value)
         except (OSError, ValueError) as exc:
             raise LauncherError(f"{saved} is not valid JSON: {exc}") from exc
+    if getattr(args, "model", None):
+        settings.model_url = preset_url(args.model)
     for key in ("model_url", "context", "variant", "llama_release", "port"):
         value = getattr(args, key)
         if value is not None:
@@ -937,6 +966,11 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--tesseract", action="store_true", help="install Tesseract OCR")
     parser.add_argument(
         "--voice", action="store_true", help="install speech input and output (about 0.6 GB)"
+    )
+    parser.add_argument(
+        "--model",
+        choices=list(MODEL_PRESETS),
+        help="a ready-made model choice (default qwen14b-uncensored)",
     )
     parser.add_argument("--model-url", help="GGUF model to use (a direct download link)")
     # Accepted so older shortcuts keep working; the draft model was removed.
