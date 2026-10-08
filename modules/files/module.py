@@ -64,6 +64,7 @@ class FileError(ToolError):
 class Target:
     path: Path  # absolute, resolved
     free: bool  # in the Starlight folder or a trusted folder: no question needed
+    new_free: bool = False  # a new file may be made here without a question (write_anywhere)
 
 
 def clean_name(part: str) -> str:
@@ -123,7 +124,9 @@ class FilesModule(Module):
         self.root = ctx.paths.root.resolve()  # Starlight's own folder: off-limits
         self.output = ctx.output_dir
         self.trusted = [self._expand(folder) for folder in self.config.trusted_folders]
-        self.guard = PathGuard(self.root, self.output, self.trusted, error=FileError)
+        self.guard = PathGuard(
+            self.root, self.output, self.trusted, error=FileError, anywhere=ctx.write_anywhere
+        )
         ctx.logger.info("ready", folder=str(self.output))
 
     # -- paths ---------------------------------------------------------------------------
@@ -147,7 +150,7 @@ class FilesModule(Module):
         found = self.guard.resolve(text, clean=clean_name)
         if found.path.is_dir():
             raise FileError(f"{found.path} is a folder; give a file name")
-        return Target(found.path, found.free)
+        return Target(found.path, found.free, found.new_free)
 
     def _where(self, path: Path) -> str:
         if path.is_relative_to(self.output):
@@ -192,7 +195,8 @@ class FilesModule(Module):
                 f"too large ({size_text(size)}); the limit is {self.config.max_file_mb:g} MB"
             )
 
-        question = self._save_question(dest, mode, size, target.free)
+        free = target.free or (target.new_free and mode in ("new", "rename"))
+        question = self._save_question(dest, mode, size, free)
         if question is not None and not await self.ctx.ui.confirm(question):
             raise FileError(f"the user did not allow this, so nothing was saved to {dest}")
         self.ctx.kill_switch.check()  # the question may have taken a while

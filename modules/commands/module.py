@@ -1,10 +1,17 @@
-"""Your own named commands: "run backup-photos", "restart the game server".
+"""Your own named commands ("run backup-photos", "restart the game server"), and - when
+you switch it on - any command line.
 
-Starlight can run only the commands listed in config/modules/commands.yaml - never any other
-program or shell line. Each command is a fixed program with fixed arguments; `{name}`
-placeholders take a value when it runs (one argument each, never parsed by a shell, never
-starting with "-"). A command asks before it runs unless you set `ask: false` for it.
-Adding or changing a command always asks you. The kill switch stops a running command.
+Named commands are listed in config/modules/commands.yaml. Each is a fixed program with
+fixed arguments; `{name}` placeholders take a value when it runs (one argument each, never
+parsed by a shell, never starting with "-"). A command asks before it runs unless you set
+`ask: false` for it. Adding or changing a command always asks you.
+
+`commands.shell` runs any command line (PowerShell on Windows, /bin/sh elsewhere). It is
+off unless `shell: true` is set in commands.yaml, and it asks before every command, showing
+it exactly. It can do anything you could type in a terminal, including changing
+Starlight's own settings, so from a phone it never runs (`web.remote.blocked`).
+
+The kill switch stops a running command.
 """
 
 from __future__ import annotations
@@ -14,11 +21,12 @@ import contextlib
 import re
 import sys
 import time
+from pathlib import Path
 from typing import Any
 
 from pydantic import BaseModel, Field, field_validator
 
-from starlight.core import Module, ModuleContext, ToolError, tool
+from starlight.core import Module, ModuleContext, Permission, ToolError, tool
 from starlight.core.config import write_yaml_config
 
 NAME = re.compile(r"^[a-z0-9][a-z0-9_-]{0,40}$")
@@ -47,6 +55,15 @@ class Command(BaseModel):
 class Config(BaseModel):
     max_output: int = Field(default=8000, ge=500)
     commands: dict[str, Command] = Field(default_factory=dict)
+    shell: bool = False  # True: commands.shell may run any command line
+    shell_timeout: float = Field(default=300, gt=0, le=24 * 3600)  # seconds, the most allowed
+
+
+def shell_argv(line: str, platform: str = sys.platform) -> list[str]:
+    """The program that runs a command line: PowerShell on Windows, /bin/sh elsewhere."""
+    if platform == "win32":
+        return ["powershell.exe", "-NoProfile", "-NonInteractive", "-Command", line]
+    return ["/bin/sh", "-c", line]
 
 
 class CommandsModule(Module):
@@ -75,12 +92,14 @@ class CommandsModule(Module):
             self.ctx.paths.module_configs / "commands.yaml",
             {
                 "max_output": self.config.max_output,
+                "shell": self.config.shell,
+                "shell_timeout": self.config.shell_timeout,
                 "commands": {
                     k: v.model_dump(exclude_defaults=True) for k, v in self.config.commands.items()
                 },
             },
-            "# The commands module (modules/commands): your own named commands. Starlight\n"
-            "# can run only what is listed here.",
+            "# The commands module (modules/commands): your own named commands, and any\n"
+            "# command line with commands.shell (it asks first) when shell is true.",
         )
 
     # -- tools ---------------------------------------------------------------------------
@@ -119,6 +138,29 @@ class CommandsModule(Module):
         if command.ask and not await self.ctx.ui.confirm(f"Run '{key}': {' '.join(argv)}?"):
             raise ToolError("not confirmed, nothing ran")
         return await self._execute(key, argv, command)
+
+    @tool(permission=Permission.CONFIRM)
+    async def shell(self, command: str, cwd: str = "", timeout: float = 120) -> dict[str, Any]:
+        """Run any command line (PowerShell on Windows, sh on Linux/macOS) and return its
+        exit code and output. `cwd`: the folder to run in (default: your home folder).
+        Prefer a named command (commands.run) when one fits."""
+        if not self.config.shell:
+            raise ToolError(
+                "running any command line is switched off; set `shell: true` in "
+                "config/modules/commands.yaml, or use a named command (commands.list)"
+            )
+        line = command.strip()
+        if not line or "\x00" in line:
+            raise ToolError("give the command line to run")
+        folder = Path(cwd).expanduser() if cwd.strip() else Path.home()
+        if not folder.is_dir():
+            raise ToolError(f"{folder} is not a folder")
+        seconds = max(1.0, min(timeout, self.config.shell_timeout))
+        run = Command(run=shell_argv(line), timeout=seconds, cwd=str(folder))
+        self.ctx.logger.info("shell", command=line[:500], cwd=str(folder))
+        result = await self._execute("shell", run.run, run)
+        result["command"] = line
+        return result
 
     async def _execute(self, key: str, argv: list[str], command: Command) -> dict[str, Any]:
         self.ctx.kill_switch.check()

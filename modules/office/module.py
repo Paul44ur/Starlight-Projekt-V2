@@ -52,7 +52,12 @@ class OfficeModule(Module):
 
     @property
     def guard(self) -> PathGuard:
-        return PathGuard(self.ctx.paths.root, self.ctx.output_dir, error=OfficeError)
+        return PathGuard(
+            self.ctx.paths.root,
+            self.ctx.output_dir,
+            error=OfficeError,
+            anywhere=self.ctx.write_anywhere,
+        )
 
     def _lib(self, name: str) -> Any:
         lib = _docx() if name == "docx" else _openpyxl()
@@ -77,7 +82,7 @@ class OfficeModule(Module):
         target = found.path
         if target.exists() and not replace:
             raise OfficeError(f"{target.name} already exists; give another name")
-        if not found.free or target.exists():
+        if not found.new_free or target.exists():  # replacing always asks
             verb = "Replace" if target.exists() else "Save"
             if not await self.ctx.ui.confirm(f"{verb} {target}?"):
                 raise OfficeError("not confirmed, nothing was written")

@@ -158,3 +158,99 @@ async def test_robots_txt_behind_a_login_means_no_rules(project: Paths) -> None:
     async with Kernel(project, http_transport=site(robots_status=403)) as k:
         page = await k.dispatcher.call("web.fetch", {"url": "https://shop.example/a"})
         assert page.ok and "Hello from /a" in page.output["text"]
+
+
+# -- round 2 -------------------------------------------------------------------------------
+
+
+def test_round_two_in_the_shipped_config(tmp_path: Path) -> None:
+    import yaml
+
+    paths = shipped(tmp_path)
+    config = load_config(paths)
+    policy = PermissionPolicy(config.permissions)
+    # Any command line still asks every time, and never runs from the phone.
+    assert policy.resolve("commands.shell", Permission.CONFIRM) is Permission.CONFIRM
+    assert "commands.shell" in config.web.remote.blocked
+    assert config.output.write_anywhere is True
+    assert config.http.max_requests_per_second == 10
+    assert config.http.per_domain_interval == 0.5
+    modules = paths.module_configs
+    assert yaml.safe_load((modules / "commands.yaml").read_text())["shell"] is True
+    assert yaml.safe_load((modules / "watch.yaml").read_text())["min_every_minutes"] == 5
+
+
+class Answers(Yes):
+    def __init__(self, *answers: bool) -> None:
+        super().__init__()
+        self.answers = list(answers)
+
+    async def confirm(self, question: str) -> bool:
+        self.questions.append(question)
+        return self.answers.pop(0) if self.answers else True
+
+
+@pytest.fixture
+def commands(paths: Paths, use_module: Callable[[str], Path]) -> Paths:
+    use_module("commands")
+    return paths
+
+
+async def test_any_command_line_asks_and_shows_it(commands: Paths) -> None:
+    async with Kernel(commands, ui=Yes()) as k:
+        off = await k.dispatcher.call("commands.shell", {"command": "echo hi"})
+        assert not off.ok and "switched off" in (off.error or "")
+    (commands.module_configs / "commands.yaml").write_text("shell: true\n")
+    user = Answers(False, True)
+    async with Kernel(commands, ui=user) as k:
+        declined = await k.dispatcher.call("commands.shell", {"command": "echo hi"})
+        assert not declined.ok and "not confirmed" in (declined.error or "")
+        ran = await k.dispatcher.call("commands.shell", {"command": "echo hi"})
+        assert ran.ok, ran.error
+        assert ran.output["exit_code"] == 0 and "hi" in ran.output["output"]
+    assert len(user.questions) == 2 and all("echo hi" in q for q in user.questions)
+
+
+async def test_adding_a_command_keeps_the_shell_setting(commands: Paths) -> None:
+    import yaml
+
+    (commands.module_configs / "commands.yaml").write_text("shell: true\nshell_timeout: 60\n")
+    async with Kernel(commands, ui=Yes()) as k:
+        added = await k.dispatcher.call("commands.add", {"name": "hello", "run": ["echo", "hello"]})
+        assert added.ok, added.error
+    saved = yaml.safe_load((commands.module_configs / "commands.yaml").read_text())
+    assert saved["shell"] is True and saved["shell_timeout"] == 60
+    assert "hello" in saved["commands"]
+
+
+@pytest.fixture
+def files(paths: Paths, use_module: Callable[[str], Path]) -> Paths:
+    use_module("files")
+    paths.config_file.write_text(
+        paths.config_file.read_text() + "output:\n  write_anywhere: true\n"
+    )
+    return paths
+
+
+async def test_new_files_anywhere_without_asking(
+    files: Paths, tmp_path_factory: pytest.TempPathFactory
+) -> None:
+    desktop = tmp_path_factory.mktemp("Desktop").resolve()
+    todo = desktop / "todo.txt"
+    user = Answers()
+    async with Kernel(files, ui=user) as k:
+        saved = await k.dispatcher.call("files.save", {"path": str(todo), "content": "milk\n"})
+        assert saved.ok and todo.read_text(encoding="utf-8") == "milk\n"
+        assert user.questions == []  # a new file: no question
+        await k.dispatcher.call(
+            "files.save", {"path": str(todo), "content": "eggs\n", "if_exists": "replace"}
+        )
+        await k.dispatcher.call(
+            "files.save", {"path": str(todo), "content": "bread\n", "if_exists": "append"}
+        )
+        await k.dispatcher.call("files.read", {"path": str(todo)})
+        assert len(user.questions) == 3  # replacing, adding to and reading one still ask
+        own = await k.dispatcher.call(
+            "files.save", {"path": str(files.root / "config" / "x.yaml"), "content": "a: 1"}
+        )
+        assert not own.ok  # Starlight's own folder stays off-limits

@@ -153,6 +153,7 @@ class RemoteConfig(_Strict):
             "automations.add", "automations.use_template", "automations.enable",
             "automations.allow", "network.allow", "login.add_site", "commands.add",
             "docs.add_folder", "home.connect", "backup.add",
+            "commands.shell",  # a shell could rewrite Starlight's own settings
         ]
     )  # fmt: skip
 
@@ -167,6 +168,10 @@ class OutputConfig(_Strict):
     # Where Starlight saves files it makes for you (letters, notes, tables, code).
     # Empty: a "Starlight" folder in your Documents. Never Starlight's own folder.
     folder: str = ""
+    # True: new files may be saved in any folder without asking (replacing or adding to an
+    # existing file outside the Starlight folder, and reading one, still ask). Starlight's
+    # own folder stays off-limits either way.
+    write_anywhere: bool = False
 
 
 class ViewerConfig(_Strict):

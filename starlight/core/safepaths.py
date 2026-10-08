@@ -4,6 +4,8 @@ One rule for every module that touches paths you name in the chat (files, pdf, f
 office, docs, ...): Starlight's own folder - its settings, secrets index and data - is
 always off-limits, a bare name lands in your Starlight folder (``output.folder``), and a
 path elsewhere is used as given but is not "free": the module asks before writing there.
+With ``output.write_anywhere`` a *new* file may be created anywhere without asking
+(``UserPath.new_free``); changing or reading an existing file elsewhere still asks.
 """
 
 from __future__ import annotations
@@ -30,6 +32,7 @@ def inside(path: Path, folder: Path) -> bool:
 class UserPath:
     path: Path
     free: bool  # inside the Starlight folder or a trusted folder: no need to ask first
+    new_free: bool = False  # a new file may be created here without asking first
 
 
 class PathGuard:
@@ -41,11 +44,13 @@ class PathGuard:
         output: Path,
         trusted: Iterable[Path] = (),
         error: type[ToolError] = ToolError,
+        anywhere: bool = False,
     ) -> None:
         self.root = root.resolve()  # Starlight's own folder
         self.output = output.resolve()  # the Starlight folder for your files
         self.trusted = [t.resolve() for t in trusted]
         self.error = error
+        self.anywhere = anywhere  # output.write_anywhere: new files anywhere without asking
 
     def is_starlight(self, path: Path) -> bool:
         return inside(path, self.root)
@@ -84,4 +89,5 @@ class PathGuard:
             path = self.output.joinpath(*(tidy(p) for p in parts))
         path = path.resolve()
         self.refuse_starlight(path)
-        return UserPath(path, self.is_free(path))
+        free = self.is_free(path)
+        return UserPath(path, free, free or self.anywhere)
