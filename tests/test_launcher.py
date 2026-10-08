@@ -280,31 +280,40 @@ def test_launcher_config_is_loaded_by_starlight_and_yours_wins(tmp_path: Path) -
     assert load_config(Paths(tmp_path)).model.provider == "echo"
 
 
-def test_draft_model_only_for_the_default_model(tmp_path: Path) -> None:
-    settings = L.Settings(root=tmp_path)
-    assert settings.draft_source == L.DEFAULT_DRAFT_URL
-    assert settings.draft_file == tmp_path / "models" / "draft" / "qwen2.5-0.5b-instruct-q8_0.gguf"
-    other = L.Settings(root=tmp_path, model_url="https://example.org/llama-3-8b.gguf")
-    assert other.draft_source is None  # another family: a Qwen draft could not help
-    other.draft_url = "https://example.org/llama-3-1b.gguf"
-    assert other.draft_source == other.draft_url
-    assert L.Settings(root=tmp_path, draft=False).draft_source is None
-    assert L.Settings(root=tmp_path, use_model=False).draft_source is None
-    args = L.build_parser().parse_args(["--no-draft"])
-    assert args.no_draft
-
+def test_the_draft_model_is_gone_and_old_configs_still_load(tmp_path: Path) -> None:
+    """The draft model (speculative decoding) was removed: no flags for llama-server, the
+    old models/draft folder is deleted, and a config an older Starlight.exe wrote (with
+    draft settings) still loads. Old shortcuts with --no-draft still start."""
     shutil.copytree(REPO / "config", tmp_path / "config")
-    model = tmp_path / "models" / "big.gguf"
-    draft = tmp_path / "models" / "draft" / "small.gguf"
-    L.write_launcher_config(settings, tmp_path / "llama-server", model, draft)
+    old = {
+        "model": {
+            "provider": "llamacpp",
+            "server": {
+                "binary": "llama-server",
+                "model_path": "big.gguf",
+                "draft_model_path": "models/draft/small.gguf",
+                "draft_max": 16,
+                "draft_min": 4,
+                "gpu_layers_draft": 999,
+            },
+        }
+    }
+    (tmp_path / "config" / "starlight.launcher.yaml").write_text(json.dumps(old))
     config = load_config(Paths(tmp_path))
-    assert config.model.server.draft_model_path == str(draft)
-    command = llama_server_command(config.model)
-    at = command.index("--model-draft")
-    assert command[at + 1] == str(draft) and "--draft-max" in command
-    assert command[command.index("--draft-min") + 1] == "4"
-    L.write_launcher_config(settings, tmp_path / "llama-server", model, None)
-    assert "--model-draft" not in llama_server_command(load_config(Paths(tmp_path)).model)
+    assert config.model.server.model_path == "big.gguf"
+    assert not any("draft" in part for part in llama_server_command(config.model))
+
+    folder = tmp_path / "models" / "draft"
+    folder.mkdir(parents=True)
+    (folder / "small.gguf").write_bytes(b"x" * 1000)
+    said: list[str] = []
+    ui = L.Ui(assume_yes=True)
+    ui.say = said.append  # type: ignore[method-assign]
+    L.remove_old_draft(L.Settings(root=tmp_path), ui)
+    assert not folder.exists() and "removed the old draft model" in said[0]
+    L.remove_old_draft(L.Settings(root=tmp_path), ui)  # nothing left: nothing said
+    assert len(said) == 1
+    assert L.build_parser().parse_args(["--no-draft", "--draft-url", "x"]).no_draft
 
 
 def test_find_root(tmp_path: Path) -> None:
@@ -329,8 +338,6 @@ import json, sys
 from http.server import BaseHTTPRequestHandler, HTTPServer
 
 port = int(sys.argv[sys.argv.index("--port") + 1])
-if "--model-draft" in sys.argv:  # like a draft whose vocabulary does not match the model
-    sys.exit("draft model vocab must match target model")
 
 class Handler(BaseHTTPRequestHandler):
     def log_message(self, *a): pass
@@ -403,8 +410,6 @@ def test_full_setup_and_start(server: str, tmp_path: Path) -> None:
         f"{server}/model/tiny.gguf",
         {"X-Linked-Size": str(len(model)), "X-Linked-Etag": hashlib.sha256(model).hexdigest()},
     )
-    draft = os.urandom(50_000)
-    Files.files["/hf/draft.gguf"] = draft
 
     port = 18000 + os.getpid() % 1000
     code = f"""
@@ -415,7 +420,7 @@ L.UV_DOWNLOAD = {server + "/uv"!r}
 L.LLAMA_API = {server + "/llama"!r}
 sys.exit(L.main(["--root", {str(root)!r}, "--yes", "--variant", "cpu", "--no-viewer",
                  "--port", "{port}", "--model-url", {server + "/hf/tiny.gguf"!r},
-                 "--draft-url", {server + "/hf/draft.gguf"!r}, "--ask", "Say hello"]))
+                 "--ask", "Say hello"]))
 """
     env = {k: v for k, v in os.environ.items() if k != "VIRTUAL_ENV"}
     result = subprocess.run(
@@ -426,12 +431,8 @@ sys.exit(L.main(["--root", {str(root)!r}, "--yes", "--variant", "cpu", "--no-vie
     assert "Hello from the GPU model" in output
     assert (root / "tools" / "uv" / "uv").exists()
     assert (root / "models" / "tiny.gguf").read_bytes() == model
-    assert (root / "models" / "draft" / "draft.gguf").read_bytes() == draft
-    # The fake server refuses the draft: Starlight still started, without it.
-    assert "starting it without" in output
-    assert "--model-draft" in (root / "logs" / "llama-server.log").read_text()
+    assert not (root / "models" / "draft").exists()
     config = load_config(Paths(root))
-    assert config.model.server.draft_model_path == ""
     assert config.model.provider == "llamacpp"
     assert config.model.server.binary == str(root / "tools" / "llama.cpp" / "cpu" / "llama-server")
     assert not L.port_in_use(port)  # the model server was stopped again
