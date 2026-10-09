@@ -13,6 +13,7 @@ import operator
 import re
 from collections.abc import Callable
 from datetime import date, datetime, timedelta
+from decimal import ROUND_HALF_UP, Decimal
 from typing import Any
 
 from pydantic import BaseModel, Field
@@ -35,7 +36,7 @@ _FUNCTIONS: dict[str, Callable[..., Any]] = {
     "ln": math.log,
     "exp": math.exp,
     "abs": abs,
-    "round": round,
+    "round": lambda x, digits=0: _round_half_up(x, digits),
     "floor": math.floor,
     "ceil": math.ceil,
     "min": min,
@@ -144,11 +145,21 @@ class CalcModule(Module):
 # -- arithmetic --------------------------------------------------------------------------
 
 
+def _round_half_up(value: float, digits: int = 0) -> int | float:
+    """Rounding as taught at school: 2.5 -> 3 and 0.125 -> 0.13 (Python's round gives 2 and
+    0.12: it rounds halves to even, and 0.125 is stored a hair below)."""
+    digits = int(digits)
+    exact = Decimal(repr(value)).quantize(Decimal(1).scaleb(-digits), rounding=ROUND_HALF_UP)
+    return int(exact) if digits <= 0 else float(exact)
+
+
 def _prepare(expression: str) -> str:
     text = expression.strip().replace("^", "**").replace("\u00d7", "*").replace("÷", "/")
     text = text.replace("\u2212", "-").rstrip("=").strip()
-    # "15% of 80" -> (15/100*80); a lone "19%" -> (19/100)
+    # "15% of 80" -> (15/100*80); "249.90 + 19%" -> 249.90 plus 19% of it, as on a
+    # calculator; a lone "19%" -> (19/100)
     text = re.sub(r"(\d+(?:\.\d+)?)\s*%\s*of\s*", r"(\1/100)*", text, flags=re.IGNORECASE)
+    text = re.sub(r"(\d+(?:\.\d+)?)\s*([+-])\s*(\d+(?:\.\d+)?)\s*%", r"(\1*(1\2\3/100))", text)
     text = re.sub(r"(\d+(?:\.\d+)?)\s*%", r"(\1/100)", text)
     return re.sub(r"\bmod\b", "%", text)  # "17 mod 5" is the remainder
 
@@ -173,8 +184,11 @@ def evaluate(expression: str, max_digits: int = 4000) -> int | float:
             return _CONSTANTS[node.id.lower()]
         if isinstance(node, ast.BinOp) and type(node.op) in _BINARY:
             left, right = walk(node.left), walk(node.right)
-            if isinstance(node.op, ast.Pow) and abs(right) > MAX_EXPONENT:
-                raise ToolError("that power is too large")
+            if isinstance(node.op, ast.Pow) and (
+                abs(right) > MAX_EXPONENT
+                or (abs(left) > 1 and right > 0 and math.log10(abs(left)) * right > max_digits)
+            ):
+                raise ToolError("that power is too large")  # checked before working it out
             return _BINARY[type(node.op)](left, right)
         if isinstance(node, ast.UnaryOp) and type(node.op) in _UNARY:
             return _UNARY[type(node.op)](walk(node.operand))
@@ -196,7 +210,7 @@ def evaluate(expression: str, max_digits: int = 4000) -> int | float:
         raise ToolError("division by zero") from exc
     except (ValueError, OverflowError, TypeError) as exc:
         raise ToolError(f"cannot calculate that: {exc}") from exc
-    if isinstance(result, int) and len(str(abs(result))) > max_digits:
+    if isinstance(result, int) and result.bit_length() * math.log10(2) > max_digits:
         raise ToolError(f"the result has more than {max_digits} digits")
     if isinstance(result, float) and result.is_integer() and abs(result) < 1e15:
         return int(result)

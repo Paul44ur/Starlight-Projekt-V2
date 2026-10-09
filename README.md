@@ -44,7 +44,7 @@ and answer you on WhatsApp. Anything risky asks you first, and one key press sto
 | **To-do lists** | "Add 'file taxes' for Friday, high priority" — lists, due dates and priorities; shows what's due and overdue. |
 | **Calendar** | Add events, see your agenda and free time, get an alert before something starts. Subscribe to your Google/Outlook/Nextcloud calendar's iCal link (read-only). |
 | **Daily briefing** | "How does my day look?" — events, to-dos, reminders, weather, headlines, new mail and alerts in one short message. |
-| **Automations** | "Send me the briefing every weekday at 7:30", "when the NAS goes down, tell me" — rules that run on a schedule or when something happens. Anything that normally asks first runs only if you approved it for that rule. |
+| **Automations** | "Send me the briefing every weekday at 7:30", "when the NAS goes down, tell me" — rules that run on a schedule or when something happens. Anything that normally asks first runs only if you approved it for that rule: approving a rule's own step covers exactly that step; for the model to use a tool in an "ask" step, allow it with `automations.allow`. |
 | **Exact maths** | Calculations, unit conversion (km/mi, °C/°F, GB/MB, …) and date maths ("days until 24.12.") worked out exactly, not guessed. |
 | **Translate** | Translates text with your own model — offline, nothing leaves the PC. |
 | **Desktop notifications** | Pops a notification on your screen to get your attention. |
@@ -447,7 +447,9 @@ off with `starlight remote disable`.
   screenshots never leave it. Only web pages you ask for, and WhatsApp if you set it up,
   use the internet.
 - **You decide what runs.** Every action is *allowed*, *asks first* or *blocked*. You can
-  change this in `config\starlight.yaml` under `permissions`.
+  change this in `config\starlight.yaml` under `permissions`. *Blocked* always wins; a tool
+  you allow by its exact name (`desktop.click`) runs even while a broader pattern
+  (`desktop.*`) asks.
 - **What runs without asking, out of the box.** Desktop clicks and typing, running code
   (in the sandbox), closing programs, network tasks (HTTP, SSH, TCP and WebSocket to any
   server), sending or answering email, and saving new files in any folder. These are

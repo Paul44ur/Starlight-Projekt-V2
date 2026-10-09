@@ -26,6 +26,7 @@ from pydantic import BaseModel, Field
 from starlight.core import Message, Module, ModuleContext, ToolError, tool
 from starlight.core.config import write_yaml_config
 from starlight.core.safepaths import expand, inside
+from starlight.text import decode_text
 
 TEXT = {".txt", ".md", ".markdown", ".csv", ".log", ".json", ".yaml", ".yml", ".ini", ".rst"}
 HTML = {".html", ".htm"}
@@ -61,11 +62,11 @@ def read_pages(path: Path) -> list[tuple[int, str]]:
     """(page, text) for a file; [] when it has no readable text or its reader is missing."""
     suffix = path.suffix.lower()
     if suffix in TEXT:
-        return [(0, path.read_text("utf-8", errors="replace"))]
+        return [(0, decode_text(path.read_bytes()))]
     if suffix in HTML:
         from starlight.text import html_to_text
 
-        return [(0, html_to_text(path.read_text("utf-8", errors="replace")).text)]
+        return [(0, html_to_text(decode_text(path.read_bytes())).text)]
     if suffix == ".pdf":
         try:
             from pypdf import PdfReader

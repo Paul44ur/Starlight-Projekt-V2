@@ -19,7 +19,7 @@ from starlight.core import Module, ModuleContext, ToolError, tool
 from starlight.core.config import write_yaml_config
 from starlight.core.http import HttpError
 from starlight.core.safepaths import PathGuard
-from starlight.core.schedule import ScheduleError, parse_clock, parse_when
+from starlight.core.schedule import ScheduleError, has_clock_time, parse_clock, parse_when
 
 from . import ics
 
@@ -110,7 +110,7 @@ class CalendarModule(Module):
         raw = text.strip().lower()
         if not raw:
             raise ToolError("when is it? e.g. 'tomorrow 15:00' or 'friday'")
-        timed = re.search(r"\d[:.]\d{2}|\d\s*(am|pm)\b", raw)
+        timed = has_clock_time(raw)  # "24.12.2026" alone is a day, not midnight
         try:
             moment = parse_when(text, self._now())
         except ScheduleError as exc:

@@ -193,7 +193,7 @@ class OfficeModule(Module):
         worksheet = book.active
         worksheet.title = sheet[:31] or "Sheet1"
         for row in rows:
-            worksheet.append([_safe_cell(v) for v in row])
+            worksheet.append([_safe_cell(worksheet, v) for v in row])
         if bold_header:
             for cell in worksheet[1]:
                 cell.font = openpyxl.styles.Font(bold=True)
@@ -221,7 +221,7 @@ class OfficeModule(Module):
             raise OfficeError(f"no sheet '{sheet}'; sheets: {', '.join(book.sheetnames)}")
         worksheet = book[sheet] if sheet else book.active
         for row in rows:
-            worksheet.append([_safe_cell(v) for v in row])
+            worksheet.append([_safe_cell(worksheet, v) for v in row])
         book.save(str(file))
         return {"file": str(file), "sheet": worksheet.title, "added": len(rows),
                 "total_rows": worksheet.max_row}  # fmt: skip
@@ -233,20 +233,18 @@ def _plain(value: Any) -> Cell:
     return str(value)  # dates, times, decimals
 
 
-def _safe_cell(value: Cell) -> Cell:
-    """Text starting with = + - @ would run as a formula when opened (CSV/formula
-    injection); keep it as text."""
-    if isinstance(value, str) and value[:1] in ("=", "+", "-", "@") and not _is_number(value):
-        return "'" + value
+def _safe_cell(worksheet: Any, value: Cell) -> Any:
+    """Text starting with "=" would be saved as a formula and run when the file is opened
+    (formula injection): save it as text, exactly as written. In an .xlsx file only "="
+    makes a formula, so "+43 664 1234567" or "- Rückruf" are saved unchanged."""
+    if isinstance(value, str) and value.startswith("="):
+        from openpyxl.cell.cell import Cell as SheetCell
+
+        cell = SheetCell(worksheet, value=value)
+        cell.data_type = "s"
+        cell.quotePrefix = True  # Excel shows and edits it as text, too
+        return cell
     return value
-
-
-def _is_number(text: str) -> bool:
-    try:
-        float(text)
-    except ValueError:
-        return False
-    return True
 
 
 def _fit_columns(worksheet: Any) -> None:

@@ -125,6 +125,15 @@ class Agent:
             log.warning("task stopped by kill switch", steps=result.steps)
             return result
 
+        if result.failed:  # the model could not answer: nothing to learn from or count
+            self.audit.record("task.failed", request_id=request_id, steps=result.steps)
+            await self.bus.publish(
+                "task.failed",
+                {"request_id": request_id, "request": request, "answer": result.answer},
+            )
+            log.warning("task failed", steps=result.steps)  # (counted as an error above)
+            return result
+
         self.audit.record(
             "task.completed",
             request_id=request_id,
@@ -179,13 +188,15 @@ class Agent:
 
     async def _chat(self, messages: list[Message], on_token: TokenCallback | None) -> ModelResponse:
         tools = self._schemas()
+        sent = messages
         if self.context is not None:
-            fitted = await self.context.fit(messages, tools)
-            if fitted is not messages:
-                messages[:] = fitted
+            compacted = await self.context.compact(messages, tools)
+            if compacted is not messages:
+                messages[:] = compacted  # the summary replaces the old turns for good
+            sent = self.context.shorten(messages, tools)  # a cut is only for this request
         if on_token is not None and getattr(self.provider, "supports_streaming", False):
-            return await self.provider.chat(messages, tools, on_token=on_token)  # type: ignore[call-arg]
-        return await self.provider.chat(messages, tools)
+            return await self.provider.chat(sent, tools, on_token=on_token)  # type: ignore[call-arg]
+        return await self.provider.chat(sent, tools)
 
     async def _loop(
         self, messages: list[Message], result: AgentResult, on_token: TokenCallback | None
@@ -217,6 +228,7 @@ class Agent:
                     )
                 return
             self._record_usage(response, result)
+            self.kill_switch.check()  # pressed while the model was writing: don't keep it
             messages.append(Message("assistant", response.content, tool_calls=response.tool_calls))
             if not response.tool_calls:
                 result.answer = response.content

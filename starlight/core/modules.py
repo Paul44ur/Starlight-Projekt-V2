@@ -61,6 +61,9 @@ def keep_running(process: subprocess.Popen[bytes]) -> None:
     _KEPT[:] = [p for p in _KEPT if p.poll() is None] + [process]
 
 
+CYCLE = "dependency cycle: "
+
+
 class ModuleManifest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -521,12 +524,15 @@ class ModuleManager:
         """Dependencies first. Cycles are reported as failures, not loaded."""
         order: list[str] = []
         visiting: set[str] = set()
+        for record in self.records.values():  # found again below if it is still there
+            if record.error and record.error.startswith(CYCLE):
+                record.error = None
 
         def visit(name: str, chain: tuple[str, ...]) -> None:
             if name in order or name not in self.records:
                 return
             if name in visiting:
-                self.records[name].error = "dependency cycle: " + " -> ".join((*chain, name))
+                self.records[name].error = CYCLE + " -> ".join((*chain, name))
                 return
             visiting.add(name)
             for dep in self.records[name].manifest.dependencies:
@@ -580,7 +586,7 @@ class ModuleManager:
                 raise KeyError(f"no module named '{name}' in {self.paths.modules}")
         if record.status is ModuleStatus.LOADED:
             return record
-        if record.error and record.error.startswith("dependency cycle"):
+        if record.error and record.error.startswith(CYCLE):
             return self._fail(record, record.error)
 
         missing = [
@@ -667,11 +673,13 @@ class ModuleManager:
         async with self._lock:
             await self._unload(name)
             self.rescan()
+            self.load_order()  # finds dependency cycles again (or that one was fixed)
             return await self._load(name)
 
     async def enable(self, name: str) -> ModuleRecord:
         async with self._lock:
             self.state.set(name, True)
+            self.load_order()
             return await self._load(name)
 
     async def disable(self, name: str) -> None:

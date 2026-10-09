@@ -94,10 +94,13 @@ class FileSearchModule(Module):
     def _walk(self, roots: list[Path]) -> Any:
         """Yield files under the roots, skipping heavy/irrelevant folders and Starlight's."""
         scanned = 0
+        walked: list[Path] = []  # roots inside one another (home and Documents): once each
         for base in roots:
+            if any(base.is_relative_to(done) for done in walked):
+                continue
             for dirpath, dirnames, filenames in os.walk(base):
                 here = Path(dirpath)
-                if self._in_starlight(here):
+                if self._in_starlight(here) or (here != base and here in walked):
                     dirnames[:] = []
                     continue
                 dirnames[:] = [d for d in dirnames if d not in _SKIP_DIRS and not d.startswith(".")]
@@ -106,6 +109,7 @@ class FileSearchModule(Module):
                     if scanned > self.config.max_files_scanned:
                         return
                     yield here / filename
+            walked.append(base)
 
     @staticmethod
     def _info(path: Path) -> dict[str, Any]:
@@ -182,14 +186,21 @@ class FileSearchModule(Module):
 
     @staticmethod
     def _scan_file(file: Path, needle_lower: str) -> list[tuple[int, str]]:
-        found: list[tuple[int, str]] = []
-        with file.open("r", encoding="utf-8", errors="ignore") as handle:
-            for lineno, line in enumerate(handle, 1):
-                if needle_lower in line.lower():
-                    found.append((lineno, line.strip()[:200]))
-                    if len(found) >= 20:  # per-file cap
-                        break
-        return found
+        """Matching lines of a text file in whatever encoding Windows wrote it: UTF-8,
+        UTF-16 (PowerShell 5 `>`, many logs) or Windows-1252 (Excel's CSV export)."""
+        with file.open("rb") as handle:
+            head = handle.read(4)
+        if head.startswith((b"\xff\xfe", b"\xfe\xff")):
+            encoding = "utf-16"
+        elif head.startswith(b"\xef\xbb\xbf"):
+            encoding = "utf-8-sig"
+        else:
+            encoding = "utf-8"
+        try:
+            return _matching_lines(file, needle_lower, encoding, "strict")
+        except UnicodeDecodeError:
+            fallback = "cp1252" if encoding.startswith("utf-8") else encoding
+            return _matching_lines(file, needle_lower, fallback, "replace")
 
     @tool
     def info(self, path: str) -> dict[str, Any]:
@@ -238,3 +249,16 @@ def _human(size: int) -> str:
     if size < 1024**3:
         return f"{size / 1024**2:.1f} MB"
     return f"{size / 1024**3:.1f} GB"
+
+
+def _matching_lines(
+    file: Path, needle_lower: str, encoding: str, errors: str
+) -> list[tuple[int, str]]:
+    found: list[tuple[int, str]] = []
+    with file.open("r", encoding=encoding, errors=errors) as handle:
+        for lineno, line in enumerate(handle, 1):
+            if needle_lower in line.lower():
+                found.append((lineno, line.strip()[:200]))
+                if len(found) >= 20:  # per-file cap
+                    break
+    return found

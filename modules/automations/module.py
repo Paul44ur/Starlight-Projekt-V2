@@ -74,7 +74,11 @@ class Rule(BaseModel):
     on: str = ""
     condition: str = ""
     actions: list[Action] = Field(min_length=1)
+    # Tools that may run without asking: `allow` as the rule's own tool steps (with the
+    # arguments written in the rule), `allow_anywhere` also when an "ask" step lets the
+    # model pick a tool and its arguments (given with automations.allow).
     allow: list[str] = Field(default_factory=list)
+    allow_anywhere: list[str] = Field(default_factory=list)
 
     @model_validator(mode="after")
     def _trigger(self) -> Rule:
@@ -148,10 +152,14 @@ class AutomationUI:
     def __init__(self, module: AutomationsModule, rule: Rule) -> None:
         self.module, self.rule = module, rule
         self.refused: list[str] = []
+        self.step_tool: str | None = None  # the tool step running now (None in "ask" steps)
 
     async def confirm(self, question: str) -> bool:
         match = re.match(r"Run (\S+) with", question)
-        if match and match.group(1) in self.rule.allow:
+        name = match.group(1) if match else None
+        if name is not None and (
+            name in self.rule.allow_anywhere or (name == self.step_tool and name in self.rule.allow)
+        ):
             return True
         self.refused.append(match.group(1) if match else question[:120])
         return False
@@ -287,10 +295,13 @@ class AutomationsModule(Module):
                 if action.only_if and not matches(action.only_if, result):
                     steps.append({"action": action.describe(), "skipped": True})
                     continue
+                ui.step_tool = action.tool or None
                 try:
                     ok, result, error = await self._act(action, event, result)
                 except Exception as exc:  # the kill switch, a crashed tool: stop this run
                     ok, error = False, f"{type(exc).__name__}: {exc}"
+                finally:
+                    ui.step_tool = None
                 steps.append({"action": action.describe(), "ok": ok, "error": error})
                 if not ok:
                     break
@@ -492,13 +503,16 @@ class AutomationsModule(Module):
 
     @tool
     async def allow(self, name: str, tool: str) -> dict[str, Any]:
-        """Let an automation run a tool that normally asks first. Asks first."""
+        """Let an automation run a tool that normally asks first - also when one of its
+        "ask" steps lets the model decide what to run it with. Asks first."""
         rule = self._rule(name)
         if not await self.ctx.ui.confirm(
-            f"Let the automation '{rule.name}' run {tool} without asking each time?"
+            f"Let the automation '{rule.name}' run {tool} without asking each time, with "
+            "whatever it decides to run it with?"
         ):
             raise ToolError("not confirmed, nothing changed")
         rule.allow = sorted(set(rule.allow) | {tool.strip()})
+        rule.allow_anywhere = sorted(set(rule.allow_anywhere) | {tool.strip()})
         self._write_rules()
         return {"allowed": tool.strip(), "for": rule.name}
 
@@ -555,6 +569,8 @@ def matches(condition: str, data: Any) -> bool:
         return bool(_lookup(data, text))
     value = _lookup(data, left.strip())
     target = right.strip().strip("'\"")
+    if value is None:  # no such field (a typo?): only "!=" holds, nothing fires by accident
+        return op == "!="
     if op == "~":
         return target.lower() in str(value if value is not None else "").lower()
     a: Any

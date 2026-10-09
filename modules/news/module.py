@@ -119,15 +119,19 @@ def _find_text(item: ElementTree.Element, name: str) -> str:
 
 
 def _find_link(item: ElementTree.Element) -> str:
-    # RSS: <link>url</link>; Atom: <link href="url"/>
-    for child in item:
-        if _tag(child) == "link":
-            if child.text and child.text.strip():
-                return child.text.strip()
-            href = child.get("href")
-            if href:
-                return href.strip()
-    return ""
+    # RSS: <link>url</link>; Atom: <link href="url"/>, where the article is rel="alternate"
+    # (or no rel) - not "replies", "edit" or "self"
+    links = [child for child in item if _tag(child) == "link"]
+    for child in links:
+        if child.text and child.text.strip():
+            return child.text.strip()
+    hrefs = [
+        (child.get("rel") or "alternate", (child.get("href") or "").strip()) for child in links
+    ]
+    for rel, href in hrefs:
+        if href and rel == "alternate":
+            return href
+    return next((href for _, href in hrefs if href), "")
 
 
 def parse_feed(xml: str) -> list[dict[str, Any]]:

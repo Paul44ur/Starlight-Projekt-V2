@@ -66,22 +66,29 @@ class ContextManager:
         return cut
 
     async def fit(self, messages: list[Message], tools: list[dict[str, Any]]) -> list[Message]:
-        """Return messages that fit the budget. Modifies nothing in place."""
+        """Return messages that fit the budget (`compact`, then `shorten`). Modifies
+        nothing in place."""
+        return self.shorten(await self.compact(messages, tools), tools)
+
+    async def compact(self, messages: list[Message], tools: list[dict[str, Any]]) -> list[Message]:
+        """Over the budget: the older turns as one summary, the recent ones as they are.
+        This is what the conversation keeps from then on."""
         if estimate_tokens(messages, tools) <= self.budget:
             return messages
         cut = self._cut_index(messages)
-        if cut > 1:
-            head, old, recent = messages[:1], messages[1:cut], messages[cut:]
-            summary = await self.summarize(old)
-            self._log.info("summarized", messages=len(old), chars=len(summary))
-            if self.on_summary is not None:
-                await self.on_summary(summary)
-            messages = [*head, Message("system", SUMMARY_PREFIX + summary), *recent]
-        return self._shorten(messages, tools)
+        if cut <= 1:
+            return messages
+        head, old, recent = messages[:1], messages[1:cut], messages[cut:]
+        summary = await self.summarize(old)
+        self._log.info("summarized", messages=len(old), chars=len(summary))
+        if self.on_summary is not None:
+            await self.on_summary(summary)
+        return [*head, Message("system", SUMMARY_PREFIX + summary), *recent]
 
-    def _shorten(self, messages: list[Message], tools: list[dict[str, Any]]) -> list[Message]:
+    def shorten(self, messages: list[Message], tools: list[dict[str, Any]]) -> list[Message]:
         """Still too long (e.g. one huge pasted text or file): cut the longest messages,
-        never the system prompt, until the prompt fits."""
+        never the system prompt, until the prompt fits. Only for what is sent to the model
+        this time - the conversation keeps your text whole."""
         over = estimate_tokens(messages, tools) - self.budget
         if over <= 0:
             return messages

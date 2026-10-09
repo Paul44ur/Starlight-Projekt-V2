@@ -20,6 +20,7 @@ from __future__ import annotations
 import argparse
 import contextlib
 import hashlib
+import http.client
 import json
 import os
 import platform
@@ -334,13 +335,21 @@ def download(
                             last = time.monotonic()
                 ui.progress(done - have, (total - have) if total else None, started)
                 ui.say()
+                if total is not None and done < total:  # closed early, without an error
+                    raise ConnectionError(f"the connection closed after {done} of {total} bytes")
             break
         except urllib.error.HTTPError as exc:
             if exc.code == 416 and have:  # already complete
                 break
             if exc.code in (401, 403, 404) or attempt == attempts:
                 raise LauncherError(f"download failed: {url} (HTTP {exc.code})") from exc
-        except (urllib.error.URLError, TimeoutError, ConnectionError, OSError) as exc:
+        except (
+            urllib.error.URLError,
+            TimeoutError,
+            ConnectionError,
+            OSError,
+            http.client.HTTPException,  # e.g. IncompleteRead: a chunked answer cut short
+        ) as exc:
             if attempt == attempts:
                 raise LauncherError(f"download failed: {url} ({exc})") from exc
         ui.say(f"   connection problem, resuming (try {attempt + 1} of {attempts}) ...")
@@ -358,23 +367,42 @@ def download(
     return dest
 
 
-def extract_member(archive: Path, name: str, target: Path) -> Path:
+def extract_member(archive: Path, name: str, target: Path, keep: tuple[str, ...] = ()) -> Path:
     """Unpack the folder of the file called ``name`` (e.g. llama-server.exe) into
-    ``target``, flattening whatever folder structure the archive has."""
+    ``target``, flattening whatever folder structure the archive has. The program files
+    are replaced as a whole; the subfolders named in ``keep`` (downloaded models or voices)
+    stay as they are."""
     with tempfile.TemporaryDirectory(dir=archive.parent) as tmp:
         tmp_path = Path(tmp)
-        if archive.name.endswith(".zip"):
-            with zipfile.ZipFile(archive) as zf:
-                _safe_extract_zip(zf, tmp_path)
-        else:
-            with tarfile.open(archive) as tf:
-                tf.extractall(tmp_path, filter="data")
+        try:
+            if archive.name.endswith(".zip"):
+                with zipfile.ZipFile(archive) as zf:
+                    _safe_extract_zip(zf, tmp_path)
+            else:
+                with tarfile.open(archive) as tf:
+                    tf.extractall(tmp_path, filter="data")
+        except (zipfile.BadZipFile, tarfile.TarError, EOFError) as exc:
+            archive.unlink(missing_ok=True)  # a broken download: fetch it again next time
+            raise LauncherError(
+                f"{archive.name} is not a complete archive ({exc}); start again to download "
+                "it again"
+            ) from exc
         found = next((p for p in tmp_path.rglob(name) if p.is_file()), None)
         if found is None:
             raise LauncherError(f"{archive.name} does not contain {name}")
+        kept: list[tuple[Path, Path]] = []
         if target.exists():
+            for folder in keep:
+                if (target / folder).is_dir():
+                    aside = tmp_path / f"kept-{folder}"
+                    (target / folder).replace(aside)
+                    kept.append((aside, target / folder))
             shutil.rmtree(target)
         shutil.copytree(found.parent, target)
+        for aside, back in kept:
+            if back.exists():  # the archive has its own: yours win
+                shutil.rmtree(back)
+            aside.replace(back)
     binary = target / name
     if os.name != "nt":
         binary.chmod(binary.stat().st_mode | 0o111)
@@ -544,7 +572,7 @@ def ensure_voice(settings: Settings, ui: Ui) -> None:
         if not (whisper / exe("whisper-server")).is_file() or settings.update:
             ui.step("Downloading whisper.cpp (speech to text)")
             archive = download(settings.whisper_url, settings.tools / "whisper.zip", ui)
-            extract_member(archive, exe("whisper-server"), whisper)
+            extract_member(archive, exe("whisper-server"), whisper, keep=("models",))
             archive.unlink()
         model = whisper / "models" / settings.whisper_model_url.rstrip("/").split("/")[-1]
         if not model.is_file():
@@ -553,7 +581,7 @@ def ensure_voice(settings: Settings, ui: Ui) -> None:
         if not (piper / exe("piper")).is_file() or settings.update:
             ui.step("Downloading Piper (text to speech)")
             archive = download(settings.piper_url, settings.tools / "piper.zip", ui)
-            extract_member(archive, exe("piper"), piper)
+            extract_member(archive, exe("piper"), piper, keep=("voices",))
             archive.unlink()
         for voice in VOICES:
             name = voice.split("/")[-1]

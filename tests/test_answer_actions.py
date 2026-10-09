@@ -3,8 +3,12 @@ was written, and a conversation downloaded as Markdown."""
 
 from __future__ import annotations
 
+import asyncio
 from pathlib import Path
+from typing import Any
 from urllib.parse import unquote
+
+import pytest
 
 from starlight.core import Kernel, Paths
 from starlight.web.app import answer_stats
@@ -45,20 +49,97 @@ async def test_a_taken_back_exchange_is_put_back_if_asking_again_fails(tmp_path:
     async with Kernel(paths) as k:
         await k.ask("one", keep_history=True)
         await k.ask("two", keep_history=True)
+        name = k.conversations.current
         before = [m.content for m in k.history]
-        assert await k.take_back() == "two"
+        on_disk = k.conversations.messages(name)
+        taken = await k.take_back()
+        assert taken is not None and taken.content == "two"
         assert [m.content for m in k.history] == before[:2]
+        # Only set aside in memory: a crash or a stop now loses nothing.
+        assert k.conversations.messages(name) == on_disk
         await k.put_back()  # the new answer was stopped: the old one comes back
         assert [m.content for m in k.history] == before
         await k.put_back()  # only once
         assert [m.content for m in k.history] == before
 
-        assert await k.take_back() == "two"
+        await k.take_back()
         await k.ask("two", keep_history=True)  # it worked this time
         await k.put_back()  # so there is nothing to put back
         assert [m.content for m in k.history] == before
+        with pytest.raises(ValueError, match="changed since"):
+            await k.take_back(expected="one")  # the page is behind: "two" came after it
+        assert [m.content for m in k.history] == before
     async with Kernel(paths) as k:  # and it was saved that way
         assert [m.content for m in k.history] == before
+
+
+def test_regenerate_from_a_page_that_is_behind_changes_nothing(tmp_path: Path) -> None:
+    with client(web_home(tmp_path / "h")) as c, c.websocket_connect("/ws", headers=LOCAL) as ws:
+        ws.send_json({"type": "ask", "text": "first"})
+        conversation = _until_answer(ws)["conversation"]
+        ws.send_json({"type": "ask", "text": "from another window", "conversation": conversation})
+        _until_answer(ws)
+        ws.send_json({"type": "regenerate", "conversation": conversation, "question": "first"})
+        m = ws.receive_json()
+        messages = c.get(f"/api/conversations/{conversation}", headers=LOCAL).json()["messages"]
+    assert m["type"] == "error" and "changed since" in m["text"]
+    assert [x["content"] for x in messages][-1] == "You said: from another window"
+
+
+def test_regenerate_sends_the_picture_again(tmp_path: Path) -> None:
+    with client(web_home(tmp_path / "h")) as c, c.websocket_connect("/ws", headers=LOCAL) as ws:
+        kernel = c.app.state.kernel  # type: ignore[attr-defined]
+        seen: list[int] = []
+        real = kernel.agent.provider.chat
+
+        async def spy(messages: Any, tools: Any, **kw: Any) -> Any:
+            seen.append(len(messages[-1].images))
+            return await real(messages, tools)
+
+        kernel.agent.provider.chat = spy
+        png = b"\x89PNG\r\n\x1a\n" + b"0" * 100
+        upload = c.post(
+            "/api/upload", headers={**LOCAL, "x-filename": "cat.png"}, content=png
+        ).json()  # type: ignore[attr-defined]
+        ws.send_json({"type": "ask", "text": "what is this?", "attachments": [upload["id"]]})
+        conversation = _until_answer(ws)["conversation"]
+        ws.send_json(
+            {"type": "regenerate", "conversation": conversation, "question": "what is this?"}
+        )
+        _until_answer(ws)
+    assert seen == [1, 1]
+
+
+async def test_stop_while_the_last_words_are_sent_still_answers(tmp_path: Path) -> None:
+    from starlight.core.agent import AgentResult
+    from starlight.web.app import WebUI, _run_ask
+
+    sent: list[dict[str, Any]] = []
+
+    async def send(obj: dict[str, Any]) -> None:
+        if obj["type"] == "token":
+            await asyncio.sleep(0.01)  # a slow link (the phone over Tailscale)
+        sent.append(obj)
+
+    class Conversations:
+        current = "aaaaaaaaaaaa"
+
+        def messages(self, name: str) -> list[Any]:
+            return []
+
+    class FinishedKernel:
+        conversations = Conversations()
+
+        async def ask(self, text: str, on_token: Any = None, **kw: Any) -> AgentResult:
+            for i in range(100):
+                on_token(f"t{i} ")
+            return AgentResult("r", answer="done")
+
+    task = asyncio.create_task(_run_ask(FinishedKernel(), WebUI(send), send, "hi"))  # type: ignore[arg-type]
+    await asyncio.sleep(0.1)  # the answer is complete (and kept); tokens still going out
+    task.cancel()  # "stop"
+    await task
+    assert sent[-1]["type"] == "answer" and sent[-1]["text"] == "done"  # the page is told
 
 
 def test_a_conversation_downloads_as_markdown(tmp_path: Path) -> None:

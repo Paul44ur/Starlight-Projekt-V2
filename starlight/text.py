@@ -30,6 +30,20 @@ class PageText:
     links: list[str] = field(default_factory=list)
 
 
+def decode_text(data: bytes) -> str:
+    """Text from a file in whatever encoding Windows wrote it: UTF-8 (with or without the
+    BOM Notepad adds), UTF-16 with a BOM (PowerShell 5, many logs), else Windows-1252
+    (older programs, Excel's CSV export) - so umlauts survive either way."""
+    if data.startswith((b"\xff\xfe", b"\xfe\xff")):
+        return data.decode("utf-16", errors="replace")
+    for cut in range(4):  # a cut-off read may end inside a UTF-8 character
+        try:
+            return data[: len(data) - cut].decode("utf-8-sig")
+        except UnicodeDecodeError:
+            continue
+    return data.decode("cp1252", errors="replace")
+
+
 def html_to_text(html: str, base_url: str = "", max_chars: int | None = None) -> PageText:
     soup = BeautifulSoup(html, "html.parser")
     title = soup.title.get_text(" ", strip=True) if soup.title else ""

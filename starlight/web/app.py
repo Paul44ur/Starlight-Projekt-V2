@@ -31,7 +31,7 @@ from urllib.parse import quote, unquote, urlsplit
 from fastapi import FastAPI, HTTPException, Request, Response, WebSocket, WebSocketDisconnect
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 
-from starlight.core import Event, Kernel, Paths, ToolError
+from starlight.core import AgentResult, Event, Kernel, Paths, ToolError
 from starlight.core.config import RemoteConfig, load_config
 from starlight.core.output import describe_output_folder
 from starlight.core.permissions import Permission, extra_blocked, extra_confirm, save_rule
@@ -780,31 +780,27 @@ def create_app(paths: Paths | None = None) -> Any:
                     if ask_task is not None and not ask_task.done():
                         await send({"type": "busy"})
                         continue
-                    conversation = message.get("conversation") or None
-                    try:
-                        again = await k.take_back(conversation)
-                    except KeyError:
-                        again = None
-                    if not again:
-                        await send({"type": "error", "text": "nothing to ask again"})
-                        continue
                     ask_task = asyncio.create_task(
                         _run_ask(
                             k,
                             web_ui,
                             send,
-                            again,
+                            str(message.get("question") or ""),
                             None,
-                            conversation,
+                            message.get("conversation") or None,
                             confirm_more,
                             block_more,
-                            regenerating=True,
+                            regenerate=True,
                         )
                     )
                 elif kind == "reply":
                     web_ui.resolve(message.get("id", ""), message.get("value", ""))
                 elif kind == "stop" and ask_task is not None and not ask_task.done():
                     ask_task.cancel()
+                    with contextlib.suppress(asyncio.CancelledError, Exception):
+                        await ask_task
+                    if ask_task.cancelled():  # stopped before it began: nothing said so yet
+                        await send({"type": "stopped"})
         except WebSocketDisconnect:
             pass
         finally:
@@ -836,10 +832,11 @@ async def _run_ask(
     conversation: str | None = None,
     confirm_more: tuple[str, ...] = (),
     block_more: tuple[str, ...] = (),
-    regenerating: bool = False,
+    regenerate: bool = False,
 ) -> None:
-    """One request from the browser. `regenerating`: the last exchange was taken back to
-    ask again (Kernel.take_back); if this answer is stopped or fails, it is put back."""
+    """One request from the browser. ``regenerate``: ask the conversation's last question
+    again (``text``, if given, is the question the page means) and replace its answer; if
+    the new answer is stopped or fails, the old one stays."""
     queue: asyncio.Queue[str | None] = asyncio.Queue()
 
     def on_token(token: str) -> None:
@@ -852,47 +849,66 @@ async def _run_ask(
                 return
             await send({"type": "token", "text": token})
 
+    def answer(result: AgentResult) -> dict[str, Any]:
+        return {
+            "type": "answer",
+            "text": result.answer,
+            "stopped": result.stopped,
+            "failed": result.failed,  # stopped or failed: not kept in the conversation
+            "conversation": name,
+            "stats": answer_stats(result.usage),
+        }
+
     name = conversation or kernel.conversations.current
     try:
         kernel.conversations.messages(name)
     except KeyError:
         await send({"type": "error", "text": "that conversation no longer exists"})
         return
-    await send({"type": "start", "conversation": name})
     token_ctx = current_ui.set(web_ui)
     confirm_ctx = extra_confirm.set(confirm_more)
     block_ctx = extra_blocked.set(block_more)
-    pumper = asyncio.create_task(pump())
-    kept = False
+    pumper: asyncio.Task[None] | None = None
+    result: AgentResult | None = None
+    taken = kept = False
     try:
+        if regenerate:
+            try:
+                question = await kernel.take_back(name, expected=text or None)
+            except ValueError as exc:  # the page is behind: another window asked since
+                await send({"type": "error", "text": str(exc)})
+                return
+            if question is None:
+                await send({"type": "error", "text": "nothing to ask again"})
+                return
+            taken = True
+            text, images = question.content, question.images  # the pictures go again too
+        await send({"type": "start", "conversation": name})
+        pumper = asyncio.create_task(pump())
         result = await kernel.ask(
             text, keep_history=True, on_token=on_token, images=images or None, conversation=name
         )
         kept = not (result.stopped or result.failed)
         queue.put_nowait(None)
         await pumper
-        await send(
-            {
-                "type": "answer",
-                "text": result.answer,
-                "stopped": result.stopped,
-                "failed": result.failed,  # stopped or failed: not kept in the conversation
-                "conversation": name,
-                "stats": answer_stats(result.usage),
-            }
-        )
+        await send(answer(result))
     except asyncio.CancelledError:
         queue.put_nowait(None)
-        with contextlib.suppress(Exception):
-            await pumper
-        await send({"type": "stopped"})
+        if pumper is not None:
+            # Stopped while the last words were still being sent: the pump was cancelled
+            # with us, which is no reason not to tell the page.
+            with contextlib.suppress(asyncio.CancelledError, Exception):
+                await pumper
+        # Already answered (and kept) when the stop came: say so, it is in the conversation.
+        await send(answer(result) if result is not None else {"type": "stopped"})
     except Exception as exc:  # surface any failure to the browser
         queue.put_nowait(None)
-        with contextlib.suppress(Exception):
-            await pumper
+        if pumper is not None:
+            with contextlib.suppress(asyncio.CancelledError, Exception):
+                await pumper
         await send({"type": "error", "text": f"{type(exc).__name__}: {exc}"})
     finally:
-        if regenerating and not kept:
+        if taken and not kept:
             with contextlib.suppress(Exception):
                 await kernel.put_back(name)
         extra_blocked.reset(block_ctx)

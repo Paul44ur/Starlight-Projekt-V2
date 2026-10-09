@@ -140,6 +140,8 @@ class Memory:
         topic = (topic or " ".join(content.split()[:6])).strip()
         await self.sync()
         existing = self.store.get(slugify(topic))
+        if existing is not None and existing.topic.casefold() != topic.casefold():
+            existing = None  # another topic with the same file name ("C#" and "C++")
         if existing is None:
             hits = await self.index.search(f"{topic}: {content}", 1, self.config.merge_threshold)
             existing = hits[0].entry if hits else None

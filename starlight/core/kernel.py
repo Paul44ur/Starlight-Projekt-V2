@@ -189,6 +189,7 @@ class Kernel:
         self.conversations = ConversationStore(self.paths.data / "conversations")
         self._histories: dict[str, list[Message]] = {}
         self._taken_back: dict[str, tuple[int, list[Message]]] = {}  # see take_back
+        self._stamps: dict[str, tuple[int, int] | None] = {}  # file versions of _histories
         self._conversation_locks: dict[str, asyncio.Lock] = {}
         self._hotkey = hotkey
         self._watcher: asyncio.Task[None] | None = None
@@ -429,9 +430,19 @@ class Kernel:
             return await self._ask_in_conversation(name, request, stream, images)
 
     def _history_of(self, conversation: str) -> list[Message]:
-        if conversation not in self._histories:
+        """The conversation's messages: kept in memory (with the pictures sent in it), and
+        read again when another Starlight program saved to it since."""
+        stamp = self.conversations.stamp(conversation)
+        if conversation not in self._histories or self._stamps.get(conversation) != stamp:
             self._histories[conversation] = self.conversations.messages(conversation)
+            self._stamps[conversation] = stamp
         return self._histories[conversation]
+
+    def _keep(self, conversation: str, messages: list[Message]) -> None:
+        """Make ``messages`` the conversation, in memory and on disk."""
+        self._histories[conversation] = messages
+        self.conversations.save(conversation, messages)
+        self._stamps[conversation] = self.conversations.stamp(conversation)
 
     async def _ask_in_conversation(
         self,
@@ -449,9 +460,8 @@ class Kernel:
                 for m in result.messages[1:]
                 if not (m.role == "system" and not m.content.startswith(SUMMARY_PREFIX))
             ]
-            self._histories[conversation] = kept
             try:
-                self.conversations.save(conversation, kept)
+                self._keep(conversation, kept)
             except (OSError, KeyError):  # deleted meanwhile, or the disk is full
                 self.log.exception("could not save the conversation", conversation=conversation)
         return result
@@ -461,10 +471,15 @@ class Kernel:
         """The current conversation's messages."""
         return self._history_of(self.conversations.current)
 
-    async def take_back(self, conversation: str | None = None) -> str | None:
-        """Remove the last exchange (your last message and everything after it) from a
-        conversation, to ask it again. Returns that message, or None if there is none;
-        `put_back` undoes it."""
+    async def take_back(
+        self, conversation: str | None = None, expected: str | None = None
+    ) -> Message | None:
+        """Set the last exchange (your last message and everything after it) aside, to ask
+        that message again; returns it (with any pictures), or None if there is none. Only
+        in memory: the file keeps the old exchange until a new answer is saved, so a crash
+        or a stop loses nothing, and `put_back` restores it. ``expected``: the question the
+        caller means; if the last one is a different one (the page is behind, or another
+        window asked something since), ValueError."""
         name = conversation or self.conversations.current
         lock = self._conversation_locks.setdefault(name, asyncio.Lock())
         async with lock:
@@ -474,24 +489,22 @@ class Kernel:
             )
             if last < 0:
                 return None
+            if expected is not None and not history[last].content.startswith(expected.strip()):
+                raise ValueError("the conversation changed since; open it again to see it")
             self._histories[name] = history[:last]
             self._taken_back[name] = (last, history[last:])
-            self.conversations.save(name, self._histories[name])
-            return history[last].content
+            return history[last]
 
     async def put_back(self, conversation: str | None = None) -> None:
-        """Restore what `take_back` removed, when asking again was stopped or failed and so
-        kept nothing. Does nothing if the conversation has moved on since."""
+        """Restore what `take_back` set aside, when asking again was stopped or failed and
+        so kept nothing. Does nothing if the conversation has moved on since."""
         name = conversation or self.conversations.current
         lock = self._conversation_locks.setdefault(name, asyncio.Lock())
         async with lock:
             length, removed = self._taken_back.pop(name, (-1, []))
             history = self._history_of(name)
-            if not removed or len(history) != length:
-                return
-            self._histories[name] = [*history, *removed]
-            with contextlib.suppress(OSError, KeyError):  # deleted meanwhile
-                self.conversations.save(name, self._histories[name])
+            if removed and len(history) == length:
+                self._histories[name] = [*history, *removed]
 
     def new_conversation(self, title: str = "") -> str:
         """Start a fresh conversation and make it the current one."""
@@ -500,6 +513,7 @@ class Kernel:
     def forget_conversation(self, conversation: str) -> None:
         self.conversations.delete(conversation)
         self._histories.pop(conversation, None)
+        self._stamps.pop(conversation, None)
 
     async def _run_request(self, text: str) -> str:
         return (await self.ask(text)).answer

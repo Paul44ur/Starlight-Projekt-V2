@@ -111,6 +111,15 @@ class ConversationStore:
         self.set_current(conversation)
         return conversation
 
+    def stamp(self, conversation: str) -> tuple[int, int] | None:
+        """Changes whenever the file does, e.g. when another Starlight (the terminal and
+        the web chat as separate programs) saved a turn to it."""
+        try:
+            info = self._file(conversation).stat()
+        except (OSError, KeyError):
+            return None
+        return info.st_mtime_ns, info.st_size
+
     def messages(self, conversation: str) -> list[Message]:
         return [from_dict(m) for m in self._read(conversation).get("messages", [])]
 
