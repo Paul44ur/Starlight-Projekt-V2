@@ -244,12 +244,14 @@ async def test_word_and_excel_round_trip(project: Paths, documents: Path) -> Non
         assert "# Holiday plan" in text and "# Days" in text and "swim" in text
         assert "already exists" in await fails(k, "office.write_docx", name="Plan", content="x")
 
-        rows = [["Item", "Price"], ["Milk", 1.29], ['=HYPERLINK("evil")', 2]]
+        rows = [["Item", "Price"], ["Milk", 1.29], ['=HYPERLINK("evil")', "+43 664 1234567"]]
         await call(k, "office.write_xlsx", name="shopping", rows=rows)
         await call(k, "office.append_rows", path="shopping.xlsx", rows=[["Bread", 2.5]])
         sheet = await call(k, "office.read_xlsx", path="shopping.xlsx")
         assert sheet["rows"][0] == ["Item", "Price"] and sheet["rows"][-1] == ["Bread", 2.5]
-        assert sheet["rows"][2][0] == '\'=HYPERLINK("evil")'  # kept as text, not a formula
+        # Kept as text, not a formula (a formula would read back as None: no cached value),
+        # and text starting with + is saved as written.
+        assert sheet["rows"][2] == ['=HYPERLINK("evil")', "+43 664 1234567"]
         assert sheet["total_rows"] == 4
 
 

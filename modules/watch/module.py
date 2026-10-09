@@ -20,7 +20,6 @@ A hit is delivered on every open channel and published as ``watch.changed`` or
 from __future__ import annotations
 
 import hashlib
-import json
 import re
 import time
 import uuid
@@ -33,6 +32,7 @@ from pydantic import BaseModel, Field
 
 from starlight.core import Module, ModuleContext, Permission, ToolError, tool
 from starlight.core.http import HttpError
+from starlight.core.jsonfile import load_json, save_json
 from starlight.core.schedule import UNITS
 from starlight.text import html_to_text
 
@@ -73,8 +73,17 @@ def parse_number(raw: str) -> float | None:
         return None
 
 
+# A price split over HTML tags comes out of the page text with a gap in it:
+# <span>1.299</span><span>,00 €</span> -> "1.299 ,00 €", 49<sup>,99</sup> -> "49 ,99".
+# And thousands grouped with a non-breaking or thin space: "1 299,00 €".
+_SPLIT_DECIMALS = re.compile(
+    r"(?<=\d)\s+(?=[.,]\d)|(?<=\d[.,])\s+(?=\d)|(?<=\d)[\u00a0\u202f\u2009](?=\d{3}(?!\d))"
+)
+
+
 def find_price(text: str) -> float | None:
     """The first price with a currency in the text."""
+    text = _SPLIT_DECIMALS.sub("", text)
     for match in PRICE.finditer(text):
         value = parse_number(match.group("a") or match.group("b") or "")
         if value is not None:
@@ -147,17 +156,10 @@ class WatchModule(Module):
     # -- storage -------------------------------------------------------------------------
 
     def _load(self) -> list[dict[str, Any]]:
-        try:
-            data = json.loads(self.file.read_text("utf-8"))
-        except (OSError, json.JSONDecodeError):
-            return []
-        return data if isinstance(data, list) else []
+        return load_json(self.file, [])
 
     def _save(self, items: list[dict[str, Any]]) -> None:
-        self.file.parent.mkdir(parents=True, exist_ok=True)
-        tmp = self.file.with_suffix(".tmp")
-        tmp.write_text(json.dumps(items, indent=2, ensure_ascii=False), encoding="utf-8")
-        tmp.replace(self.file)
+        save_json(self.file, items)
 
     def _find(self, items: list[dict[str, Any]], name: str) -> dict[str, Any]:
         key = name.strip().lower()

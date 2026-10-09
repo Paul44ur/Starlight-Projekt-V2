@@ -114,6 +114,7 @@ const log = document.getElementById("log");
 const input = document.getElementById("input");
 const connPill = document.getElementById("conn");
 let ws, current = null, conversation = null, lastQuestion = null, attached = [];
+let answering = null, regenPending = false;  // see handle()
 
 function atBottom() { return log.scrollHeight - log.scrollTop - log.clientHeight < 80; }
 function scroll() { log.scrollTop = log.scrollHeight; }
@@ -139,21 +140,25 @@ function addMsg(who, text, files) {
   if (stick) scroll();
   return body;
 }
-// Only the latest answer can be regenerated: it replaces that answer. An answer that was
-// stopped or failed was never kept, so for that one the question is simply asked again.
+// Only the latest answer can be regenerated: it replaces that answer. An answer the server
+// kept (or the old one it keeps after a failed regenerate) is asked again with "regenerate";
+// one that failed or was stopped was never kept, so its question is simply asked again.
 function regenerate(msg) {
   const answers = log.querySelectorAll(".msg.bot");
   if (msg !== answers[answers.length - 1]) { toast("Only the latest answer can be regenerated"); return; }
-  if (current) { toast("Wait until this answer is finished"); return; }
+  if (current || answering) { toast("Wait until this answer is finished"); return; }
   if (!ws || ws.readyState !== 1) { toast("Not connected"); return; }
-  if (msg.dataset.kept) {
-    msg.remove();
-    ws.send(JSON.stringify({ type: "regenerate", conversation }));
-    return;
-  }
   let q = msg.previousElementSibling;
   while (q && !q.classList.contains("you")) q = q.previousElementSibling;
-  const text = q ? q.querySelector(".body").textContent : lastQuestion;
+  const question = q ? q.querySelector(".body").textContent : "";
+  if (msg.dataset.kept || msg.dataset.regen) {
+    msg.remove(); regenPending = true;
+    // The question tells the server which exchange is meant: another window may have
+    // asked something since this page last showed the conversation.
+    ws.send(JSON.stringify({ type: "regenerate", conversation, question }));
+    return;
+  }
+  const text = question || lastQuestion;
   if (!text) { toast("Nothing to ask again"); return; }
   msg.remove();
   ws.send(JSON.stringify({ type: "ask", text, conversation }));
@@ -174,24 +179,49 @@ function connect() {
   ws.onmessage = (ev) => handle(JSON.parse(ev.data));
 }
 
+// The conversation an answer is coming for: if you open another one meanwhile, its words
+// are not shown there (open the first one again to see the answer).
+function elsewhere(m) { return answering && answering !== conversation; }
 function handle(m) {
   if (m.type === "start") {
+    if (!conversation) conversation = m.conversation;
+    answering = m.conversation || conversation;
     current = addMsg("bot", "");
-    if (m.conversation && m.conversation !== conversation) { conversation = m.conversation; }
+    if (regenPending) current.parentElement.dataset.regen = "1";
   }
-  else if (m.type === "token") { if (!current) current = addMsg("bot", ""); const s = atBottom(); current.textContent += m.text; if (s) scroll(); }
+  else if (m.type === "token") {
+    if (elsewhere(m)) return;
+    if (!current) current = addMsg("bot", ""); const s = atBottom(); current.textContent += m.text; if (s) scroll();
+  }
+  else if (m.type === "answer" && elsewhere(m)) { answering = null; regenPending = false; current = null; loadList(); }
   else if (m.type === "answer") {
     // The final answer replaces what streamed in: it is the cleaned one (a reply cut
     // where the model started repeating itself may have streamed a little too far).
     if (m.text || !current) (current || (current = addMsg("bot", ""))).textContent = m.text;
     addStats(current, m.stats);
     if (!m.stopped && !m.failed) current.parentElement.dataset.kept = "1";
+    else if (regenPending) current.parentElement.dataset.regen = "1";  // the old answer stays
     if (m.stopped) addSys("Kill switch engaged. Press Resume on the PC to continue.");
     else if (speakAnswers) say(m.text);
-    current = null; loadList();
+    current = null; answering = null; regenPending = false; loadList();
   }
-  else if (m.type === "stopped") { addSys("[stopped]"); current = null; }
-  else if (m.type === "error") { const b = addMsg("bot", "⚠ " + m.text); b.style.color = "var(--bad)"; current = null; }
+  else if ((m.type === "stopped" || m.type === "error") && regenPending && !current) {
+    // Asking again did not even start: the earlier answer stays, so show it again.
+    regenPending = false; answering = null;
+    toast(m.type === "stopped" ? "Stopped; the earlier answer stays" : m.text);
+    if (conversation) open(conversation);
+  }
+  else if (m.type === "stopped") {
+    if (!elsewhere(m)) addSys("[stopped]");
+    current = null; answering = null; regenPending = false;
+  }
+  else if (m.type === "error") {
+    if (!elsewhere(m)) {
+      const b = addMsg("bot", "⚠ " + m.text); b.style.color = "var(--bad)";
+      if (regenPending) b.parentElement.dataset.regen = "1";
+    }
+    current = null; answering = null; regenPending = false;
+  }
   else if (m.type === "notify") { addSys("ℹ " + m.text); }
   else if (m.type === "busy") { addSys("Starlight is still working on the last message."); }
   else if (m.type === "confirm") { showConfirm(m); }
@@ -354,7 +384,7 @@ async function loadList() {
     const ren = el("button", "icon", "✎"); ren.title = "Rename";
     ren.onclick = async (e) => { e.stopPropagation(); const title = prompt("New name", c.title); if (title) { await api("/api/conversations/" + c.id, { method: "PATCH", body: { title } }); loadList(); } };
     const del = el("button", "icon", "🗑"); del.title = "Delete";
-    del.onclick = async (e) => { e.stopPropagation(); if (confirm("Delete \"" + c.title + "\"?")) { await api("/api/conversations/" + c.id, { method: "DELETE" }); if (c.id === conversation) { conversation = null; log.innerHTML = ""; } loadList(); } };
+    del.onclick = async (e) => { e.stopPropagation(); if (confirm("Delete \"" + c.title + "\"?")) { await api("/api/conversations/" + c.id, { method: "DELETE" }); if (c.id === conversation) { const d = await api("/api/conversations", { method: "POST" }); await open(d.id); } else loadList(); } };
     const exp = el("button", "icon", "⤓"); exp.title = "Download as a Markdown file";
     exp.onclick = (e) => {
       e.stopPropagation();

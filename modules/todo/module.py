@@ -7,7 +7,6 @@ Everything is local, in data/modules/todo/todo.json.
 
 from __future__ import annotations
 
-import json
 import re
 import uuid
 from datetime import datetime, timedelta
@@ -16,7 +15,8 @@ from typing import Any, Literal
 from pydantic import BaseModel, Field
 
 from starlight.core import Module, ModuleContext, ToolError, tool
-from starlight.core.schedule import parse_when
+from starlight.core.jsonfile import load_json, save_json
+from starlight.core.schedule import has_clock_time, parse_when
 
 Priority = Literal["low", "normal", "high"]
 _RANK = {"high": 0, "normal": 1, "low": 2}
@@ -41,19 +41,12 @@ class TodoModule(Module):
     # -- storage (re-read each time: another Starlight process may have changed it) -----
 
     def _load(self) -> list[dict[str, Any]]:
-        try:
-            data = json.loads(self.file.read_text("utf-8"))
-        except (OSError, json.JSONDecodeError):
-            return []
-        return data if isinstance(data, list) else []
+        return load_json(self.file, [])
 
     def _save(self, items: list[dict[str, Any]]) -> None:
         cutoff = (self._now() - timedelta(days=self.config.keep_done_days)).isoformat()
         kept = [i for i in items if not i.get("done") or i.get("done_at", "") >= cutoff]
-        self.file.parent.mkdir(parents=True, exist_ok=True)
-        tmp = self.file.with_suffix(".tmp")
-        tmp.write_text(json.dumps(kept, indent=2, ensure_ascii=False), encoding="utf-8")
-        tmp.replace(self.file)
+        save_json(self.file, kept)
 
     def _find(self, items: list[dict[str, Any]], id: str) -> dict[str, Any]:
         key = id.strip().lower()
@@ -73,7 +66,7 @@ class TodoModule(Module):
         moment = parse_when(when, self._now())
         # a day without a time ("tomorrow", "friday", "in 3 days") means that whole day
         text = when.strip().lower()
-        timed = re.search(r"\d:\d{2}|\d\s*(am|pm)\b", text) or re.fullmatch(
+        timed = has_clock_time(text) or re.fullmatch(
             r"in\s+\S+\s*(s|secs?|seconds?|m|mins?|minutes?|h|hrs?|hours?)", text
         )
         return moment.isoformat(timespec="minutes") if timed else moment.date().isoformat()

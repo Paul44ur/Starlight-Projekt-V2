@@ -11,9 +11,11 @@
 from __future__ import annotations
 
 import asyncio
+import codecs
 import contextlib
 import email.utils
 import json
+import re
 import sqlite3
 import threading
 import time
@@ -59,6 +61,28 @@ class HttpResponse:
 
     def json(self) -> Any:
         return json.loads(self.text)
+
+
+# The encoding a page or feed names itself, for servers that don't send a charset.
+_DECLARED = re.compile(
+    rb"""<\?xml[^>]*?encoding\s*=\s*["']([\w.:-]+)|<meta[^>]+?charset\s*=\s*["']?([\w.:-]+)""",
+    re.IGNORECASE,
+)
+
+
+def body_encoding(charset: str | None, body: bytes) -> str:
+    """How to decode a response: the charset the server sent, else what the document itself
+    declares (an XML prolog such as encoding="ISO-8859-1", or an HTML <meta charset>), else
+    UTF-8. Unknown names fall back to UTF-8."""
+    if body.startswith(codecs.BOM_UTF8):
+        return "utf-8-sig"
+    if not charset:
+        found = _DECLARED.search(body[:2048])
+        charset = (found.group(1) or found.group(2)).decode("ascii") if found else None
+    try:
+        return codecs.lookup(charset).name if charset else "utf-8"
+    except LookupError:
+        return "utf-8"
 
 
 @dataclass(eq=False)
@@ -115,6 +139,9 @@ class _Host:
     robots_until: float = 0.0
 
 
+_FINAL_URL = "x-starlight-final-url"  # stored with a cached page that was redirected
+
+
 class ResponseCache:
     def __init__(self, path: Path | None) -> None:
         if path is not None:
@@ -135,17 +162,24 @@ class ResponseCache:
             ).fetchone()
         if row is None or time.time() - row[0] > ttl:
             return None
-        return HttpResponse(url, row[1], json.loads(row[2]), row[3], from_cache=True)
+        headers = json.loads(row[2])
+        final = headers.pop(_FINAL_URL, url)  # where redirects ended
+        return HttpResponse(final, row[1], headers, row[3], from_cache=True)
 
-    def put(self, response: HttpResponse) -> None:
+    def put(self, response: HttpResponse, url: str | None = None) -> None:
+        """Keep a response under the address that was asked for (``url``; a redirect may
+        have ended somewhere else, which is remembered too)."""
+        headers = dict(response.headers)
+        if url and url != response.url:
+            headers[_FINAL_URL] = response.url
         with self._lock:
             self._db.execute(
                 "INSERT OR REPLACE INTO pages VALUES (?, ?, ?, ?, ?)",
                 (
-                    response.url,
+                    url or response.url,
                     time.time(),
                     response.status,
-                    json.dumps(response.headers),
+                    json.dumps(headers),
                     response.text,
                 ),
             )
@@ -326,7 +360,7 @@ class PoliteHttp:
                         slot.sent()
                     body, truncated = await self._read_capped(response)
                     status, headers = response.status_code, dict(response.headers)
-                    final_url, encoding = str(response.url), response.encoding or "utf-8"
+                    final_url, charset = str(response.url), response.charset_encoding
             except TimeoutError as exc:
                 raise HttpError(
                     f"{url}: took longer than {self.config.max_total_seconds:.0f}s"
@@ -340,7 +374,7 @@ class PoliteHttp:
             final_url,
             status,
             headers,
-            body.decode(encoding, errors="replace"),
+            body.decode(body_encoding(charset, body), errors="replace"),
             elapsed_ms=elapsed,
             truncated=truncated,
         )
@@ -382,7 +416,7 @@ class PoliteHttp:
                 attempt += 1
                 continue
             if cacheable and response.status == 200 and not response.truncated:
-                self.cache.put(response)
+                self.cache.put(response, url)
             return response
 
     async def get(self, url: str, **kwargs: Any) -> HttpResponse:

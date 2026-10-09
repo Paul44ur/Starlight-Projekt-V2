@@ -88,14 +88,23 @@ def parse_when(text: str, now: datetime) -> datetime:
     )
 
 
+# A time of day in a when-text: "18:30", "18.30" (but not the "4.12" in 24.12.2026), "6pm".
+_CLOCK = re.compile(r"\b\d{1,2}[:.]\d{2}\b(?![.\d])|\d\s*(?:am|pm)\b")
+
+
+def has_clock_time(text: str) -> bool:
+    """Whether a when-text names a time of day; without one it means the whole day."""
+    return bool(_CLOCK.search(text.lower()))
+
+
 def parse_clock(text: str) -> tuple[int, int] | None:
     text = text.strip()
     ampm = re.fullmatch(r"(\d{1,2})(?::(\d{2}))?\s*(am|pm)", text)
     if ampm:
-        hour = int(ampm.group(1)) % 12
-        if ampm.group(3) == "pm":
-            hour += 12
-        return hour, int(ampm.group(2) or 0)
+        hour, minute = int(ampm.group(1)), int(ampm.group(2) or 0)
+        if not (1 <= hour <= 12 and minute < 60):  # "13pm", "9:75pm"
+            return None
+        return hour % 12 + (12 if ampm.group(3) == "pm" else 0), minute
     hhmm = re.fullmatch(r"(\d{1,2})[:.](\d{2})(?:\s*uhr)?", text)
     if hhmm:
         hour, minute = int(hhmm.group(1)), int(hhmm.group(2))

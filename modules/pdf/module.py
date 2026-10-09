@@ -9,6 +9,7 @@ Needs the ``pdf`` extra (``pypdf`` and ``reportlab``); without it, the tools say
 
 from __future__ import annotations
 
+import re
 from pathlib import Path
 from typing import Any
 
@@ -102,7 +103,10 @@ class PdfModule(Module):
         found = self.guard.resolve(path)
         file, free = found.path, found.new_free  # always a new file (renamed if taken)
         if file.suffix.lower() != ".pdf":
-            file = file.with_suffix(".pdf")
+            # "notes.txt" -> "notes.pdf", but "Rechnung 12.10.2026" and "Protokoll v1.2"
+            # keep their dots: a suffix that is not a file type is part of the name.
+            is_type = re.fullmatch(r"\.[a-z][a-z0-9]{0,4}", file.suffix.lower())
+            file = file.with_suffix(".pdf") if is_type else file.with_name(file.name + ".pdf")
         if not free and not await self.ctx.ui.confirm(
             f"Save a PDF outside your Starlight folder?\n  {file}"
         ):

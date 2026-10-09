@@ -33,6 +33,14 @@ def slugify(text: str, max_len: int = 60) -> str:
     return slug[:max_len].rstrip("-") or "note"
 
 
+def read_text(path: Path) -> str:
+    """A memory file as text: UTF-8 (with or without the BOM Notepad may add), else - a
+    file saved by an older editor - Windows-1252, so one odd file never breaks memory."""
+    from starlight.text import decode_text
+
+    return decode_text(path.read_bytes())
+
+
 @dataclass
 class MemoryEntry:
     id: str
@@ -72,7 +80,7 @@ class MemoryStore:
         return path
 
     def parse(self, path: Path) -> MemoryEntry:
-        raw = path.read_text(encoding="utf-8")
+        raw = read_text(path)
         entry_id = path.relative_to(self.root).with_suffix("").as_posix()
         match = FRONT.match(raw)
         header: dict[str, Any] = {}

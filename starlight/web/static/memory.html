@@ -58,15 +58,18 @@ async function loadMemories() {
     edit.onclick = () => {
       const area = document.createElement("textarea"); area.value = m.content;
       const save = el("button", "ok", "Save");
-      save.onclick = async () => { try { await api("/api/memory/" + m.id, { method: "PUT", body: { content: area.value } }); toast("Saved"); loadMemories(); } catch (e) { toast(e.message); } };
+      save.onclick = async () => { try { await api("/api/memory/" + memoryPath(m.id), { method: "PUT", body: { content: area.value } }); toast("Saved"); loadMemories(); } catch (e) { toast(e.message); } };
       text.replaceWith(area); row.replaceChildren(save);
     };
     const del = el("button", "danger", "Delete");
-    del.onclick = async () => { if (confirm("Forget this?")) { await api("/api/memory/" + m.id, { method: "DELETE" }); loadMemories(); } };
+    del.onclick = async () => { if (confirm("Forget this?")) { try { await api("/api/memory/" + memoryPath(m.id), { method: "DELETE" }); } catch (e) { toast(e.message); } loadMemories(); } };
     row.append(edit, del); item.appendChild(row); box.appendChild(item);
   });
   if (!data.memories.length) box.appendChild(el("div", "dim small", "Nothing yet."));
 }
+// A memory id is a file path such as "people/sister"; "#", "?" and "%" in a name you gave
+// a file by hand must not end the address.
+function memoryPath(id) { return id.split("/").map(encodeURIComponent).join("/"); }
 document.getElementById("search").oninput = () => loadMemories();
 
 async function loadSkills() {

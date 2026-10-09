@@ -88,28 +88,85 @@ def decode_output(data: bytes) -> str:
     return data.decode("utf-8", errors="replace")
 
 
-def kill_tree(process: asyncio.subprocess.Process) -> None:
-    """Stop a program and everything it started (a shell's children would otherwise keep
-    running, and keep its output open)."""
-    if process.returncode is not None:
-        return
-    if sys.platform == "win32":
-        import subprocess
+class Job:
+    """Windows: a job object holding a program and everything it starts, so a timeout or
+    the kill switch stops them all - also those still running after the program itself
+    has exited (`start /b`, a background task), which taskkill /T can no longer find."""
 
-        subprocess.run(
-            ["taskkill", "/T", "/F", "/PID", str(process.pid)],
-            capture_output=True,
-            check=False,
-            creationflags=0x08000000,  # CREATE_NO_WINDOW
+    def __init__(self, pid: int) -> None:
+        self.handle: int | None = None
+        if sys.platform != "win32":
+            return
+        import ctypes
+        from ctypes import wintypes
+
+        kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+        kernel32.CreateJobObjectW.restype = wintypes.HANDLE
+        kernel32.OpenProcess.restype = wintypes.HANDLE
+        job = kernel32.CreateJobObjectW(None, None)
+        # PROCESS_SET_QUOTA | PROCESS_TERMINATE: what joining a job needs
+        process = kernel32.OpenProcess(0x0100 | 0x0001, False, pid)
+        joined = bool(
+            job
+            and process
+            and kernel32.AssignProcessToJobObject(wintypes.HANDLE(job), wintypes.HANDLE(process))
         )
+        if process:
+            kernel32.CloseHandle(wintypes.HANDLE(process))
+        if joined:
+            self.handle = job
+        elif job:
+            kernel32.CloseHandle(wintypes.HANDLE(job))
+
+    def kill(self) -> bool:
+        if self.handle is None or sys.platform != "win32":
+            return False
+        import ctypes
+        from ctypes import wintypes
+
+        return bool(ctypes.windll.kernel32.TerminateJobObject(wintypes.HANDLE(self.handle), 1))
+
+    def close(self) -> None:
+        if self.handle is not None and sys.platform == "win32":
+            import ctypes
+            from ctypes import wintypes
+
+            ctypes.windll.kernel32.CloseHandle(wintypes.HANDLE(self.handle))
+        self.handle = None
+
+
+def kill_tree(process: asyncio.subprocess.Process, job: Job | None = None) -> None:
+    """Stop a program and everything it started. A shell's children would otherwise keep
+    running, and keep its output open - also when the shell itself has already exited."""
+    if sys.platform == "win32":
+        if not (job is not None and job.kill()) and process.returncode is None:
+            import subprocess
+
+            subprocess.run(
+                ["taskkill", "/T", "/F", "/PID", str(process.pid)],
+                capture_output=True,
+                check=False,
+                creationflags=0x08000000,  # CREATE_NO_WINDOW
+            )
     else:
         import os
         import signal
 
+        # Its own process group (see _execute), which outlives the shell that led it.
         with contextlib.suppress(ProcessLookupError, PermissionError):
-            os.killpg(process.pid, signal.SIGKILL)  # its own process group, see _execute
-    with contextlib.suppress(ProcessLookupError):
-        process.kill()
+            os.killpg(process.pid, signal.SIGKILL)
+    if process.returncode is None:
+        with contextlib.suppress(ProcessLookupError):
+            process.kill()
+
+
+async def _read_all(stream: asyncio.StreamReader | None, chunks: list[bytes]) -> None:
+    """Collect a program's output as it comes, so what it wrote is there even if it has to
+    be stopped."""
+    if stream is None:
+        return
+    while data := await stream.read(65536):
+        chunks.append(data)
 
 
 class CommandsModule(Module):
@@ -117,12 +174,12 @@ class CommandsModule(Module):
 
     async def setup(self, ctx: ModuleContext) -> None:
         self.config: Config = ctx.config
-        self._running: set[asyncio.subprocess.Process] = set()
+        self._running: dict[asyncio.subprocess.Process, Job | None] = {}
         ctx.kill_switch.add_cleanup(self._kill_all, owner=ctx.name)
 
     def _kill_all(self) -> None:
-        for process in list(self._running):
-            kill_tree(process)
+        for process, job in list(self._running.items()):
+            kill_tree(process, job)
 
     def _get(self, name: str) -> tuple[str, Command]:
         key = name.strip().lower()
@@ -222,20 +279,33 @@ class CommandsModule(Module):
             )
         except OSError as exc:
             raise ToolError(f"could not start {argv[0]}: {exc}") from exc
-        self._running.add(process)
+        job = Job(process.pid) if sys.platform == "win32" else None
+        self._running[process] = job
+        chunks: list[bytes] = []
+        reader = asyncio.create_task(_read_all(process.stdout, chunks))
         timed_out = False
         try:
-            output, _ = await asyncio.wait_for(process.communicate(), command.timeout)
-        except TimeoutError:
-            timed_out = True
-            kill_tree(process)
-            output, _ = await process.communicate()
+            try:
+                async with asyncio.timeout(command.timeout):
+                    # The output ends when the program and all it started are done.
+                    await asyncio.shield(reader)
+                    await process.wait()
+            except TimeoutError:
+                timed_out = True
+                kill_tree(process, job)
+                with contextlib.suppress(TimeoutError):
+                    await asyncio.wait_for(reader, 5)  # the rest of what it wrote
+                with contextlib.suppress(TimeoutError):
+                    await asyncio.wait_for(process.wait(), 5)
         except asyncio.CancelledError:
-            kill_tree(process)
+            kill_tree(process, job)
+            reader.cancel()
             raise
         finally:
-            self._running.discard(process)
-        text = decode_output(output)
+            self._running.pop(process, None)
+            if job is not None:
+                job.close()
+        text = decode_output(b"".join(chunks))
         limit = self.config.max_output
         if len(text) > limit:
             text = "…" + text[-limit:]

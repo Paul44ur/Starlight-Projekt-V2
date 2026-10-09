@@ -83,6 +83,17 @@ async def run_turn(text: str, send: Sender, recv: Receiver, view: Any) -> None:
             view.info("[still working on the previous message - try again in a moment]")
 
 
+async def stop_turn(send: Sender, recv: Receiver, wait: float = 10) -> None:
+    """After Ctrl+C: stop the answer on the backend too, and read what it still sends for
+    that turn - otherwise the backend is still busy with it, and its reply would be shown
+    as the answer to the next question."""
+    with contextlib.suppress(TimeoutError):
+        async with asyncio.timeout(wait):
+            await send({"type": "stop"})
+            while (await recv()).get("type") not in ("answer", "stopped", "error"):
+                pass
+
+
 async def run_client(host: str, port: int, assume_yes: bool = False) -> int:
     """Open a terminal chat against the web backend at host:port."""
     import websockets
@@ -119,8 +130,13 @@ async def run_client(host: str, port: int, assume_yes: bool = False) -> int:
                 if low == "/clear":
                     print("\033[2J\033[H", end="")
                     continue
-                with contextlib.suppress(asyncio.CancelledError):
+                try:
                     await run_turn(line, send, recv, view)
+                except asyncio.CancelledError:  # Ctrl+C: stop only this answer
+                    task = asyncio.current_task()
+                    if task is not None:
+                        task.uncancel()
+                    await stop_turn(send, recv)
     except (OSError, websockets.exceptions.WebSocketException) as exc:
         view.error(f"Lost the connection to the backend ({exc}). Is the web server running?")
         return 1

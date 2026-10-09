@@ -100,7 +100,11 @@ class BackupModule(Module):
         patterns = [*SKIP, *plan.exclude]
         files: list[dict[str, Any]] = []
         try:
-            with zipfile.ZipFile(partial, "w", zipfile.ZIP_DEFLATED, allowZip64=True) as archive:
+            # strict_timestamps=False: a file dated before 1980 (zip's earliest date) is
+            # stored with 1980 instead of stopping the whole backup.
+            with zipfile.ZipFile(
+                partial, "w", zipfile.ZIP_DEFLATED, allowZip64=True, strict_timestamps=False
+            ) as archive:
                 for current, dirs, names in os.walk(source):
                     here = Path(current)
                     dirs[:] = [d for d in dirs if not any(fnmatch.fnmatch(d, p) for p in patterns)]

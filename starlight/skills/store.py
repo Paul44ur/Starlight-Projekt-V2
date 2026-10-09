@@ -9,7 +9,8 @@ from typing import Any, Literal
 
 import yaml
 
-from starlight.memory.store import FRONT, slugify
+from starlight.core.logging import get_logger
+from starlight.memory.store import FRONT, read_text, slugify
 
 type Status = Literal["draft", "approved", "rejected"]
 SKILL_FILE = "SKILL.md"
@@ -70,7 +71,7 @@ class SkillStore:
         path = folder / SKILL_FILE
         if not path.is_file():
             return None
-        raw = path.read_text(encoding="utf-8")
+        raw = read_text(path)
         match = FRONT.match(raw)
         header: dict[str, Any] = {}
         body = raw
@@ -106,7 +107,20 @@ class SkillStore:
         )
 
     def all(self) -> list[Skill]:
-        return [s for n in self.names() if (s := self.get(n)) is not None]
+        """Every skill that can be read. One hand-edited SKILL.md with a mistake (bad YAML,
+        a version that is not a number) is skipped and logged, not fatal for the rest."""
+        found: list[Skill] = []
+        for name in self.names():
+            try:
+                skill = self.get(name)
+            except (OSError, ValueError, TypeError, yaml.YAMLError) as exc:
+                get_logger("skills").warning(
+                    "skill skipped: SKILL.md could not be read", skill=name, error=str(exc)
+                )
+                continue
+            if skill is not None:
+                found.append(skill)
+        return found
 
     def write(self, skill: Skill) -> Path:
         folder = self.folder(skill.name)

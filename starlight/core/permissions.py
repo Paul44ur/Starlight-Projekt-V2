@@ -41,19 +41,25 @@ class PermissionPolicy:
         self._session_allowed: set[str] = set()
 
     def resolve(self, tool_name: str, default: Permission) -> Permission:
-        """Effective permission. Order: blocked > tool's own BLOCKED > confirm >
-        auto_approve / allowed this session > the tool's own tag."""
+        """Effective permission. Order: blocked (yours, the tool's own, the other
+        device's) > the other device's confirm > this exact tool allowed (auto_approve by
+        name, or "always" this session) > confirm patterns > auto_approve patterns > the
+        tool's own tag. So allowing `desktop.click` works even while `desktop.*` asks."""
         if (
             _matches(tool_name, self.config.blocked)
             or default is Permission.BLOCKED
             or _matches(tool_name, list(extra_blocked.get()))
         ):
             return Permission.BLOCKED
-        if _matches(tool_name, self.config.confirm) or _matches(
-            tool_name, list(extra_confirm.get())
-        ):
+        if _matches(tool_name, list(extra_confirm.get())):
             return Permission.CONFIRM
-        if tool_name in self._session_allowed or _matches(tool_name, self.config.auto_approve):
+        if tool_name in self._session_allowed or (
+            tool_name in self.config.auto_approve and tool_name not in self.config.confirm
+        ):
+            return Permission.SAFE
+        if _matches(tool_name, self.config.confirm):
+            return Permission.CONFIRM
+        if _matches(tool_name, self.config.auto_approve):
             return Permission.SAFE
         return default
 

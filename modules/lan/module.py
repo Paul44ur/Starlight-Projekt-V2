@@ -11,7 +11,6 @@ from __future__ import annotations
 
 import asyncio
 import ipaddress
-import json
 import re
 import socket
 import subprocess
@@ -22,6 +21,7 @@ from typing import Any
 from pydantic import BaseModel, Field
 
 from starlight.core import Module, ModuleContext, ToolError, tool
+from starlight.core.jsonfile import load_json, save_json
 
 MAC = re.compile(r"([0-9a-f]{2}[:-]){5}[0-9a-f]{2}", re.IGNORECASE)
 IPV4 = re.compile(r"\b(\d{1,3}(?:\.\d{1,3}){3})\b")
@@ -87,14 +87,10 @@ class LanModule(Module):
     # -- storage -------------------------------------------------------------------------
 
     def _known(self) -> dict[str, dict[str, Any]]:
-        try:
-            data = json.loads(self.file.read_text("utf-8"))
-        except (OSError, json.JSONDecodeError):
-            return {}
-        return data if isinstance(data, dict) else {}
+        return load_json(self.file, {})
 
     def _save(self, known: dict[str, dict[str, Any]]) -> None:
-        self.file.write_text(json.dumps(known, indent=1, ensure_ascii=False), encoding="utf-8")
+        save_json(self.file, known)
 
     # -- looking at the network (replaced in tests) -------------------------------------------
 

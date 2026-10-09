@@ -94,6 +94,7 @@ gpu_memory = gpu_status  # older name
 async def benchmark(
     provider: ModelProvider, runs: int = 3, stats: Stats | None = None, prompt: str = PROMPT
 ) -> dict[str, Any]:
+    runs = max(1, runs)  # "--runs 0" still measures once
     streams = getattr(provider, "supports_streaming", False)
     results: list[dict[str, float]] = []
     for _ in range(runs):

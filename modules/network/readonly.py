@@ -11,19 +11,12 @@ UNSAFE = re.compile(r"[;&|<>`$\n\\]|\(|\)")
 
 READ_ONLY = {
     "cat",
-    "date",
     "df",
-    "dmesg",
     "du",
-    "env",
     "free",
     "head",
-    "hostname",
-    "hostnamectl",
     "id",
     "iostat",
-    "ip",
-    "journalctl",
     "last",
     "ls",
     "lsblk",
@@ -35,7 +28,6 @@ READ_ONLY = {
     "ping",
     "ps",
     "pwd",
-    "sensors",
     "ss",
     "stat",
     "tail",
@@ -62,11 +54,41 @@ SUBCOMMANDS = {
         "show",
     },
     "docker": {"ps", "images", "stats", "logs", "inspect", "version", "info"},
-    "git": {"status", "log", "diff", "show", "branch"},
+    "git": {"status", "log", "diff", "show", "branch"},  # branch: see _ONLY_THESE
     "apt": {"list"},
     "zpool": {"status", "list"},
 }
 FORBIDDEN_ARGS = {"-f", "--follow"}  # would never return
+
+# Programs that read with some arguments and change things with others ("date -s",
+# "ip link set", "journalctl --vacuum-time"): read-only only with no arguments or with
+# these.
+_ONLY_THESE: dict[str, re.Pattern[str]] = {
+    "env": re.compile(r"-0|--null"),  # "env reboot" would run reboot
+    "date": re.compile(r"\+.*|-u|--utc|-R|--rfc-email|-I\w*|--iso-8601(=\w+)?"),
+    "dmesg": re.compile(
+        r"-[HTxkuLrdetw]+|--(human|ctime|decode|kernel|userspace|color\S*|level=\S+)"
+    ),
+    "hostname": re.compile(
+        r"-[AIdfis]|--(all-fqdns|all-ip-addresses|domain|fqdn|short|ip-address)"
+    ),
+    "hostnamectl": re.compile(r"status|--static|--transient|--pretty"),
+    "sensors": re.compile(r"-[Aujf]+|--no-adapter|--fahrenheit"),
+    "git branch": re.compile(
+        r"-[arv]+|-vv|--(list|all|remotes|verbose|show-current|contains|merged|no-merged)"
+    ),
+}
+# Read with any arguments except these words, which change something.
+_NOT_THESE: dict[str, re.Pattern[str]] = {
+    "ip": re.compile(
+        r"add|del|delete|set|change|replace|flush|append|prepend|exec|save|restore|update|"
+        r"monitor|-batch|-b|-force"
+    ),
+    "journalctl": re.compile(
+        r"--(vacuum\S*|rotate|flush|sync|relinquish-var|smart-relinquish-var|setup-keys|"
+        r"update-catalog)(=.*)?"
+    ),
+}
 
 
 def is_read_only(command: str) -> bool:
@@ -86,5 +108,12 @@ def is_read_only(command: str) -> bool:
     if program == "docker" and len(words) > 1 and words[1] == "stats":
         return "--no-stream" in words
     if program in SUBCOMMANDS:
-        return len(words) > 1 and words[1] in SUBCOMMANDS[program]
+        if not (len(words) > 1 and words[1] in SUBCOMMANDS[program]):
+            return False
+        key, rest = f"{program} {words[1]}", words[2:]
+        return key not in _ONLY_THESE or all(_ONLY_THESE[key].fullmatch(w) for w in rest)
+    if program in _ONLY_THESE:
+        return all(_ONLY_THESE[program].fullmatch(w) for w in words[1:])
+    if program in _NOT_THESE:
+        return not any(_NOT_THESE[program].fullmatch(w) for w in words[1:])
     return program in READ_ONLY

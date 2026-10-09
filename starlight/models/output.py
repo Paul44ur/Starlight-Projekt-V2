@@ -71,10 +71,10 @@ def cut_at_turn_end(text: str) -> str:
 
 
 def cut_repetition(text: str, size: int = REPEAT, loops: int = LOOPS) -> str | None:
-    """The text up to the second copy of a passage of ``size`` characters that comes
-    ``loops`` times (without overlapping), or None when nothing repeats like that."""
+    """The text up to the second turn of a loop - a passage of at least ``size`` characters
+    said ``loops`` times in a row - or None when the text does not go round like that."""
     for start in range(0, len(text) - size * loops + 1, 20):
-        if _copies(text, start, size, loops):
+        if _loops_at(text, start, size, loops):
             return _cut_loop(text, start, size)
     return None
 
@@ -89,34 +89,46 @@ def _cut_loop(text: str, at: int, size: int) -> str:
     return text[: first + period].rstrip()
 
 
-def _copies(text: str, start: int, size: int, loops: int) -> list[int]:
-    """Where the passage at ``start`` and its next copies begin, if it comes ``loops``
-    times. Passages of a few repeated characters (a ===== rule) never count."""
+def _span(period: int, size: int, loops: int) -> int:
+    """How long a loop of this period must run: ``loops`` copies of the passage that don't
+    overlap, back to back."""
+    step = period * -(-size // period)  # whole turns of the loop that hold one passage
+    return (loops - 1) * step + size
+
+
+def _periodic(text: str, start: int, end: int, period: int) -> bool:
+    return text[start + period : end] == text[start : end - period]
+
+
+def _loops_at(text: str, start: int, size: int, loops: int) -> bool:
+    """Whether the text goes round in a loop from ``start``: the passage there comes again
+    and again, each turn right after the last. The same passage said in different places
+    (a function, then an explanation, then the whole file) is not a loop, and passages of a
+    few repeated characters (a ===== rule) never count."""
     chunk = text[start : start + size]
     if len(set(chunk)) < 20:
-        return []
-    found = [start]
-    while len(found) < loops:
-        again = text.find(chunk, found[-1] + size)
-        if again < 0:
-            return []
-        found.append(again)
-    return found
+        return False
+    period = text.find(chunk, start + 1) - start
+    if period <= 0:
+        return False
+    end = start + _span(period, size, loops)
+    return end <= len(text) and _periodic(text, start, end, period)
 
 
 def _tail_loop(text: str, size: int = REPEAT, loops: int = LOOPS) -> int:
-    """Where the earliest of ``loops`` copies (no overlap) of the last ``size`` characters
-    begins, or -1 when they did not come that often."""
+    """Where a loop that the text ends in began (its last ``size`` characters came
+    ``loops`` times in a row, without overlapping), or -1."""
     chunk = text[-size:]
     if len(chunk) < size or len(set(chunk)) < 20:
         return -1
-    seen, end, at = 0, len(text), -1
-    while seen < loops:
-        at = text.rfind(chunk, 0, end)
-        if at < 0:
-            return -1
-        seen, end = seen + 1, at
-    return at
+    before = text.rfind(chunk, 0, len(text) - 1)  # the nearest earlier copy
+    if before < 0:
+        return -1
+    period = len(text) - size - before
+    start = len(text) - _span(period, size, loops)
+    if start < 0 or not _periodic(text, start, len(text), period):
+        return -1
+    return start
 
 
 def _turn_end(text: str) -> int:

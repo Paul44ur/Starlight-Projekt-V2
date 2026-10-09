@@ -26,6 +26,7 @@ from pydantic import BaseModel, Field
 from starlight.core import Module, ModuleContext, ToolError, tool
 from starlight.core.output import known_folders
 from starlight.core.safepaths import PathGuard, expand
+from starlight.text import decode_text
 
 _INVALID = re.compile(r'[<>:"/\\|?*\x00-\x1f]')  # not allowed in Windows file names
 _RESERVED = re.compile(r"^(con|prn|aux|nul|com[0-9]|lpt[0-9])(\..*)?$", re.IGNORECASE)
@@ -43,7 +44,8 @@ _OTHER_BINARY = {
 # Windows runs these when they are double-clicked: worth a word in the question.
 _RUNNABLE = {
     ".bat", ".cmd", ".ps1", ".vbs", ".vbe", ".js", ".jse", ".wsf", ".wsh", ".hta",
-    ".reg", ".scr", ".com", ".pif", ".msc", ".py", ".pyw", ".url",
+    ".reg", ".scr", ".com", ".pif", ".msc", ".py", ".pyw", ".url", ".sh", ".ahk", ".jnlp",
+    ".appref-ms",
 }  # fmt: skip
 
 
@@ -107,13 +109,8 @@ def free_name(path: Path) -> Path:
 
 
 def decode(data: bytes) -> str:
-    """UTF-8 (with or without BOM), else Windows' own encoding (older files, umlauts)."""
-    for cut in range(4):  # a cut-off read may end inside a UTF-8 character
-        try:
-            return data[: len(data) - cut].decode("utf-8-sig")
-        except UnicodeDecodeError:
-            continue
-    return data.decode("cp1252", errors="replace")
+    """UTF-8 (with or without BOM), UTF-16, else Windows' own encoding (older files)."""
+    return decode_text(data)
 
 
 class FilesModule(Module):

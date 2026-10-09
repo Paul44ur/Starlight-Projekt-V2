@@ -42,7 +42,7 @@ class Event:
             )
             return hits
         found: list[datetime] = []
-        for start in _expand(self.start, self.rule):
+        for start in _expand(self.start, self.rule, after=window_start - length):
             if start >= window_end:
                 break
             if start + length > window_start and start not in self.exdates:
@@ -64,19 +64,34 @@ def _unfold(text: str) -> list[str]:
 
 
 def _split(line: str) -> tuple[str, dict[str, str], str]:
-    head, _, value = line.partition(":")
-    name, *params = head.split(";")
+    """NAME;PARAM=...;PARAM="...":value. A quoted parameter may hold ":" and ";" (Outlook:
+    TZID="(UTC+01:00) Amsterdam, Berlin, Bern, Rom, Stockholm, Wien")."""
+    parts: list[str] = []
+    quoted, begin = False, 0
+    for i, char in enumerate(line):
+        if char == '"':
+            quoted = not quoted
+        elif not quoted and char in ";:":
+            parts.append(line[begin:i])
+            begin = i + 1
+            if char == ":":
+                break
+    else:
+        return line.upper(), {}, ""
+    name, *params = parts
     options = {}
     for param in params:
         key, _, val = param.partition("=")
         options[key.upper()] = val.strip('"')
-    return name.upper(), options, value
+    return name.upper(), options, line[begin:]
+
+
+_ESCAPED = re.compile(r"\\([\\;,nN])")
 
 
 def _unescape(value: str) -> str:
-    return (
-        value.replace("\\n", "\n").replace("\\N", "\n").replace("\\,", ",").replace("\\;", ";")
-    ).replace("\\\\", "\\")
+    # One pass, so a Windows path such as D:\neu (saved as D:\\neu) keeps its backslash.
+    return _ESCAPED.sub(lambda m: "\n" if m.group(1) in "nN" else m.group(1), value)
 
 
 def parse_time(value: str, params: dict[str, str]) -> tuple[datetime, bool]:
@@ -99,6 +114,9 @@ def parse_time(value: str, params: dict[str, str]) -> tuple[datetime, bool]:
 
 
 def parse(text: str, source: str = "local") -> list[Event]:
+    """The events in an iCalendar text. A property that can't be read (an odd date, a
+    time zone written in a way we don't know) is skipped, and an event without a usable
+    start is left out - never the whole calendar."""
     events: list[Event] = []
     current: dict[str, Any] | None = None
     depth = 0  # VALARM and friends inside an event are skipped
@@ -114,25 +132,32 @@ def parse(text: str, source: str = "local") -> list[Event]:
         elif name == "END" and depth:
             depth -= 1
         elif name == "END" and value.upper() == "VEVENT":
-            event = _build(current, source)
+            try:
+                event = _build(current, source)
+            except (ValueError, TypeError, OverflowError):
+                event = None
             if event is not None:
                 events.append(event)
             current = None
-        elif depth:
-            continue
-        elif name in ("DTSTART", "DTEND"):
-            current[name] = parse_time(value, params)
-        elif name == "DURATION":
-            current["DURATION"] = parse_duration(value)
-        elif name == "EXDATE":
-            for part in value.split(","):
-                with contextlib.suppress(ValueError):
-                    current["exdates"].add(parse_time(part, params)[0])
-        elif name == "RRULE":
-            current["RRULE"] = dict(p.split("=", 1) for p in value.upper().split(";") if "=" in p)
-        elif name in ("UID", "SUMMARY", "LOCATION", "DESCRIPTION", "X-STARLIGHT-REMIND"):
-            current[name] = _unescape(value)
+        elif not depth:
+            with contextlib.suppress(ValueError, TypeError, OverflowError):
+                _read_property(current, name, params, value)
     return events
+
+
+def _read_property(current: dict[str, Any], name: str, params: dict[str, str], value: str) -> None:
+    if name in ("DTSTART", "DTEND"):
+        current[name] = parse_time(value, params)
+    elif name == "DURATION":
+        current["DURATION"] = parse_duration(value)
+    elif name == "EXDATE":
+        for part in value.split(","):
+            with contextlib.suppress(ValueError):
+                current["exdates"].add(parse_time(part, params)[0])
+    elif name == "RRULE":
+        current["RRULE"] = dict(p.split("=", 1) for p in value.upper().split(";") if "=" in p)
+    elif name in ("UID", "SUMMARY", "LOCATION", "DESCRIPTION", "X-STARLIGHT-REMIND"):
+        current[name] = _unescape(value)
 
 
 def _build(data: dict[str, Any], source: str) -> Event | None:
@@ -190,7 +215,48 @@ def _add_months(moment: datetime, months: int) -> datetime | None:
         return None  # e.g. the 31st in a 30-day month: RFC 5545 skips it
 
 
-def _expand(start: datetime, rule: dict[str, str]) -> Any:
+_BYDAY = re.compile(r"([+-]?\d{1,2})?(MO|TU|WE|TH|FR|SA|SU)")
+
+
+def _skip(start: datetime, after: datetime | None, freq: str, interval: int) -> int:
+    """How many whole repeats lie before ``after``: a rule from 2020 asked about today
+    starts counting near today (endless rules are capped at MAX_OCCURRENCES from there)."""
+    if after is None or after <= start:
+        return 0
+    if freq == "WEEKLY":
+        turns = (after - start).days // 7
+    elif freq == "MONTHLY":
+        turns = (after.year - start.year) * 12 + after.month - start.month
+    elif freq == "YEARLY":
+        turns = after.year - start.year
+    else:
+        turns = (after - start).days
+    return max(0, turns // interval - 1)
+
+
+def _month_days(month: datetime, by_day: list[tuple[int, int]], at: datetime) -> list[datetime]:
+    """The days of ``month`` a MONTHLY rule's BYDAY names: 2TU is the second Tuesday, -1FR
+    the last Friday, TU every Tuesday. At the time of day of ``at``."""
+    first = month.replace(day=1, hour=at.hour, minute=at.minute, second=at.second)
+    days_in_month = (_add_months(first, 1) or first + timedelta(days=31)) - first
+    by_weekday: dict[int, list[datetime]] = {}
+    for offset in range(days_in_month.days):
+        day = first + timedelta(days=offset)
+        by_weekday.setdefault(day.weekday(), []).append(day)
+    found: list[datetime] = []
+    for ordinal, weekday in by_day:
+        days = by_weekday.get(weekday, [])
+        if not ordinal:
+            found += days
+        elif 0 < ordinal <= len(days) or 0 < -ordinal <= len(days):
+            found.append(days[ordinal - 1 if ordinal > 0 else ordinal])
+    return sorted(found)
+
+
+def _expand(start: datetime, rule: dict[str, str], after: datetime | None = None) -> Any:
+    """The start times of a repeating event, in order. ``after``: only times after it are
+    wanted, so earlier repeats are skipped instead of walked through (unless the rule has
+    a COUNT, which counts from the first)."""
     freq = rule.get("FREQ", "DAILY")
     interval = max(int(rule.get("INTERVAL", "1") or 1), 1)
     count = int(rule["COUNT"]) if rule.get("COUNT", "").isdigit() else None
@@ -200,15 +266,23 @@ def _expand(start: datetime, rule: dict[str, str]) -> Any:
             until = parse_time(rule["UNTIL"], {})[0]
             if len(rule["UNTIL"]) == 8:
                 until += timedelta(days=1) - timedelta(seconds=1)
-    by_day = [_DAYS.index(d[-2:]) for d in rule.get("BYDAY", "").split(",") if d[-2:] in _DAYS]
+    by_ordinal = [
+        (int(m.group(1) or 0), _DAYS.index(m.group(2)))
+        for d in rule.get("BYDAY", "").split(",")
+        if (m := _BYDAY.fullmatch(d.strip()))
+    ]
+    by_day = [weekday for _, weekday in by_ordinal]
     produced = 0
-    step = 0
-    while produced < (count or MAX_OCCURRENCES) and step < MAX_OCCURRENCES * 7:
+    step = first_step = 0 if count is not None else _skip(start, after, freq, interval)
+    while produced < (count or MAX_OCCURRENCES) and step < first_step + MAX_OCCURRENCES * 7:
         if freq == "WEEKLY":
             week_start = start + timedelta(weeks=step * interval)
             monday = week_start - timedelta(days=week_start.weekday())
             days = sorted(by_day) if by_day else [start.weekday()]
             candidates = [monday + timedelta(days=d) for d in days]
+        elif freq == "MONTHLY" and by_ordinal:
+            month = _add_months(start.replace(day=1), step * interval)
+            candidates = _month_days(month, by_ordinal, start) if month else []
         elif freq == "MONTHLY":
             moved = _add_months(start, step * interval)
             candidates = [moved] if moved else []

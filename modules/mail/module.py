@@ -26,7 +26,7 @@ import json
 import re
 import smtplib
 from email import message_from_bytes
-from email.header import decode_header, make_header
+from email.header import Header, decode_header
 from email.message import EmailMessage, Message
 from typing import Any
 
@@ -441,14 +441,25 @@ def _reply_subject(subject: str) -> str:
 
 def _raw_addresses(*fields: list[Any]) -> list[str]:
     """The bare addresses in raw (still encoded) header values."""
-    values = [str(v) for field in fields for v in field]
+    values = [_raw(v) for field in fields for v in field]
     return [address for _, address in email.utils.getaddresses(values) if "@" in address]
+
+
+def _raw(value: Any) -> str:
+    """A header value as text to find addresses in: encoded words left as they are (they
+    are decoded per name), raw 8-bit bytes (RFC 6532: "Jürgen Müller") read as UTF-8."""
+    if isinstance(value, Header):  # how the parser hands over a header with raw 8-bit bytes
+        return "".join(
+            chunk if isinstance(chunk, str) else _bytes_text(chunk, charset)
+            for chunk, charset in decode_header(value)
+        )
+    return str(value)
 
 
 def _reply_target(parsed: Message) -> str:
     """Reply-To, else From, as "Name <address>" with the name decoded."""
     raw = parsed.get_all("Reply-To") or parsed.get_all("From") or []
-    pairs = [(n, a) for n, a in email.utils.getaddresses([str(v) for v in raw]) if "@" in a]
+    pairs = [(n, a) for n, a in email.utils.getaddresses([_raw(v) for v in raw]) if "@" in a]
     return ", ".join(_named(_decode(n), a) for n, a in pairs)
 
 
@@ -463,14 +474,31 @@ def _named(name: str, address: str) -> str:
     return f'"{quoted}" <{address}>'
 
 
-def _decode(value: str) -> str:
+def _decode(value: Any) -> str:
     """A header as one line of text: encoded words decoded, folding (line breaks a long
-    header is wrapped with) removed, so it can be shown and reused in a reply."""
+    header is wrapped with) removed, so it can be shown and reused in a reply. Headers
+    sent as raw UTF-8 (RFC 6532: "From: Jürgen Müller") are read as UTF-8 too."""
     try:
-        text = str(make_header(decode_header(value)))
-    except (ValueError, UnicodeDecodeError, LookupError):
-        text = value
+        parts = [
+            chunk if isinstance(chunk, str) else _bytes_text(chunk, charset)
+            for chunk, charset in decode_header(value)
+        ]
+        text = "".join(parts)
+    except (ValueError, TypeError, AttributeError):
+        text = str(value)
     return " ".join(text.split())
+
+
+def _bytes_text(data: bytes, charset: str | None) -> str:
+    if charset in (None, "unknown-8bit"):  # raw 8-bit: UTF-8 these days, else Windows-1252
+        try:
+            return data.decode("utf-8")
+        except UnicodeDecodeError:
+            return data.decode("cp1252", errors="replace")
+    try:
+        return data.decode(charset, errors="replace")
+    except LookupError:
+        return data.decode("utf-8", errors="replace")
 
 
 def _text_of(part: Message) -> str:
@@ -493,9 +521,7 @@ def _body(message: Message) -> str:
             text = html_to_text(text).text
         return text
     html = None
-    for part in message.walk():
-        if "attachment" in str(part.get("Content-Disposition", "")):
-            continue
+    for part in _own_parts(message):
         if part.get_content_type() == "text/plain":
             return _text_of(part)
         if part.get_content_type() == "text/html" and html is None:
@@ -505,6 +531,23 @@ def _body(message: Message) -> str:
 
         return html_to_text(_text_of(html)).text
     return "(no text part)"
+
+
+def _own_parts(message: Message) -> Any:
+    """The message's own parts, in order - not those inside an attachment or an attached
+    (forwarded) mail, whose text is not this mail's text."""
+    queue = [message]
+    while queue:
+        part = queue.pop(0)
+        if part is not message and (
+            part.get_content_disposition() == "attachment"
+            or part.get_content_type() == "message/rfc822"
+        ):
+            continue
+        if part.is_multipart():
+            queue[0:0] = [p for p in part.get_payload() if isinstance(p, Message)]
+            continue
+        yield part
 
 
 def _logout(client: imaplib.IMAP4_SSL) -> None:

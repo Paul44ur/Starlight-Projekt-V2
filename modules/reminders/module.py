@@ -12,7 +12,6 @@ Everything is local: no account, no network.
 
 from __future__ import annotations
 
-import json
 import uuid
 from datetime import datetime, timedelta
 from typing import Any
@@ -20,6 +19,7 @@ from typing import Any
 from pydantic import BaseModel, Field
 
 from starlight.core import Module, ModuleContext, ToolError, tool
+from starlight.core.jsonfile import load_json, save_json
 from starlight.core.schedule import Schedule, parse_schedule, parse_when
 
 __all__ = ["RemindersModule", "parse_schedule", "parse_when"]
@@ -47,21 +47,14 @@ class RemindersModule(Module):
     # -- storage -------------------------------------------------------------------------
 
     def _load(self) -> list[dict[str, Any]]:
-        if not self.file.exists():
-            return []
-        try:
-            data = json.loads(self.file.read_text("utf-8"))
-        except (OSError, json.JSONDecodeError):
-            return []
-        return data if isinstance(data, list) else []
+        return load_json(self.file, [])
 
     def _refresh(self) -> None:
         """Re-read the file: another Starlight process may have added or cancelled some."""
         self.items = self._load()
 
     def _save(self) -> None:
-        self.file.parent.mkdir(parents=True, exist_ok=True)
-        self.file.write_text(json.dumps(self.items, indent=2), encoding="utf-8")
+        save_json(self.file, self.items)
 
     # -- tools ---------------------------------------------------------------------------
 

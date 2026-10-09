@@ -81,7 +81,7 @@ class ChatView:
 
     async def notify(self, text: str) -> None:
         if self.rich:
-            self._console.print(f"[dim]ℹ {text}[/dim]")  # noqa: RUF001
+            self._console.print(f"[dim]ℹ {_escape(text)}[/dim]")  # noqa: RUF001
         else:
             print(f"\n[starlight] {text}")
 
@@ -121,7 +121,7 @@ class ChatView:
         grid.add_column(style="bold cyan", justify="right")
         grid.add_column()
         for key, value in info.items():
-            grid.add_row(key, value)
+            grid.add_row(_escape(key), _escape(value))
         self._console.print(
             Panel(
                 grid,
@@ -171,19 +171,19 @@ class ChatView:
             from rich.markdown import Markdown
 
             self._console.print("[bold green]starlight ›[/bold green]", end=" ")  # noqa: RUF001
-            self._console.print(Markdown(text) if _looks_markdown(text) else text)
+            self._console.print(Markdown(text) if _looks_markdown(text) else _plain_text(text))
         else:
             print(f"starlight> {text}")
 
     def info(self, text: str) -> None:
         if self.rich:
-            self._console.print(f"[dim]{text}[/dim]")
+            self._console.print(f"[dim]{_escape(text)}[/dim]")
         else:
             print(text)
 
     def error(self, text: str) -> None:
         if self.rich:
-            self._console.print(f"[bold red]{text}[/bold red]")
+            self._console.print(f"[bold red]{_escape(text)}[/bold red]")
         else:
             print(text)
 
@@ -203,7 +203,9 @@ class ChatView:
         for t in tools:
             summary = t.description.splitlines()[0] if t.description else ""
             perm = t.permission.value
-            table.add_row(t.qualified_name, f"[{colour.get(perm, 'white')}]{perm}[/]", summary)
+            table.add_row(
+                t.qualified_name, f"[{colour.get(perm, 'white')}]{perm}[/]", _escape(summary)
+            )
         self._console.print(table)
 
     def help(self, text: str) -> None:
@@ -220,13 +222,31 @@ class ChatView:
         if self.rich:
             from rich.panel import Panel
 
-            self._console.print(Panel(question, border_style="yellow", title="[yellow]confirm[/]"))
+            # Text, not markup: a command such as `del C:\\Backup\\[old]\\*.zip` must be shown
+            # exactly as it will run (and "[/" in code must not break the chat).
+            question_text = _plain_text(question)
+            self._console.print(
+                Panel(question_text, border_style="yellow", title="[yellow]confirm[/]")
+            )
         else:
             print(f"\n{question}")
 
     @staticmethod
     def _style(text: str, code: str) -> str:
         return f"\x1b[{code}m{text}\x1b[0m" if console.interactive() else text
+
+
+def _escape(text: str) -> str:
+    """Text from tools, the model or the user, safe inside rich markup."""
+    from rich.markup import escape
+
+    return escape(text)
+
+
+def _plain_text(text: str) -> Any:
+    from rich.text import Text
+
+    return Text(text)
 
 
 def _looks_markdown(text: str) -> bool:

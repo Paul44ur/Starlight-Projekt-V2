@@ -42,7 +42,10 @@ class KillSwitch:
         self._file_backed = False  # the STOP file was written/seen when the switch fired
         self._reason: str | None = None
         self._cleanups: dict[str, list[Cleanup]] = {}
-        self._tasks: set[asyncio.Task[Any]] = set()
+        # Tracked tasks, with how many guards each is inside: an agent run started by a tool
+        # (automations.run_now) guards the same task again, and leaving it must not untrack
+        # the outer run.
+        self._tasks: dict[asyncio.Task[Any], int] = {}
         self._loop: asyncio.AbstractEventLoop | None = None
         self._lock = threading.Lock()
         self._hotkey_listener: Any = None
@@ -144,11 +147,15 @@ class KillSwitch:
             yield
             return
         self._loop = task.get_loop()
-        self._tasks.add(task)
+        self._tasks[task] = self._tasks.get(task, 0) + 1
         try:
             yield
         finally:
-            self._tasks.discard(task)
+            left = self._tasks.get(task, 1) - 1
+            if left > 0:
+                self._tasks[task] = left
+            else:
+                self._tasks.pop(task, None)
 
     def _fire(self, reason: str, source: str) -> None:
         """Engaged by a STOP file that appeared (another process, or `starlight kill`)."""
