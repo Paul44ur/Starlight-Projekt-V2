@@ -3,6 +3,7 @@ case as it was reported, now working."""
 
 from __future__ import annotations
 
+import asyncio
 import email
 import json
 import os
@@ -350,13 +351,20 @@ async def test_a_command_that_times_out_returns_its_output_and_stops_its_childre
 async def test_a_background_program_is_stopped_on_windows_too(
     paths: Paths, use_module: Callable[[str], Path]
 ) -> None:
+    psutil = pytest.importorskip("psutil")
     use_module("commands")
     (paths.module_configs / "commands.yaml").write_text("shell: true\nshell_timeout: 4\n")
     async with Kernel(paths, ui=User()) as k:
         started = time.monotonic()
-        # ping keeps the output open after cmd and PowerShell have exited
-        result = await call(
-            k, "commands.shell", command='cmd /c "start /b ping -n 30 127.0.0.1"; echo started'
-        )
+        # cmd has exited at once, but the ping it started in the background still holds
+        # the output open; taskkill /T can't find it any more (its parent is gone).
+        result = await call(k, "commands.shell", command='cmd /c "start /b ping -n 31 127.0.0.1"')
         took = time.monotonic() - started
-    assert result["timed_out"] and "started" in result["output"] and took < 15
+    await asyncio.sleep(0.5)
+    left = [
+        p
+        for p in psutil.process_iter(["name", "cmdline"])
+        if (p.info["name"] or "").lower() == "ping.exe" and "31" in (p.info["cmdline"] or [])
+    ]
+    assert result["timed_out"] and took < 8  # without the job: 5 s more, waiting for ping
+    assert not left  # and ping would still be running
