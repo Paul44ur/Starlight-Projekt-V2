@@ -48,6 +48,17 @@ class Stats:
             cursor = self._db.execute("DELETE FROM metrics WHERE ts < ?", (cutoff,))
         return cursor.rowcount
 
+    def maintain(self, retention_days: int) -> int:
+        """Prune, then give the freed space back to the disk (a deleted row alone leaves the
+        file as big as it was) and fold the write-ahead log into the file."""
+        removed = self.prune(retention_days)
+        if self.path is not None:
+            with self._lock:
+                if removed:
+                    self._db.execute("VACUUM")
+                self._db.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+        return removed
+
     def query(
         self, name: str, since: float = 0.0, limit: int = 1000
     ) -> list[tuple[float, float, dict[str, Any]]]:

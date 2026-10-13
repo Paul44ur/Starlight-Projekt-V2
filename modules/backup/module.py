@@ -10,11 +10,13 @@ say so. Schedule backups with an automation ("every Sunday at 3:00 run backup.ru
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import fnmatch
 import hashlib
 import json
 import os
 import re
+import threading
 import zipfile
 from datetime import datetime
 from pathlib import Path
@@ -91,10 +93,15 @@ class BackupModule(Module):
 
     # -- making a backup (blocking; runs in a thread) ---------------------------------------
 
-    def _make(self, key: str, plan: BackupSet) -> dict[str, Any]:
+    def _make(
+        self, key: str, plan: BackupSet, cancelled: threading.Event | None = None
+    ) -> dict[str, Any]:
         source, folder = expand(plan.source), self._folder(key, plan)
         self._check_paths(source, folder)
         folder.mkdir(parents=True, exist_ok=True)
+        for stale in folder.glob(f"{key} *.partial"):  # left by a crash or a power cut
+            with contextlib.suppress(OSError):
+                stale.unlink()
         stamp = datetime.now().strftime("%Y-%m-%d %H%M%S")
         target = folder / f"{key} {stamp}.zip"
         partial = target.with_suffix(".partial")
@@ -113,6 +120,8 @@ class BackupModule(Module):
                         if any(fnmatch.fnmatch(name, p) for p in patterns):
                             continue
                         self.ctx.kill_switch.check()
+                        if cancelled is not None and cancelled.is_set():
+                            raise ToolError("the backup was stopped")
                         path = here / name
                         relative = path.relative_to(source).as_posix()
                         try:
@@ -227,8 +236,16 @@ class BackupModule(Module):
         if key in self._running:
             raise ToolError(f"'{key}' is already being backed up")
         self._running.add(key)
+        cancelled = threading.Event()
+        worker = asyncio.ensure_future(asyncio.to_thread(self._make, key, plan, cancelled))
         try:
-            result = await asyncio.to_thread(self._make, key, plan)
+            result = await asyncio.shield(worker)
+        except asyncio.CancelledError:
+            # A thread cannot be cancelled: tell it to stop, and wait until it has deleted
+            # its half-written file before another run for this name may start.
+            cancelled.set()
+            await asyncio.gather(worker, return_exceptions=True)
+            raise
         finally:
             self._running.discard(key)
         await self.ctx.publish("backup.done", {"name": key, "files": result["files"]})

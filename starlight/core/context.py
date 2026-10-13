@@ -41,6 +41,9 @@ def estimate_tokens(messages: list[Message], tools: list[dict[str, Any]] | None 
     return int(chars / 3.5) + 1
 
 
+SUMMARY_ROOM = 800  # tokens a summary takes, at most, in what is left
+
+
 class ContextManager:
     def __init__(
         self,
@@ -79,6 +82,14 @@ class ContextManager:
         if cut <= 1:
             return messages
         head, old, recent = messages[:1], messages[1:cut], messages[cut:]
+        if (
+            estimate_tokens([*head, *recent], tools) + min(SUMMARY_ROOM, self.budget // 4)
+            > self.budget
+        ):
+            # The recent messages alone (say, a huge pasted text) already fill the budget:
+            # summarizing the older ones would not help, and would be asked again at every
+            # tool step of the turn. `shorten` cuts the big message for this request instead.
+            return messages
         summary = await self.summarize(old)
         self._log.info("summarized", messages=len(old), chars=len(summary))
         if self.on_summary is not None:

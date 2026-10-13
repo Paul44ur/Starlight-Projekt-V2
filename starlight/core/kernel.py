@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import time
 from pathlib import Path
 from types import TracebackType
 from typing import Any
@@ -191,6 +192,7 @@ class Kernel:
         self._taken_back: dict[str, tuple[int, list[Message]]] = {}  # see take_back
         self._stamps: dict[str, tuple[int, int] | None] = {}  # file versions of _histories
         self._conversation_locks: dict[str, asyncio.Lock] = {}
+        self._housekeeping_at = 0.0
         self._hotkey = hotkey
         self._watcher: asyncio.Task[None] | None = None
         self._background: set[asyncio.Task[Any]] = set()
@@ -263,7 +265,7 @@ class Kernel:
         for event in ("module.loaded", "module.unloaded"):  # keeps tools.find's list current
             self.bus.subscribe(event, self._refresh_router, owner="core")
         self.bus.subscribe("message.received", self._on_message, owner="core")
-        self.stats.prune(self.config.stats.retention_days)
+        await self._housekeeping()
         self._spawn(self._heartbeat(), "gpu-heartbeat")
         self._protect_secrets()
         await self._warmup()
@@ -375,6 +377,27 @@ class Kernel:
             return
         add_secret_values(v for v in values if v)
 
+    HOUSEKEEPING_EVERY = 6 * 3600.0
+
+    async def _housekeeping(self) -> None:
+        """Keep what grows from growing forever: old statistics, cached web pages and old
+        conversation summaries. At start, and every few hours while the core runs."""
+        self._housekeeping_at = time.monotonic()
+        steps: list[tuple[str, Any]] = [
+            ("statistics", lambda: self.stats.maintain(self.config.stats.retention_days)),
+            ("web cache", self.http.cache.purge),
+        ]
+        for name, step in steps:
+            try:
+                await asyncio.to_thread(step)
+            except Exception:
+                self.log.exception("housekeeping step failed", step=name)
+        if self.config.memory.enabled:
+            try:
+                await self.memory.prune_summaries()
+            except Exception:
+                self.log.exception("housekeeping step failed", step="summaries")
+
     async def _heartbeat(self) -> None:
         """The primary core tells the viewer it is running and samples GPU use and VRAM.
         A secondary core waits and takes over when the primary one exits."""
@@ -390,6 +413,8 @@ class Kernel:
                 self.log.info("this process now runs the background parts")
                 await self.bus.publish("core.primary")
             self.stats.record("core.heartbeat")
+            if time.monotonic() - self._housekeeping_at >= self.HOUSEKEEPING_EVERY:
+                await self._housekeeping()
             if self.focus.expired():  # focus time is over: deliver what was held
                 try:
                     await finish(self.focus, self.deliver)
@@ -440,9 +465,23 @@ class Kernel:
 
     def _keep(self, conversation: str, messages: list[Message]) -> None:
         """Make ``messages`` the conversation, in memory and on disk."""
+        self._histories.pop(conversation, None)  # (re-inserted last: the newest in the order)
         self._histories[conversation] = messages
         self.conversations.save(conversation, messages)
         self._stamps[conversation] = self.conversations.stamp(conversation)
+        self._evict_old_histories()
+
+    MAX_CACHED_HISTORIES = 20
+
+    def _evict_old_histories(self) -> None:
+        """Only the most recently used conversations stay in memory (with their pictures);
+        any other is read from its file when it is opened again."""
+        for name in list(self._histories):
+            if len(self._histories) <= self.MAX_CACHED_HISTORIES:
+                break
+            if name not in self._taken_back:  # a Regenerate in progress keeps its state
+                del self._histories[name]
+                self._stamps.pop(name, None)
 
     async def _ask_in_conversation(
         self,
@@ -514,6 +553,8 @@ class Kernel:
         self.conversations.delete(conversation)
         self._histories.pop(conversation, None)
         self._stamps.pop(conversation, None)
+        self._taken_back.pop(conversation, None)
+        self._conversation_locks.pop(conversation, None)
 
     async def _run_request(self, text: str) -> str:
         return (await self.ask(text)).answer
