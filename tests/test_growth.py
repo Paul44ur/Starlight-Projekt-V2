@@ -32,13 +32,13 @@ DAY = 86400.0
 
 def test_old_statistics_are_pruned_and_the_file_is_compacted(tmp_path: Path) -> None:
     stats = Stats(tmp_path / "stats.db")
-    for _ in range(3000):
-        stats.record("gpu.utilization_percent", 50.0, note="x" * 200)
+    for _ in range(1000):
+        stats.record("gpu.utilization_percent", 50.0, note="x" * 600)
     stats._db.execute("UPDATE metrics SET ts = ?", (time.time() - 40 * DAY,))
     stats.record("core.heartbeat")  # today's: stays
     stats._db.execute("PRAGMA wal_checkpoint(TRUNCATE)")
     big = (tmp_path / "stats.db").stat().st_size
-    assert stats.maintain(retention_days=30) == 3000
+    assert stats.maintain(retention_days=30) == 1000
     assert (tmp_path / "stats.db").stat().st_size < big / 2
     assert len(stats.query("core.heartbeat")) == 1
     stats.close()
@@ -297,3 +297,17 @@ def test_searching_finds_straße_with_strasse(tmp_path: Path) -> None:
     store.save(name, [Message("user", "Wir ziehen in die Hauptstraße 5")])
     assert [c["id"] for c in store.list("hauptstrasse")] == [name]
     assert [c["id"] for c in store.list("STRASSE")] == [name]
+
+
+def test_the_newest_pages_stay_when_the_clock_does_not_tick(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """(Windows' clock moves every ~15 ms, so quick puts can share one time.)"""
+    monkeypatch.setattr("starlight.core.http.time.time", lambda: 1_800_000_000.0)
+    monkeypatch.setattr(ResponseCache, "MAX_ROWS", 3)
+    cache = ResponseCache(None)
+    for n in range(8):
+        cache.put(page(f"https://example.org/{n}"))
+    cache.purge()
+    left = sorted(r[0] for r in cache._db.execute("SELECT url FROM pages"))
+    assert left == [f"https://example.org/{n}" for n in (5, 6, 7)]

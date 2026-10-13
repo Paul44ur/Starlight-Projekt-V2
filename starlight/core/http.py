@@ -169,9 +169,10 @@ class ResponseCache:
         with self._lock:
             before = self._db.total_changes
             self._db.execute("DELETE FROM pages WHERE fetched < ?", (time.time() - self.MAX_AGE,))
+            # (rowid breaks ties: on Windows the clock ticks every ~15 ms)
             self._db.execute(
-                "DELETE FROM pages WHERE url IN (SELECT url FROM pages ORDER BY fetched DESC "
-                "LIMIT -1 OFFSET ?)",
+                "DELETE FROM pages WHERE url IN (SELECT url FROM pages "
+                "ORDER BY fetched DESC, rowid DESC LIMIT -1 OFFSET ?)",
                 (self.MAX_ROWS,),
             )
             removed = self._db.total_changes - before
