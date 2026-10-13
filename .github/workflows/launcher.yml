@@ -30,9 +30,12 @@ jobs:
         run: >
           uvx --python 3.12 pyinstaller --onefile --console --clean --noconfirm
           --name Starlight --distpath dist --workpath build/pyinstaller
-          --specpath build/pyinstaller launcher/starlight_launcher.py
+          --specpath build/pyinstaller --icon "$PWD/launcher/starlight.ico"
+          --paths launcher --hidden-import launcher_gui launcher/starlight_launcher.py
       - name: Starlight.exe starts
         run: dist\Starlight.exe --version
+      - name: The setup window can be built (tkinter is inside the exe)
+        run: dist\Starlight.exe --gui-selftest
       - name: The default model link works and has a checksum
         run: >
           uv run --no-project python -c "import sys; sys.path.insert(0, 'launcher');

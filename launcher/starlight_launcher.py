@@ -65,6 +65,24 @@ MODEL_PRESETS = {
         "Qwen2.5-7B-Instruct-Q4_K_M.gguf"
     ),
 }
+# What the setup window tells about each preset: (title, description, video memory in GB).
+MODEL_INFO = {
+    "qwen14b-uncensored": (
+        "Qwen2.5 14B, uncensored",
+        "The default. Answers anything you ask; the most capable choice here.",
+        10.0,
+    ),
+    "qwen14b": (
+        "Qwen2.5 14B, original",
+        "The same size with its safety training: more careful, cleaner endings.",
+        10.0,
+    ),
+    "qwen7b": (
+        "Qwen2.5 7B",
+        "About twice as fast and half the video memory; a little less capable.",
+        5.0,
+    ),
+}
 # Voice (optional, --voice): speech-to-text with whisper.cpp and text-to-speech with Piper,
 # both running on this PC. The URLs can be changed in config/launcher.json.
 WHISPER_URL = "https://github.com/ggml-org/whisper.cpp/releases/latest/download/whisper-bin-x64.zip"
@@ -213,6 +231,14 @@ def load_settings(args: argparse.Namespace) -> Settings:
 
 
 class Ui:
+    """How the launcher talks to the user. This plain version prints lines (it is what log
+    files and the CI see); ConsoleUi adds colors and a progress bar, and the window
+    (launcher_gui.py) has its own."""
+
+    #: True: output of the programs the launcher runs (uv, winget) goes to run_output()
+    #: instead of the console, so a window can show it.
+    captures_output = False
+
     def __init__(self, assume_yes: bool) -> None:
         self.assume_yes = assume_yes
 
@@ -230,6 +256,13 @@ class Ui:
             line = f"   {done / MB:8.1f} MB  ({speed:.1f} MB/s)"
         print("\r" + line, end="", flush=True)
 
+    def waiting(self, text: str) -> None:
+        """A status line that is replaced by the next one ("loading the model ... 12 s")."""
+        print("\r" + text, end="", flush=True)
+
+    def run_output(self, line: str) -> None:
+        print(line, flush=True)
+
     def ask(self, question: str, default: bool) -> bool:
         if self.assume_yes:
             return default
@@ -239,6 +272,103 @@ class Ui:
         except EOFError:
             return default
         return default if not answer else answer in ("y", "yes", "j", "ja")
+
+
+def format_size(size: float) -> str:
+    """12345678 -> "11.8 MB"; 9e9 -> "8.4 GB"."""
+    if size >= GB:
+        return f"{size / GB:.1f} GB"
+    if size >= MB:
+        return f"{size / MB:.0f} MB" if size >= 100 * MB else f"{size / MB:.1f} MB"
+    return f"{max(size, 0) / 1024:.0f} KB"
+
+
+def format_duration(seconds: float) -> str:
+    """75 -> "1 min 15 s"; 5000 -> "1 h 23 min"."""
+    seconds = int(max(seconds, 0) + 0.5)
+    if seconds < 60:
+        return f"{seconds} s"
+    if seconds < 3600:
+        return f"{seconds // 60} min {seconds % 60:02d} s"
+    return f"{seconds // 3600} h {seconds % 3600 // 60:02d} min"
+
+
+def transfer_text(done: int, total: int | None, started: float) -> tuple[float, str]:
+    """(fraction 0..1 or -1 if the size is unknown, "4.2 GB of 9.0 GB - 41 MB/s - 2 min left")."""
+    elapsed = max(time.monotonic() - started, 1e-6)
+    speed = done / elapsed
+    pace = f"{speed / MB:.1f} MB/s" if speed < 10 * MB else f"{speed / MB:.0f} MB/s"
+    if not total:
+        return -1.0, f"{format_size(done)} - {pace}"
+    left = (total - done) / speed if speed > 0 else 0
+    text = f"{format_size(done)} of {format_size(total)} - {pace} - {format_duration(left)} left"
+    return min(done / total, 1.0), text
+
+
+def enable_ansi() -> bool:
+    """Turn on colors in the Windows console (Windows 10 and later). Always true elsewhere."""
+    if os.name != "nt":
+        return True
+    try:
+        import ctypes
+
+        kernel32 = ctypes.windll.kernel32  # type: ignore[attr-defined,unused-ignore]
+        handle = kernel32.GetStdHandle(-11)
+        mode = ctypes.c_uint32()
+        if not kernel32.GetConsoleMode(handle, ctypes.byref(mode)):
+            return False
+        return bool(kernel32.SetConsoleMode(handle, mode.value | 0x0004))
+    except (AttributeError, OSError):
+        return False
+
+
+class ConsoleUi(Ui):
+    """The terminal version: colored steps, a progress bar with speed and time left, one
+    status line for the model loading. Used only on a real terminal."""
+
+    BOLD, DIM, CYAN, GREEN, RESET = "\x1b[1m", "\x1b[2m", "\x1b[36m", "\x1b[32m", "\x1b[0m"
+    CLEAR = "\x1b[2K\r"
+
+    def __init__(self, assume_yes: bool) -> None:
+        super().__init__(assume_yes)
+        encoding = (getattr(sys.stdout, "encoding", None) or "ascii").lower()
+        try:
+            "\u2588\u2591\u25b8".encode(encoding)
+            self.full, self.empty, self.arrow = "\u2588", "\u2591", "\u25b8"
+        except (UnicodeEncodeError, LookupError):
+            self.full, self.empty, self.arrow = "#", "-", ">"
+
+    def step(self, text: str) -> None:
+        print(f"\n{self.CYAN}{self.arrow}{self.RESET} {self.BOLD}{text}{self.RESET}", flush=True)
+
+    def say(self, text: str = "") -> None:
+        print(self.CLEAR + text if text.startswith("\r") else text, flush=True)
+
+    def bar(self, fraction: float, width: int) -> str:
+        filled = round(fraction * width)
+        return (
+            self.GREEN + self.full * filled + self.DIM + self.empty * (width - filled) + self.RESET
+        )
+
+    def progress(self, done: int, total: int | None, started: float) -> None:
+        fraction, text = transfer_text(done, total, started)
+        width = max(10, min(30, shutil.get_terminal_size((80, 20)).columns - len(text) - 12))
+        if fraction < 0:
+            print(f"{self.CLEAR}   {text}", end="", flush=True)
+        else:
+            bar = self.bar(fraction, width)
+            print(f"{self.CLEAR}   {bar} {fraction * 100:3.0f}%  {text}", end="", flush=True)
+
+    def waiting(self, text: str) -> None:
+        print(f"{self.CLEAR}{self.DIM}{text.lstrip(chr(13))}{self.RESET}", end="", flush=True)
+
+
+def make_ui(assume_yes: bool) -> Ui:
+    """Colors and a progress bar on a terminal; plain lines when output goes to a file."""
+    on_terminal = sys.stdout is not None and sys.stdout.isatty() and "NO_COLOR" not in os.environ
+    if on_terminal and enable_ansi():
+        return ConsoleUi(assume_yes)
+    return Ui(assume_yes)
 
 
 # -- downloads -------------------------------------------------------------------------
@@ -706,23 +836,28 @@ class ProcessGroup:
         self.processes.append(process)
         return process
 
+    def terminate(self, process: subprocess.Popen[bytes]) -> None:
+        """End one process and everything it started."""
+        if process.poll() is not None:
+            return
+        if sys.platform == "win32":
+            subprocess.run(
+                ["taskkill", "/T", "/F", "/PID", str(process.pid)],
+                capture_output=True,
+                check=False,
+                creationflags=subprocess.CREATE_NO_WINDOW,
+            )
+        else:
+            import signal
+
+            with contextlib.suppress(ProcessLookupError, PermissionError):
+                os.killpg(process.pid, signal.SIGTERM)
+        with contextlib.suppress(subprocess.TimeoutExpired):
+            process.wait(10)
+
     def stop(self) -> None:
         for process in reversed(self.processes):
-            if process.poll() is not None:
-                continue
-            if sys.platform == "win32":
-                subprocess.run(
-                    ["taskkill", "/T", "/F", "/PID", str(process.pid)],
-                    capture_output=True,
-                    check=False,
-                )
-            else:
-                import signal
-
-                with contextlib.suppress(ProcessLookupError, PermissionError):
-                    os.killpg(process.pid, signal.SIGTERM)
-            with contextlib.suppress(subprocess.TimeoutExpired):
-                process.wait(10)
+            self.terminate(process)
         for handle in self._logs:
             handle.close()
         self._logs.clear()
@@ -752,6 +887,7 @@ class ModelServerWatchdog:
         self.limit, self.window, self.poll, self.backoff = limit, window, poll, backoff
         self.restarts: list[float] = []
         self.gave_up = False
+        self.restarting = False  # it stopped by itself and is being started again
         self._stopped = threading.Event()
         self._thread = threading.Thread(target=self._watch, name="model-watchdog", daemon=True)
 
@@ -763,6 +899,26 @@ class ModelServerWatchdog:
         self._stopped.set()
         if self._thread.is_alive() and self._thread is not threading.current_thread():
             self._thread.join(timeout=5)
+
+    def restart_now(self) -> None:
+        """The user asked for a restart: end the server, start it again, count from zero."""
+        self._stopped.set()
+        if self._thread.is_alive() and self._thread is not threading.current_thread():
+            self._thread.join(timeout=5)
+        self.group.terminate(self.process)
+        self.restarts.clear()
+        self.gave_up = False
+        self.restarting = True
+        self._stopped = threading.Event()
+        try:
+            self.process = self.group.start(self.command, self.log, self.cwd)
+        except OSError as exc:
+            self.ui.say(f"   could not start it: {exc}")
+            self.gave_up = True
+        finally:
+            self.restarting = False
+        self._thread = threading.Thread(target=self._watch, name="model-watchdog", daemon=True)
+        self._thread.start()
 
     def _watch(self) -> None:
         while not self._stopped.wait(self.poll):
@@ -786,15 +942,19 @@ class ModelServerWatchdog:
             f"\nThe model server stopped (exit code {code}); starting it again "
             f"({len(self.restarts)} of {self.limit}) ..."
         )
-        if self._stopped.wait(self.backoff * len(self.restarts)):
-            return False
+        self.restarting = True
         try:
-            self.process = self.group.start(self.command, self.log, self.cwd)
-        except OSError as exc:
-            self.ui.say(f"   could not start it: {exc}")
-            self.gave_up = True
-            return False
-        return True
+            if self._stopped.wait(self.backoff * len(self.restarts)):
+                return False
+            try:
+                self.process = self.group.start(self.command, self.log, self.cwd)
+            except OSError as exc:
+                self.ui.say(f"   could not start it: {exc}")
+                self.gave_up = True
+                return False
+            return True
+        finally:
+            self.restarting = False
 
 
 def _create_kill_on_close_job() -> Any:
@@ -903,7 +1063,7 @@ def wait_for_model(
             if response.status == 200:
                 ui.say(f"\r   model ready after {time.monotonic() - started:.0f} s".ljust(40))
                 return
-        print(f"\r   loading the model ... {time.monotonic() - started:4.0f} s", end="", flush=True)
+        ui.waiting(f"   loading the model ... {time.monotonic() - started:4.0f} s")
         time.sleep(1)
     raise LauncherError(f"the model server did not become ready within {timeout:.0f} s")
 
@@ -945,12 +1105,14 @@ def setup(settings: Settings, ui: Ui) -> Installed:
 
     uv = ensure_uv(settings, ui)
     ui.step("Setting up Python and Starlight's packages")
-    run_checked([str(uv), "sync", "--extra", "all", "--locked", "--python", "3.12"], settings.root)
+    run_checked(
+        [str(uv), "sync", "--extra", "all", "--locked", "--python", "3.12"], settings.root, ui
+    )
     marker = settings.tools / ".chromium-installed"
     if not marker.exists() or settings.update:
         ui.step("Installing the Chromium browser")
         run_checked(
-            [str(uv), "run", "--no-sync", "playwright", "install", "chromium"], settings.root
+            [str(uv), "run", "--no-sync", "playwright", "install", "chromium"], settings.root, ui
         )
         marker.write_text("ok\n", encoding="utf-8")
     installed = Installed(uv)
@@ -964,10 +1126,33 @@ def setup(settings: Settings, ui: Ui) -> Installed:
     return installed
 
 
-def run_checked(command: list[str], cwd: Path) -> None:
-    result = subprocess.run(command, cwd=cwd, check=False)
-    if result.returncode != 0:
-        raise LauncherError(f"command failed ({result.returncode}): {' '.join(command)}")
+def run_checked(command: list[str], cwd: Path, ui: Ui | None = None) -> None:
+    """Run a program and wait. With a window (ui.captures_output) its output is shown there."""
+    if ui is None or not ui.captures_output:
+        result = subprocess.run(command, cwd=cwd, check=False)
+        returncode = result.returncode
+    else:
+        flags = 0
+        if sys.platform == "win32":
+            flags = subprocess.CREATE_NO_WINDOW
+        with subprocess.Popen(
+            command,
+            cwd=cwd,
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            creationflags=flags,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+        ) as process:
+            assert process.stdout is not None
+            for line in process.stdout:
+                if line.strip():
+                    ui.run_output(line.rstrip())
+        returncode = process.returncode
+    if returncode != 0:
+        raise LauncherError(f"command failed ({returncode}): {' '.join(command)}")
 
 
 def maybe_tesseract(settings: Settings, ui: Ui) -> None:
@@ -1008,6 +1193,252 @@ def maybe_tesseract(settings: Settings, ui: Ui) -> None:
         ],
         check=False,
     )
+
+
+@dataclass
+class Gpu:
+    name: str
+    vram: int | None  # bytes of video memory, if the driver tells
+
+
+def pick_gpu(entries: list[tuple[str, int | None]]) -> Gpu | None:
+    """The graphics card that Starlight will use: the one with the most video memory,
+    ignoring Windows' own placeholder adapters."""
+    real = [
+        (name, vram)
+        for name, vram in entries
+        if name and not any(w in name.lower() for w in ("basic", "remote", "virtual", "mirror"))
+    ]
+    if not real:
+        return None
+    name, vram = max(real, key=lambda entry: entry[1] or 0)
+    return Gpu(name, vram)
+
+
+def detect_gpu() -> Gpu | None:
+    """Name and video memory of the graphics card (Windows; from the driver's registry
+    entries, which - unlike WMI's AdapterRAM - are right for cards over 4 GB)."""
+    if sys.platform != "win32":
+        return None
+    import winreg
+
+    base = r"SYSTEM\CurrentControlSet\Control\Class\{4d36e968-e325-11ce-bfc1-08002be10318}"
+    entries: list[tuple[str, int | None]] = []
+    try:
+        with winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, base) as root:
+            for index in range(32):
+                try:
+                    sub_name = winreg.EnumKey(root, index)
+                except OSError:
+                    break
+                if not sub_name.isdigit():
+                    continue
+                with contextlib.suppress(OSError), winreg.OpenKey(root, sub_name) as key:
+                    name = str(winreg.QueryValueEx(key, "DriverDesc")[0])
+                    vram: int | None = None
+                    for value in (
+                        "HardwareInformation.qwMemorySize",
+                        "HardwareInformation.MemorySize",
+                    ):
+                        with contextlib.suppress(OSError):
+                            raw = winreg.QueryValueEx(key, value)[0]
+                            vram = (
+                                int.from_bytes(raw, "little")
+                                if isinstance(raw, bytes)
+                                else int(raw)
+                            )
+                            break
+                    entries.append((name, vram))
+    except OSError:
+        return None
+    return pick_gpu(entries)
+
+
+def recommend_model(gpu: Gpu | None) -> tuple[str, str]:
+    """(preset, why) for this graphics card."""
+    default = "qwen14b-uncensored"
+    if gpu is None or gpu.vram is None:
+        return (
+            default,
+            "The 14B models need about 10 GB of video memory.",
+        )
+    gigabytes = gpu.vram / GB
+    if gigabytes >= 12:
+        return (
+            default,
+            "That is plenty for a 14B model.",
+        )
+    return "qwen7b", "The 7B model fits it comfortably."
+
+
+def save_choices(root: Path, choices: dict[str, Any], drop: tuple[str, ...] = ()) -> Path:
+    """Remember the setup window's choices in config/launcher.json (other keys are kept)."""
+    path = root / "config" / "launcher.json"
+    data: dict[str, Any] = {}
+    if path.is_file():
+        with contextlib.suppress(OSError, ValueError):
+            loaded = json.loads(path.read_text(encoding="utf-8-sig"))
+            if isinstance(loaded, dict):
+                data = loaded
+    for key in drop:
+        data.pop(key, None)
+    data.update(choices)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    part = path.with_name(path.name + ".part")
+    part.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
+    replace_file(part, path)
+    return path
+
+
+VIEWER_PORT = 8765
+
+
+@dataclass
+class Status:
+    """What the status window shows."""
+
+    model: str  # "off", "loading", "ready", "restarting" or "down"
+    model_detail: str = ""
+    chat: bool = False
+    viewer: bool | None = None  # None: not used
+    kill: bool | None = None  # None: unknown (the chat is not up yet)
+    seconds: float = 0.0  # since start
+
+
+def fetch_json(
+    url: str, method: str = "GET", timeout: float = 2.0, origin: str | None = None
+) -> dict[str, Any] | None:
+    """A local JSON answer, or None. (POST sends the page's own Origin, as a browser would.)"""
+    headers = {"User-Agent": USER_AGENT}
+    if origin:
+        headers["Origin"] = origin
+    request = urllib.request.Request(
+        url, method=method, headers=headers, data=b"" if method == "POST" else None
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=timeout) as response:
+            data = json.loads(response.read().decode("utf-8", errors="replace") or "{}")
+    except (OSError, ValueError, http.client.HTTPException):
+        return None
+    return data if isinstance(data, dict) else {}
+
+
+def health_status(port: int) -> int | None:
+    """HTTP status of the model server's /health (200 ready, 503 loading), None: no answer."""
+    request = urllib.request.Request(
+        f"http://127.0.0.1:{port}/health", headers={"User-Agent": USER_AGENT}
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=2) as response:
+            return int(response.status)
+    except urllib.error.HTTPError as exc:
+        return exc.code
+    except (OSError, http.client.HTTPException):
+        return None
+
+
+class Services:
+    """The running Starlight: the model server (watched, restarted if it dies), the web
+    chat and the statistics viewer. ``start`` returns at once; ``poll`` says how it is
+    doing, so a window can show it while the model loads."""
+
+    def __init__(
+        self, settings: Settings, ui: Ui, installed: Installed, group: ProcessGroup | None = None
+    ) -> None:
+        self.settings, self.ui, self.installed = settings, ui, installed
+        self.group = group or ProcessGroup()
+        self.logs = settings.root / "logs"
+        self.watchdog: ModelServerWatchdog | None = None
+        self.started = time.monotonic()
+        self.reused_model_server = False
+
+    @property
+    def chat_url(self) -> str:
+        return f"http://127.0.0.1:{WEB_PORT}"
+
+    @property
+    def viewer_url(self) -> str:
+        return f"http://127.0.0.1:{VIEWER_PORT}"
+
+    def start(self) -> None:
+        settings, uv = self.settings, self.installed.uv
+        self.started = time.monotonic()
+        if settings.use_model:
+            if port_in_use(settings.port):
+                self.reused_model_server = True
+            else:
+                serve = starlight(uv, "model", "serve")
+                log = self.logs / "llama-server.log"
+                process = self.group.start(serve, log, settings.root)
+                self.watchdog = ModelServerWatchdog(
+                    self.group, serve, process, log, settings.root, self.ui
+                )
+                self.watchdog.start()
+        if settings.viewer and not port_in_use(VIEWER_PORT):
+            self.group.start(starlight(uv, "viewer"), self.logs / "viewer.log", settings.root)
+        if not port_in_use(WEB_PORT):
+            self.group.start(starlight(uv, "web"), self.logs / "web.log", settings.root)
+
+    def model_log_problem(self) -> str:
+        """The last line of the model server's log that looks like a real problem."""
+        try:
+            text = (self.logs / "llama-server.log").read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            return ""
+        words = ("error", "failed", "out of memory", "cannot", "unable", "abort")
+        lines = [
+            ln.strip() for ln in text[-6000:].splitlines() if any(w in ln.lower() for w in words)
+        ]
+        return lines[-1][:200] if lines else ""
+
+    def poll(self) -> Status:
+        settings, dog = self.settings, self.watchdog
+        elapsed = time.monotonic() - self.started
+        if not settings.use_model:
+            model, detail = "off", "the built-in test model"
+        else:
+            code = health_status(settings.port)
+            if code == 200:
+                model, detail = "ready", ""
+            elif dog is not None and dog.gave_up:
+                model, detail = "down", self.model_log_problem() or "it stopped and did not restart"
+            elif dog is not None and (dog.restarting or dog.process.poll() is not None):
+                model, detail = "restarting", ""
+            else:
+                model, detail = "loading", ""
+        chat = port_in_use(WEB_PORT)
+        status = fetch_json(f"{self.chat_url}/api/status") if chat else None
+        kill = None
+        if status is not None:
+            engaged = (status.get("kill") or {}).get("engaged")
+            kill = bool(engaged) if engaged is not None else None
+        return Status(
+            model=model,
+            model_detail=detail,
+            chat=chat,
+            viewer=port_in_use(VIEWER_PORT) if settings.viewer else None,
+            kill=kill,
+            seconds=elapsed,
+        )
+
+    def restart_model(self) -> bool:
+        """Restart the model server. False if this launcher did not start it."""
+        if self.watchdog is None:
+            return False
+        self.watchdog.restart_now()
+        self.started = time.monotonic()
+        return True
+
+    def set_kill_switch(self, engaged: bool) -> bool:
+        """Engage or release the kill switch through the chat backend. True on success."""
+        path = "/api/kill" if engaged else "/api/resume"
+        answer = fetch_json(self.chat_url + path, method="POST", origin=self.chat_url)
+        return answer is not None
+
+    def stop(self) -> None:
+        if self.watchdog is not None:
+            self.watchdog.stop()
+        self.group.stop()
 
 
 def start(settings: Settings, ui: Ui, installed: Installed, ask: str | None) -> int:
@@ -1108,12 +1539,83 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--llama-release", help='llama.cpp release tag (default "latest")')
     parser.add_argument("--port", type=int, help="model server port (default 8080)")
     parser.add_argument("--root", help="the Starlight folder (default: where Starlight.exe is)")
+    parser.add_argument(
+        "--no-gui",
+        action="store_true",
+        help="no window: set up and start in this text window (the default with --yes, --ask, "
+        "--terminal, --both, --setup-only or --update)",
+    )
+    parser.add_argument(
+        "--gui", action="store_true", help="always show the window, even with those options"
+    )
+    parser.add_argument("--gui-selftest", action="store_true", help=argparse.SUPPRESS)
     return parser
+
+
+def gui_wanted(args: argparse.Namespace) -> bool:
+    """The window is the default when Starlight.exe is started plainly (double-click); the
+    text version stays for scripts and for the options that need a terminal."""
+    if args.no_gui:
+        return False
+    if args.gui or args.gui_selftest:
+        return True
+    return not (
+        args.yes or args.ask or args.terminal or args.both or args.setup_only or args.update
+    )
+
+
+def relaunch_without_console() -> bool:
+    """Starlight.exe is a console program, so a double-click opens a black window. For the
+    window version, start a copy without one and let this one end (its console closes)."""
+    if sys.platform != "win32" or not getattr(sys, "frozen", False):
+        return False
+    if os.environ.get("STARLIGHT_NO_RELAUNCH"):
+        return False
+    env = {**os.environ, "STARLIGHT_NO_RELAUNCH": "1", "PYINSTALLER_RESET_ENVIRONMENT": "1"}
+    flags = subprocess.CREATE_NO_WINDOW | subprocess.CREATE_NEW_PROCESS_GROUP
+    try:
+        subprocess.Popen(
+            [sys.executable, *sys.argv[1:]],
+            env=env,
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            creationflags=flags,
+            close_fds=True,
+        )
+    except OSError:
+        return False
+    return True
+
+
+def run_window(args: argparse.Namespace) -> int | None:
+    """Show the window. None: it cannot be shown here (no tkinter, no screen), so the
+    caller falls back to the text version."""
+    if sys.platform != "win32" and not (
+        os.environ.get("DISPLAY") or os.environ.get("WAYLAND_DISPLAY")
+    ):
+        return None
+    here = str(Path(__file__).resolve().parent)
+    if here not in sys.path:
+        sys.path.insert(0, here)
+    try:
+        import tkinter  # noqa: F401
+
+        import launcher_gui
+    except ImportError:
+        return None
+    if not args.gui_selftest and relaunch_without_console():
+        return 0
+    return launcher_gui.run(sys.modules[__name__], args)
 
 
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
-    ui = Ui(args.yes)
+    if gui_wanted(args):
+        window_code = run_window(args)
+        if window_code is not None:
+            return window_code
+    ui = make_ui(args.yes)
     code = 1
     try:
         settings = load_settings(args)

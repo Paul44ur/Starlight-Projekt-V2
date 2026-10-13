@@ -30,7 +30,8 @@ starlight/sandbox/  Docker and process sandboxes for generated code
 starlight/viewer/   the statistics viewer (separate, read-only app)
 starlight/web/      the local web chat (FastAPI + a WebSocket chat page); client.py is a
                     terminal that joins the same backend, so --both shares one brain
-launcher/           the source of Starlight.exe (standard library only)
+launcher/           the source of Starlight.exe (standard library only; the window is launcher_gui.py)
+assets/logo/        the logo (SVG, PNG); launcher/starlight.ico and web/static/icon.svg are made from it
 starlight/browser.py, text.py   headless browser and HTML-to-text helpers for modules
 starlight/tui.py    the colored terminal chat (rich), with a plain fallback
 starlight/cli.py    the `starlight` command
