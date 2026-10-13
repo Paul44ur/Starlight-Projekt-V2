@@ -20,6 +20,7 @@ A hit is delivered on every open channel and published as ``watch.changed`` or
 from __future__ import annotations
 
 import hashlib
+import math
 import re
 import time
 import uuid
@@ -68,9 +69,10 @@ def parse_number(raw: str) -> float | None:
         else:
             text = head.replace(sep, "") + "." + tail
     try:
-        return float(text)
+        value = float(text)
     except ValueError:
         return None
+    return value if math.isfinite(value) else None  # "9" * 400 is inf, not a price
 
 
 # A price split over HTML tags comes out of the page text with a gap in it:
@@ -101,7 +103,10 @@ def parse_every(text: str) -> int:
     match = re.fullmatch(r"(\d+(?:\.\d+)?)?\s*([a-z]+)", raw)
     if not match or match.group(2) not in UNITS:
         raise ToolError(f"how often? e.g. '30m', '2h' or 'daily', not '{text}'")
-    return int(float(match.group(1) or 1) * UNITS[match.group(2)])
+    seconds = float(match.group(1) or 1) * UNITS[match.group(2)]
+    if not 1 <= seconds <= 10 * 365 * 86400:  # 0 would check in a loop; huge is a typo
+        raise ToolError(f"how often? '{text}' is not a sensible interval")
+    return int(seconds)
 
 
 def parse_condition(when: str) -> tuple[str, Any]:

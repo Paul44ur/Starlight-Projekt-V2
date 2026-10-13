@@ -308,8 +308,13 @@ def _expand(start: datetime, rule: dict[str, str], after: datetime | None = None
 # -- writing -----------------------------------------------------------------------------
 
 
+_LINE_BREAKS = re.compile("\r\n|[\n\r\x0b\x0c\x1c\x1d\x1e\x85\u2028\u2029]")
+
+
 def _escape(value: str) -> str:
-    return value.replace("\\", "\\\\").replace(";", "\\;").replace(",", "\\,").replace("\n", "\\n")
+    # Every kind of line break becomes \n: a raw one would end the property's line.
+    escaped = value.replace("\\", "\\\\").replace(";", "\\;").replace(",", "\\,")
+    return _LINE_BREAKS.sub(lambda _: "\\n", escaped)
 
 
 def _fold(line: str) -> list[str]:

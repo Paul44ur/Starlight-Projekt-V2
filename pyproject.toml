@@ -50,6 +50,7 @@ starlight = "starlight.cli:main"
 
 [dependency-groups]
 dev = [
+    "hypothesis>=6.169.0",
     "mypy>=1.10",
     "pytest>=8.0",
     "pytest-asyncio>=0.23",
