@@ -168,7 +168,11 @@ def test_colors_only_on_a_real_terminal(monkeypatch: pytest.MonkeyPatch) -> None
 
     monkeypatch.setattr(sys, "stdout", Terminal())
     monkeypatch.delenv("NO_COLOR", raising=False)
+    monkeypatch.setattr(L, "enable_ansi", lambda: True)  # (CI's Windows has no real console)
     assert isinstance(L.make_ui(True), L.ConsoleUi)
+    monkeypatch.setattr(L, "enable_ansi", lambda: False)  # an old console that cannot do colors
+    assert type(L.make_ui(True)) is L.Ui
+    monkeypatch.setattr(L, "enable_ansi", lambda: True)
     monkeypatch.setenv("NO_COLOR", "1")
     assert type(L.make_ui(True)) is L.Ui
 
