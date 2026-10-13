@@ -77,7 +77,8 @@ jobs:
             .\.venv\Scripts\python.exe scripts\e2e_chat.py
             if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           } finally {
-            taskkill /F /T /PID $app.Id | Out-Null
+            taskkill /F /T /PID $app.Id 2>$null | Out-Null
+            $global:LASTEXITCODE = 0  # (parts of the tree may have ended already)
           }
       - name: Chat run output
         if: always()

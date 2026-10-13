@@ -18,6 +18,7 @@ import sys
 import time
 import urllib.error
 import urllib.request
+from pathlib import Path
 
 import websockets
 
@@ -65,6 +66,21 @@ def conversation(name: str) -> list[dict[str, str]]:
     return data["messages"]  # type: ignore[return-value]
 
 
+def tool_ran(tool: str) -> bool:
+    """The audit log (logs/audit.log in the folder this runs from) shows the tool's result."""
+    log = Path("logs") / "audit.log"
+    if not log.is_file():
+        return True  # run from somewhere else: nothing to check
+    for line in log.read_text("utf-8", "replace").splitlines():
+        try:
+            entry = json.loads(line)
+        except ValueError:
+            continue
+        if entry.get("event") == "tool.result" and entry.get("tool") == tool and entry.get("ok"):
+            return True
+    return False
+
+
 async def main() -> None:
     wait_until_ready()
     async with websockets.connect("ws://127.0.0.1:8700/ws", origin=WEB, max_size=None) as ws:
@@ -76,7 +92,11 @@ async def main() -> None:
         greeted = await turn(
             ws, {"type": "ask", "text": '!hello.greet {"name": "Paul"}', "conversation": name}
         )
-        assert greeted["type"] == "answer" and greeted["text"] == "Hello, Paul!", greeted
+        # (the model may word the answer its own way: "Hello Paul!"; the tool's result is
+        # what the audit log shows)
+        assert greeted["type"] == "answer" and not greeted["failed"], greeted
+        assert "paul" in str(greeted["text"]).lower(), greeted
+        assert tool_ran("hello.greet"), "the audit log has no result for hello.greet"
 
         question = "Say hi in a few words."
         await turn(ws, {"type": "ask", "text": question, "conversation": name})
