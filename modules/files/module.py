@@ -15,7 +15,6 @@ from __future__ import annotations
 
 import os
 import re
-import uuid
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
@@ -24,6 +23,7 @@ from typing import Any, Literal
 from pydantic import BaseModel, Field
 
 from starlight.core import Module, ModuleContext, ToolError, tool
+from starlight.core.fsutil import write_atomic
 from starlight.core.output import known_folders
 from starlight.core.safepaths import PathGuard, expand
 from starlight.text import decode_text
@@ -327,10 +327,4 @@ def _is_temp(file: Path) -> bool:
 
 def _write_new(dest: Path, text: str, encoding: str) -> None:
     """Write a whole file at once: a crash never leaves half a file behind."""
-    temp = dest.with_name(f".{dest.name}.{uuid.uuid4().hex[:8]}.tmp")
-    try:
-        with temp.open("w", encoding=encoding) as handle:
-            handle.write(text)
-        os.replace(temp, dest)
-    finally:
-        temp.unlink(missing_ok=True)
+    write_atomic(dest, text, encoding=encoding)

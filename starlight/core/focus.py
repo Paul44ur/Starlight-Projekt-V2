@@ -19,6 +19,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+from starlight.core.fsutil import write_atomic
+
 MAX_HELD = 200
 
 
@@ -51,10 +53,7 @@ class Focus:
         )
 
     def _write(self, state: FocusState) -> None:
-        self.path.parent.mkdir(parents=True, exist_ok=True)
-        tmp = self.path.with_suffix(".tmp")
-        tmp.write_text(json.dumps(state.__dict__, ensure_ascii=False), encoding="utf-8")
-        tmp.replace(self.path)
+        write_atomic(self.path, json.dumps(state.__dict__, ensure_ascii=False))
 
     def active(self) -> bool:
         """On, and not past its end time."""

@@ -24,6 +24,7 @@ from pydantic import BaseModel, Field
 
 from starlight.core import Module, ModuleContext, Permission, ToolError, tool
 from starlight.core.config import write_yaml_config
+from starlight.core.fsutil import replace_file
 from starlight.core.safepaths import expand, inside
 
 NAME = re.compile(r"^[a-z0-9][a-z0-9_-]{0,40}$")
@@ -130,7 +131,7 @@ class BackupModule(Module):
                     "files": files,
                 }
                 archive.writestr(MANIFEST, json.dumps(manifest, indent=1, ensure_ascii=False))
-            partial.replace(target)
+            replace_file(partial, target)
         except BaseException:
             partial.unlink(missing_ok=True)  # never leave a half backup that looks complete
             raise

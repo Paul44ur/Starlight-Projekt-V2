@@ -12,6 +12,7 @@ cached prompt prefix (system prompt + tool list) between requests.
 
 from __future__ import annotations
 
+import asyncio
 import json
 import time
 from typing import Any
@@ -39,6 +40,7 @@ class OpenAICompatProvider:
         temperature: float = 0.3,
         max_tokens: int | None = None,
         timeout: float = 600.0,
+        idle_timeout: float = 90.0,
         stream: bool = True,
         extra: dict[str, Any] | None = None,
         name: str = "llamacpp",
@@ -51,6 +53,9 @@ class OpenAICompatProvider:
         self.temperature = temperature
         self.max_tokens = max_tokens
         self.stream = stream
+        # Once the answer has begun, this many seconds without a new piece mean the model
+        # server is stuck (a driver hang, out of memory); what came so far is kept.
+        self.idle_timeout = idle_timeout
         # End the reply at the end-of-turn marker even when the model file does not mark it
         # as a stop (the model would otherwise write the user's next message itself).
         self.stop = list(TURN_MARKERS) if stop is None else stop
@@ -129,11 +134,25 @@ class OpenAICompatProvider:
         shown = StreamFilter()  # what of the reply may be shown while it streams
         calls: dict[int, dict[str, str]] = {}
         usage: dict[str, Any] = {}
+        began = False  # the first piece of the answer arrived (before that: prompt reading)
+        stalled = False
         async with self._client.stream("POST", url, json=body) as response:
             response.raise_for_status()
-            async for line in response.aiter_lines():
+            lines = response.aiter_lines().__aiter__()
+            while True:
+                try:
+                    if began:
+                        line = await asyncio.wait_for(lines.__anext__(), self.idle_timeout)
+                    else:
+                        line = await lines.__anext__()
+                except StopAsyncIteration:
+                    break
+                except TimeoutError:
+                    stalled = True
+                    break
                 if not line.startswith("data:"):
                     continue
+                began = True
                 payload = line[5:].strip()
                 if payload == "[DONE]":
                     break
@@ -160,6 +179,9 @@ class OpenAICompatProvider:
                     # stream makes llama-server stop generating too.
                     usage["finish_reason"] = "stop"
                     break
+        if stalled:
+            usage["finish_reason"] = "stalled"
+            calls = {}  # a half-written call must not run
         tool_calls: list[ToolCall] = [
             tool_call(c["name"], c["arguments"], c["id"] or None) for _, c in sorted(calls.items())
         ]

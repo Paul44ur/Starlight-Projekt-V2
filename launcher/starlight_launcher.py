@@ -303,6 +303,21 @@ def sha256_of(path: Path) -> str:
     return digest.hexdigest()
 
 
+def replace_file(source: Path, target: Path) -> None:
+    """``os.replace``, waiting out a lock for a moment: on Windows an antivirus scan or
+    OneDrive may hold the file for a second, and a 9 GB download must not fail on that."""
+    delays = (0.1, 0.2, 0.5, 1.0, 1.0, 1.0, 2.0)
+    for wait in delays:
+        try:
+            os.replace(source, target)
+            return
+        except PermissionError:
+            if os.name != "nt":
+                raise
+        time.sleep(wait)
+    os.replace(source, target)
+
+
 def download(
     url: str,
     dest: Path,
@@ -363,7 +378,7 @@ def download(
                 f"checksum mismatch for {dest.name}: expected {sha256}, got {actual}. "
                 "The broken file was deleted; start again to re-download it."
             )
-    os.replace(part, dest)
+    replace_file(part, dest)
     return dest
 
 
@@ -401,7 +416,7 @@ def extract_member(archive: Path, name: str, target: Path, keep: tuple[str, ...]
                         aside = target.with_name(f"{target.name}.keep-{folder}")
                         if aside.exists():
                             shutil.rmtree(aside)
-                        (target / folder).replace(aside)
+                        replace_file(target / folder, aside)
                         kept.append((aside, target / folder))
                 shutil.rmtree(target)
             shutil.copytree(found.parent, target)
@@ -410,7 +425,7 @@ def extract_member(archive: Path, name: str, target: Path, keep: tuple[str, ...]
                 back.parent.mkdir(parents=True, exist_ok=True)
                 if back.exists():  # the archive has its own: yours win
                     shutil.rmtree(back)
-                aside.replace(back)
+                replace_file(aside, back)
     binary = target / name
     if os.name != "nt":
         binary.chmod(binary.stat().st_mode | 0o111)
@@ -713,6 +728,75 @@ class ProcessGroup:
         self._logs.clear()
 
 
+class ModelServerWatchdog:
+    """Starts the model server again when it stops by itself (a graphics driver hiccup, out
+    of video memory), so a crash costs a minute instead of the whole session. A server that
+    cannot run is not restarted forever: after ``limit`` restarts within ``window``
+    seconds it stays down, and the log says why."""
+
+    def __init__(
+        self,
+        group: ProcessGroup,
+        command: list[str],
+        process: subprocess.Popen[bytes],
+        log: Path,
+        cwd: Path,
+        ui: Ui,
+        limit: int = 4,
+        window: float = 600.0,
+        poll: float = 2.0,
+        backoff: float = 3.0,
+    ) -> None:
+        self.group, self.command, self.process = group, command, process
+        self.log, self.cwd, self.ui = log, cwd, ui
+        self.limit, self.window, self.poll, self.backoff = limit, window, poll, backoff
+        self.restarts: list[float] = []
+        self.gave_up = False
+        self._stopped = threading.Event()
+        self._thread = threading.Thread(target=self._watch, name="model-watchdog", daemon=True)
+
+    def start(self) -> None:
+        self._thread.start()
+
+    def stop(self) -> None:
+        """Call before the processes are stopped on purpose, or it would restart them."""
+        self._stopped.set()
+        if self._thread.is_alive() and self._thread is not threading.current_thread():
+            self._thread.join(timeout=5)
+
+    def _watch(self) -> None:
+        while not self._stopped.wait(self.poll):
+            if self.process.poll() is not None and not self._restart():
+                return
+
+    def _restart(self) -> bool:
+        now = time.monotonic()
+        self.restarts = [t for t in self.restarts if now - t < self.window]
+        code = self.process.returncode
+        if len(self.restarts) >= self.limit:
+            self.gave_up = True
+            self.ui.say(
+                f"\nThe model server stopped again (exit code {code}) and was restarted "
+                f"{self.limit} times in {self.window / 60:.0f} minutes, so it stays down. "
+                f"See {self.log}."
+            )
+            return False
+        self.restarts.append(now)
+        self.ui.say(
+            f"\nThe model server stopped (exit code {code}); starting it again "
+            f"({len(self.restarts)} of {self.limit}) ..."
+        )
+        if self._stopped.wait(self.backoff * len(self.restarts)):
+            return False
+        try:
+            self.process = self.group.start(self.command, self.log, self.cwd)
+        except OSError as exc:
+            self.ui.say(f"   could not start it: {exc}")
+            self.gave_up = True
+            return False
+        return True
+
+
 def _create_kill_on_close_job() -> Any:
     """A job object that the launcher itself joins: every process it starts afterwards
     belongs to it, and Windows ends them all when the launcher's last handle closes."""
@@ -930,6 +1014,7 @@ def start(settings: Settings, ui: Ui, installed: Installed, ask: str | None) -> 
     uv = installed.uv
     group = ProcessGroup()
     logs = settings.root / "logs"
+    watchdog: ModelServerWatchdog | None = None
     try:
         if settings.use_model:
             ui.step("Starting the model server on the GPU")
@@ -938,8 +1023,12 @@ def start(settings: Settings, ui: Ui, installed: Installed, ask: str | None) -> 
                 ui.say(f"   something already listens on port {settings.port}; using it")
                 server_process = None
             else:
-                server_process = group.start(starlight(uv, "model", "serve"), log, settings.root)
+                serve = starlight(uv, "model", "serve")
+                server_process = group.start(serve, log, settings.root)
             wait_for_model(settings.port, server_process, log, ui)
+            if server_process is not None and ask is None:
+                watchdog = ModelServerWatchdog(group, serve, server_process, log, settings.root, ui)
+                watchdog.start()
         if settings.viewer and ask is None:
             viewer_port = 8765
             if not port_in_use(viewer_port):
@@ -968,6 +1057,8 @@ def start(settings: Settings, ui: Ui, installed: Installed, ask: str | None) -> 
         ui.say("Kill switch: Ctrl+Alt+J, a screen corner, or /kill. Leave with /quit.\n")
         return subprocess.run(starlight(uv, "run"), cwd=settings.root, check=False).returncode
     finally:
+        if watchdog is not None:
+            watchdog.stop()  # first: stopping the server on purpose is not a crash
         group.stop()
 
 

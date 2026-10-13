@@ -33,6 +33,13 @@ CUT_OFF = (
 )
 
 
+# Added to an answer when the model server stopped sending in the middle of it.
+STALLED = (
+    "\n\n[The model stopped answering part way - the model server may be stuck or "
+    "restarting. Ask again in a moment.]"
+)
+
+
 @dataclass
 class AgentResult:
     request_id: str
@@ -232,10 +239,13 @@ class Agent:
             messages.append(Message("assistant", response.content, tool_calls=response.tool_calls))
             if not response.tool_calls:
                 result.answer = response.content
-                if response.usage.get("finish_reason") == "length":
-                    result.answer += CUT_OFF
+                note = {"length": CUT_OFF, "stalled": STALLED}.get(
+                    str(response.usage.get("finish_reason"))
+                )
+                if note:
+                    result.answer += note
                     if on_token is not None and getattr(self.provider, "supports_streaming", False):
-                        on_token(CUT_OFF)  # streamed answers show it too
+                        on_token(note)  # streamed answers show it too
                 return
             for call in response.tool_calls:
                 tool_result = await self.dispatcher.call(

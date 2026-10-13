@@ -26,6 +26,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+from starlight.core.fsutil import write_atomic
+
 COOKIE = "starlight_device"
 CODE_SECONDS = 300
 MAX_FAILURES = 5
@@ -94,11 +96,9 @@ class Devices:
         return [Device(**d) for d in raw if isinstance(d, dict)]
 
     def _store(self, devices: list[Device]) -> None:
-        self.folder.mkdir(parents=True, exist_ok=True)
-        target = self.folder / DEVICES_FILE
-        tmp = target.with_suffix(".tmp")
-        tmp.write_text(json.dumps([d.__dict__ for d in devices], indent=1), encoding="utf-8")
-        tmp.replace(target)
+        write_atomic(
+            self.folder / DEVICES_FILE, json.dumps([d.__dict__ for d in devices], indent=1)
+        )
 
     # -- pairing ---------------------------------------------------------------------------
 

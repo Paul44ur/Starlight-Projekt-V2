@@ -9,11 +9,11 @@ Saving goes through a temporary file, so a crash never leaves half a file behind
 from __future__ import annotations
 
 import json
-import os
 from datetime import datetime
 from pathlib import Path
 from typing import Any
 
+from starlight.core.fsutil import replace_file, write_atomic
 from starlight.core.logging import get_logger
 
 
@@ -40,17 +40,14 @@ def load_json[T: (list[Any], dict[str, Any])](path: Path, empty: T) -> T:
 
 
 def save_json(path: Path, data: Any) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    tmp = path.with_name(path.name + ".tmp")
-    tmp.write_text(json.dumps(data, indent=2, ensure_ascii=False), encoding="utf-8")
-    os.replace(tmp, path)
+    write_atomic(path, json.dumps(data, indent=2, ensure_ascii=False))
 
 
 def _move_aside(path: Path, reason: str) -> None:
     stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
     kept = path.with_name(f"{path.stem}.unreadable-{stamp}{path.suffix}")
     try:
-        path.replace(kept)
+        replace_file(path, kept)
     except OSError:
         get_logger("jsonfile").exception("could not move an unreadable file aside", file=str(path))
         raise

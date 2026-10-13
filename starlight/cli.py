@@ -319,6 +319,14 @@ def cmd_status(paths: Paths, args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_doctor(paths: Paths, args: argparse.Namespace) -> int:
+    from starlight.doctor import exit_code, format_checks, run_checks
+
+    results = run_checks(paths)
+    print(format_checks(results))
+    return exit_code(results)
+
+
 def cmd_modules(paths: Paths, args: argparse.Namespace) -> int:
     found, errors = discover(paths.modules)
     state = ModuleState(paths.module_state_file)
@@ -725,6 +733,9 @@ def build_parser() -> argparse.ArgumentParser:
     kill.add_argument("reason", nargs="*")
     sub.add_parser("resume", help="release the kill switch")
     sub.add_parser("status", help="show configuration and kill-switch state")
+    sub.add_parser(
+        "doctor", help="check that everything Starlight needs works, and say what to fix"
+    )
     sub.add_parser("tools", help="list the tools the AI can call")
 
     modules = sub.add_parser("modules", help="list, enable, disable or create modules")
@@ -810,6 +821,8 @@ def main(argv: Sequence[str] | None = None) -> int:
                 return cmd_resume(paths, args)
             case "status":
                 return cmd_status(paths, args)
+            case "doctor":
+                return cmd_doctor(paths, args)
             case "modules":
                 return cmd_modules(paths, args)
             case "memory":
