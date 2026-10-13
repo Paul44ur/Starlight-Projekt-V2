@@ -315,8 +315,10 @@ function render() {
   const s = last;
   const state = s.core.state;
   const text = {running: "Core running", stopped: "AI stopped by the kill switch", offline: "Core not running"}[state];
-  const extra = state === "stopped" && s.core.reason ? ` · ${s.core.reason}` : "";
-  document.getElementById("status").innerHTML = `${ICONS[state]}<strong>${text}</strong>${extra}`;
+  const status = document.getElementById("status");
+  status.innerHTML = `${ICONS[state]}<strong>${text}</strong>`;
+  // The reason comes from outside (a WhatsApp "/kill ..." message, the STOP file): text only.
+  if (state === "stopped" && s.core.reason) status.append(" · " + s.core.reason);
 
   const L = s.latest, T = s.totals;
   const vram = L.vram_used_bytes != null ? gb(L.vram_used_bytes) + (L.vram_total_bytes ? ` of ${gb(L.vram_total_bytes)}` : "") : "–";

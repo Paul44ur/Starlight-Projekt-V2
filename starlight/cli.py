@@ -406,6 +406,9 @@ async def cmd_memory(paths: Paths, args: argparse.Namespace) -> int:
             await memory.sync(force=True)
             print(f"Indexed {len(memory.index)} memories")
         return 0
+    except ValueError as exc:  # an id outside the memory folder ("../x", "C:\\x")
+        print(str(exc), file=sys.stderr)
+        return 1
     finally:
         memory.close()
 
@@ -574,7 +577,8 @@ def cmd_remote(paths: Paths, args: argparse.Namespace) -> int:
             print("Open the chat address on your phone and enter it there.")
         elif args.action == "devices":
             for device in devices.list() or [{"name": "(none)", "id": "-", "last_seen": None}]:
-                print(f"{device['id']:<12} {device['name']:<30} last seen {device['last_seen']}")
+                seen = device["last_seen"] or "never"
+                print(f"{device['id']:<12} {device['name']:<30} last seen {seen}")
         elif args.action == "revoke":
             if not args.device or not devices.revoke(args.device):
                 print("No such device; see `starlight remote devices`.", file=sys.stderr)

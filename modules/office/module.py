@@ -117,7 +117,8 @@ class OfficeModule(Module):
     async def write_docx(self, name: str, content: str, title: str = "") -> dict[str, Any]:
         """Make a Word document from text: "# " lines are headings, "## " sub-headings,
         "- " bullet points, blank lines separate paragraphs. Saved in your Starlight folder
-        unless `name` is a full path (that asks first)."""
+        unless `name` is a full path elsewhere (a new file there is saved without asking
+        while output.write_anywhere is on)."""
         docx = self._lib("docx")
         if not content.strip():
             raise OfficeError("give the text for the document")

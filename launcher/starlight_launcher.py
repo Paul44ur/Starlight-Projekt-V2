@@ -373,7 +373,7 @@ def extract_member(archive: Path, name: str, target: Path, keep: tuple[str, ...]
     are replaced as a whole; the subfolders named in ``keep`` (downloaded models or voices)
     stay as they are."""
     with tempfile.TemporaryDirectory(dir=archive.parent) as tmp:
-        tmp_path = Path(tmp)
+        tmp_path = Path(tmp) / "unpacked"  # only the archive's files in here
         try:
             if archive.name.endswith(".zip"):
                 with zipfile.ZipFile(archive) as zf:
@@ -390,19 +390,27 @@ def extract_member(archive: Path, name: str, target: Path, keep: tuple[str, ...]
         found = next((p for p in tmp_path.rglob(name) if p.is_file()), None)
         if found is None:
             raise LauncherError(f"{archive.name} does not contain {name}")
+        # The kept folders wait next to the target (same drive, outside the temporary
+        # folder), so they survive even if replacing the program fails half way - e.g.
+        # Windows refusing to delete a whisper-server.exe that is still running.
         kept: list[tuple[Path, Path]] = []
-        if target.exists():
-            for folder in keep:
-                if (target / folder).is_dir():
-                    aside = tmp_path / f"kept-{folder}"
-                    (target / folder).replace(aside)
-                    kept.append((aside, target / folder))
-            shutil.rmtree(target)
-        shutil.copytree(found.parent, target)
-        for aside, back in kept:
-            if back.exists():  # the archive has its own: yours win
-                shutil.rmtree(back)
-            aside.replace(back)
+        try:
+            if target.exists():
+                for folder in keep:
+                    if (target / folder).is_dir():
+                        aside = target.with_name(f"{target.name}.keep-{folder}")
+                        if aside.exists():
+                            shutil.rmtree(aside)
+                        (target / folder).replace(aside)
+                        kept.append((aside, target / folder))
+                shutil.rmtree(target)
+            shutil.copytree(found.parent, target)
+        finally:
+            for aside, back in kept:
+                back.parent.mkdir(parents=True, exist_ok=True)
+                if back.exists():  # the archive has its own: yours win
+                    shutil.rmtree(back)
+                aside.replace(back)
     binary = target / name
     if os.name != "nt":
         binary.chmod(binary.stat().st_mode | 0o111)

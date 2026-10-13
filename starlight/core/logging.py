@@ -7,6 +7,7 @@
 
 from __future__ import annotations
 
+import datetime as dt
 import logging
 import re
 import time
@@ -225,7 +226,7 @@ def recent_errors(
             cause = lines[-1] if lines else ""
         out.append(
             {
-                "time": str(entry.get("timestamp", ""))[:19].replace("T", " "),
+                "time": _local_time(str(entry.get("timestamp", ""))),
                 "level": entry.get("level"),
                 "where": where,
                 "what": str(entry.get("event", "")),
@@ -233,7 +234,19 @@ def recent_errors(
                 "cause": cause,
             }
         )
-    return out[-limit:]
+    return out[-limit:] if limit > 0 else []
+
+
+def _local_time(stamp: str) -> str:
+    """A log timestamp (UTC) as this PC's local time, the way the user and the model read
+    times; anything unreadable is shown as it is."""
+    try:
+        moment = dt.datetime.fromisoformat(stamp.replace("Z", "+00:00"))
+    except ValueError:
+        return stamp[:19].replace("T", " ")
+    if moment.tzinfo is None:
+        moment = moment.replace(tzinfo=dt.UTC)
+    return moment.astimezone().strftime("%Y-%m-%d %H:%M:%S")
 
 
 def format_errors(errors: list[dict[str, Any]]) -> str:

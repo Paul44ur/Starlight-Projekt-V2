@@ -94,7 +94,8 @@ class PdfModule(Module):
     @tool
     async def to_pdf(self, content: str, path: str, title: str = "") -> dict[str, Any]:
         """Make a simple PDF from text and save it. `path` is a name in your Starlight folder
-        (saved without asking) or a full path elsewhere (asks first). Blank lines separate
+        or a full path elsewhere (a new file is saved without asking while
+        output.write_anywhere is on). Blank lines separate
         paragraphs; long lines wrap automatically."""
         if not _reportlab():
             raise PdfError("making PDFs needs the 'pdf' extra (reportlab). Install it to use this.")

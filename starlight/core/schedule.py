@@ -89,7 +89,7 @@ def parse_when(text: str, now: datetime) -> datetime:
 
 
 # A time of day in a when-text: "18:30", "18.30" (but not the "4.12" in 24.12.2026), "6pm".
-_CLOCK = re.compile(r"\b\d{1,2}[:.]\d{2}\b(?![.\d])|\d\s*(?:am|pm)\b")
+_CLOCK = re.compile(r"(?<![\d.])\d{1,2}[:.]\d{2}(?![.\d])|\d\s*(?:am|pm)\b")
 
 
 def has_clock_time(text: str) -> bool:

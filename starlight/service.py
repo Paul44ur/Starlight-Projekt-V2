@@ -135,14 +135,16 @@ def plan(root: Path, action: str, data_dir: Path) -> Plan:
 
 
 def apply(service_plan: Plan) -> int:
-    for path in service_plan.remove:
-        path.unlink(missing_ok=True)
     for path, content in service_plan.files.items():
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(content, encoding="utf-8")
     code = 0
-    for command in service_plan.commands:
-        code = code or subprocess.run(command, check=False).returncode
+    for command in service_plan.commands:  # all of them, even after one failed
+        returncode = subprocess.run(command, check=False).returncode
+        code = code or returncode
+    # After the commands: `systemctl disable` still needs the unit files it disables.
+    for path in service_plan.remove:
+        path.unlink(missing_ok=True)
     flags = 0
     if sys.platform == "win32":  # checked per platform by mypy, so no ignore needed
         flags = subprocess.DETACHED_PROCESS | subprocess.CREATE_NEW_PROCESS_GROUP

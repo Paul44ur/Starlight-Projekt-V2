@@ -48,7 +48,7 @@ and answer you on WhatsApp. Anything risky asks you first, and one key press sto
 | **Exact maths** | Calculations, unit conversion (km/mi, °C/°F, GB/MB, …) and date maths ("days until 24.12.") worked out exactly, not guessed. |
 | **Translate** | Translates text with your own model — offline, nothing leaves the PC. |
 | **Desktop notifications** | Pops a notification on your screen to get your attention. |
-| **Email** | Reads your inbox and sends mail from your own account. Shows what's unread without marking it read, sorts it into important / can wait / probably spam, drafts replies for you to check, and replies in the same thread (asks before sending). Can tell you right away when someone you choose writes. |
+| **Email** | Reads your inbox and sends mail from your own account. Shows what's unread without marking it read, sorts it into important / can wait / probably spam, drafts replies for you to check, and replies in the same thread (sending runs without asking out of the box; remove `mail.send` and `mail.reply` from `permissions: auto_approve:` to be asked). Can tell you right away when someone you choose writes. |
 | **PDFs** | Reads text from PDF files and makes simple PDFs from text. |
 | **Open programs** | "Open Spotify", "open my budget sheet", "bring Outlook to the front" — starts any installed program, opens files and links, and arranges or closes windows. |
 | **Music and volume** | Play/pause, next/previous track and volume, like the media keys. |
@@ -329,11 +329,12 @@ can't flood your machine back — responses are capped.
 **Seeing what went wrong.** Ask "show me recent errors" (or run `starlight logs show`) to
 read Starlight's own problems in plain language, without opening a log file.
 
-**When Starlight asks first.** Actions that could change something ask before they run:
-typing, clicking, running code, commands that change a server, and deleting a memory:
+**When Starlight asks first.** Actions that are not in `permissions: auto_approve:` ask
+before they run - out of the box: any command line, shutdown, restart and sleep, your
+named commands, replacing a file, and granting access (see *Safety and privacy*):
 
 ```
-Starlight wants to run desktop.type_text({"text": "milk, bread, coffee"})
+Starlight wants to run commands.shell({"command": "Get-ChildItem D:\\Fotos"})
 Allow? [y]es / [n]o / [a]lways this session:
 ```
 
@@ -382,11 +383,12 @@ where:
   into its `code` subfolder.
 - **Never overwritten silently.** A second `letter.txt` becomes `letter (2).txt`, and
   replacing a file asks you first.
-- **Elsewhere, it asks.** "Save it on my Desktop" works, but Starlight asks first and
-  shows the full path.
-- **Text formats only.** It saves `.txt`, `.md`, `.csv`, `.html`, code and similar. For a
-  Word document, ask for `.html`: Word opens it, and you can save it as `.docx` there.
-  For a spreadsheet, ask for `.csv`: Excel opens it.
+- **Elsewhere, too.** "Save it on my Desktop" saves a new file there without asking
+  (`output: write_anywhere:`); replacing or adding to a file there asks first, and so does
+  a script type (`.bat`, `.ps1`, ...).
+- **Word, Excel and PDF.** Ask for a Word document, an Excel sheet or a PDF and it makes a
+  real `.docx`, `.xlsx` or `.pdf`. Other files are text: `.txt`, `.md`, `.csv`, `.html`,
+  code and similar.
 
 To use another folder, set `output: folder:` in `config\starlight.local.yaml`. Folders
 where it may save without asking go under `trusted_folders` in

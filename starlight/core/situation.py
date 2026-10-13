@@ -14,7 +14,7 @@ def local_now(timezone: str = "") -> dt.datetime:
     if timezone:
         try:
             return dt.datetime.now(ZoneInfo(timezone.strip()))
-        except (ZoneInfoNotFoundError, ValueError):
+        except (ZoneInfoNotFoundError, ValueError, OSError):  # "Europe" is a folder: OSError
             pass
     return dt.datetime.now().astimezone()
 
