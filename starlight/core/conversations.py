@@ -14,6 +14,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
+from starlight.core.fsutil import write_atomic
 from starlight.core.model import Message, ToolCall
 
 ID = re.compile(r"^[a-f0-9]{12}$")
@@ -71,12 +72,9 @@ class ConversationStore:
         return data if isinstance(data, dict) else {}
 
     def _write(self, conversation: str, data: dict[str, Any]) -> None:
-        self.folder.mkdir(parents=True, exist_ok=True)
         target = self._file(conversation)
-        tmp = target.with_suffix(".tmp")
         with self._lock:
-            tmp.write_text(json.dumps(data, ensure_ascii=False, indent=1), encoding="utf-8")
-            tmp.replace(target)
+            write_atomic(target, json.dumps(data, ensure_ascii=False, indent=1))
 
     # -- the conversation in use ------------------------------------------------------------
 

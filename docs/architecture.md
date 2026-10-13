@@ -253,6 +253,18 @@ replacing, appending and reading outside the Starlight folder still ask. `http` 
 requests/s with 0.5 s per site (a site's crawl-delay still wins), and page watches may run
 every 5 minutes.
 
+**Stability.** Every save goes through `starlight/core/fsutil.py` (`write_atomic`,
+`replace_file`): a temporary file next to the target, then one replace that waits up to
+about two seconds while Windows reports the target as busy (antivirus, OneDrive), so a turn
+or a list change is not lost to a passing lock. List files modules keep by hand-editable
+JSON go through `core/jsonfile.py`, which also reads a BOM and moves an unreadable file
+aside instead of overwriting it. The launcher's `ModelServerWatchdog` starts llama-server
+again when it exits by itself (4 restarts per 10 minutes at most). `OpenAICompatProvider`
+stops reading after `idle_timeout` (90 s) without a new piece once the answer has begun,
+returns what came (`finish_reason: stalled`, never a half-written tool call) and the agent
+adds a note. `starlight doctor` (`starlight/doctor.py`) checks the model and server, settings,
+folders, disk, password store, modules and moved-aside files; it changes nothing.
+
 ## Build plan status
 
 | Step | | Status |

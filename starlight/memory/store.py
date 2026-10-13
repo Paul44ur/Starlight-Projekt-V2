@@ -24,6 +24,8 @@ from typing import Any
 
 import yaml
 
+from starlight.core.fsutil import write_atomic
+
 FRONT = re.compile(r"\A---\s*\n(.*?)\n---\s*\n?(.*)\Z", re.DOTALL)
 
 
@@ -129,8 +131,7 @@ class MemoryStore:
 
     def write(self, entry: MemoryEntry) -> Path:
         path = self.path(entry.id)
-        path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(entry.to_markdown(), encoding="utf-8")
+        write_atomic(path, entry.to_markdown())
         return path
 
     def delete(self, entry_id: str) -> bool:

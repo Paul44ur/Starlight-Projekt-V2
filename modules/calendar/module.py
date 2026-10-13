@@ -17,6 +17,7 @@ from pydantic import BaseModel, Field
 
 from starlight.core import Module, ModuleContext, ToolError, tool
 from starlight.core.config import write_yaml_config
+from starlight.core.fsutil import write_atomic
 from starlight.core.http import HttpError
 from starlight.core.safepaths import PathGuard
 from starlight.core.schedule import ScheduleError, has_clock_time, parse_clock, parse_when
@@ -66,10 +67,7 @@ class CalendarModule(Module):
             return []
 
     def _save(self, events: list[ics.Event]) -> None:
-        self.file.parent.mkdir(parents=True, exist_ok=True)
-        tmp = self.file.with_suffix(".tmp")
-        tmp.write_text(ics.write(events), encoding="utf-8", newline="")
-        tmp.replace(self.file)
+        write_atomic(self.file, ics.write(events), newline="")
 
     async def _feed(self, name: str) -> list[ics.Event]:
         cached = self._feeds.get(name)

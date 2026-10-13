@@ -489,6 +489,11 @@ off with `starlight remote disable`.
 
 ## Troubleshooting
 
+**First, run `starlight doctor`** (or `uv run starlight doctor`). It checks the model and
+its server, the settings files, free disk space, whether Starlight can write its data
+folders, the password store and the modules, and says in plain words what is wrong and
+what to try. It changes nothing.
+
 <details>
 <summary><b>"No Starlight folder found"</b></summary>
 
@@ -519,6 +524,11 @@ continues where it stopped.
 
 <details>
 <summary><b>"the model server stopped" or "did not become ready"</b></summary>
+
+If the model server stops while you are chatting (a graphics driver hiccup, out of video
+memory), Starlight.exe starts it again by itself - up to four times in ten minutes - and
+says so in its window; the chat works again once the model is loaded. If the server stops
+sending in the middle of an answer for 90 seconds, you get the part that came, with a note.
 
 The last lines of `logs\llama-server.log` are shown, and they usually say why:
 - **Out of memory:** use a smaller model or a smaller context, e.g. `--context 16384`.
@@ -591,6 +601,7 @@ If you installed with `Starlight.exe`, uv isn't on your PATH. Either install it 
 | `starlight serve` | Run in the background: WhatsApp, server alerts, kill hotkey. |
 | `starlight viewer` | The statistics viewer on its own. |
 | `starlight service install / start / stop / status / uninstall` | Start Starlight and the viewer at logon. |
+| `starlight doctor` | Check that everything works and say what to fix. |
 | `starlight logs show` / `logs scan` | Show recent errors in plain language / check the logs for leaked passwords. |
 | `starlight remote enable / disable / status` | Use the web chat from your phone through Tailscale. |
 | `starlight remote pair / devices / revoke ID` | Pair a device with a one-time code, list them, remove one. |

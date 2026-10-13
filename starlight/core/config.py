@@ -8,6 +8,7 @@ from typing import Any
 import yaml
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_validator
 
+from starlight.core.fsutil import write_atomic
 from starlight.core.paths import Paths
 
 
@@ -244,9 +245,7 @@ def write_yaml_config(path: Path, data: dict[str, Any], header: str = "") -> Non
     path.parent.mkdir(parents=True, exist_ok=True)
     body = yaml.safe_dump(data, sort_keys=True, allow_unicode=True, default_flow_style=False)
     text = (header.rstrip() + "\n\n" if header else "") + body
-    tmp = path.with_name(f".{path.name}.tmp")
-    tmp.write_text(text, encoding="utf-8")
-    tmp.replace(path)
+    write_atomic(path, text)
 
 
 def load_config(paths: Paths) -> StarlightConfig:
