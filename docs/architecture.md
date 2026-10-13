@@ -289,7 +289,7 @@ event title that cut the calendar entry short; each is now an `@example`. `STARL
 runs ten times as many cases. `tests/test_longrun.py` plays 200 mixed operations (questions,
 tool calls, Regenerate, stop through the kill switch, a failing model, conversation changes,
 facts, restarts) per seed and then checks the files on disk. On Windows CI,
-`scripts/e2e_chat.py` drives the real exe with a real (small) model: a chat turn, a tool,
+`scripts/e2e_chat.py` drives the real exe with a real (small) model: a chat turn, a tool offered to the model (reported only),
 Regenerate and the kill switch.
 
 ## Build plan status
