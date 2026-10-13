@@ -43,8 +43,8 @@ class NotesModule(Module):
         exact = self._file(title)
         if exact.is_file():
             return exact
-        wanted = title.strip().lower()
-        matches = [p for p in self.folder.glob("*.md") if wanted in p.stem.lower()]
+        wanted = title.strip().casefold()
+        matches = [p for p in self.folder.glob("*.md") if wanted in p.stem.casefold()]
         if len(matches) == 1:
             return matches[0]
         if matches:
@@ -104,7 +104,7 @@ class NotesModule(Module):
     @tool
     def find(self, text: str) -> dict[str, Any]:
         """Search all notes for a word or phrase; returns the matching lines."""
-        wanted = text.strip().lower()
+        wanted = text.strip().casefold()
         if not wanted:
             raise ToolError("what should I look for?")
         hits = []
@@ -112,7 +112,7 @@ class NotesModule(Module):
             for number, line in enumerate(
                 path.read_text("utf-8", errors="replace").splitlines(), 1
             ):
-                if wanted in line.lower():
+                if wanted in line.casefold():
                     hits.append({"note": path.stem, "line": number, "text": line.strip()[:300]})
             if len(hits) >= 100:
                 break

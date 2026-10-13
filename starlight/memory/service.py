@@ -46,9 +46,17 @@ User: {request}
 Assistant: {answer}"""
 
 
-def _signature(files: list[Path]) -> tuple[int, float, int]:
-    stats = [f.stat() for f in files]
-    return len(stats), max((s.st_mtime for s in stats), default=0.0), sum(s.st_size for s in stats)
+def _signature(files: list[Path]) -> int:
+    """Changes when any memory file is added, removed, edited or restored (per file: name,
+    modification time and size), also when the count and the total size stay the same."""
+    parts = []
+    for path in files:
+        try:
+            info = path.stat()
+        except OSError:  # gone since the listing
+            continue
+        parts.append((path.name, path.parent.name, info.st_mtime_ns, info.st_size))
+    return hash(tuple(parts))
 
 
 def parse_facts(text: str) -> list[dict[str, Any]]:
@@ -89,7 +97,7 @@ class Memory:
             paths.data / "memory_index.sqlite",
         )
         self.profile = Profile(self.store)
-        self._signature: tuple[int, float, int] | None = None
+        self._signature: int | None = None
         self._log = get_logger("memory")
 
     async def sync(self, force: bool = False) -> None:
@@ -202,8 +210,33 @@ class Memory:
             tags=["summary"],
         )
         self.store.write(entry)
+        await self.prune_summaries()
         await self.sync(force=True)
         return entry
+
+    async def prune_summaries(self) -> int:
+        """Delete the oldest conversation summaries beyond ``summary_keep``. They are
+        written automatically and never tidied or merged, so they would pile up (and make
+        every re-index slower). Returns how many were removed."""
+        keep = self.config.summary_keep
+        folder = self.store.root / CONVERSATIONS
+        if keep <= 0 or not folder.is_dir():
+            return 0
+        found = sorted(
+            (p for p in folder.glob("*.md") if not p.name.startswith(".")),
+            key=lambda p: (p.stat().st_mtime_ns, p.name),
+        )  # oldest first
+        removed = 0
+        for old in found[: max(0, len(found) - keep)]:
+            try:
+                old.unlink()
+                removed += 1
+            except OSError:
+                self._log.warning("could not remove an old summary", file=old.name)
+        if removed:
+            self._log.info("old conversation summaries removed", removed=removed, kept=keep)
+            await self.sync(force=True)
+        return removed
 
     async def extract(self, request: str, answer: str, request_id: str = "") -> list[MemoryEntry]:
         """Ask the model what from this exchange is worth keeping, and keep it."""

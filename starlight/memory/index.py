@@ -48,7 +48,16 @@ class MemoryIndex:
         self._matrix = np.zeros((0, 1), dtype=np.float32)
 
     async def sync(self) -> int:
-        """Bring the index in line with the folder. Returns how many files were embedded."""
+        """Bring the index in line with the folder. Returns how many files were embedded.
+        A damaged index (a cut-off vector, mixed sizes) is thrown away and built again."""
+        try:
+            return await self._sync()
+        except ValueError:
+            with self._lock:
+                self._db.execute("DELETE FROM vectors")
+            return await self._sync()
+
+    async def _sync(self) -> int:
         entries = self.store.all()
         with self._lock:
             rows = {
@@ -59,7 +68,12 @@ class MemoryIndex:
         stale: list[MemoryEntry] = []
         for entry in entries:
             row = rows.get(entry.id)
-            if row and row[0] == content_hash(entry) and row[1] == self.embedder.id:
+            if (
+                row
+                and row[0] == content_hash(entry)
+                and row[1] == self.embedder.id
+                and len(row[2]) % 4 == 0
+            ):
                 vectors[entry.id] = np.frombuffer(row[2], dtype=np.float32)
             else:
                 stale.append(entry)

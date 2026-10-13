@@ -49,7 +49,7 @@ class HashEmbedder:
 
     def _vector(self, text: str) -> Vector:
         v = np.zeros(self.dimensions, dtype=np.float32)
-        words = [w.lower() for w in WORD.findall(text)]
+        words = [w.casefold() for w in WORD.findall(text)]
         features = [f"w:{w}" for w in words]
         for w in words:
             padded = f" {w} "
