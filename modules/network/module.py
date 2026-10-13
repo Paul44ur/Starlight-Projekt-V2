@@ -416,7 +416,7 @@ class NetworkModule(Module):
             raise NotAllowed("not a read-only command; use network.ssh_run (asks first)")
         return await self._ssh_exec(server, command, 60)
 
-    @tool(permission=Permission.CONFIRM)
+    @tool(permission=Permission.CONFIRM, own_timeout=True)  # stops itself after `timeout`
     async def ssh_run(self, server: str, command: str, timeout: float = 300) -> dict[str, Any]:
         """Run any command over SSH (restart, write, delete ...). Asks first."""
         return await self._ssh_exec(server, command, timeout)

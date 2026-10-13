@@ -13,7 +13,7 @@ import operator
 import re
 from collections.abc import Callable
 from datetime import date, datetime, timedelta
-from decimal import ROUND_HALF_UP, Decimal
+from decimal import ROUND_HALF_UP, Decimal, localcontext
 from typing import Any
 
 from pydantic import BaseModel, Field
@@ -149,7 +149,12 @@ def _round_half_up(value: float, digits: int = 0) -> int | float:
     """Rounding as taught at school: 2.5 -> 3 and 0.125 -> 0.13 (Python's round gives 2 and
     0.12: it rounds halves to even, and 0.125 is stored a hair below)."""
     digits = int(digits)
-    exact = Decimal(repr(value)).quantize(Decimal(1).scaleb(-digits), rounding=ROUND_HALF_UP)
+    if isinstance(value, int) and digits >= 0:
+        return value
+    number = Decimal(repr(value))
+    places = number.adjusted() + digits + 3  # digits the result has: 1e30 needs 31
+    with localcontext(prec=max(28, places)):
+        exact = number.quantize(Decimal(1).scaleb(-digits), rounding=ROUND_HALF_UP)
     return int(exact) if digits <= 0 else float(exact)
 
 
@@ -159,7 +164,8 @@ def _prepare(expression: str) -> str:
     # "15% of 80" -> (15/100*80); "249.90 + 19%" -> 249.90 plus 19% of it, as on a
     # calculator; a lone "19%" -> (19/100)
     text = re.sub(r"(\d+(?:\.\d+)?)\s*%\s*of\s*", r"(\1/100)*", text, flags=re.IGNORECASE)
-    text = re.sub(r"(\d+(?:\.\d+)?)\s*([+-])\s*(\d+(?:\.\d+)?)\s*%", r"(\1*(1\2\3/100))", text)
+    # (as on a calculator, of everything before it: "100 / 4 + 25%" is 25 plus 25%)
+    text = re.sub(r"^(.*[\w).])\s*([+-])\s*(\d+(?:\.\d+)?)\s*%\s*$", r"(\1)*(1\2\3/100)", text)
     text = re.sub(r"(\d+(?:\.\d+)?)\s*%", r"(\1/100)", text)
     return re.sub(r"\bmod\b", "%", text)  # "17 mod 5" is the remainder
 

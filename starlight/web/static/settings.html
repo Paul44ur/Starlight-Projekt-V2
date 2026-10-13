@@ -115,17 +115,23 @@ async function loadDevices() {
     const row = el("tr");
     row.append(el("td", "", d.name), el("td", "small", d.paired), el("td", "small", d.last_seen || "never"));
     const act = el("td"); const b = el("button", "danger", "Remove");
-    b.onclick = async () => { if (confirm("Remove " + d.name + "? It can no longer use Starlight.")) { await api("/api/devices/" + d.id, { method: "DELETE" }); loadDevices(); } };
+    b.onclick = async () => {
+      if (!confirm("Remove " + d.name + "? It can no longer use Starlight.")) return;
+      try { await api("/api/devices/" + d.id, { method: "DELETE" }); } catch (e) { toast(e.message); }
+      loadDevices();
+    };
     act.appendChild(b); row.appendChild(act); body.appendChild(row);
   });
   if (!data.devices.length) body.appendChild(el("tr")).appendChild(el("td", "dim small", "No paired devices."));
 }
+let pairTimer = null;  // a new code replaces the old one, and so does its timer
 document.getElementById("pair").onclick = async () => {
   try {
     const data = await api("/api/pair/code", { method: "POST" });
     document.getElementById("code").textContent = data.code;
     document.getElementById("code-note").textContent = "works once, for 5 minutes";
-    setTimeout(() => { document.getElementById("code").textContent = ""; document.getElementById("code-note").textContent = ""; }, data.valid_seconds * 1000);
+    clearTimeout(pairTimer);
+    pairTimer = setTimeout(() => { document.getElementById("code").textContent = ""; document.getElementById("code-note").textContent = ""; }, data.valid_seconds * 1000);
   } catch (e) { toast(e.message); }
 };
 

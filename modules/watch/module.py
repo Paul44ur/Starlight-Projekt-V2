@@ -301,7 +301,8 @@ class WatchModule(Module):
     ) -> dict[str, Any]:
         """Watch a web page and tell the user when something happens. `when`: "changes",
         "price below 50", "price above 200", "contains in stock" or "gone sold out".
-        `every`: how often to look, e.g. "30m", "2h", "daily" (at least 15 minutes).
+        `every`: how often to look, e.g. "30m", "2h", "daily" (at least min_every_minutes from the
+        watch settings, 5 by default).
         `part`: optional CSS selector for the part to watch, e.g. ".price"."""
         url = url.strip()
         if urlsplit(url).scheme not in ("http", "https") or not urlsplit(url).netloc:

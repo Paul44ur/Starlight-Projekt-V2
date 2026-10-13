@@ -118,9 +118,9 @@ Then ask: "Is my server up and what is its disk usage?"
    German language data and set `ocr_languages: eng+deu` in `config/modules/desktop.yaml`.
 2. Optional vision model: `ollama pull qwen2.5vl:7b` and the `vision:` block in
    `config/modules/desktop.yaml`. It must run on this computer: screenshots never leave it.
-3. Try: "Open Notepad and type hello". Every input action asks first; answer `a` to
-   allow that tool for the rest of the session, or add `desktop.*` to
-   `permissions.auto_approve` once you trust it.
+3. Try: "Open Notepad and type hello". Desktop input runs without asking out of the box
+   (`desktop.*` in `permissions.auto_approve`); remove that line to be asked each time
+   (answer `a` to allow a tool for the rest of the session).
 
 **Stopping it:** Ctrl+Alt+J, moving the mouse into any screen corner, or
 `uv run starlight kill` from another terminal. Then `uv run starlight resume`.
@@ -190,11 +190,12 @@ It uses the real Documents folder, also when OneDrive has moved it.
 
 - Saving into that folder needs no question. A name that is taken gets a number
   (`letter (2).txt`); replacing a file asks first.
-- Anywhere else, Starlight asks first and shows the full path.
+- Anywhere else, a new file is saved without asking (`output: write_anywhere:`);
+  replacing or adding to a file there, or saving a script type, asks first.
 - Its own install folder (settings, data, memory, logs) is off-limits, also for reading.
-- Text formats only (`.txt`, `.md`, `.csv`, `.html`, code ...). Word opens `.html` files;
-  Excel opens `.csv` files. CSV files get a byte-order mark so Excel shows umlauts
-  correctly.
+- Word, Excel and PDF files are made by the office and pdf modules; everything else is
+  text (`.txt`, `.md`, `.csv`, `.html`, code ...). CSV files get a byte-order mark so
+  Excel shows umlauts correctly.
 
 Another folder, in `config\starlight.local.yaml`:
 

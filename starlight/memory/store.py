@@ -28,6 +28,7 @@ FRONT = re.compile(r"\A---\s*\n(.*?)\n---\s*\n?(.*)\Z", re.DOTALL)
 
 
 def slugify(text: str, max_len: int = 60) -> str:
+    text = text.replace("ß", "ss").replace("ẞ", "SS")  # "Straße" -> "strasse", not "strae"
     text = unicodedata.normalize("NFKD", text).encode("ascii", "ignore").decode()
     slug = re.sub(r"[^a-z0-9]+", "-", text.lower()).strip("-")
     return slug[:max_len].rstrip("-") or "note"

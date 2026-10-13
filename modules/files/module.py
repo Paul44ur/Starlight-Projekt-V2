@@ -108,9 +108,9 @@ def free_name(path: Path) -> Path:
     raise FileError(f"too many files named like {path.name}")
 
 
-def decode(data: bytes) -> str:
+def decode(data: bytes, cut_off: bool = False) -> str:
     """UTF-8 (with or without BOM), UTF-16, else Windows' own encoding (older files)."""
-    return decode_text(data)
+    return decode_text(data, cut_off)
 
 
 class FilesModule(Module):
@@ -165,9 +165,10 @@ class FilesModule(Module):
     ) -> dict[str, Any]:
         """Save text you made as a file: a letter, notes, a report, a table (.csv), a web
         page (.html), code. `path` is a file name such as "letter.txt" or
-        "reports/june.md", saved in the user's Starlight folder without asking; or a full
-        path elsewhere (e.g. on the Desktop, see files.locations), which asks the user
-        first. If the file exists: "rename" (default) saves under a free name like
+        "reports/june.md", saved in the user's Starlight folder; or a full path elsewhere
+        (e.g. on the Desktop, see files.locations). A new file is saved without asking
+        (with output.write_anywhere on, the default; a script type elsewhere still asks).
+        If the file exists: "rename" (default) saves under a free name like
         "letter (2).txt", "replace" overwrites it (asks first), "append" adds to its end.
         Text formats only: not .docx, .xlsx or .pdf. For a CSV that Excel opens in
         German-speaking and most European countries, separate the columns with ";"."""
@@ -259,7 +260,7 @@ class FilesModule(Module):
             data = handle.read(limit)
         if b"\x00" in data[:8192]:
             raise FileError(f"{file.name} looks like a binary file, not text")
-        text = decode(data).replace("\r\n", "\n").replace("\r", "\n")
+        text = decode(data, cut_off=len(data) < size).replace("\r\n", "\n").replace("\r", "\n")
         cut = len(data) < size or len(text) > self.config.max_read_chars
         result: dict[str, Any] = {
             "path": str(file),
@@ -302,8 +303,10 @@ class FilesModule(Module):
 
     @tool
     def locations(self) -> dict[str, Any]:
-        """Where files can go: the Starlight folder and trusted folders (no question), and
-        the user's Desktop, Documents and Downloads (saving there asks first)."""
+        """Where files can go: the Starlight folder and trusted folders, and the user's
+        Desktop, Documents and Downloads. New files are saved there without asking (with
+        output.write_anywhere on); replacing or adding to a file outside the Starlight
+        folder asks first."""
         return {
             "starlight_folder": str(self.output),
             "trusted_folders": [str(f) for f in self.trusted],

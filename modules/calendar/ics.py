@@ -108,7 +108,7 @@ def parse_time(value: str, params: dict[str, str]) -> tuple[datetime, bool]:
         try:
             aware = moment.replace(tzinfo=ZoneInfo(zone))
             return aware.astimezone().replace(tzinfo=None), False
-        except (NameError, ZoneInfoNotFoundError, ValueError):
+        except (NameError, ZoneInfoNotFoundError, ValueError, OSError):
             pass  # unknown zone: take the time as local
     return moment, False
 

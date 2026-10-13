@@ -93,7 +93,7 @@ description, start each tool's docstring with one sentence saying what it does, 
   on a kill (keyboard, mouse, browser sessions)
 - `ctx.data_dir`: `data/modules/<name>/`, your own storage
 - `ctx.http`: the shared polite HTTP client. Use it for every web request so the global
-  limit (5 requests per second), robots.txt, back-off and caching apply:
+  limit (`http.max_requests_per_second`, 10 in the shipped config), robots.txt, back-off and caching apply:
   `await ctx.http.get(url)`
 - `ctx.vault`: secrets from the OS keyring, e.g. `ctx.vault.require("mymodule.api_key")`.
   Never log or return them

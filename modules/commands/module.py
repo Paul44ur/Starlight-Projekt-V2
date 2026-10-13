@@ -221,7 +221,7 @@ class CommandsModule(Module):
             ]
         }
 
-    @tool
+    @tool(own_timeout=True)  # each command has its own `timeout`
     async def run(self, name: str, values: dict[str, str] | None = None) -> dict[str, Any]:
         """Run one of your named commands (see commands.list). `values` fills its
         placeholders, e.g. {"name": "survival"}."""

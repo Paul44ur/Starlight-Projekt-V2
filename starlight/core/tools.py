@@ -36,6 +36,7 @@ class ToolSpec:
     name: str | None
     description: str | None
     permission: Permission
+    own_timeout: bool = False
 
 
 @overload
@@ -46,6 +47,7 @@ def tool[F: Callable[..., Any]](
     name: str | None = None,
     description: str | None = None,
     permission: Permission = Permission.SAFE,
+    own_timeout: bool = False,
 ) -> Callable[[F], F]: ...
 def tool(
     func: Callable[..., Any] | None = None,
@@ -53,11 +55,14 @@ def tool(
     name: str | None = None,
     description: str | None = None,
     permission: Permission = Permission.SAFE,
+    own_timeout: bool = False,
 ) -> Any:
-    """Mark a method as a tool the AI may call."""
+    """Mark a method as a tool the AI may call. ``own_timeout``: the tool stops itself
+    after a time you configure (a 10-minute backup command), so the general limit
+    (``tools.timeout``) does not apply to it; the kill switch still does."""
 
     def mark(f: Callable[..., Any]) -> Callable[..., Any]:
-        setattr(f, TOOL_ATTR, ToolSpec(name, description, permission))
+        setattr(f, TOOL_ATTR, ToolSpec(name, description, permission, own_timeout))
         return f
 
     return mark(func) if func is not None else mark
@@ -83,6 +88,7 @@ class Tool:
     permission: Permission
     func: Callable[..., Any]
     args_model: type[BaseModel]
+    own_timeout: bool = False  # see tool()
 
     @property
     def qualified_name(self) -> str:
@@ -120,6 +126,7 @@ def make_tool(
     name: str | None = None,
     description: str | None = None,
     permission: Permission = Permission.SAFE,
+    own_timeout: bool = False,
 ) -> Tool:
     tool_name = name or func.__name__
     doc = description or inspect.getdoc(func) or ""
@@ -130,6 +137,7 @@ def make_tool(
         permission=permission,
         func=func,
         args_model=build_args_model(func, f"{module}_{tool_name}_args"),
+        own_timeout=own_timeout,
     )
 
 
@@ -148,6 +156,7 @@ def collect_tools(obj: object, module: str) -> list[Tool]:
                 name=spec.name,
                 description=spec.description,
                 permission=spec.permission,
+                own_timeout=spec.own_timeout,
             )
         )
     return tools

@@ -398,7 +398,7 @@ class AutomationsModule(Module):
         """Make an automation. Trigger: `when` is a schedule ("weekdays 7:30", "every 2
         hours", "monday 9am") OR `on` is an event name ("network.server_down",
         "calendar.soon", "reminder.due", "files.saved") with an optional `condition` on its
-        fields ("server == nas", "days_left < 14"). Actions, run in this order: `tool` (a
+        fields ("server == nas" for network.server_down). Actions, run in this order: `tool` (a
         tool name like "briefing.send", with `args`), then `ask` (a question for the
         assistant), then `say` (a message to you; may contain {result} and
         {event.<field>}). Asks for confirmation before saving."""

@@ -219,7 +219,7 @@ class BackupModule(Module):
             )
         return {"backups": found}
 
-    @tool
+    @tool(own_timeout=True)  # a big folder takes as long as it takes; the kill switch stops it
     async def run(self, name: str) -> dict[str, Any]:
         """Make a backup now (e.g. backup.run photos). The kill switch stops it cleanly."""
         key, plan = self._set(name)

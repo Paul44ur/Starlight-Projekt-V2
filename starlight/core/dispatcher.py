@@ -128,7 +128,8 @@ class Dispatcher:
         await self.bus.publish("tool.called", {"tool": name, "request_id": request_id})
         started = time.perf_counter()
         try:
-            output = await asyncio.wait_for(tool.run(validated), timeout=self.timeout)
+            limit = None if tool.own_timeout else self.timeout
+            output = await asyncio.wait_for(tool.run(validated), timeout=limit)
             result = ToolResult(name, True, output=output)
         except ToolError as exc:  # turned down for a reason, not a crash
             self._log.warning("tool refused", tool=name, reason=str(exc))

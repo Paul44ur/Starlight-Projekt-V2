@@ -42,11 +42,14 @@
 <script src="/common.js"></script>
 <script>
 let remote = false;
+let latestSearch = 0;  // typing fast: only the answer to the newest search is shown
 
 async function loadMemories() {
   const search = document.getElementById("search").value;
+  const asked = ++latestSearch;
   const data = await api("/api/memory?search=" + encodeURIComponent(search));
-  document.getElementById("count").textContent = data.count + " memories";
+  if (asked !== latestSearch) return;  // a newer search is under way
+  document.getElementById("count").textContent = data.count + (data.count === 1 ? " memory" : " memories");
   const box = document.getElementById("memories"); box.innerHTML = "";
   data.memories.forEach(m => {
     const item = el("div", "mem");
@@ -93,7 +96,11 @@ async function loadSkills() {
       if (s.status !== "rejected") row.appendChild(act("Reject", "reject"));
       row.appendChild(act("Undo last change", "rollback"));
       const del = el("button", "danger", "Delete");
-      del.onclick = async () => { if (confirm("Delete the skill " + s.name + "?")) { await api("/api/skills/" + encodeURIComponent(s.name), { method: "DELETE" }); loadSkills(); } };
+      del.onclick = async () => {
+        if (!confirm("Delete the skill " + s.name + "?")) return;
+        try { await api("/api/skills/" + encodeURIComponent(s.name), { method: "DELETE" }); } catch (e) { toast(e.message); }
+        loadSkills();
+      };
       row.appendChild(del); item.appendChild(row);
     }
     box.appendChild(item);

@@ -135,7 +135,9 @@ class StatsReader:
             "totals": {
                 "tasks": self.count("tasks.completed", since),
                 "tool_calls": self.count("tool.calls", since),
-                "errors": len(failed) + self.count("errors", since),
+                # every failed tool call, not just the 10 listed below
+                "errors": self.count("tool.calls", since, "AND json_extract(labels, '$.ok') = 0")
+                + self.count("errors", since),
                 "web_requests": self.count("web.requests", since),
                 "peak_web_requests_per_second": int(peak or 0),
                 "whatsapp_received": self.count("whatsapp.received", since),
