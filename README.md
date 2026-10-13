@@ -119,48 +119,58 @@ Double-click `Starlight.exe`.
 Windows may show **"Windows protected your PC"**, because the program isn't signed yet.
 Click **More info**, then **Run anyway**. You only need to do this once.
 
-### 4. Let it set everything up
+### 4. Choose and let it set everything up
 
-The first start lists what it will download and asks once:
+Double-clicking opens the **Starlight window** (no black console window). On the first
+start it shows a welcome page:
 
-```
-Starlight will download and set up, inside C:\Starlight:
-   - uv, Python 3.12 and Starlight's packages      ~1.3 GB
-   - the Chromium browser for web pages and logins ~0.3 GB
-   - the llama.cpp model server (vulkan)         ~0.2 GB
-   - the model Qwen2.5-14B_Uncensored_Instruct-Q4_K_M.gguf 8.4 GB
-   Needed: about 10.2 GB. Free on this drive: 250.0 GB.
-Continue? [Y/n]
-```
+- **Model.** Three ready-made choices with what each needs. Starlight reads your graphics
+  card and marks the one that fits it ("Recommended for your PC"), with the download size
+  next to each. Models you already have are marked "Downloaded".
+- **Options.** Run the model on the graphics card, speech (talk to it and hear answers),
+  the statistics page - and, on Windows, Tesseract for reading text on the screen.
+- A line at the bottom says how much space it needs and how much the drive has.
 
-Press **Enter**. How long this takes depends on your internet connection, mostly for the
-model.
+Press **Install and start**. A progress page shows each step, the download with speed and
+time left, and a "Show details" box with the output of the installers. How long it takes
+depends on your internet connection, mostly for the model.
 - Starlight's packages, the model server and the model go into the Starlight folder
   (`.venv`, `tools`, `models`). Python and the Chromium browser go into your user
   profile, where uv and Playwright keep them (`%APPDATA%\uv\python` and
-  `%LOCALAPPDATA%\ms-playwright`). Nothing needs administrator rights.
+  `%LOCALAPPDATA%\ms-playwright`). Nothing needs administrator rights, except the
+  optional Tesseract installer, which asks once.
 - If the download is interrupted, start `Starlight.exe` again. It continues where it
   stopped.
 - Every download that publishes a checksum is checked against it.
-
-At the end it offers **Tesseract**, which lets Starlight read text on the screen. This
-one is a normal Windows installer and asks for administrator approval. You can say no
-and add it later.
+- Your choices are saved in `config\launcher.json`.
 
 ### 5. Chat
 
-Starlight loads the model onto your graphics card, starts the statistics viewer
-(http://127.0.0.1:8765), and **opens the chat in your web browser**
-(http://127.0.0.1:8700). Type in the browser window and press Send. Actions that change
-something show Approve / Deny buttons.
+When the model is loaded, the window changes to **"Starlight is running"** and the chat
+opens in your web browser (http://127.0.0.1:8700). Type in the browser window and press
+Send. Actions that change something show Approve / Deny buttons.
+
+The window stays as the control panel. It shows live whether the model, the chat, the
+statistics page and the kill switch are up, and has buttons for **Open chat**,
+**Statistics**, **Stop everything** (the kill switch; the button becomes **Resume**),
+**Restart model server**, **Check everything** (the same as `starlight doctor`),
+**Open logs folder** and **Settings** (change the model or options; it restarts
+Starlight). If something fails, the window says what and offers **Try again**, **Open
+logs folder** and **Copy details**. There is a light and a dark look, following Windows.
 
 Prefer the keyboard? Start `Starlight.exe --terminal` for a colored terminal chat in the
 window instead.
 
 That's it. **Next time, just double-click `Starlight.exe` again.** It skips the
-downloads and goes straight to opening the chat. Closing the black window stops
-everything (the model server, the chat and the viewer). The emergency stop is
+downloads and goes straight to starting. Closing the Starlight window stops everything
+(the model server, the chat and the viewer). The emergency stop is
 **Ctrl+Alt+J** or moving the mouse into a screen corner.
+
+The window is only the default when you start `Starlight.exe` plainly. Any option that
+is meant for scripts or a terminal (`--yes`, `--ask`, `--terminal`, `--both`,
+`--setup-only`, `--update`) uses the text version, which has colors, a progress bar with
+speed and time left, and a single "loading the model ..." line. Use `--no-gui` to get the
+text version always, or `--gui` to force the window.
 
 ### Options
 
@@ -172,7 +182,8 @@ Run `Starlight.exe --help` in a terminal to see every option. The most useful on
 | `--model-url <link>` | Use another model (a direct download link to a `.gguf` file). |
 | `--context 16384` | A smaller context window: uses less video memory. |
 | `--variant cpu` | Run without a graphics card (slow). |
-| `--terminal` | Chat in the window instead of opening the browser. |
+| `--terminal` | Chat in the terminal instead of opening the browser. |
+| `--no-gui` | Don't open the Starlight window; use the text version. (`--gui` forces the window.) |
 | `--both` | Open the browser chat **and** a terminal chat together — both talk to the same Starlight (one conversation, one kill switch). |
 | `--voice` | Also install speech: talk to Starlight and hear its answers (about 0.6 GB, Windows; `"voice": true` in `launcher.json` keeps it). |
 | `--no-viewer` | Don't start the statistics viewer. |
