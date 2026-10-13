@@ -280,6 +280,18 @@ dropped and rebuilt. A backup removes `.partial` leftovers when it starts, and a
 message that alone fills the context window no longer makes every tool step summarize the
 older turns again (`ContextManager.compact`; `shorten` cuts the big message instead).
 
+**Tests beyond examples.** `tests/test_fuzz.py` uses Hypothesis to feed everything that reads
+outside text random input (formulas, dates, prices and watch conditions, news feeds, calendar
+files, mail headers and bodies, the text a model streams): a parser may answer or raise its
+documented `ToolError`, nothing else, and not hang. It found, for example, a price of
+`"9" * 400` read as infinity, a watch interval of `0` (a busy loop), and a line break in an
+event title that cut the calendar entry short; each is now an `@example`. `STARLIGHT_FUZZ=deep`
+runs ten times as many cases. `tests/test_longrun.py` plays 200 mixed operations (questions,
+tool calls, Regenerate, stop through the kill switch, a failing model, conversation changes,
+facts, restarts) per seed and then checks the files on disk. On Windows CI,
+`scripts/e2e_chat.py` drives the real exe with a real (small) model: a chat turn, a tool,
+Regenerate and the kill switch.
+
 ## Build plan status
 
 | Step | | Status |

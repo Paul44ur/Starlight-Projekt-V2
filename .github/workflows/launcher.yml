@@ -63,6 +63,27 @@ jobs:
           if (Select-String -Path launcher-output.txt -Pattern "is not available") {
             throw "the model server did not answer"
           }
+      - name: Chat end to end (real model, a tool, Regenerate, kill switch)
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          STARLIGHT_MODULES: "hello weather"
+        run: |
+          # Start Starlight like a user would (the exe starts the model server and the chat),
+          # drive the chat over its websocket, then stop the whole process tree.
+          $app = Start-Process -FilePath .\Starlight.exe -PassThru -NoNewWindow `
+            -RedirectStandardOutput chat-run-out.txt -RedirectStandardError chat-run-err.txt `
+            -ArgumentList @("--yes", "--variant", "cpu", "--no-viewer", "--context", "16384", "--model-url", "https://huggingface.co/Qwen/Qwen2.5-0.5B-Instruct-GGUF/resolve/main/qwen2.5-0.5b-instruct-q4_k_m.gguf")
+          try {
+            .\.venv\Scripts\python.exe scripts\e2e_chat.py
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          } finally {
+            taskkill /F /T /PID $app.Id | Out-Null
+          }
+      - name: Chat run output
+        if: always()
+        run: |
+          foreach ($f in "chat-run-out.txt", "chat-run-err.txt") { if (Test-Path $f) { "--- $f"; Get-Content $f -Tail 60 } }
+          if (Test-Path logs\web.log) { "--- web.log"; Get-Content logs\web.log -Tail 60 }
       - name: Model server log
         if: always()
         run: if (Test-Path logs\llama-server.log) { Get-Content logs\llama-server.log -Tail 80 }
