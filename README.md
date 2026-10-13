@@ -1,3 +1,10 @@
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="assets/logo/starlight.svg">
+    <img src="assets/logo/starlight-light.svg" alt="Starlight logo: a gold sparkle with purple rays" width="128">
+  </picture>
+</p>
+
 # Starlight
 
 **A private AI assistant that runs entirely on your own PC.**

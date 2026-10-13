@@ -12,6 +12,7 @@ programs) runs in a worker thread that only talks to the window through a queue.
 from __future__ import annotations
 
 import contextlib
+import math
 import os
 import queue
 import subprocess
@@ -28,57 +29,80 @@ from tkinter import font as tkfont
 from tkinter import messagebox, ttk
 from typing import Any, ClassVar
 
-# The star on a dark rounded square (the same icon as the web pages), 64 x 64 PNG.
+# The Starlight logo (a gold sparkle with purple rays on a purple square), 64 x 64 PNG: the
+# window icon. The header draws the same logo as vectors, so it is sharp at any scale.
 ICON_PNG = (
-    "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"
-    "152cKlsadAkgL0rvwOAHnPADkoPScrkA6DRRdLqSYEEILOvp78gJU7OByEEuq8nWuSwJu7037hRAVg5c+5/q3M0W"
-    "QmAJJ8YNiBR8SsetVROmqHmA4jKHF1UN3h88OfTG+xUwU/mSJGcQlrR2QnrKN0HSWDLfaGKIqXypWVo4wPf1D/6b"
-    "/JJujaQ4kstTPnxvZPjwzkYEJ6xzyIb7sHBSRCIW3Kt7Bw0vIhEWToZsuK9ZBM7fpBw9cmTYPLvNGBMRBxa/c3S3"
-    "WEScGWPm2T165MhwM5qavUAA3MjI4Zck2E6MIVHX9IS3szf4BPRchDEkwXY27gy65sK7c7Pa9PT4sWxn4WkNcr2I"
-    "rhMRbWCjX4B5V/MIjakiqiKijauzHxk9ceTnXOTq7MIG6Vf28vTC//9KXJ//f+pGUkaAXHRuAAAAAElFTkSuQmCC"
+    "iVBORw0KGgoAAAANSUhEUgAAAEAAAABACAMAAACdt4HsAAAA+VBMVEX///84FX5GGpdGGpZHGphNHKJSHqo3FH1LG55ZIbZV"
+    "HrFlM7V6SrdeIsCaaLSUaaZiJMe0i6vDnqLYt5ZyNsTnzJOKVbfx1pP74YRlI9C7l5prNMSDTcj33ISmd61WJahiLLaOV7p4"
+    "R8XKo5/DnpiBUs18TMmUadj523f833zLpZijfOGhds5bH8Csg7Tqy4rvzHTEm4eGU6f512vSrYuhc5l5SaZdL61nNartyWzS"
+    "q3eyiYuSZZDwzGzkvW2keIp1Rpm8kntgKq7MpHmLY8ucds6Qas7as3RBGI1zSbuIWJ08FoVlOZJTJpe0i3ifdn6DV4xtQoo3"
+    "FHyQrX1FAAAAAXRSTlMAQObYZgAAA+JJREFUWMONl4lW2kAUhoMEaCZGYxMkMY2TpgoIrVVRoLiUVlrRlC6+/8N0tiSzJXqP"
+    "Bw/L981/ZzJhMIyiGltNs8WqrSv2ntnsNAy1Om9Ms44WFOabjoQ3TTPny49btABooz9ZYTZ5fstkAoUuSjTgj29J45vc+MDS"
+    "VHWGLZm39AUqMjRfyYsGAtEMtbxt1xrI+hUCXfvb25qZKAUdfgXV8R3H2dkFqqA0oB4a1QEcx3X29hxSVREacgci77pv36KH"
+    "GkNH6kDCXdfzyD/X0TRBexACKLzf7fqyQRCYhrCGnIBi+73evutKitxQCIpNBGTe3QmCnUpBS0mg8OFBEByErqaJliLgO2AT"
+    "4IaRFwReFIaaCLnB0ExBwYfvekEQvwuZoVbQVgWIOwxQHSoCWCFAc5hwMxCSDrgeqCBhe0ojILsvSlgCNO77GAvi95wgsvke"
+    "pDkgA/hp5OaCDwGpI9aD40apb70ksKLj44gKdmIqyCNE/ePIqhJwOzE6HmBFmHoUH554PhKQl9VLUSOw3HQw6Lv+iPLxcDgc"
+    "+WF/MEhdzaWoW0bL8QfjjyM6POaR4eN44Gs3g/5K/BSd9iif1+fT6BMvqLuUAUj2R7HID4dn5xcJoE2Cys0EUFn29qHHpp/j"
+    "h5PJ2eXVNEF60FYSsAhwNp/uHni9IC9RgOrL4vpmOodKAiSYTXf3jrxuCQex0MGkqNu7xfXXmyXk70hMcMAL9DQVfNMIyBxA"
+    "0kKcr74qwC0scQvFLZEJylsCAN+nV5fa+Gf3V9Pv7KSgCLhvFlTJxVF8IvF0GTleI6AGiFc6Oe2eCMN/Pk0Au5UIAQoBZ8B3"
+    "hdX4x4gXnP8Yr2wLcHyNoG2lP3+mln3O8TZ9TeVLQWmY9VepBSwwv8z5hzl6OktX6UzhTWO9lgz242MCcb/g4oyt/BN+2gbJ"
+    "Y9/mDjik1rIA2o82zDfWORVcozwkPXlT5LFgzXUB5zNYHPTAE4lwuyxOiXi7QIEngjIDhJA/a84WWHBfKElE9JFKgXLW/YoF"
+    "V9IpVeDXRiYYytM20Sxv0fW/rMAJzwQaA7HAh8lkATla4TMjkyKIimu0BvxzU+ZzgWDgFDeTyY0Wp4KMCKhBr1jefllqYDo8"
+    "5olAF4Jpft3dbVpmS3mn4DOjUWcwN4v7janHKY8Omllp0Ci+/a7gKZZ1WIJKw58/dePjBIWBKSTJ3791OObzHioM/36pdMln"
+    "5Mdbo1Gj2GwUusQz+vvxmTMUCrmVtQ5vPBuqgVeolfF4zhMDr8hepkVeNSBFVkdjnOepQXKwKOghk2iCizxeTa1BWzqcLGfn"
+    "+TUKBPM///8DwwVbngACNVcAAAAASUVORK5CYII="
 )
 
-# The five-pointed star of that icon, in its 512 x 512 box.
-STAR = [(256, 70), (308, 198), (446, 208), (340, 296), (374, 430),
-        (256, 356), (138, 430), (172, 296), (66, 208), (204, 198)]  # fmt: skip
+
+def bezier(
+    p0: tuple[float, float],
+    p1: tuple[float, float],
+    p2: tuple[float, float],
+    p3: tuple[float, float],
+    steps: int = 14,
+) -> list[float]:
+    """Points along a cubic curve, as a flat list (x1, y1, x2, y2, ...), without the first."""
+    out: list[float] = []
+    for i in range(1, steps + 1):
+        t = i / steps
+        u = 1 - t
+        for axis in (0, 1):
+            out.append(
+                u**3 * p0[axis]
+                + 3 * u * u * t * p1[axis]
+                + 3 * u * t * t * p2[axis]
+                + t**3 * p3[axis]
+            )
+    return out
+
+
+def sparkle(cx: float, cy: float, r: float, pinch: float = 0.22) -> list[float]:
+    """The four-pointed star of the logo (concave sides) as polygon points."""
+    p = r * pinch
+    corners = [(cx, cy - r), (cx + r, cy), (cx, cy + r), (cx - r, cy)]
+    points: list[float] = [cx, cy - r]
+    for i, start in enumerate(corners):
+        end = corners[(i + 1) % 4]
+        sx, sy = start[0] - cx, start[1] - cy
+        ex, ey = end[0] - cx, end[1] - cy
+        # control points: along the start direction, pinched towards the middle
+        c1 = (cx + (sx * p / r) + (ex * p / r) * 0.45, cy + (sy * p / r) + (ey * p / r) * 0.45)
+        c2 = (cx + (ex * p / r) + (sx * p / r) * 0.45, cy + (ey * p / r) + (sy * p / r) * 0.45)
+        points += bezier(start, c1, c2, end)
+    return points
+
+
+def rounded_square(size: float, radius: float, steps: int = 8) -> list[float]:
+    """A square with rounded corners as polygon points."""
+    points: list[float] = []
+    for cx, cy, start in (
+        (size - radius, radius, -90), (size - radius, size - radius, 0),
+        (radius, size - radius, 90), (radius, radius, 180),
+    ):  # fmt: skip
+        for i in range(steps + 1):
+            angle = math.radians(start + 90 * i / steps)
+            points += [cx + radius * math.cos(angle), cy + radius * math.sin(angle)]
+    return points
 
 
 @dataclass(frozen=True)
@@ -311,12 +335,7 @@ class App:
         bar.pack(fill="x")
         inner = tk.Frame(bar, bg=c.panel)
         inner.pack(fill="x", padx=self.px(28), pady=self.px(12))
-        size = self.px(30)
-        star = tk.Canvas(inner, width=size, height=size, bg=c.panel, highlightthickness=0)
-        star.create_polygon(
-            [coord / 512 * size for point in STAR for coord in point], fill="#f5c542", outline=""
-        )
-        star.pack(side="left")
+        self._draw_logo(inner)
         tk.Label(inner, text="Starlight", font=self.f_head, bg=c.panel, fg=c.text).pack(
             side="left", padx=(self.px(10), 0)
         )
@@ -324,6 +343,26 @@ class App:
             inner, text=f"launcher {self.L.VERSION}", font=self.f_small, bg=c.panel, fg=c.dim
         ).pack(side="right")
         tk.Frame(self.root, bg=c.border, height=1).pack(fill="x")
+
+    def _draw_logo(self, parent: tk.Misc) -> None:
+        """The logo, drawn as vectors: purple square (lavender in the light look), the gold
+        sparkle and its rays."""
+        light = self.c is LIGHT
+        size = self.px(34)
+        canvas = tk.Canvas(parent, width=size, height=size, bg=self.c.panel, highlightthickness=0)
+        scale = size / 512
+        bg, ray, edge = ("#f3efff", "#c9a6ff", "#d9a63a") if light else ("#4a1d9c", "#d7c2ff", "")
+        canvas.create_polygon(rounded_square(size, 112 * scale), fill=bg, outline="")
+        for angle in (0, 32, -32):
+            cos, sin = math.cos(math.radians(angle)), math.sin(math.radians(angle))
+            points: list[float] = []
+            for x, y in ((-226, 0), (0, -16), (226, 0), (0, 16)):
+                points += [(256 + x * cos - y * sin) * scale, (256 + x * sin + y * cos) * scale]
+            canvas.create_polygon(points, fill=ray, outline="")
+        canvas.create_polygon(
+            [v * scale for v in sparkle(256, 256, 214, 0.36)], fill="#f8d56b", outline=edge
+        )
+        canvas.pack(side="left")
 
     # -- pages ----------------------------------------------------------------------------------
 
