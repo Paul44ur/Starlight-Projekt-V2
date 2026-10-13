@@ -90,6 +90,9 @@ class MemoryConfig(_Strict):
     min_score: float = Field(default=0.2, ge=-1, le=1)
     merge_threshold: float = Field(default=0.92, ge=0, le=1)
     auto_extract: bool = True
+    # Conversation summaries are written whenever a long chat is compacted; only the newest
+    # this many are kept (0 = keep all). Facts and the profile are never removed.
+    summary_keep: int = Field(default=60, ge=0)
 
 
 class HttpConfig(_Strict):

@@ -68,11 +68,21 @@ class Throttle:
     def locked(self, client: str, now: float | None = None) -> bool:
         moment = now or time.time()
         recent = [t for t in self.failures.get(client, []) if moment - t < LOCKOUT_SECONDS]
-        self.failures[client] = recent
+        if recent:
+            self.failures[client] = recent
+        else:
+            self.failures.pop(client, None)  # no entry for a client that is in good standing
         return len(recent) >= MAX_FAILURES
 
     def fail(self, client: str, now: float | None = None) -> None:
-        self.failures.setdefault(client, []).append(now or time.time())
+        moment = now or time.time()
+        if len(self.failures) > 1000:  # a scan from many addresses: forget the expired ones
+            self.failures = {
+                c: [t for t in times if moment - t < LOCKOUT_SECONDS]
+                for c, times in self.failures.items()
+            }
+            self.failures = {c: times for c, times in self.failures.items() if times}
+        self.failures.setdefault(client, []).append(moment)
 
     def clear(self, client: str) -> None:
         self.failures.pop(client, None)

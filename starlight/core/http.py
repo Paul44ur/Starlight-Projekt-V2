@@ -139,6 +139,8 @@ class _Host:
     robots_until: float = 0.0
 
 
+MAX_HOSTS = 500  # sites whose robots.txt and pacing are remembered at once
+
 _FINAL_URL = "x-starlight-final-url"  # stored with a cached page that was redirected
 
 
@@ -154,6 +156,28 @@ class ResponseCache:
             "status INTEGER, headers TEXT, body TEXT)"
         )
         self._lock = threading.Lock()
+        self._puts = 0
+        self.purge()
+
+    #: pages older than this are never read again (the cache's ttl is an hour by default)
+    MAX_AGE = 86400.0
+    MAX_ROWS = 2000
+
+    def purge(self) -> int:
+        """Delete pages that are too old to be used, then the oldest beyond MAX_ROWS. Without
+        this the cache file only ever grows (every researched page is kept whole)."""
+        with self._lock:
+            before = self._db.total_changes
+            self._db.execute("DELETE FROM pages WHERE fetched < ?", (time.time() - self.MAX_AGE,))
+            self._db.execute(
+                "DELETE FROM pages WHERE url IN (SELECT url FROM pages ORDER BY fetched DESC "
+                "LIMIT -1 OFFSET ?)",
+                (self.MAX_ROWS,),
+            )
+            removed = self._db.total_changes - before
+            if removed >= 50:
+                self._db.execute("VACUUM")
+        return removed
 
     def get(self, url: str, ttl: float) -> HttpResponse | None:
         with self._lock:
@@ -183,6 +207,10 @@ class ResponseCache:
                     response.text,
                 ),
             )
+            self._puts += 1
+            due = self._puts % 200 == 0
+        if due:
+            self.purge()
 
     def close(self) -> None:
         with self._lock:
@@ -238,6 +266,8 @@ class PoliteHttp:
         if parts.scheme not in ("http", "https") or not parts.netloc:
             raise HttpError(f"not an http(s) URL: {url}")
         origin = f"{parts.scheme}://{parts.netloc}"
+        if origin not in self._hosts and len(self._hosts) >= MAX_HOSTS:
+            self._hosts.pop(next(iter(self._hosts)))  # the one contacted longest ago
         return origin, self._hosts.setdefault(origin, _Host())
 
     async def _robots(self, origin: str, host: _Host) -> RobotFileParser:

@@ -266,6 +266,20 @@ returns what came (`finish_reason: stalled`, never a half-written tool call) and
 adds a note. `starlight doctor` (`starlight/doctor.py`) checks the model and server, settings,
 folders, disk, password store, modules and moved-aside files; it changes nothing.
 
+**Growth.** What would otherwise grow for weeks is trimmed. `Kernel._housekeeping` runs at
+start and every six hours on the primary core: `Stats.maintain` deletes statistics past
+`stats.retention_days` and compacts the file (`VACUUM`, WAL checkpoint); `ResponseCache.purge`
+drops cached web pages older than a day and keeps at most 2000; `Memory.prune_summaries`
+keeps the newest `memory.summary_keep` (60; 0 = all) conversation summaries - facts and the
+profile are never touched. The core keeps at most 20 conversations' histories in memory
+(`MAX_CACHED_HISTORIES`; the rest are read from their files), robots/pacing state for 500
+sites, and the login throttle forgets expired addresses. The memory index is re-synced when
+any file's name, date or size changes (not only count/total), and a damaged vector table is
+dropped and rebuilt. A backup removes `.partial` leftovers when it starts, and a cancelled
+`backup.run` stops its thread and waits for it before another run may begin. A recent
+message that alone fills the context window no longer makes every tool step summarize the
+older turns again (`ContextManager.compact`; `shorten` cuts the big message instead).
+
 ## Build plan status
 
 | Step | | Status |

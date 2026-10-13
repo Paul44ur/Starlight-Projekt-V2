@@ -394,6 +394,11 @@ preferences. Starlight fills it in when you mention these ("I'm Paul, I live in 
 and every request uses it, together with today's date and time (so "the weather" means
 the weather at home).
 
+Starlight tidies up after itself, so it can run for months: old statistics (30 days),
+cached web pages (a day) and, beyond the newest 60, the automatic conversation summaries
+are deleted. The 60 is `memory.summary_keep` in `config/starlight.yaml` (`0` keeps all);
+what you told it to remember, and your profile, are never deleted.
+
 **Files.** Ask Starlight to save what it made ("save it as a file", "make a CSV of
 that"), and it saves it in the **Starlight** folder in your Documents, then tells you
 where:

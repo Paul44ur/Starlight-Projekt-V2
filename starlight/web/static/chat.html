@@ -223,7 +223,10 @@ function handle(m) {
     current = null; answering = null; regenPending = false;
   }
   else if (m.type === "notify") { addSys("ℹ " + m.text); }
-  else if (m.type === "busy") { addSys("Starlight is still working on the last message."); }
+  else if (m.type === "busy") {
+    addSys("Starlight is still working on the last message.");
+    if (regenPending) { regenPending = false; if (conversation) open(conversation); }  // show the old answer again
+  }
   else if (m.type === "confirm") { showConfirm(m); }
   else if (m.type === "prompt") { showPrompt(m); }
 }

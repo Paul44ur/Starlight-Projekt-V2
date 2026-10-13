@@ -164,7 +164,7 @@ class ConversationStore:
         return "\n".join(lines).rstrip() + "\n"
 
     def list(self, search: str = "", limit: int = 200) -> list[dict[str, Any]]:
-        wanted = search.strip().lower()
+        wanted = search.strip().casefold()
         found: list[dict[str, Any]] = []
         if not self.folder.is_dir():
             return found
@@ -176,8 +176,8 @@ class ConversationStore:
             messages = data.get("messages", [])
             if (
                 wanted
-                and wanted not in (data.get("title") or "").lower()
-                and not any(wanted in str(m.get("content", "")).lower() for m in messages)
+                and wanted not in (data.get("title") or "").casefold()
+                and not any(wanted in str(m.get("content", "")).casefold() for m in messages)
             ):
                 continue
             found.append(
