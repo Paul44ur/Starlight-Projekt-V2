@@ -288,6 +288,7 @@ streamed = st.one_of(anything, st.lists(stream_bits, max_size=40).map("".join))
 
 
 @given(streamed)
+@example('{"name": ' + "[" * 60_000)  # nested so deep that JSON parsing recursed too far
 def test_text_that_may_hold_tool_calls_is_always_handled(text: str) -> None:
     calls, before = recover_tool_calls(text, KNOWN)
     assert all(call.name in KNOWN for call in calls)
