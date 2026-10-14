@@ -17,6 +17,9 @@ from starlight.core import Module, ModuleContext, ToolError, tool
 _BAD = re.compile(r'[<>:"/\\|?*\x00-\x1f]')
 
 
+MAX_NOTE_BYTES = 1_000_000  # a note this big is a document: start another one
+
+
 class Config(BaseModel):
     folder: str = "Notes"
 
@@ -64,6 +67,8 @@ class NotesModule(Module):
         path = self._file(title)
         if path.exists():
             return self.append(title, text)
+        if len(text.encode("utf-8")) > MAX_NOTE_BYTES:
+            raise ToolError("that is more than 1 MB of text: save it as a file instead of a note")
         path.write_text(f"# {title.strip()}\n\n{text.strip()}\n", encoding="utf-8")
         return {"saved": path.stem, "file": str(path)}
 
@@ -76,6 +81,11 @@ class NotesModule(Module):
             path = self._find(title)
         except ToolError:
             return self.note(title, text)
+        if path.stat().st_size + len(text.encode("utf-8")) > MAX_NOTE_BYTES:
+            raise ToolError(
+                f"the note '{path.stem}' would be over 1 MB: start a new one "
+                f"(for example '{path.stem} 2')"
+            )
         with path.open("a", encoding="utf-8") as handle:
             handle.write(f"\n_{self._stamp()}_\n{text.strip()}\n")
         return {"added_to": path.stem, "file": str(path)}

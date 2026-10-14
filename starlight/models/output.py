@@ -46,6 +46,11 @@ _ROLE_LINE = re.compile(rf"\n{_STRAY}{{0,4}}[ \t]*(?:user|assistant|system)[ \t]
 REPEAT = 200
 LOOPS = 3
 
+# A tool call that is still being written is looked at again after this many new characters
+# (a very long call is otherwise scanned from its start at every piece).
+SCAN_EVERY = 2000
+CALL_ENDS = ("}", "```", "</tool_call>")  # what can end a call: look again at once
+
 # How a tool call written as text begins.
 CALL_STARTS = ("```json", "```tool_call", "```\n{", "<tool_call>", '{"name"')
 
@@ -159,6 +164,7 @@ class StreamFilter:
         self.ended = False  # an end-of-turn marker arrived: the turn is over
         self.hold_from: int | None = None  # where a tool call written as text may start
         self._checked = 0  # length of the text when it was last checked for a loop
+        self._scanned = 0  # length of the text when it was last scanned for a finished call
 
     def feed(self, piece: str) -> str:
         if self.ended:
@@ -199,8 +205,13 @@ class StreamFilter:
         its turn is over, so there is no need to read (or wait for) the rest."""
         if self.hold_from is None:
             return False
+        if self._scanned and len(self.text) - self._scanned < SCAN_EVERY:
+            tail = self.text[self._scanned :]
+            if not any(end in tail for end in CALL_ENDS):
+                return False  # nothing finished last time, and nothing that could end it since
         calls, _, end = _scan(self.text, known)
         if not calls:
+            self._scanned = len(self.text)
             return False
         after = self.text[end:].lstrip()
         if not after:
@@ -246,7 +257,7 @@ def _candidates(text: str) -> list[tuple[int, int, str]]:
         if not any(s <= i < e for s, e, _ in blocks):
             try:
                 _, end = _DECODER.raw_decode(text, i)
-            except json.JSONDecodeError:
+            except (json.JSONDecodeError, RecursionError):  # not JSON, or nested absurdly deep
                 end = -1
             if end > i:
                 spans.append((i, end, text[i:end]))
@@ -274,7 +285,7 @@ def _scan(text: str, known: set[str]) -> tuple[list[ToolCall], int, int]:
 def _as_call(raw: str, known: set[str]) -> ToolCall | None:
     try:
         data = json.loads(raw)
-    except json.JSONDecodeError:
+    except (json.JSONDecodeError, RecursionError):
         return None
     if not isinstance(data, dict) or not isinstance(data.get("name"), str):
         return None

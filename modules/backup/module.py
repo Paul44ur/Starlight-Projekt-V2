@@ -45,12 +45,7 @@ class Config(BaseModel):
     sets: dict[str, BackupSet] = Field(default_factory=dict)
 
 
-def _hash(path: Path) -> str:
-    digest = hashlib.sha256()
-    with path.open("rb") as handle:
-        while chunk := handle.read(1024 * 1024):
-            digest.update(chunk)
-    return digest.hexdigest()
+CHUNK = 1024 * 1024  # a file is written in pieces this big, and a stop is noticed between them
 
 
 class BackupModule(Module):
@@ -93,6 +88,35 @@ class BackupModule(Module):
 
     # -- making a backup (blocking; runs in a thread) ---------------------------------------
 
+    def _stopped(self, cancelled: threading.Event | None) -> None:
+        self.ctx.kill_switch.check()
+        if cancelled is not None and cancelled.is_set():
+            raise ToolError("the backup was stopped")
+
+    def _add(
+        self,
+        archive: zipfile.ZipFile,
+        path: Path,
+        relative: str,
+        cancelled: threading.Event | None,
+    ) -> tuple[str, int]:
+        """Write one file into the archive in pieces (a stop - the kill switch, or a cancelled
+        run - is noticed between pieces, also in the middle of a huge file), and take its
+        checksum from the very bytes written."""
+        info = zipfile.ZipInfo.from_file(path, relative, strict_timestamps=False)
+        info.compress_type = zipfile.ZIP_DEFLATED
+        digest, size = hashlib.sha256(), 0
+        with (
+            path.open("rb") as source,
+            archive.open(info, "w", force_zip64=path.stat().st_size > 2**30) as target,
+        ):
+            while chunk := source.read(CHUNK):
+                self._stopped(cancelled)
+                digest.update(chunk)
+                target.write(chunk)
+                size += len(chunk)
+        return digest.hexdigest(), size
+
     def _make(
         self, key: str, plan: BackupSet, cancelled: threading.Event | None = None
     ) -> dict[str, Any]:
@@ -119,20 +143,15 @@ class BackupModule(Module):
                     for name in names:
                         if any(fnmatch.fnmatch(name, p) for p in patterns):
                             continue
-                        self.ctx.kill_switch.check()
-                        if cancelled is not None and cancelled.is_set():
-                            raise ToolError("the backup was stopped")
+                        self._stopped(cancelled)
                         path = here / name
                         relative = path.relative_to(source).as_posix()
                         try:
-                            digest = _hash(path)
-                            archive.write(path, relative)
+                            digest, size = self._add(archive, path, relative, cancelled)
                         except OSError as exc:  # locked or vanished: note it, keep going
                             files.append({"path": relative, "error": str(exc)})
                             continue
-                        files.append(
-                            {"path": relative, "size": path.stat().st_size, "sha256": digest}
-                        )
+                        files.append({"path": relative, "size": size, "sha256": digest})
                 manifest = {
                     "name": key,
                     "source": str(source),

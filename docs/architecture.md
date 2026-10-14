@@ -292,6 +292,13 @@ facts, restarts) per seed and then checks the files on disk. On Windows CI,
 `scripts/e2e_chat.py` drives the real exe with a real (small) model: a chat turn, a tool offered to the model (reported only),
 Regenerate and the kill switch.
 
+**Limits found later.** A note stops at 1 MB (`notes.append` says to start another);
+`lan` forgets unnamed devices not seen for `forget_unnamed_after_days` (90; 0 = never);
+a backup writes each file in 1 MB pieces and looks for a stop between them, with the
+checksum taken from the bytes written; and a reply that nests JSON 60 000 deep after
+`{"name"` is plain text (it used to raise `RecursionError` in the stream filter), with
+a still-unfinished tool call rescanned only when something that can end it arrives.
+
 ## Build plan status
 
 | Step | | Status |

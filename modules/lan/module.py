@@ -15,7 +15,7 @@ import re
 import socket
 import subprocess
 import sys
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Any
 
 from pydantic import BaseModel, Field
@@ -32,6 +32,9 @@ class Config(BaseModel):
     watch: bool = False
     watch_minutes: float = Field(default=10, ge=1)
     sweep_on_watch: bool = True
+    # Devices without a name that have not been seen for this many days are forgotten (phones
+    # with a changing "private" address would otherwise pile up). 0 = keep everything.
+    forget_unnamed_after_days: int = Field(default=90, ge=0)
 
 
 def own_networks() -> list[ipaddress.IPv4Network]:
@@ -169,6 +172,7 @@ class LanModule(Module):
                     "first_seen": entry["first_seen"],
                 }
             )
+        self._forget_old(known, set(seen.values()))
         self._save(known)
         result: dict[str, Any] = {
             "network": ", ".join(str(n) for n in networks),
@@ -178,6 +182,21 @@ class LanModule(Module):
         if answered is not None:
             result["answered_ping"] = answered
         return result
+
+    def _forget_old(self, known: dict[str, dict[str, Any]], present: set[str]) -> None:
+        days = self.config.forget_unnamed_after_days
+        if days <= 0:
+            return
+        cutoff = datetime.now() - timedelta(days=days)
+        for mac, entry in list(known.items()):
+            if entry.get("name") or mac in present:
+                continue
+            try:
+                last = datetime.fromisoformat(str(entry.get("last_seen") or entry["first_seen"]))
+            except (KeyError, ValueError):
+                continue  # no date to go by: keep it
+            if last < cutoff:
+                del known[mac]
 
     @tool
     def name_device(self, device: str, name: str) -> dict[str, Any]:
