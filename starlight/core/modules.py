@@ -32,7 +32,7 @@ import structlog
 import yaml
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
-from starlight.core.config import ConfigError, load_module_config, read_yaml
+from starlight.core.config import ConfigError, describe_errors, load_module_config, read_yaml
 from starlight.core.dispatcher import Dispatcher, ToolResult
 from starlight.core.events import Event, EventBus
 from starlight.core.http import PoliteHttp
@@ -397,7 +397,12 @@ def discover(modules_dir: Path) -> tuple[dict[str, tuple[ModuleManifest, Path]],
             continue
         try:
             manifest = ModuleManifest.model_validate(read_yaml(manifest_file))
-        except (ValidationError, ConfigError) as exc:
+        except ValidationError as exc:
+            errors[folder.name] = (
+                f"invalid {MANIFEST}: {describe_errors(exc, [manifest_file], ModuleManifest)}"
+            )
+            continue
+        except ConfigError as exc:
             errors[folder.name] = f"invalid {MANIFEST}: {exc}"
             continue
         if manifest.name != folder.name:

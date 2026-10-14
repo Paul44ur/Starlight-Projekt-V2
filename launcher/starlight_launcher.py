@@ -599,6 +599,145 @@ def uv_asset() -> str:
     )
 
 
+# -- updating without a way back ------------------------------------------------------------
+
+BACKUPS_KEEP = 3  # copies of settings and data taken before an --update
+SNAPSHOT_LIMIT = 2 * GB  # a bigger folder is left out (with a note) rather than copied
+
+# What a copy before an update holds: your settings, your conversations and lists, your
+# memory. (The databases and caches are rebuilt by Starlight itself.)
+SNAPSHOT_PARTS = (("config", "config"), ("data", "data"), ("memory", "memory"))
+SNAPSHOT_SKIP = ("*.sqlite*", "*.db", "*.db-*", "*.lock", "*.tmp", "*.part", "web_cache*")
+
+
+def folder_size(folder: Path) -> int:
+    total = 0
+    for item in folder.rglob("*"):
+        with contextlib.suppress(OSError):
+            if item.is_file():
+                total += item.stat().st_size
+    return total
+
+
+def snapshot_before_update(settings: Settings, ui: Ui) -> Path | None:
+    """Copy config/, data/ and memory/ to backups/update-<time>/ before --update changes
+    anything, and keep only the newest BACKUPS_KEEP of these copies."""
+    root = settings.root
+    stamp = time.strftime("%Y%m%d-%H%M%S")
+    target = root / "backups" / f"update-{stamp}"
+    for number in range(2, 100):  # two in the same second
+        if not target.exists():
+            break
+        target = root / "backups" / f"update-{stamp}-{number}"
+    copied: list[str] = []
+    for name, relative in SNAPSHOT_PARTS:
+        source = root / relative
+        if not source.is_dir():
+            continue
+        if folder_size(source) > SNAPSHOT_LIMIT:
+            ui.say(
+                f"   {relative}/ is over {SNAPSHOT_LIMIT // GB} GB: not copied before the update"
+            )
+            continue
+        shutil.copytree(source, target / name, ignore=shutil.ignore_patterns(*SNAPSHOT_SKIP))
+        copied.append(name)
+    for old in sorted(root.glob("backups/update-*"))[: -BACKUPS_KEEP or None]:
+        if old != target and old.is_dir():
+            shutil.rmtree(old, ignore_errors=True)
+    if not copied:
+        return None
+    ui.say(f"   Copied {', '.join(copied)} to {target.relative_to(root)} (for --rollback)")
+    return target
+
+
+def previous_folder(settings: Settings, name: str) -> Path:
+    return settings.tools / "previous" / name
+
+
+def set_aside(settings: Settings, folder: Path, name: str) -> bool:
+    """Before an update replaces a program folder: move it to tools/previous/<name>, so the
+    old version is still there if the new one does not work (or the download fails)."""
+    if not folder.is_dir():
+        return False
+    kept = previous_folder(settings, name)
+    if kept.exists():
+        shutil.rmtree(kept)
+    kept.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        replace_file(folder, kept)
+    except OSError as exc:
+        raise LauncherError(
+            f"{folder.name} is in use: close Starlight (and its model server) and try again ({exc})"
+        ) from exc
+    return True
+
+
+def put_back(settings: Settings, folder: Path, name: str) -> None:
+    """An update failed half way: the old program folder returns."""
+    kept = previous_folder(settings, name)
+    if kept.is_dir():
+        if folder.exists():
+            shutil.rmtree(folder, ignore_errors=True)
+        replace_file(kept, folder)
+
+
+def installed_folders(settings: Settings) -> dict[str, Path]:
+    """The program folders an update replaces, by the name they are kept under."""
+    return {
+        "uv": settings.tools / "uv",
+        f"llama.cpp-{settings.variant}": settings.tools / "llama.cpp" / settings.variant,
+    }
+
+
+def restore_snapshot(settings: Settings, snapshot: Path, ui: Ui) -> None:
+    """Put the files of a copy back over the current ones (anything newer that the copy
+    does not have stays). A fresh copy of the current state is taken first."""
+    snapshot_before_update(settings, ui)
+    for name, relative in SNAPSHOT_PARTS:
+        if (snapshot / name).is_dir():
+            shutil.copytree(snapshot / name, settings.root / relative, dirs_exist_ok=True)
+
+
+def rollback(settings: Settings, ui: Ui) -> int:
+    """Go back to the uv and llama.cpp that were installed before the last --update (and,
+    if you say so, to the settings and data from then). Running it again goes forward."""
+    swapped: list[str] = []
+    for name, folder in installed_folders(settings).items():
+        kept = previous_folder(settings, name)
+        if not kept.is_dir():
+            continue
+        parked = kept.with_name(kept.name + ".swap")
+        if parked.exists():
+            shutil.rmtree(parked)
+        try:
+            if folder.exists():
+                replace_file(folder, parked)
+            replace_file(kept, folder)
+            if parked.exists():
+                replace_file(parked, kept)
+        except OSError as exc:
+            raise LauncherError(
+                f"could not switch {name}: close Starlight (and its model server) and try again"
+                f" ({exc})"
+            ) from exc
+        source = folder / "source.txt"
+        what = source.read_text(encoding="utf-8").strip() if source.is_file() else "the older copy"
+        swapped.append(f"{name}: {what}")
+    if not swapped:
+        raise LauncherError("there is no earlier version to go back to (--update keeps one)")
+    ui.say("Went back to the previous version of:")
+    for line in swapped:
+        ui.say(f"   {line}")
+    ui.say("(Run --rollback again to return to the newer one.)")
+    snapshots = sorted(settings.root.glob("backups/update-*"))
+    if snapshots and ui.ask(
+        f"Also put back your settings and data from {snapshots[-1].name}?", default=False
+    ):
+        restore_snapshot(settings, snapshots[-1], ui)
+        ui.say("   Settings, data and memory from before the update are back.")
+    return 0
+
+
 def ensure_uv(settings: Settings, ui: Ui) -> Path:
     """Starlight's own copy of uv in tools/uv (it installs Python and the packages)."""
     binary = settings.tools / "uv" / exe("uv")
@@ -609,7 +748,15 @@ def ensure_uv(settings: Settings, ui: Ui) -> Path:
     with urllib.request.urlopen(_request(f"{UV_DOWNLOAD}/{asset}.sha256"), timeout=30) as r:
         expected = r.read().decode().split()[0]
     archive = download(f"{UV_DOWNLOAD}/{asset}", settings.tools / asset, ui, sha256=expected)
-    extract_member(archive, exe("uv"), settings.tools / "uv")
+    folder = settings.tools / "uv"
+    moved = settings.update and set_aside(settings, folder, "uv")
+    try:
+        extract_member(archive, exe("uv"), folder)
+        (folder / "source.txt").write_text(f"{UV_DOWNLOAD}/{asset}\n", encoding="utf-8")
+    except BaseException:
+        if moved:
+            put_back(settings, folder, "uv")
+        raise
     archive.unlink()
     return binary
 
@@ -697,7 +844,15 @@ def ensure_llama(settings: Settings, ui: Ui) -> Path:
     url, sha = resolve_llama(settings)
     ui.say(f"   {url}")
     archive = download(url, settings.tools / url.split("/")[-1], ui, sha256=sha)
-    extract_member(archive, exe("llama-server"), target)
+    name = f"llama.cpp-{settings.variant}"
+    moved = settings.update and set_aside(settings, target, name)
+    try:
+        extract_member(archive, exe("llama-server"), target)
+        (target / "source.txt").write_text(url + "\n", encoding="utf-8")
+    except BaseException:
+        if moved:
+            put_back(settings, target, name)
+        raise
     archive.unlink()
     return binary
 
@@ -1081,6 +1236,8 @@ class Installed:
 
 def setup(settings: Settings, ui: Ui) -> Installed:
     """Install whatever is missing."""
+    if settings.update:
+        snapshot_before_update(settings, ui)
     first_run = not (settings.tools / "uv" / exe("uv")).is_file()
     remote = None
     if settings.use_model and not settings.model_file.is_file():
@@ -1510,6 +1667,11 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--ask", metavar="TEXT", help="one request, print the answer, exit")
     parser.add_argument("--update", action="store_true", help="download uv and llama.cpp again")
     parser.add_argument(
+        "--rollback",
+        action="store_true",
+        help="go back to the uv and llama.cpp from before the last --update",
+    )
+    parser.add_argument(
         "--no-model",
         action="store_true",
         help="use Starlight's built-in test model; download no model",
@@ -1560,7 +1722,13 @@ def gui_wanted(args: argparse.Namespace) -> bool:
     if args.gui or args.gui_selftest:
         return True
     return not (
-        args.yes or args.ask or args.terminal or args.both or args.setup_only or args.update
+        args.yes
+        or args.ask
+        or args.terminal
+        or args.both
+        or args.setup_only
+        or args.update
+        or args.rollback
     )
 
 
@@ -1620,6 +1788,9 @@ def main(argv: list[str] | None = None) -> int:
     try:
         settings = load_settings(args)
         ui.say(f"Starlight launcher {VERSION} - {settings.root}")
+        if args.rollback:
+            code = rollback(settings, ui)
+            return code
         installed = setup(settings, ui)
         if args.setup_only:
             ui.say("\nSetup complete. Start Starlight.exe again to begin.")
