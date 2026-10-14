@@ -194,7 +194,8 @@ Run `Starlight.exe --help` in a terminal to see every option. The most useful on
 | `--both` | Open the browser chat **and** a terminal chat together — both talk to the same Starlight (one conversation, one kill switch). |
 | `--voice` | Also install speech: talk to Starlight and hear its answers (about 0.6 GB, Windows; `"voice": true` in `launcher.json` keeps it). |
 | `--no-viewer` | Don't start the statistics viewer. |
-| `--update` | Download the newest uv and llama.cpp again. |
+| `--update` | Download the newest uv and llama.cpp again (after copying your settings and data to `backups`). |
+| `--rollback` | Go back to the uv and llama.cpp from before the last `--update` (and, if you say yes, your settings and data). |
 | `--setup-only` | Download and set up, then exit without starting. |
 
 To use options every time, put them into `config\launcher.json`, for example:
@@ -273,6 +274,13 @@ Your `memory`, `skills`, `data`, `logs`, `models` and `tools` folders, your
 a copy of any changes you made to the other files in `config`, because those files are
 overwritten. Files Starlight saved for you are in `Documents\Starlight`, outside the
 Starlight folder, so updates never touch them.
+
+**A way back.** `Starlight.exe --update` (new uv and llama.cpp) first copies `config`, `data`
+and `memory` to `backups\update-<date and time>` (the newest three copies are kept), and keeps
+the old uv and llama.cpp in `tools\previous`. If the new download fails, the old one stays in
+place. If the new one doesn't work, run `Starlight.exe --rollback`: it switches back and offers
+to put your settings and data back from the copy too (it asks; the default is no). Running it
+again goes forward again.
 
 ### Uninstalling
 
@@ -516,6 +524,11 @@ off with `starlight remote disable`.
 its server, the settings files, free disk space, whether Starlight can write its data
 folders, the password store and the modules, and says in plain words what is wrong and
 what to try. It changes nothing.
+
+**A mistake in a settings file** is explained with the file, the line and the setting, for
+example `config\starlight.yaml, line 5: web.prot - 'prot' is not a setting that exists here -
+did you mean 'port'?`. Fix that line (or delete it to use the default). A YAML slip such as
+a tab instead of spaces shows the line and a hint.
 
 <details>
 <summary><b>"No Starlight folder found"</b></summary>

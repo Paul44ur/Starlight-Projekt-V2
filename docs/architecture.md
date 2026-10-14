@@ -292,6 +292,18 @@ facts, restarts) per seed and then checks the files on disk. On Windows CI,
 `scripts/e2e_chat.py` drives the real exe with a real (small) model: a chat turn, a tool offered to the model (reported only),
 Regenerate and the kill switch.
 
+**Updates and config errors.** `--update` first copies `config/`, `data/` and `memory/` to
+`backups/update-<time>/` (newest 3 kept; databases and caches left out), moves the installed
+uv and llama.cpp to `tools/previous/` before replacing them (and moves them back if the
+download or unpacking fails), and records the download URL in `source.txt`. `--rollback`
+swaps the previous and current folders (so a second call goes forward) and, if asked,
+copies the settings and data from the newest backup over the current ones after taking a
+fresh copy. `core/config.py` turns Pydantic's and YAML's errors into one block per problem:
+the file that wins for that setting (the last overlay that writes it), its line (found by
+composing the YAML), the setting path, what is wrong with what was written, and a
+"did you mean" for a mistyped name. Module settings and manifests use the same
+(`describe_errors`).
+
 ## Build plan status
 
 | Step | | Status |

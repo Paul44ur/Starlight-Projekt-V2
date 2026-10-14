@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import difflib
 from pathlib import Path
 from typing import Any
 
@@ -216,12 +217,34 @@ def read_yaml(path: Path) -> dict[str, Any]:
     try:
         data = yaml.safe_load(path.read_text(encoding="utf-8"))
     except yaml.YAMLError as exc:
-        raise ConfigError(f"{path}: invalid YAML: {exc}") from exc
+        raise ConfigError(_yaml_problem(path, exc)) from exc
     if data is None:
         return {}
     if not isinstance(data, dict):
-        raise ConfigError(f"{path}: expected a mapping at the top level")
+        raise ConfigError(
+            f"{path}: this file must be a list of 'setting: value' lines, "
+            f"not a {type(data).__name__}"
+        )
     return data
+
+
+def _yaml_problem(path: Path, exc: yaml.YAMLError) -> str:
+    """A YAML syntax error in plain words: file, line, what is wrong and the line itself."""
+    mark = getattr(exc, "problem_mark", None)
+    problem = str(getattr(exc, "problem", "") or exc).strip()
+    if mark is None:
+        return f"{path}: invalid YAML ({problem})"
+    text = f"{path}, line {mark.line + 1}: invalid YAML ({problem})"
+    try:
+        line = path.read_text(encoding="utf-8").splitlines()[mark.line]
+    except (OSError, IndexError, UnicodeDecodeError):
+        return text
+    hint = ""
+    if "\t" in line:
+        hint = "\n   YAML does not allow tab characters for indenting; use spaces."
+    elif "mapping values are not allowed" in problem or "could not find expected ':'" in problem:
+        hint = "\n   Is there a missing space after a ':' or an unquoted ':' in a value?"
+    return f"{text}\n   {line.strip()[:100]}{hint}"
 
 
 # Merged over config/starlight.yaml, in this order (later wins):
@@ -263,8 +286,112 @@ def load_config(paths: Paths) -> StarlightConfig:
     try:
         return StarlightConfig.model_validate(data)
     except ValidationError as exc:
-        files = " + ".join(str(p) for p in used)
-        raise ConfigError(f"{files}:\n{exc}") from exc
+        raise ConfigError(describe_errors(exc, used, StarlightConfig, paths.root)) from exc
+
+
+# -- explaining a bad setting --------------------------------------------------------------------
+
+
+def _node_at(root: yaml.Node | None, loc: tuple[Any, ...]) -> yaml.Node | None:
+    """The YAML node for a setting path like ("model", "options", "timeout"), or None."""
+    node = root
+    for key in loc:
+        if isinstance(node, yaml.MappingNode):
+            node = next(
+                (
+                    v
+                    for k, v in node.value
+                    if isinstance(k, yaml.ScalarNode) and k.value == str(key)
+                ),
+                None,
+            )
+        elif isinstance(node, yaml.SequenceNode) and isinstance(key, int):
+            node = node.value[key] if 0 <= key < len(node.value) else None
+        else:
+            return None
+        if node is None:
+            return None
+    return node
+
+
+def _line_of(path: Path, loc: tuple[Any, ...]) -> int | None:
+    """The line in ``path`` where the setting is written (the nearest parent if it is not)."""
+    try:
+        root = yaml.compose(path.read_text(encoding="utf-8"))
+    except (OSError, yaml.YAMLError, UnicodeDecodeError):
+        return None
+    for end in range(len(loc), -1, -1):
+        node = _node_at(root, loc[:end])
+        if node is not None:
+            return int(node.start_mark.line) + 1 if end else None
+    return None
+
+
+def _defines(path: Path, loc: tuple[Any, ...]) -> bool:
+    try:
+        return _node_at(yaml.compose(path.read_text(encoding="utf-8")), loc) is not None
+    except (OSError, yaml.YAMLError, UnicodeDecodeError):
+        return False
+
+
+def _known_names(model: type[BaseModel], parents: tuple[Any, ...]) -> list[str]:
+    """The setting names that are valid inside ``parents`` (for "did you mean ...?")."""
+    current: Any = model
+    for key in parents:
+        field = current.model_fields.get(str(key)) if hasattr(current, "model_fields") else None
+        annotation = field.annotation if field is not None else None
+        current = next(
+            (
+                arg
+                for arg in (annotation, *getattr(annotation, "__args__", ()))
+                if isinstance(arg, type) and issubclass(arg, BaseModel)
+            ),
+            None,
+        )
+        if current is None:
+            return []
+    return list(current.model_fields) if hasattr(current, "model_fields") else []
+
+
+def describe_errors(
+    exc: ValidationError, files: list[Path], model: type[BaseModel], root: Path | None = None
+) -> str:
+    """Pydantic's errors as one block per problem: which file and line, which setting, what
+    is wrong, and (for a mistyped name) the name that was probably meant."""
+    shown = []
+    errors = exc.errors()
+    for error in errors[:8]:
+        loc = tuple(error["loc"])
+        name = ".".join(str(part) for part in loc) or "(top level)"
+        # the file that wins for this setting: the last one that writes it
+        owner = next((f for f in reversed(files) if loc and _defines(f, loc)), files[0])
+        line = _line_of(owner, loc)
+        try:
+            where = str(owner.relative_to(root)) if root else str(owner)
+        except ValueError:
+            where = str(owner)
+        where += f", line {line}" if line else ""
+        kind = error["type"]
+        if kind == "extra_forbidden":
+            problem = f"'{loc[-1]}' is not a setting that exists here"
+            close = difflib.get_close_matches(str(loc[-1]), _known_names(model, loc[:-1]), n=1)
+            if close:
+                problem += f" - did you mean '{close[0]}'?"
+        elif kind == "missing":
+            problem = "this setting is required but missing"
+        else:
+            problem = error["msg"]
+            if "input" in error and kind != "missing" and not isinstance(error["input"], dict):
+                problem += f" (you wrote: {str(error['input'])[:60]!r})"
+        shown.append(f"{where}: {name}\n   {problem}")
+    if len(errors) > 8:
+        shown.append(f"... and {len(errors) - 8} more problems")
+    head = "a setting is wrong" if len(errors) == 1 else f"{len(errors)} settings are wrong"
+    return (
+        f"{head}:\n"
+        + "\n".join(shown)
+        + "\nFix it in that file, or delete the line to use the default."
+    )
 
 
 def load_module_config[T: BaseModel](
@@ -278,4 +405,4 @@ def load_module_config[T: BaseModel](
     try:
         return schema.model_validate(raw)
     except ValidationError as exc:
-        raise ConfigError(f"{path}:\n{exc}") from exc
+        raise ConfigError(describe_errors(exc, [path], schema, paths.root)) from exc
