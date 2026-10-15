@@ -40,7 +40,9 @@ class Health(BaseHTTPRequestHandler):
 @pytest.fixture
 def http_port() -> Iterator[int]:
     server = ThreadingHTTPServer(("127.0.0.1", 0), Health)
-    threading.Thread(target=server.serve_forever, daemon=True).start()
+    threading.Thread(
+        target=server.serve_forever, kwargs={"poll_interval": 0.01}, daemon=True
+    ).start()
     yield server.server_address[1]
     server.shutdown()
     server.server_close()

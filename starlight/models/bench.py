@@ -86,9 +86,9 @@ def gpu_status() -> dict[str, Any] | None:
             rows = [r for r in out.splitlines() if r.startswith('"')]
             if len(rows) >= 2:
                 header = re.findall(r'"([^"]*)"', rows[0])[1:]
-                values = _numbers(rows[-1])
-                memory = [v for h, v in zip(header, values, strict=False) if "Memory" in h]
-                engine = [v for h, v in zip(header, values, strict=False) if "Engine" in h]
+                readings = _numbers(rows[-1])
+                memory = [v for h, v in zip(header, readings, strict=False) if "Memory" in h]
+                engine = [v for h, v in zip(header, readings, strict=False) if "Engine" in h]
                 return {
                     "source": "typeperf",
                     "used_bytes": int(max(memory)) if memory else None,

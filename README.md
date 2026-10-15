@@ -55,7 +55,7 @@ and answer you on WhatsApp. Anything risky asks you first, and one key press sto
 | **Exact maths** | Calculations, unit conversion (km/mi, °C/°F, GB/MB, …) and date maths ("days until 24.12.") worked out exactly, not guessed. |
 | **Translate** | Translates text with your own model — offline, nothing leaves the PC. |
 | **Desktop notifications** | Pops a notification on your screen to get your attention. |
-| **Email** | Reads your inbox and sends mail from your own account. Shows what's unread without marking it read, sorts it into important / can wait / probably spam, drafts replies for you to check, and replies in the same thread (sending runs without asking out of the box; remove `mail.send` and `mail.reply` from `permissions: auto_approve:` to be asked). Can tell you right away when someone you choose writes. |
+| **Email** | Reads your inbox and sends mail from your own account. Shows what's unread without marking it read, sorts it into important / can wait / probably spam, drafts replies for you to check, and replies in the same thread (sending runs without asking out of the box; remove `mail.send` and `mail.reply` from `permissions: auto_approve:` to be asked). Can tell you right away when someone you choose writes. The mail server's certificate is checked; for a server with a self-signed certificate set `verify_certificate: false` in `config\modules\mail.yaml`. |
 | **PDFs** | Reads text from PDF files and makes simple PDFs from text. |
 | **Open programs** | "Open Spotify", "open my budget sheet", "bring Outlook to the front" — starts any installed program, opens files and links, and arranges or closes windows. |
 | **Music and volume** | Play/pause, next/previous track and volume, like the media keys. |

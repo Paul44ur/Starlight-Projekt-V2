@@ -53,17 +53,16 @@ def page(url: str) -> Any:
     return HttpResponse(url, 200, {}, "<html>" + "x" * 500 + "</html>")
 
 
-def test_the_page_cache_drops_expired_pages_and_keeps_a_limited_number() -> None:
+def test_the_page_cache_drops_expired_pages_and_keeps_a_limited_number(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     cache = ResponseCache(None)
     for n in range(10):
         cache.put(page(f"https://example.org/{n}"))
     cache._db.execute("UPDATE pages SET fetched = fetched - ? WHERE url LIKE '%/0'", (3 * DAY,))
     assert cache.purge() == 1  # only the expired one
-    ResponseCache.MAX_ROWS = 4
-    try:
-        cache.purge()
-    finally:
-        ResponseCache.MAX_ROWS = 2000
+    monkeypatch.setattr(ResponseCache, "MAX_ROWS", 4)
+    cache.purge()
     left = [r[0] for r in cache._db.execute("SELECT url FROM pages ORDER BY fetched DESC")]
     assert len(left) == 4 and "https://example.org/0" not in left
     assert cache.get("https://example.org/9", ttl=3600) is not None  # the newest stayed
@@ -203,17 +202,14 @@ async def test_a_deleted_conversation_leaves_nothing_behind(kernel: Kernel) -> N
     assert name not in kernel._conversation_locks and name not in kernel._taken_back
 
 
-async def test_housekeeping_runs_and_does_not_fail(
-    paths: Paths, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    paths.config_file.write_text(
-        "kill_switch:\n  hotkey: null\nmemory:\n  summary_keep: 1\nskills:\n  enabled: false\n"
-    )
+async def test_housekeeping_trims_what_a_lower_limit_leaves_over(paths: Paths) -> None:
+    paths.config_file.write_text("kill_switch:\n  hotkey: null\nskills:\n  enabled: false\n")
     async with Kernel(paths) as k:
         for n in range(3):
             await k.memory.save_summary(f"Summary {n}")
-        # (save_summary already trims; a lower limit applied later is trimmed by housekeeping)
-        k.memory.config.summary_keep = 1
+        files = list((paths.memory / "conversations").glob("*.md"))
+        assert len(files) == 3  # (the default limit is 60)
+        k.memory.config.summary_keep = 1  # a lower limit, applied later
         await k._housekeeping()
         assert len(list((paths.memory / "conversations").glob("*.md"))) == 1
         assert k._housekeeping_at > 0

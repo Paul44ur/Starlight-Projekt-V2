@@ -46,6 +46,9 @@ def transport() -> httpx.MockTransport:
 @pytest.fixture
 def project(paths: Paths, use_module: Callable[[str], Path]) -> Paths:
     use_module("finance")
+    # (no real second between two requests to the same host: the answers are canned)
+    with paths.config_file.open("a", encoding="utf-8") as handle:
+        handle.write("http:\n  per_domain_interval: 0\n")
     return paths
 
 

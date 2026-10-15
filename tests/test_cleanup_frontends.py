@@ -58,6 +58,9 @@ def test_ctrl_c_at_the_prompt_leaves_cleanly(tmp_path: Path) -> None:
         stderr=slave,
         env=env,
         cwd=str(home),
+        # a job started in the background of a shell inherits "ignore SIGINT", and Python then
+        # never turns Ctrl+C into KeyboardInterrupt: give the child the normal handling
+        preexec_fn=lambda: signal.signal(signal.SIGINT, signal.SIG_DFL),
     )
     os.close(slave)
     output = ""
@@ -236,3 +239,16 @@ async def test_a_crashed_browser_gets_its_old_driver_stopped(
     assert drivers[0].stopped and not drivers[1].stopped  # no driver process left behind
     await browser.close()
     assert drivers[1].stopped
+
+
+def test_the_statistics_page_shows_the_configured_request_cap(tmp_path: Path) -> None:
+    from fastapi.testclient import TestClient
+
+    from starlight.viewer.app import create_app
+
+    home = _minimal_home(tmp_path / "home")
+    (home / "config" / "starlight.local.yaml").write_text("http:\n  max_requests_per_second: 7\n")
+    from starlight.core import Paths
+
+    page = TestClient(create_app(Paths(home))).get("/").text
+    assert "const WEB_CAP = 7;" in page and "__WEB_CAP__" not in page

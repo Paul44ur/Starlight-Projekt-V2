@@ -145,6 +145,7 @@
 
 <script>
 const REFRESH = __REFRESH__;
+const WEB_CAP = __WEB_CAP__;  // http.max_requests_per_second, filled in by the server
 let minutes = 60;
 let last = null;
 const NS = "http://www.w3.org/2000/svg";
@@ -330,7 +331,7 @@ function render() {
     tile("Tasks completed", compact(T.tasks), T.whatsapp_received ? `${T.whatsapp_received} from WhatsApp` : ""),
     tile("Tool calls", compact(T.tool_calls)),
     tile("Errors", compact(T.errors)),
-    tile("Web requests", compact(T.web_requests), `peak ${T.peak_web_requests_per_second} in one second (cap 5)`),
+    tile("Web requests", compact(T.web_requests), `peak ${T.peak_web_requests_per_second} in one second (cap ${WEB_CAP})`),
     tile("Tokens per second", L.tokens_per_second != null ? L.tokens_per_second.toFixed(1) : "–", benchNote),
     tile("GPU use", L.gpu_utilization_percent != null ? Math.round(L.gpu_utilization_percent) + "%" : "–", `VRAM ${vram}`),
     tile("Memory", L.memory_entries != null ? compact(L.memory_entries) : "–", "files in the Memory folder"),
@@ -339,7 +340,7 @@ function render() {
 
   const S = s.series;
   lineChart("c-tps", S.tokens_per_second, {unit: "tokens/s", label: "Tokens per second over time"});
-  columnChart("c-web", S.web_requests_peak_per_second, {unit: n => (n === 1 ? "request" : "requests") + " in the busiest second", label: "Web requests in the busiest second per interval", ref: 5, refLabel: "cap 5/s", integer: true});
+  columnChart("c-web", S.web_requests_peak_per_second, {unit: n => (n === 1 ? "request" : "requests") + " in the busiest second", label: "Web requests in the busiest second per interval", ref: WEB_CAP, refLabel: `cap ${WEB_CAP}/s`, integer: true});
   lineChart("c-gpu", S.gpu_utilization_percent, {unit: "%", yMax: 100, label: "GPU use over time"});
   lineChart("c-vram", S.vram_used_gb, {unit: "GB", yMax: L.vram_total_bytes ? niceMax(L.vram_total_bytes / 2 ** 30) : 0, label: "VRAM in use over time"});
   columnChart("c-tasks", S.tasks, {unit: "tasks", label: "Tasks completed per interval", integer: true});

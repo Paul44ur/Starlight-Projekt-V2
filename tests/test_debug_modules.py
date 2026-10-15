@@ -9,6 +9,7 @@ import json
 import os
 import sys
 import time
+import zipfile
 from collections.abc import Callable
 from datetime import datetime
 from pathlib import Path
@@ -142,7 +143,10 @@ async def test_a_backup_with_a_very_old_file_still_runs(
     async with Kernel(paths, ui=User()) as k:
         await call(k, "backup.add", name="fotos", source=str(source), target=str(target))
         ran = await call(k, "backup.run", name="fotos")
-    assert ran.get("ok", True) and list((target / "fotos").glob("*.zip"))
+    assert ran["files"] == 2 and ran["skipped"] == []
+    [archive] = (target / "fotos").glob("*.zip")
+    with zipfile.ZipFile(archive) as zf:
+        assert "alt.txt" in zf.namelist()  # the 1970 file is in it, stored with a 1980 date
 
 
 async def test_file_search_finds_each_file_once_and_reads_windows_encodings(

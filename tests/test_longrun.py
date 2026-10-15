@@ -131,12 +131,12 @@ async def run(paths: Paths, seed: int) -> dict[str, int]:
                     kernel.forget_conversation(gone)
                 conversations.append(new)
                 counts["other"] += 1
-            elif roll < 0.95:
+            elif roll < 0.91:
                 await kernel.memory.remember(
                     f"Fact number {step} about the test.", topic=f"t{step}"
                 )
                 counts["other"] += 1
-            elif step % 20 == 0:  # a restart now and then: everything must come back from disk
+            elif roll < 0.96:  # a restart now and then: everything must come back from disk
                 await kernel.stop()
                 kernel = Kernel(paths, provider=model)  # type: ignore[arg-type]
                 await kernel.start()
@@ -157,6 +157,7 @@ async def test_a_long_mixed_session_leaves_everything_whole(
     )
     counts = await asyncio.wait_for(run(paths, seed), 240)
     assert counts["ask"] > 20 and counts["tool"] > 10 and counts["regenerate"] > 5
+    assert counts["restart"] > 0
     assert counts["stop"] > 3 and counts["fail"] > 3
     assert whole(paths) == []
     # and a fresh start still reads it all
