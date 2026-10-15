@@ -800,6 +800,12 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def main(argv: Sequence[str] | None = None) -> int:
+    code = _main(argv)
+    console.leave_if_reading(code)  # after Ctrl+C at a prompt: its read would hold up the exit
+    return code
+
+
+def _main(argv: Sequence[str] | None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
     if args.command is None:

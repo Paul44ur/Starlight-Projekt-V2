@@ -176,7 +176,7 @@ def load_settings(args: argparse.Namespace) -> Settings:
     saved = settings.root / "config" / "launcher.json"  # optional, for your own defaults
     if saved.is_file():
         try:
-            data = json.loads(saved.read_text(encoding="utf-8"))
+            data = json.loads(saved.read_text(encoding="utf-8-sig"))  # Notepad may add a BOM
             if not isinstance(data, dict):
                 raise ValueError("expected an object")
             if "model" in data and "model_url" not in data:  # a preset; model_url wins
@@ -882,7 +882,7 @@ def ensure_voice(settings: Settings, ui: Ui) -> None:
             archive = download(settings.whisper_url, settings.tools / "whisper.zip", ui)
             extract_member(archive, exe("whisper-server"), whisper, keep=("models",))
             archive.unlink()
-        model = whisper / "models" / settings.whisper_model_url.rstrip("/").split("/")[-1]
+        model = whisper / "models" / _file_name(settings.whisper_model_url)
         if not model.is_file():
             ui.step(f"Downloading the speech model {model.name}")
             download(settings.whisper_model_url, model, ui)
@@ -904,7 +904,7 @@ def ensure_voice(settings: Settings, ui: Ui) -> None:
 
 def ensure_model(settings: Settings, ui: Ui, remote: RemoteFile | None) -> Path:
     dest = settings.model_file
-    if dest.is_file() and (remote is None or remote.size in (None, dest.stat().st_size)):
+    if dest.is_file():  # (a download only becomes the model file once it is complete)
         return dest
     ui.step(f"Downloading the model {dest.name}")
     return download(settings.model_url, dest, ui, sha256=remote.sha256 if remote else None)
@@ -1188,6 +1188,12 @@ def port_in_use(port: int) -> bool:
         return probe_socket.connect_ex(("127.0.0.1", port)) == 0
 
 
+def _local_open(request: urllib.request.Request | str, timeout: float) -> Any:
+    """Open a URL on this PC. A system or company proxy is not used for those: it cannot
+    reach 127.0.0.1, and urllib would send the request to it all the same."""
+    return urllib.request.build_opener(urllib.request.ProxyHandler({})).open(request, timeout=timeout)
+
+
 def wait_for_web(port: int, ui: Ui, timeout: float = 60) -> None:
     """Wait until the web backend is accepting connections before the terminal connects."""
     started = time.monotonic()
@@ -1213,7 +1219,7 @@ def wait_for_model(
             )
         with (
             contextlib.suppress(urllib.error.URLError, ConnectionError, TimeoutError, OSError),
-            urllib.request.urlopen(url, timeout=5) as response,
+            _local_open(url, 5) as response,
         ):
             if response.status == 200:
                 ui.say(f"\r   model ready after {time.monotonic() - started:.0f} s".ljust(40))
@@ -1473,7 +1479,7 @@ def fetch_json(
         url, method=method, headers=headers, data=b"" if method == "POST" else None
     )
     try:
-        with urllib.request.urlopen(request, timeout=timeout) as response:
+        with _local_open(request, timeout) as response:
             data = json.loads(response.read().decode("utf-8", errors="replace") or "{}")
     except (OSError, ValueError, http.client.HTTPException):
         return None
@@ -1486,7 +1492,7 @@ def health_status(port: int) -> int | None:
         f"http://127.0.0.1:{port}/health", headers={"User-Agent": USER_AGENT}
     )
     try:
-        with urllib.request.urlopen(request, timeout=2) as response:
+        with _local_open(request, 2) as response:
             return int(response.status)
     except urllib.error.HTTPError as exc:
         return exc.code
