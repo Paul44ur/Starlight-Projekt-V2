@@ -112,6 +112,9 @@ def _kill_switch(paths: Paths, audited: bool = False) -> KillSwitch:
 async def cmd_ask(paths: Paths, args: argparse.Namespace) -> int:
     async with _kernel(paths, assume_yes=args.yes) as kernel:
         result = await kernel.ask(" ".join(args.text))
+    if result.failed:  # the model server is down or turned the request down: say so in the code
+        print(result.answer, file=sys.stderr)
+        return 1
     print(result.answer)
     if result.stopped:
         print("Kill switch is engaged. Run `starlight resume` to continue.", file=sys.stderr)

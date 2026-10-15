@@ -9,6 +9,7 @@ Needs the ``pdf`` extra (``pypdf`` and ``reportlab``); without it, the tools say
 
 from __future__ import annotations
 
+import asyncio
 import re
 from pathlib import Path
 from typing import Any
@@ -74,15 +75,13 @@ class PdfModule(Module):
         if not free and not await self.ctx.ui.confirm(f"Let Starlight read this PDF?\n  {file}"):
             raise PdfError(f"the user did not allow reading {file}")
         limit = max_chars or self.config.max_read_chars
-        try:
-            reader = pypdf.PdfReader(str(file))
-            pages = [page.extract_text() or "" for page in reader.pages]
+        try:  # a big PDF takes a while: off the event loop
+            page_count, text = await asyncio.to_thread(_extract_text, pypdf, file, limit)
         except Exception as exc:  # pypdf raises various errors on broken files
             raise PdfError(f"could not read the PDF: {exc}") from exc
-        text = "\n\n".join(p.strip() for p in pages if p.strip())
         result: dict[str, Any] = {
             "path": str(file),
-            "pages": len(pages),
+            "pages": page_count,
             "text": text[:limit],
         }
         if not text:
@@ -117,7 +116,7 @@ class PdfModule(Module):
         self.ctx.kill_switch.check()
         try:
             file.parent.mkdir(parents=True, exist_ok=True)
-            _render_pdf(file, title, content)
+            await asyncio.to_thread(_render_pdf, file, title, content)
         except OSError as exc:
             raise PdfError(f"could not save the PDF: {exc}") from exc
         self.ctx.logger.info("pdf written", path=str(file))
@@ -131,6 +130,23 @@ def _free_name(path: Path) -> Path:
         if not candidate.exists():
             return candidate
     raise PdfError(f"too many files named like {path.name}")
+
+
+def _extract_text(pypdf: Any, file: Path, limit: int) -> tuple[int, str]:
+    """The page count and the text of the pages, read only until more than ``limit``
+    characters are in hand (the rest would be cut off anyway)."""
+    reader = pypdf.PdfReader(str(file))
+    texts: list[str] = []
+    length = 0
+    for page in reader.pages:
+        text = (page.extract_text() or "").strip()
+        if not text:
+            continue
+        length += len(text) + (2 if texts else 0)
+        texts.append(text)
+        if length > limit:
+            break
+    return len(reader.pages), "\n\n".join(texts)
 
 
 def _render_pdf(file: Path, title: str, content: str) -> None:

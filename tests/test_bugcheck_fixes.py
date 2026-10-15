@@ -49,7 +49,7 @@ async def test_one_huge_message_is_cut_to_fit_the_context() -> None:
     config = ModelConfig(context_window=4096, reserve_tokens=1024)
     context = ContextManager(Model(), config)  # type: ignore[arg-type]
     messages = [Message("system", "You are Starlight."), Message("user", "y" * 60_000)]
-    fitted = await context.fit(messages, [])
+    fitted = context.shorten(await context.compact(messages, []), [])
     assert len(fitted[1].content) < 12_000
     assert "too long for the model's context window" in fitted[1].content
     assert messages[1].content == "y" * 60_000  # nothing changed in place

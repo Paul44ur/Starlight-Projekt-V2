@@ -65,6 +65,8 @@ class VoiceModule(Module):
         self.tools_dir = ctx.paths.root / "tools"
         self._server: subprocess.Popen[bytes] | None = None
         self._starting = asyncio.Lock()
+        self._ready = False  # the speech server answered; a started process is not enough
+        self.start_timeout = 90.0  # seconds a big model may take to load
         self._client = httpx.AsyncClient(timeout=httpx.Timeout(120, connect=5))
         ctx.kill_switch.add_cleanup(self._stop_playback, owner=ctx.name)
         self._player: subprocess.Popen[bytes] | None = None
@@ -131,27 +133,39 @@ class VoiceModule(Module):
     def _url(self) -> str:
         return f"http://127.0.0.1:{self.config.whisper_port}"
 
+    async def _answers(self) -> bool:
+        with contextlib.suppress(httpx.HTTPError):
+            return (await self._client.get(self._url + "/")).status_code < 500
+        return False
+
     async def _ensure_server(self) -> None:
         async with self._starting:
-            if self._server is not None and self._server.poll() is None:
+            running = self._server is not None and self._server.poll() is None
+            if self._ready and (running or self._server is None):
                 return
-            command = self._server_command()
-            flags = 0x08000000 if sys.platform == "win32" else 0  # no console window
-            log = (self.ctx.paths.logs / "whisper-server.log").open("ab")
-            try:
-                self._server = subprocess.Popen(
-                    command, stdout=log, stderr=subprocess.STDOUT, creationflags=flags,
-                    cwd=str(Path(command[0]).parent),
-                )  # fmt: skip
-            finally:
-                log.close()
-            deadline = time.monotonic() + 90
+            if not running and await self._answers():  # another Starlight process started it
+                self._ready = True
+                return
+            if not running:
+                command = self._server_command()
+                flags = 0x08000000 if sys.platform == "win32" else 0  # no console window
+                log = (self.ctx.paths.logs / "whisper-server.log").open("ab")
+                try:
+                    self._server = subprocess.Popen(
+                        command, stdout=log, stderr=subprocess.STDOUT, creationflags=flags,
+                        cwd=str(Path(command[0]).parent),
+                    )  # fmt: skip
+                finally:
+                    log.close()
+            # A process that is still loading its model is waited for again by the next call.
+            assert self._server is not None
+            deadline = time.monotonic() + self.start_timeout
             while time.monotonic() < deadline:
                 if self._server.poll() is not None:
                     raise ToolError("the speech server stopped; see logs/whisper-server.log")
-                with contextlib.suppress(httpx.HTTPError):
-                    if (await self._client.get(self._url + "/")).status_code < 500:
-                        return
+                if await self._answers():
+                    self._ready = True
+                    return
                 await asyncio.sleep(0.5)
             raise ToolError("the speech server did not start in time")
 
@@ -173,18 +187,23 @@ class VoiceModule(Module):
             raise ToolError("no audio")
         self.ctx.kill_switch.check()
         await self._ensure_server()
-        response = await self._client.post(
-            self._url + "/inference",
-            files={"file": ("speech.wav", audio, "audio/wav")},
-            data={
-                "response_format": "json",
-                "language": language or self.config.language,
-                "temperature": "0.0",
-            },
-        )
+        try:
+            response = await self._client.post(
+                self._url + "/inference",
+                files={"file": ("speech.wav", audio, "audio/wav")},
+                data={
+                    "response_format": "json",
+                    "language": language or self.config.language,
+                    "temperature": "0.0",
+                },
+            )
+            heard = response.json() if response.status_code == 200 else None
+        except (httpx.HTTPError, ValueError) as exc:  # server gone, timeout, not JSON
+            self._ready = False  # check again whether it is there next time
+            raise ToolError(f"speech recognition failed: {exc!r}") from exc
         if response.status_code != 200:
             raise ToolError(f"speech recognition failed ({response.status_code})")
-        return str(response.json().get("text", "")).strip()
+        return str(heard.get("text", "")).strip() if isinstance(heard, dict) else ""
 
     @tool
     async def transcribe(self, path: str, language: str = "") -> dict[str, Any]:

@@ -3,11 +3,12 @@
 from __future__ import annotations
 
 import difflib
+import logging
 from pathlib import Path
 from typing import Any
 
 import yaml
-from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_validator
+from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator, model_validator
 
 from starlight.core.fsutil import write_atomic
 from starlight.core.paths import Paths
@@ -25,6 +26,14 @@ class LoggingConfig(_Strict):
     level: str = "INFO"
     max_bytes: int = Field(default=5_000_000, gt=0)
     backups: int = Field(default=5, ge=0)
+
+    @field_validator("level")
+    @classmethod
+    def _known_level(cls, value: str) -> str:
+        level = value.strip().upper()
+        if level not in logging.getLevelNamesMapping():
+            raise ValueError("must be one of DEBUG, INFO, WARNING, ERROR, CRITICAL")
+        return level
 
 
 class AgentConfig(_Strict):

@@ -3,11 +3,12 @@
 `write_docx` turns simple text into a Word document (lines starting with "# " become
 headings, "- " bullet points); `write_xlsx` makes a spreadsheet from rows; `append_rows`
 adds rows to an existing sheet. New files go in your Starlight folder; a path anywhere else
-asks first, and an existing file is only changed after you say yes.
+asks first, and so does reading or adding to an existing file outside it.
 """
 
 from __future__ import annotations
 
+import asyncio
 from pathlib import Path
 from typing import Any
 
@@ -76,39 +77,33 @@ class OfficeModule(Module):
             raise OfficeError(f"{found.name} is larger than {self.config.max_file_mb} MB")
         return found
 
-    async def _target(self, path: str, suffix: str, replace: bool = False) -> Path:
+    async def _may_read(self, file: Path) -> None:
+        if not self.guard.is_free(file) and not await self.ctx.ui.confirm(
+            f"Let Starlight read this file?\n  {file}"
+        ):
+            raise OfficeError(f"the user did not allow reading {file}")
+
+    async def _target(self, path: str, suffix: str) -> Path:
         name = path if path.lower().endswith(suffix) else f"{path}{suffix}"
         found = self.guard.resolve(name)
         target = found.path
-        if target.exists() and not replace:
+        if target.exists():
             raise OfficeError(f"{target.name} already exists; give another name")
-        if not found.new_free or target.exists():  # replacing always asks
-            verb = "Replace" if target.exists() else "Save"
-            if not await self.ctx.ui.confirm(f"{verb} {target}?"):
-                raise OfficeError("not confirmed, nothing was written")
+        if not found.new_free and not await self.ctx.ui.confirm(f"Save {target}?"):
+            raise OfficeError("not confirmed, nothing was written")
         target.parent.mkdir(parents=True, exist_ok=True)
         return target
 
     # -- Word ----------------------------------------------------------------------------
 
     @tool
-    def read_docx(self, path: str, max_chars: int = 0) -> dict[str, Any]:
+    async def read_docx(self, path: str, max_chars: int = 0) -> dict[str, Any]:
         """The text of a Word document (headings, paragraphs and tables). A name is looked
-        up in your Starlight folder; give a full path for elsewhere."""
+        up in your Starlight folder; give a full path for elsewhere (that asks first)."""
         docx = self._lib("docx")
         file = self._existing(path, ".docx")
-        document = docx.Document(str(file))
-        parts: list[str] = []
-        for paragraph in document.paragraphs:
-            text = paragraph.text.strip()
-            if not text:
-                continue
-            style = (paragraph.style.name or "").lower() if paragraph.style is not None else ""
-            parts.append(f"# {text}" if style.startswith(("heading", "title")) else text)
-        for index, table in enumerate(document.tables, 1):
-            parts.append(f"[Table {index}]")
-            parts += [" | ".join(cell.text.strip() for cell in row.cells) for row in table.rows]
-        text = "\n".join(parts)
+        await self._may_read(file)
+        text = await asyncio.to_thread(_docx_text, docx, file)
         if max_chars > 0 and len(text) > max_chars:
             text = text[:max_chars] + "…"
         return {"file": str(file), "characters": len(text), "text": text}
@@ -123,61 +118,22 @@ class OfficeModule(Module):
         if not content.strip():
             raise OfficeError("give the text for the document")
         target = await self._target(name, ".docx")
-        document = docx.Document()
-        if title.strip():
-            document.add_heading(title.strip(), level=0)
-        paragraph: list[str] = []
-
-        def flush() -> None:
-            if paragraph:
-                document.add_paragraph(" ".join(paragraph))
-                paragraph.clear()
-
-        for raw in content.splitlines():
-            line = raw.rstrip()
-            if not line.strip():
-                flush()
-            elif line.startswith("#"):
-                flush()
-                level = min(len(line) - len(line.lstrip("#")), 4)
-                document.add_heading(line.lstrip("#").strip(), level=level)
-            elif line.lstrip().startswith(("- ", "* ", "• ")):
-                flush()
-                document.add_paragraph(line.lstrip()[2:].strip(), style="List Bullet")
-            else:
-                paragraph.append(line.strip())
-        flush()
-        document.save(str(target))
+        await asyncio.to_thread(_save_docx, docx, target, title, content)
         await self.ctx.publish("files.saved", {"path": str(target)})
         return {"saved": str(target)}
 
     # -- Excel ---------------------------------------------------------------------------
 
     @tool
-    def read_xlsx(self, path: str, sheet: str = "", max_rows: int = 0) -> dict[str, Any]:
+    async def read_xlsx(self, path: str, sheet: str = "", max_rows: int = 0) -> dict[str, Any]:
         """The cells of an Excel sheet as rows (the first sheet unless `sheet` is given),
-        plus the names of all sheets. Formulas show their last calculated value."""
+        plus the names of all sheets. Formulas show their last calculated value. A full
+        path outside your Starlight folder asks first."""
         openpyxl = self._lib("xlsx")
         file = self._existing(path, ".xlsx")
-        book = openpyxl.load_workbook(str(file), read_only=True, data_only=True)
-        try:
-            names = list(book.sheetnames)
-            if sheet and sheet not in names:
-                raise OfficeError(f"no sheet '{sheet}'; sheets: {', '.join(names)}")
-            worksheet = book[sheet or names[0]]
-            limit = min(max_rows or self.config.max_rows, self.config.max_rows)
-            rows: list[list[Cell]] = []
-            total = 0
-            for row in worksheet.iter_rows(values_only=True):
-                if all(v is None for v in row):
-                    continue
-                total += 1
-                if len(rows) < limit:
-                    rows.append([_plain(v) for v in row])
-        finally:
-            book.close()
-        return {"file": str(file), "sheets": names, "sheet": worksheet.title, "rows": rows,
-                "total_rows": total, "shown": len(rows)}  # fmt: skip
+        await self._may_read(file)
+        limit = min(max_rows or self.config.max_rows, self.config.max_rows)
+        return await asyncio.to_thread(_read_sheet, openpyxl, file, sheet, limit)
 
     @tool
     async def write_xlsx(
@@ -190,16 +146,7 @@ class OfficeModule(Module):
         if not rows:
             raise OfficeError("give at least one row")
         target = await self._target(name, ".xlsx")
-        book = openpyxl.Workbook()
-        worksheet = book.active
-        worksheet.title = sheet[:31] or "Sheet1"
-        for row in rows:
-            worksheet.append([_safe_cell(worksheet, v) for v in row])
-        if bold_header:
-            for cell in worksheet[1]:
-                cell.font = openpyxl.styles.Font(bold=True)
-        _fit_columns(worksheet)
-        book.save(str(target))
+        await asyncio.to_thread(_save_xlsx, openpyxl, target, rows, sheet, bold_header)
         await self.ctx.publish("files.saved", {"path": str(target)})
         return {"saved": str(target), "rows": len(rows)}
 
@@ -217,15 +164,100 @@ class OfficeModule(Module):
             f"Add {len(rows)} row(s) to {file}?"
         ):
             raise OfficeError("not confirmed, nothing was changed")
-        book = openpyxl.load_workbook(str(file))
-        if sheet and sheet not in book.sheetnames:
-            raise OfficeError(f"no sheet '{sheet}'; sheets: {', '.join(book.sheetnames)}")
-        worksheet = book[sheet] if sheet else book.active
-        for row in rows:
-            worksheet.append([_safe_cell(worksheet, v) for v in row])
-        book.save(str(file))
-        return {"file": str(file), "sheet": worksheet.title, "added": len(rows),
-                "total_rows": worksheet.max_row}  # fmt: skip
+        return await asyncio.to_thread(_append_to_sheet, openpyxl, file, rows, sheet)
+
+
+def _docx_text(docx: Any, file: Path) -> str:
+    document = docx.Document(str(file))
+    parts: list[str] = []
+    for paragraph in document.paragraphs:
+        text = paragraph.text.strip()
+        if not text:
+            continue
+        style = (paragraph.style.name or "").lower() if paragraph.style is not None else ""
+        parts.append(f"# {text}" if style.startswith(("heading", "title")) else text)
+    for index, table in enumerate(document.tables, 1):
+        parts.append(f"[Table {index}]")
+        parts += [" | ".join(cell.text.strip() for cell in row.cells) for row in table.rows]
+    return "\n".join(parts)
+
+
+def _save_docx(docx: Any, target: Path, title: str, content: str) -> None:
+    document = docx.Document()
+    if title.strip():
+        document.add_heading(title.strip(), level=0)
+    paragraph: list[str] = []
+
+    def flush() -> None:
+        if paragraph:
+            document.add_paragraph(" ".join(paragraph))
+            paragraph.clear()
+
+    for raw in content.splitlines():
+        line = raw.rstrip()
+        if not line.strip():
+            flush()
+        elif line.startswith("#"):
+            flush()
+            level = min(len(line) - len(line.lstrip("#")), 4)
+            document.add_heading(line.lstrip("#").strip(), level=level)
+        elif line.lstrip().startswith(("- ", "* ", "• ")):
+            flush()
+            document.add_paragraph(line.lstrip()[2:].strip(), style="List Bullet")
+        else:
+            paragraph.append(line.strip())
+    flush()
+    document.save(str(target))
+
+
+def _read_sheet(openpyxl: Any, file: Path, sheet: str, limit: int) -> dict[str, Any]:
+    book = openpyxl.load_workbook(str(file), read_only=True, data_only=True)
+    try:
+        names = list(book.sheetnames)
+        if sheet and sheet not in names:
+            raise OfficeError(f"no sheet '{sheet}'; sheets: {', '.join(names)}")
+        worksheet = book[sheet or names[0]]
+        rows: list[list[Cell]] = []
+        total = 0
+        for row in worksheet.iter_rows(values_only=True):
+            if all(v is None for v in row):
+                continue
+            total += 1
+            if len(rows) < limit:
+                rows.append([_plain(v) for v in row])
+    finally:
+        book.close()
+    return {"file": str(file), "sheets": names, "sheet": worksheet.title, "rows": rows,
+            "total_rows": total, "shown": len(rows)}  # fmt: skip
+
+
+def _save_xlsx(
+    openpyxl: Any, target: Path, rows: list[list[Cell]], sheet: str, bold_header: bool
+) -> None:
+    book = openpyxl.Workbook()
+    worksheet = book.active
+    worksheet.title = sheet[:31] or "Sheet1"
+    for row in rows:
+        worksheet.append([_safe_cell(worksheet, v) for v in row])
+    if bold_header:
+        for cell in worksheet[1]:
+            cell.font = openpyxl.styles.Font(bold=True)
+    _fit_columns(worksheet)
+    book.save(str(target))
+
+
+def _append_to_sheet(
+    openpyxl: Any, file: Path, rows: list[list[Cell]], sheet: str
+) -> dict[str, Any]:
+    book = openpyxl.load_workbook(str(file))
+    if sheet and sheet not in book.sheetnames:
+        raise OfficeError(f"no sheet '{sheet}'; sheets: {', '.join(book.sheetnames)}")
+    worksheet = book[sheet] if sheet else book.active
+    for row in rows:
+        worksheet.append([_safe_cell(worksheet, v) for v in row])
+    book.save(str(file))
+    return {"file": str(file), "sheet": worksheet.title, "added": len(rows),
+            "total_rows": worksheet.max_row}  # fmt: skip
 
 
 def _plain(value: Any) -> Cell:

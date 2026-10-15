@@ -86,6 +86,14 @@ def python_command(command: list[str]) -> list[str]:
     return command
 
 
+def _ssh_folder() -> list[Path]:
+    """The real ~/.ssh, found here because inside the sandbox HOME is the work folder."""
+    try:
+        return [Path.home() / ".ssh"]
+    except RuntimeError:  # no home folder known
+        return []
+
+
 def _tail(data: bytes, limit: int = 20000) -> str:
     return data.decode(errors="replace")[-limit:]
 
@@ -95,7 +103,7 @@ class ProcessSandbox:
 
     def __init__(self, work_root: Path, deny: list[Path], memory_mb: int = 1024) -> None:
         self.work_root = work_root
-        self.deny = [str(p.resolve()) for p in deny]
+        self.deny = [str(p.resolve()) for p in [*deny, *_ssh_folder()]]
         self.memory_mb = memory_mb
         self._procs: set[asyncio.subprocess.Process] = set()
 

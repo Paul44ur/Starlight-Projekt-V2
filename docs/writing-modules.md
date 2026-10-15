@@ -5,13 +5,14 @@ A module is a folder in `modules/`. The core finds it at start-up; you never edi
 ## 1. Create it from the template
 
 ```bash
-starlight modules new weather
+starlight modules new my_weather
 ```
 
-This copies `modules/_template/` to `modules/weather/` and renames the class.
+This copies `modules/_template/` to `modules/my_weather/` and renames the class. (Pick a
+name that is not taken yet: a `weather` module already ships with Starlight.)
 
 ```
-modules/weather/
+modules/my_weather/
   module.yaml   manifest
   module.py     code
   __init__.py
@@ -21,12 +22,12 @@ modules/weather/
 ## 2. The manifest (`module.yaml`)
 
 ```yaml
-name: weather              # must match the folder name: lowercase, digits, _
+name: my_weather           # must match the folder name: lowercase, digits, _
 version: 0.1.0
 description: Current weather for a city
 keywords: [rain, forecast, Wetter]  # extra words (synonyms, other languages) for routing
-entrypoint: module:WeatherModule   # file:class
-permissions: [safe]        # the highest permission any of its tools needs
+entrypoint: module:MyWeatherModule   # file:class
+permissions: [safe, confirm]  # for the reader only; each tool's @tool tag decides
 dependencies: []           # modules that must load first
 enabled_by_default: true
 ```
@@ -41,11 +42,11 @@ from pydantic import BaseModel
 from starlight.core import Event, Module, ModuleContext, Permission, tool
 
 
-class Config(BaseModel):  # read from config/modules/weather.yaml
+class Config(BaseModel):  # read from config/modules/my_weather.yaml
     units: str = "metric"
 
 
-class WeatherModule(Module):
+class MyWeatherModule(Module):
     Config = Config
     subscriptions: ClassVar[list[str]] = ["task.completed"]
 
@@ -153,13 +154,13 @@ for the rest of the session.
 ## 5. Try it
 
 ```bash
-starlight tools                                   # is your tool listed?
-starlight ask '!weather.current {"city": "Wien"}' # call it directly (echo provider)
-starlight modules disable weather
-starlight modules enable weather
+starlight tools                                      # is your tool listed?
+starlight ask '!my_weather.current {"city": "Wien"}'  # call it directly (echo provider)
+starlight modules disable my_weather
+starlight modules enable my_weather
 ```
 
-In `starlight run`, `/reload weather` hot-reloads your code without restarting.
+In `starlight run`, `/reload my_weather` hot-reloads your code without restarting.
 
 If your module raises an exception in `setup`, a tool or `on_event`, the error goes to the
 logs and the module (or that one call) fails. The core and the other modules keep running.

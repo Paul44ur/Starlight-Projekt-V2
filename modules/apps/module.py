@@ -1,7 +1,8 @@
 """Open programs, files and links, and handle windows on this PC.
 
-- `open` starts any installed program by name (from the Start menu). The first time a
-  program is opened Starlight asks; once you said yes it opens without asking.
+- `open` starts any installed program by name (from the Start menu). With `ask_first_open`
+  on (the shipped config turns it off) Starlight asks the first time a program is opened;
+  once you said yes it opens without asking.
 - `open_file` opens a document with its usual program; `open_url` a web link in your
   browser. Programs and scripts are never opened as files.
 - `windows`, `focus`, `minimize`, `maximize`, `restore` arrange what is open; `close`
@@ -11,13 +12,13 @@
 from __future__ import annotations
 
 import difflib
-import json
 import re
 from typing import Any
 
 from pydantic import BaseModel, Field
 
 from starlight.core import Module, ModuleContext, Permission, ToolError, tool
+from starlight.core.jsonfile import load_json, save_json
 from starlight.core.safepaths import PathGuard, expand
 
 from .backends import AppsUnavailable, Backend, Program, Window, detect
@@ -86,7 +87,7 @@ class AppsModule(Module):
                 return group[0]
             if group:
                 shortest = min(group, key=lambda p: len(p.name))
-                if group is exact or len(shortest.name) <= len(wanted) + 3:
+                if len(shortest.name) <= len(wanted) + 3:
                     return shortest
                 options = ", ".join(p.name for p in group[:8])
                 raise ToolError(f"'{name}' could be: {options}. Say which one.")
@@ -96,12 +97,12 @@ class AppsModule(Module):
 
     def _allowed(self) -> set[str]:
         try:
-            return set(json.loads(self.allowed_file.read_text("utf-8")))
-        except (OSError, json.JSONDecodeError, TypeError):
+            return {n for n in load_json(self.allowed_file, []) if isinstance(n, str)}
+        except OSError:  # locked: ask again rather than fail
             return set()
 
     def _save_allowed(self, names: set[str]) -> None:
-        self.allowed_file.write_text(json.dumps(sorted(names), indent=2), encoding="utf-8")
+        save_json(self.allowed_file, sorted(names))
 
     @tool
     def installed(self, search: str = "", refresh: bool = False) -> dict[str, Any]:
@@ -113,22 +114,24 @@ class AppsModule(Module):
 
     @tool
     async def open(self, name: str) -> dict[str, Any]:
-        """Start an installed program by name, e.g. "Spotify", "Word", "Steam". The first
-        time asks; after a yes that program opens without asking."""
+        """Start an installed program by name, e.g. "Spotify", "Word", "Steam". If the
+        setting ask_first_open is on, it asks the first time; after a yes that program opens
+        without asking."""
         program = self._match(name)
-        allowed = self._allowed()
-        if self.config.ask_first_open and program.name not in allowed:
-            if not await self.ctx.ui.confirm(
-                f"Open {program.name}? (Next time it opens without asking.)"
-            ):
-                raise ToolError("not confirmed, nothing was started")
-            self._save_allowed(allowed | {program.name})
+        if self.config.ask_first_open:
+            allowed = self._allowed()
+            if program.name not in allowed:
+                if not await self.ctx.ui.confirm(
+                    f"Open {program.name}? (Next time it opens without asking.)"
+                ):
+                    raise ToolError("not confirmed, nothing was started")
+                self._save_allowed(allowed | {program.name})
         self._guarded(self.backend.start, program)
         return {"opened": program.name}
 
     @tool
     def forget(self, name: str) -> dict[str, Any]:
-        """Make a program ask again before Starlight opens it."""
+        """Make a program ask again before Starlight opens it (when ask_first_open is on)."""
         allowed = self._allowed()
         match = next((a for a in allowed if a.lower() == name.strip().lower()), None)
         if match is None:

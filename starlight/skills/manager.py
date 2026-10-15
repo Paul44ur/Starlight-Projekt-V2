@@ -9,6 +9,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 import re
 import shutil
@@ -20,6 +21,7 @@ from typing import Any
 import numpy as np
 
 from starlight.core.config import SkillsConfig
+from starlight.core.jsonfile import load_json, save_json
 from starlight.core.logging import get_logger
 from starlight.core.model import Message, ModelProvider
 from starlight.core.paths import Paths
@@ -127,12 +129,13 @@ class SkillManager:
         self.history = SkillHistory(paths.skills, paths.data / "skills.git")
         self.task_log_file = paths.data / "skill_tasks.json"
         self._vectors: dict[str, tuple[str, Any]] = {}
+        self._task_lock = asyncio.Lock()
         self._log = get_logger("skills")
 
     # -- managing ----------------------------------------------------------------------
 
-    def all(self, status: str | None = None) -> list[Skill]:
-        return [s for s in self.store.all() if status is None or s.status == status]
+    def all(self, status: str | None = None, files: bool = True) -> list[Skill]:
+        return [s for s in self.store.all(files) if status is None or s.status == status]
 
     def get(self, name: str) -> Skill | None:
         return self.store.get(name)
@@ -147,8 +150,9 @@ class SkillManager:
     def _record_counts(self) -> None:
         if self.stats is None:
             return
-        for status, count in Counter(s.status for s in self.store.all()).items():
-            self.stats.record("skills.count", count, status=status)
+        counts = Counter(s.status for s in self.store.all(files=False))
+        for status in ("draft", "approved", "rejected"):  # zeros too: the viewer shows the latest
+            self.stats.record("skills.count", counts[status], status=status)
 
     def draft(
         self,
@@ -246,7 +250,7 @@ class SkillManager:
         return vector
 
     async def relevant(self, request: str) -> list[tuple[Skill, float]]:
-        approved = self.all("approved")
+        approved = self.all("approved", files=False)  # runs on every request
         if not approved or self.config.max_in_prompt <= 0:
             return []
         [query] = await self.embedder.embed([request])
@@ -268,15 +272,6 @@ class SkillManager:
 
     # -- learning from tasks -----------------------------------------------------------
 
-    def _task_log(self) -> dict[str, Any]:
-        if not self.task_log_file.is_file():
-            return {}
-        try:
-            data = json.loads(self.task_log_file.read_text(encoding="utf-8"))
-        except json.JSONDecodeError:
-            return {}
-        return data if isinstance(data, dict) else {}
-
     async def on_task(self, data: dict[str, Any]) -> Skill | None:
         """Called after each successful task. Drafts a skill when a task repeats."""
         if not (self.config.enabled and self.config.auto_draft):
@@ -287,18 +282,18 @@ class SkillManager:
         signature = _signature([r.tool for r in results])
         if not signature:
             return None
-        log = self._task_log()
-        entry = log.setdefault(signature, {"count": 0, "requests": [], "skill": None})
-        entry["count"] += 1
-        entry["requests"] = [*entry["requests"], str(data.get("request", ""))][-3:]
-        skill = None
-        if entry["count"] >= self.config.repeat_threshold and not (
-            entry["skill"] and self.store.get(entry["skill"])
-        ):
-            skill = await self._draft_from(signature, entry, data, results)
-            entry["skill"] = skill.name
-        self.task_log_file.parent.mkdir(parents=True, exist_ok=True)
-        self.task_log_file.write_text(json.dumps(log, indent=2), encoding="utf-8")
+        async with self._task_lock:  # tasks finish together; drafting awaits the model
+            log: dict[str, Any] = load_json(self.task_log_file, {})
+            entry = log.setdefault(signature, {"count": 0, "requests": [], "skill": None})
+            entry["count"] += 1
+            entry["requests"] = [*entry["requests"], str(data.get("request", ""))][-3:]
+            skill = None
+            if entry["count"] >= self.config.repeat_threshold and not (
+                entry["skill"] and self.store.get(entry["skill"], files=False)
+            ):
+                skill = await self._draft_from(signature, entry, data, results)
+                entry["skill"] = skill.name
+            save_json(self.task_log_file, log)
         return skill
 
     async def _draft_from(
@@ -356,9 +351,10 @@ class SkillManager:
         target = modules_dir / module_name
         if target.exists():
             raise FileExistsError(f"{target} already exists")
-        shutil.copytree(
-            modules_dir / "_template", target, ignore=shutil.ignore_patterns("__pycache__")
-        )
+        template = modules_dir / "_template"
+        if not template.is_dir():
+            raise KeyError(f"module template not found: {template}")
+        shutil.copytree(template, target, ignore=shutil.ignore_patterns("__pycache__"))
         class_name = "".join(p.capitalize() for p in module_name.split("_")) + "Module"
         for file in target.rglob("*"):
             if file.is_file() and file.suffix in (".py", ".yaml", ".md"):
@@ -387,7 +383,7 @@ class SkillManager:
             """Skills you learned, with their status (only approved ones are used)."""
             return [
                 {"name": s.name, "status": s.status, "description": s.description}
-                for s in self.all()
+                for s in self.all(files=False)
             ]
 
         def show(name: str) -> str:

@@ -28,7 +28,6 @@ COMMON: list[tuple[int, str]] = [
     (1433, "mssql"),
     (5900, "vnc"),
     (111, "rpcbind"),
-    (995, "pop3s"),
     (465, "smtps"),
     (631, "ipp"),
     (161, "snmp"),

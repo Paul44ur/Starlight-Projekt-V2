@@ -1,6 +1,8 @@
 """Ping and interact with your own servers.
 
-Only hosts listed in ``config/servers.yaml`` can be touched; anything else is refused:
+Only hosts listed in ``config/servers.yaml`` can be touched; anything else is refused
+(unless ``any_host`` is switched on in config/modules/network.yaml, which lets any host be
+pinged, checked and contacted; SSH still needs the login settings listed here):
 
     servers:
       homeserver:
@@ -14,7 +16,8 @@ Only hosts listed in ``config/servers.yaml`` can be touched; anything else is re
           known_hosts: ~/.ssh/known_hosts
 
 Read-only checks run freely. Commands that change a server (restart, write, delete) and
-arbitrary requests need your confirmation.
+arbitrary requests ask first by default (the shipped config/starlight.yaml auto-approves
+them: remove them from ``permissions: auto_approve`` to be asked).
 """
 
 from __future__ import annotations
@@ -91,7 +94,8 @@ class NetworkModule(Module):
 
     async def setup(self, ctx: ModuleContext) -> None:
         self.config: Config = ctx.config
-        self._ssh: dict[str, Any] = {}
+        # Open SSH connections, by (name, host, port, user): a changed setting reconnects.
+        self._ssh: dict[tuple[str, str, int, str], Any] = {}
         self._client = httpx.AsyncClient(timeout=self.config.timeout, verify=True)
         self._up: dict[str, bool] = {}
         ctx.kill_switch.add_cleanup(self._close_ssh, owner=ctx.name)
@@ -106,6 +110,11 @@ class NetworkModule(Module):
         for conn in self._ssh.values():
             conn.close()
         self._ssh.clear()
+
+    def _drop_ssh(self, name: str) -> None:
+        """Forget (and close) the connections to one server, so the next call reconnects."""
+        for key in [k for k in self._ssh if k[0] == name]:
+            self._ssh.pop(key).close()
 
     # -- allow-list --------------------------------------------------------------------
 
@@ -222,9 +231,14 @@ class NetworkModule(Module):
     def forget(self, name: str) -> dict[str, Any]:
         """Remove a server from the allow-list so Starlight can no longer reach it."""
         servers = self._servers()
-        key, _ = self._server(name)  # accepts the name or the host
-        servers.pop(key, None)
+        # The name or the host of a listed server (not any_host's stand-in for unlisted ones).
+        by_host = next((k for k, s in servers.items() if s.host == name), None)
+        key = name if name in servers else by_host
+        if key is None:
+            raise NotAllowed(f"'{name}' is not on the list in {SERVERS_FILE}, nothing to forget")
+        del servers[key]
         self._write_servers(servers)
+        self._drop_ssh(key)
         self.ctx.logger.info("server forgotten", name=key)
         return {"forgot": key}
 
@@ -245,7 +259,10 @@ class NetworkModule(Module):
         started = time.perf_counter()
         try:
             proc = await asyncio.create_subprocess_exec(
-                *cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.STDOUT
+                *cmd,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.STDOUT,
+                creationflags=0x08000000 if sys.platform == "win32" else 0,  # no console window
             )
             out, _ = await asyncio.wait_for(proc.communicate(), timeout + 2)
         except (OSError, TimeoutError):
@@ -355,7 +372,8 @@ class NetworkModule(Module):
         body: str = "",
         headers: dict[str, str] | None = None,
     ) -> dict[str, Any]:
-        """Any HTTP/REST call (POST, PUT, DELETE ...) to one of your servers. Asks first."""
+        """Any HTTP/REST call (POST, PUT, DELETE ...) to one of your servers. Asks first unless
+        auto-approved."""
         name, srv = self._server(server)
         response = await self._client.request(
             method.upper(), self._url(srv, path), content=body or None, headers=headers
@@ -363,10 +381,13 @@ class NetworkModule(Module):
         return {"server": name, "status": response.status_code, "body": response.text[:8000]}
 
     async def _connect(self, name: str, srv: Server) -> Any:
-        if name in self._ssh:
-            return self._ssh[name]
         if srv.ssh is None:
             raise NotAllowed(f"no ssh settings for '{name}' in {SERVERS_FILE}")
+        key = (name, srv.host, srv.ssh.port, srv.ssh.user)
+        cached = self._ssh.get(key)
+        if cached is not None and not cached.is_closed():
+            return cached
+        self._drop_ssh(name)  # dropped (the server rebooted, the network went away) or changed
         try:
             import asyncssh
         except ImportError as exc:
@@ -389,7 +410,7 @@ class NetworkModule(Module):
         conn = await asyncio.wait_for(
             asyncssh.connect(srv.host, **options), self.config.timeout * 3
         )
-        self._ssh[name] = conn
+        self._ssh[key] = conn
         return conn
 
     async def _ssh_exec(self, server: str, command: str, timeout: float) -> dict[str, Any]:
@@ -397,7 +418,11 @@ class NetworkModule(Module):
         conn = await self._connect(name, srv)
         self.ctx.kill_switch.check()
         started = time.perf_counter()
-        result = await asyncio.wait_for(conn.run(command, check=False), timeout)
+        try:
+            result = await asyncio.wait_for(conn.run(command, check=False), timeout)
+        except Exception:
+            self._drop_ssh(name)  # it may be dead (or hung): connect afresh next time
+            raise
         latency = round((time.perf_counter() - started) * 1000, 1)
         self._latency(name, "ssh", latency)
         return {
@@ -413,12 +438,13 @@ class NetworkModule(Module):
         """Run a read-only command over SSH (df, uptime, free, systemctl status, docker ps,
         journalctl ...). Commands that could change something are refused: use ssh_run."""
         if not is_read_only(command):
-            raise NotAllowed("not a read-only command; use network.ssh_run (asks first)")
+            raise NotAllowed("not a read-only command; use network.ssh_run")
         return await self._ssh_exec(server, command, 60)
 
     @tool(permission=Permission.CONFIRM, own_timeout=True)  # stops itself after `timeout`
     async def ssh_run(self, server: str, command: str, timeout: float = 300) -> dict[str, Any]:
-        """Run any command over SSH (restart, write, delete ...). Asks first."""
+        """Run any command over SSH (restart, write, delete ...). Asks first unless
+        auto-approved."""
         return await self._ssh_exec(server, command, timeout)
 
     @tool
@@ -443,7 +469,8 @@ class NetworkModule(Module):
 
     @tool(permission=Permission.CONFIRM)
     async def tcp_send(self, server: str, port: int, message: str) -> dict[str, Any]:
-        """Send a line over a raw TCP connection and read the reply. Asks first."""
+        """Send a line over a raw TCP connection and read the reply. Asks first unless
+        auto-approved."""
         name, srv = self._server(server)
         reader, writer = await asyncio.wait_for(
             asyncio.open_connection(srv.host, port), self.config.timeout
@@ -459,7 +486,7 @@ class NetworkModule(Module):
     @tool(permission=Permission.CONFIRM)
     async def websocket_send(self, server: str, message: str) -> dict[str, Any]:
         """Send one WebSocket message to the server's configured endpoint and read the
-        reply. Asks first."""
+        reply. Asks first unless auto-approved."""
         name, srv = self._server(server)
         if not srv.websocket:
             raise NotAllowed(f"no websocket URL configured for '{name}'")

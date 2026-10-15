@@ -1,4 +1,4 @@
-"""Review logs for leaked secrets (Step 10 hardening).
+"""Review logs for leaked secrets.
 
 Finds the vault's actual values and things that look like credentials (private keys,
 bearer tokens, API keys, ``password=...``). Reports file, line and kind, never the secret.

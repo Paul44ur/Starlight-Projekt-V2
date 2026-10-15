@@ -1,5 +1,5 @@
 """Metrics in data/stats.db (SQLite). The core and modules write; the statistics viewer
-(Step 10) only reads, so it keeps working when the AI is stopped."""
+only reads, so it keeps working when the AI is stopped."""
 
 from __future__ import annotations
 

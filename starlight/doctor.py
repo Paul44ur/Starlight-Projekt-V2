@@ -144,16 +144,23 @@ def check_model(
     elif provider == "llamacpp" and server.model_path:
         size = Path(server.model_path).stat().st_size
         results.append(ok("model file", f"{Path(server.model_path).name} ({size / GB:.1f} GB)"))
-    base = str(
-        options.get("base_url") or ("http://127.0.0.1:11434" if provider == "ollama" else "")
-    )
+    # The addresses the providers use when model.options.base_url is not set.
+    default = {
+        "ollama": "http://127.0.0.1:11434",
+        "llamacpp": "http://127.0.0.1:8080/v1",
+        "openai_compat": "http://127.0.0.1:8080/v1",
+    }
+    base = str(options.get("base_url") or default.get(provider, ""))
     base = base.rstrip("/").removesuffix("/v1")
     if not base:
         results.append(warn("model server", "no address configured", "set model.options.base_url"))
         return results
-    url = f"{base}/health" if provider != "ollama" else f"{base}/api/tags"
-    status, reason = get(url)
-    if status == 200:
+    # Only llama-server has /health. Another OpenAI-compatible server (LM Studio, vLLM)
+    # may not: any answer from its model list means it is up.
+    path = {"ollama": "/api/tags", "llamacpp": "/health"}.get(provider, "/v1/models")
+    status, reason = get(base + path)
+    answers = path == "/v1/models" and status is not None and status < 500
+    if status == 200 or answers:
         results.append(ok("model server", f"answers at {base}"))
     elif status == 503:
         results.append(warn("model server", "is up but still loading the model", "wait a minute"))

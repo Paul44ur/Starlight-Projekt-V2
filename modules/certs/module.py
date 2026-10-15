@@ -12,10 +12,10 @@ import ssl
 import time
 from typing import Any
 
-import yaml
 from pydantic import BaseModel, Field
 
 from starlight.core import Module, ModuleContext, ToolError, tool
+from starlight.core.config import read_yaml
 from starlight.core.tlsinfo import read_certificate
 
 SERVERS_FILE = "servers.yaml"
@@ -68,26 +68,23 @@ class CertsModule(Module):
             raise ToolError("give a host name, e.g. 'example.com'")
         try:
             raw = await asyncio.to_thread(self._read_cert, host, port)
-        except (OSError, ssl.SSLError) as exc:
+        except OSError as exc:  # also ssl.SSLError, a kind of OSError
             return {"host": host, "port": port, "error": f"could not read the certificate: {exc}"}
         return self._describe(host, port, raw)
 
     # -- servers.yaml --------------------------------------------------------------------
 
     def _configured_hosts(self) -> list[str]:
-        path = self.ctx.paths.config / SERVERS_FILE
-        if not path.exists():
+        servers = read_yaml(self.ctx.paths.config / SERVERS_FILE).get("servers") or {}
+        if not isinstance(servers, dict):
             return []
-        try:
-            data = yaml.safe_load(path.read_text("utf-8")) or {}
-        except yaml.YAMLError as exc:
-            raise ToolError(f"config/servers.yaml is not valid YAML: {exc}") from exc
-        servers = (data.get("servers") or {}) if isinstance(data, dict) else {}
-        hosts: list[str] = []
-        for entry in servers.values():
-            if isinstance(entry, dict) and entry.get("host"):
-                hosts.append(str(entry["host"]))
-        return hosts
+        return [str(e["host"]) for e in servers.values() if isinstance(e, dict) and e.get("host")]
+
+    async def _check_configured(self) -> list[dict[str, Any]]:
+        hosts = self._configured_hosts()
+        if not hosts:
+            raise ToolError("no servers are configured in config/servers.yaml")
+        return list(await asyncio.gather(*(self._check(h, 443) for h in hosts)))
 
     # -- tools ---------------------------------------------------------------------------
 
@@ -103,20 +100,14 @@ class CertsModule(Module):
     @tool
     async def check_all(self) -> dict[str, Any]:
         """Check the certificate of every server in config/servers.yaml (on port 443)."""
-        hosts = self._configured_hosts()
-        if not hosts:
-            raise ToolError("no servers are configured in config/servers.yaml")
-        results = await asyncio.gather(*(self._check(h, 443) for h in hosts))
-        return {"checked": len(results), "certificates": list(results)}
+        results = await self._check_configured()
+        return {"checked": len(results), "certificates": results}
 
     @tool
     async def expiring(self, days: int = 0) -> dict[str, Any]:
         """Which of your servers' certificates expire within `days` days (default 30)."""
         within = days or self.config.default_warn_days
-        hosts = self._configured_hosts()
-        if not hosts:
-            raise ToolError("no servers are configured in config/servers.yaml")
-        results = await asyncio.gather(*(self._check(h, 443) for h in hosts))
+        results = await self._check_configured()
         soon = [
             r for r in results if isinstance(r.get("days_left"), int) and r["days_left"] <= within
         ]

@@ -18,10 +18,15 @@ _BAD = re.compile(r'[<>:"/\\|?*\x00-\x1f]')
 
 
 MAX_NOTE_BYTES = 1_000_000  # a note this big is a document: start another one
+MAX_HITS = 100  # matching lines notes.find returns
 
 
 class Config(BaseModel):
     folder: str = "Notes"
+
+
+class NoteNotFound(ToolError):
+    pass
 
 
 class NotesModule(Module):
@@ -53,7 +58,7 @@ class NotesModule(Module):
         if matches:
             names = ", ".join(sorted(p.stem for p in matches)[:10])
             raise ToolError(f"'{title}' matches several notes: {names}")
-        raise ToolError(f"no note called '{title}'; see notes.list")
+        raise NoteNotFound(f"no note called '{title}'; see notes.list")
 
     @staticmethod
     def _stamp() -> str:
@@ -79,7 +84,7 @@ class NotesModule(Module):
             raise ToolError("what should be added?")
         try:
             path = self._find(title)
-        except ToolError:
+        except NoteNotFound:  # not "matches several notes": that one is for the user to settle
             return self.note(title, text)
         if path.stat().st_size + len(text.encode("utf-8")) > MAX_NOTE_BYTES:
             raise ToolError(
@@ -117,15 +122,15 @@ class NotesModule(Module):
         wanted = text.strip().casefold()
         if not wanted:
             raise ToolError("what should I look for?")
-        hits = []
+        hits: list[dict[str, Any]] = []
         for path in sorted(self.folder.glob("*.md")):
             for number, line in enumerate(
                 path.read_text("utf-8", errors="replace").splitlines(), 1
             ):
                 if wanted in line.casefold():
                     hits.append({"note": path.stem, "line": number, "text": line.strip()[:300]})
-            if len(hits) >= 100:
-                break
+                    if len(hits) >= MAX_HITS:  # enough: stop even in the middle of a note
+                        return {"count": len(hits), "matches": hits}
         return {"count": len(hits), "matches": hits}
 
     @tool

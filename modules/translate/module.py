@@ -68,15 +68,19 @@ def split(text: str, limit: int) -> list[str]:
     parts: list[str] = []
     current = ""
     for paragraph in text.strip().split("\n\n"):
-        while len(paragraph) > limit:  # one huge paragraph: cut at a sentence end
-            cut = paragraph.rfind(". ", 0, limit)
-            cut = cut + 1 if cut > limit // 2 else limit
-            parts.append(paragraph[:cut].strip())
-            paragraph = paragraph[cut:].strip()
-        if current and len(current) + len(paragraph) + 2 > limit:
+        rest = paragraph
+        if current and len(rest) > limit:  # keep the order: earlier paragraphs go first
             parts.append(current)
             current = ""
-        current = f"{current}\n\n{paragraph}" if current else paragraph
+        while len(rest) > limit:  # one huge paragraph: cut at a sentence end
+            cut = rest.rfind(". ", 0, limit)
+            cut = cut + 1 if cut > limit // 2 else limit
+            parts.append(rest[:cut].strip())
+            rest = rest[cut:].strip()
+        if current and len(current) + len(rest) + 2 > limit:
+            parts.append(current)
+            current = ""
+        current = f"{current}\n\n{rest}" if current else rest
     if current:
         parts.append(current)
     return parts

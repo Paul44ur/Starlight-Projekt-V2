@@ -289,10 +289,11 @@ function barList(id, items) {
   const c = document.getElementById(id);
   if (!items.length) return empty(c);
   c.innerHTML = "";
+  items = items.slice(0, 7);
   const W = c.clientWidth || 320, rowH = 26, H = Math.max(c.clientHeight, items.length * rowH);
   const svg = el("svg", {viewBox: `0 0 ${W} ${H}`, role: "img", "aria-label": "Tool calls per module"}, c);
   const labelW = 90, valueW = 48, max = Math.max(...items.map(i => i.calls));
-  items.slice(0, 7).forEach((item, i) => {
+  items.forEach((item, i) => {
     const yc = i * rowH + rowH / 2;
     const name = el("text", {x: 0, y: yc + 4, class: "tick"}, svg);
     name.textContent = item.module;

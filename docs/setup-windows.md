@@ -8,6 +8,11 @@ The commands below start with `uv run`. If you installed with `Starlight.exe`, u
 on your PATH: install it once with `winget install astral-sh.uv`, or type
 `tools\uv\uv.exe run` instead of `uv run`.
 
+Where a step says to change `config/starlight.yaml`, you can put the same lines into
+`config/starlight.local.yaml` instead (same layout, only the settings you change; a list
+there replaces the whole list). An update overwrites `starlight.yaml` but never
+`starlight.local.yaml`.
+
 ## The short way: Starlight.exe
 
 Double-click `Starlight.exe` in the Starlight folder. It does sections 1 and 2 below for

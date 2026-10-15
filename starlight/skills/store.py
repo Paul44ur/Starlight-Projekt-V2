@@ -66,7 +66,8 @@ class SkillStore:
             return []
         return sorted(p.parent.name for p in self.root.glob(f"*/{SKILL_FILE}"))
 
-    def get(self, name: str) -> Skill | None:
+    def get(self, name: str, files: bool = True) -> Skill | None:
+        """``files=False`` skips example.md and code/ (a lot to read, rarely needed)."""
         folder = self.folder(name)
         path = folder / SKILL_FILE
         if not path.is_file():
@@ -87,7 +88,7 @@ class SkillStore:
                 for p in sorted(code_dir.rglob("*"))
                 if p.is_file()
             }
-            if code_dir.is_dir()
+            if files and code_dir.is_dir()
             else {}
         )
         status = str(header.get("status", "draft"))
@@ -102,17 +103,17 @@ class SkillStore:
             source=str(header.get("source", "")),
             triggers=[str(t) for t in header.get("triggers") or []],
             tools=[str(t) for t in header.get("tools") or []],
-            example=example.read_text(encoding="utf-8") if example.is_file() else "",
+            example=example.read_text(encoding="utf-8") if files and example.is_file() else "",
             code=code,
         )
 
-    def all(self) -> list[Skill]:
+    def all(self, files: bool = True) -> list[Skill]:
         """Every skill that can be read. One hand-edited SKILL.md with a mistake (bad YAML,
         a version that is not a number) is skipped and logged, not fatal for the rest."""
         found: list[Skill] = []
         for name in self.names():
             try:
-                skill = self.get(name)
+                skill = self.get(name, files)
             except (OSError, ValueError, TypeError, yaml.YAMLError) as exc:
                 get_logger("skills").warning(
                     "skill skipped: SKILL.md could not be read", skill=name, error=str(exc)
@@ -125,13 +126,24 @@ class SkillStore:
     def write(self, skill: Skill) -> Path:
         folder = self.folder(skill.name)
         folder.mkdir(parents=True, exist_ok=True)
-        (folder / SKILL_FILE).write_text(skill.to_markdown(), encoding="utf-8")
-        if skill.example:
-            (folder / "example.md").write_text(skill.example.strip() + "\n", encoding="utf-8")
+        code_dir = (folder / "code").resolve()
+        targets: dict[Path, str] = {}
         for rel, content in skill.code.items():
-            target = (folder / "code" / rel).resolve()
-            if not target.is_relative_to(folder.resolve()):
+            target = (code_dir / rel).resolve()
+            if not target.is_relative_to(code_dir):
                 raise ValueError(f"invalid code file name: {rel}")
+            targets[target] = content
+        (folder / SKILL_FILE).write_text(skill.to_markdown(), encoding="utf-8")
+        example = folder / "example.md"
+        if skill.example:
+            example.write_text(skill.example.strip() + "\n", encoding="utf-8")
+        else:
+            example.unlink(missing_ok=True)  # a new version must not keep the old example
+        if code_dir.is_dir():
+            for old in code_dir.rglob("*"):
+                if old.is_file() and old.resolve() not in targets:
+                    old.unlink()  # ... nor code files it no longer has
+        for target, content in targets.items():
             target.parent.mkdir(parents=True, exist_ok=True)
             target.write_text(content, encoding="utf-8")
         return folder

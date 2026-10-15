@@ -270,10 +270,15 @@ then connect a model as in [docs/setup-windows.md](docs/setup-windows.md#2-the-m
 
 Your `memory`, `skills`, `data`, `logs`, `models` and `tools` folders, your
 `config\starlight.local.yaml` and the permission rules you set from the chat
-(`config\permissions.chat.yaml`) aren't part of the download, so they stay as they are. Keep
-a copy of any changes you made to the other files in `config`, because those files are
-overwritten. Files Starlight saved for you are in `Documents\Starlight`, outside the
-Starlight folder, so updates never touch them.
+(`config\permissions.chat.yaml`) aren't part of the download, so they stay as they are.
+The other files in `config` are overwritten. That includes what Starlight saves when you set
+something up from the chat: `config\servers.yaml` and the files in `config\modules` (your
+mail account, backup sets, document folders, named commands, calendar feeds, logins, news
+feeds, Home Assistant address, automations). Copy the `config` folder before you unpack, and
+put your entries back into the new files afterwards. Settings of your own, such as the
+model or the output folder, belong in `config\starlight.local.yaml`, which an update never
+touches. Files Starlight saved for you are in `Documents\Starlight`, outside the Starlight
+folder, so updates never touch them.
 
 **A way back.** `Starlight.exe --update` (new uv and llama.cpp) first copies `config`, `data`
 and `memory` to `backups\update-<date and time>` (the newest three copies are kept), and keeps
@@ -347,8 +352,9 @@ Always allow pinging my servers without asking.  -> a permission rule it remembe
 Show me what you're allowed to do.               -> servers, logins, secrets, permissions
 ```
 
-**Scanning and your servers.** Starlight only reaches hosts you've allowed, and a scan
-first asks you to confirm you own the host or are authorized to test it. It gathers
+**Scanning and your servers.** Starlight can ping and check any host (`any_host: true` in
+`config\modules\network.yaml`; set it to `false` to limit it to `config\servers.yaml`), and
+a scan first asks you to confirm you own the host or are authorized to test it. It gathers
 information (ports, services, certificates); it never attacks. A host you scan or ping
 can't flood your machine back — responses are capped.
 

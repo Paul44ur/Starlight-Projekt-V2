@@ -58,6 +58,8 @@ class ConversationStore:
     def __init__(self, folder: Path) -> None:
         self.folder = folder
         self._lock = threading.Lock()
+        # What the sidebar shows per file, kept until the file changes (see ``list``).
+        self._summaries: dict[Path, tuple[tuple[int, int, int], dict[str, Any]]] = {}
 
     def _file(self, conversation: str) -> Path:
         if not ID.match(conversation):
@@ -164,29 +166,42 @@ class ConversationStore:
         return "\n".join(lines).rstrip() + "\n"
 
     def list(self, search: str = "", limit: int = 200) -> list[dict[str, Any]]:
+        """The conversations, newest first. A file that did not change since the last call
+        is not read again (unless searching, which looks into the messages): the page asks
+        after every answer. Another program may write the files, so the key is the file's own
+        time, size and inode, as in ``stamp``."""
         wanted = search.strip().casefold()
         found: list[dict[str, Any]] = []
         if not self.folder.is_dir():
             return found
+        known: dict[Path, tuple[tuple[int, int, int], dict[str, Any]]] = {}
         for path in self.folder.glob("*.json"):
             try:
+                info = path.stat()
+                key = (info.st_mtime_ns, info.st_size, info.st_ino)
+                cached = self._summaries.get(path)
+                if cached is not None and cached[0] == key and not wanted:
+                    known[path] = cached
+                    found.append(dict(cached[1]))
+                    continue
                 data = json.loads(path.read_text("utf-8"))
             except (OSError, json.JSONDecodeError):
                 continue
             messages = data.get("messages", [])
+            summary = {
+                "id": path.stem,
+                "title": data.get("title") or "New conversation",
+                "updated": data.get("updated") or "",
+                "count": sum(1 for m in messages if m.get("role") == "user"),
+            }
+            known[path] = (key, summary)
             if (
                 wanted
                 and wanted not in (data.get("title") or "").casefold()
                 and not any(wanted in str(m.get("content", "")).casefold() for m in messages)
             ):
                 continue
-            found.append(
-                {
-                    "id": path.stem,
-                    "title": data.get("title") or "New conversation",
-                    "updated": data.get("updated") or "",
-                    "count": sum(1 for m in messages if m.get("role") == "user"),
-                },
-            )
+            found.append(dict(summary))
+        self._summaries = known
         found.sort(key=lambda c: c["updated"], reverse=True)
         return found[:limit]

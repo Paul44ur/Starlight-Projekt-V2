@@ -114,10 +114,6 @@ class Tool:
             return await self.func(**kwargs)
         return await asyncio.to_thread(self.func, **kwargs)
 
-    async def invoke(self, arguments: dict[str, Any]) -> Any:
-        """Validate arguments and run the tool."""
-        return await self.run(self.validate(arguments))
-
 
 def make_tool(
     module: str,

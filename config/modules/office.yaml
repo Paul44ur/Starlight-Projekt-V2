@@ -1,6 +1,6 @@
 # The office module (modules/office): Word and Excel files. Needs the 'office' extra
 # (python-docx, openpyxl), installed by Starlight.exe. New files go in your Starlight folder,
 # or anywhere you name without asking while output.write_anywhere is on (config/starlight.yaml);
-# adding rows to a file outside the Starlight folder asks first.
+# reading a file or adding rows to one outside the Starlight folder asks first.
 max_file_mb: 50
 max_rows: 500        # rows returned when reading a sheet (the rest is counted, not shown)

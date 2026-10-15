@@ -1,4 +1,6 @@
-# Servers Starlight may touch (Step 7). Anything not listed here is refused.
+# Your servers (Step 7), with their SSH logins and health checks. Other hosts work too while
+# `any_host: true` in config/modules/network.yaml; set it to false and anything not listed
+# here is refused.
 # Indentation matters: two spaces per level, no tabs. Changes apply right away.
 # SSH keys belong in the vault:  starlight vault set ssh.homeserver < ~/.ssh/id_ed25519
 

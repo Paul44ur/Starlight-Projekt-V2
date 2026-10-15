@@ -158,6 +158,51 @@ async def test_polite_and_careful(project: Paths, site: Site) -> None:
         assert k.dispatcher.get("watch.add").permission.value == "confirm"  # type: ignore[union-attr]
 
 
+async def test_a_watch_added_while_the_page_loads_does_not_undo_other_changes(
+    project: Paths, site: Site
+) -> None:
+    async with Kernel(project, http_transport=httpx.MockTransport(site.handler), ui=Yes()) as k:
+        await call(k, "watch.add", url="https://shop.example/k", name="News", part=".news")
+        watch = module(k)
+        read = watch._read
+
+        async def read_while_news_is_removed(url: str, part: str) -> tuple[str, str]:
+            result = await read(url, part)
+            watch._save([])  # e.g. a remove finishing while the page was being read
+            return result
+
+        watch._read = read_while_news_is_removed
+        await call(k, "watch.add", url="https://shop.example/k", name="Stock", part="#stock")
+        names = [w["name"] for w in (await call(k, "watch.list"))["watches"]]
+    assert names == ["Stock"]
+
+
+async def test_one_broken_watch_does_not_lose_the_round(project: Paths, site: Site) -> None:
+    async with Kernel(project, http_transport=httpx.MockTransport(site.handler), ui=Yes()) as k:
+        delivered: list[str] = []
+
+        async def on_deliver(event: Event) -> None:
+            delivered.append(event.data["text"])
+
+        k.bus.subscribe("deliver", on_deliver, owner="t")
+        await call(k, "watch.add", url="https://shop.example/k", name="News", part=".news")
+        watch = module(k)
+        broken = {"id": "bad", "name": "Broken", "url": "https://shop.example/k", "kind": "changes"}
+        watch._save([broken, *watch._load()])  # a record without "every_s"
+        clock = [watch._now() + 3601]
+        watch._now = lambda: clock[0]
+        site.news = "Version 2.0 released"
+        results = await watch.check_due()
+        await k.drain()
+        by_name = {r["name"]: r for r in results}
+        assert by_name["Broken"]["hit"] is False and "check failed" in by_name["Broken"]["error"]
+        assert by_name["News"]["hit"] is True
+        assert any("News changed" in d for d in delivered)
+        saved = {i["name"]: i for i in watch._load()}
+        assert saved["News"]["hits"] == 1 and saved["Broken"]["due"] > clock[0]
+        assert [r["name"] for r in await watch.check_due()] == []  # neither is due again yet
+
+
 def test_prices_with_the_currency_first() -> None:
     import sys
 

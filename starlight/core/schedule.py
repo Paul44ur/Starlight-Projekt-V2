@@ -97,6 +97,19 @@ def has_clock_time(text: str) -> bool:
     return bool(_CLOCK.search(text.lower()))
 
 
+# "in 2 hours", "in 30 min", "in an hour": a moment, not a day (parse_when's short forms)
+_RELATIVE_CLOCK = re.compile(
+    r"in\s+(?:\d+|an?|one)\s*(?:s|secs?|seconds?|m|mins?|minutes?|h|hrs?|hours?)"
+)
+
+
+def names_time_of_day(text: str) -> bool:
+    """Like has_clock_time, and also true for "in 2 hours" or "in 30 minutes": those name
+    a moment too, while "in 3 days" or "friday" mean the whole day."""
+    raw = text.strip().lower()
+    return has_clock_time(raw) or bool(_RELATIVE_CLOCK.fullmatch(raw))
+
+
 def parse_clock(text: str) -> tuple[int, int] | None:
     text = text.strip()
     ampm = re.fullmatch(r"(\d{1,2})(?::(\d{2}))?\s*(am|pm)", text)
@@ -262,9 +275,3 @@ def parse_schedule(text: str) -> Schedule:
             raise ScheduleError("a day of the month is 1 to 31")
         return Schedule("monthly", hour, minute, day=day)
     return Schedule("daily", hour, minute, weekdays=tuple(sorted(set(weekdays))))
-
-
-def next_occurrence(now: datetime, hour: int, minute: int, weekday: int | None) -> datetime:
-    """The next hour:minute (on ``weekday`` if given) after ``now``."""
-    days = (weekday,) if weekday is not None else ()
-    return Schedule("daily", hour, minute, weekdays=days).next_after(now)

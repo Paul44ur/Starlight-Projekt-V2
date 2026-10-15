@@ -290,11 +290,11 @@ def test_service_files(tmp_path: Path) -> None:
     assert startup / "Starlight core.lnk" in uninstall.remove
     assert set(uninstall.files) == {data / "SHUTDOWN.core", data / "SHUTDOWN.viewer"}
 
-    linux = linux_plan(tmp_path, "install", data, unit_dir=tmp_path / "units")
+    linux = linux_plan(tmp_path, "install", unit_dir=tmp_path / "units")
     unit = linux.files[tmp_path / "units" / "starlight-core.service"]
     assert f"--home {tmp_path} serve" in unit and "Restart=on-failure" in unit
     assert ["systemctl", "--user", "enable", "--now", "starlight-viewer.service"] in linux.commands
-    assert linux_plan(tmp_path, "stop", data).commands[0][:3] == ["systemctl", "--user", "stop"]
+    assert linux_plan(tmp_path, "stop").commands[0][:3] == ["systemctl", "--user", "stop"]
 
 
 def test_install_scripts_exist() -> None:

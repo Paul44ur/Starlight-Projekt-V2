@@ -43,20 +43,31 @@ class HomeModule(Module):
 
     # -- talking to Home Assistant ----------------------------------------------------------
 
-    async def _api(self, method: str, path: str, body: dict[str, Any] | None = None) -> Any:
+    async def _api(
+        self,
+        method: str,
+        path: str,
+        body: dict[str, Any] | None = None,
+        *,
+        url: str = "",
+        token: str = "",
+    ) -> Any:
+        """A call to Home Assistant. ``url`` and ``token`` try an address that is not saved
+        yet (home.connect); without them the saved ones are used."""
         self.ctx.kill_switch.check()
-        if not self.config.url:
+        url = url or self.config.url
+        if not url:
             raise ToolError(
                 "Home Assistant is not set up yet: give me its address and a long-lived "
                 "access token (home.connect)"
             )
-        token = self.ctx.vault.get(TOKEN_KEY)
+        token = token or self.ctx.vault.get(TOKEN_KEY) or ""
         if not token:
             raise ToolError(
                 "the Home Assistant token is missing; set it up again with home.connect"
             )
         async with httpx.AsyncClient(
-            base_url=self.config.url.rstrip("/"),
+            base_url=url.rstrip("/"),
             headers={"Authorization": f"Bearer {token}"},
             timeout=httpx.Timeout(15, connect=5),
             transport=self.transport,
@@ -142,6 +153,8 @@ class HomeModule(Module):
             raise ToolError("give a long-lived access token")
         if not await self.ctx.ui.confirm(f"Connect to Home Assistant at {address}?"):
             raise ToolError("not confirmed, nothing was saved")
+        # Try it first: a typo must not replace the address and token that work.
+        info = await self._api("GET", "/", url=address, token=token.strip())
         self.ctx.vault.set(TOKEN_KEY, token.strip())
         self.config.url = address
         write_yaml_config(
@@ -149,7 +162,6 @@ class HomeModule(Module):
             self.config.model_dump(),
             "# The home module (modules/home). The token is in the keyring (home.token).",
         )
-        info = await self._api("GET", "/")
         return {"connected": address, "message": (info or {}).get("message", "")}
 
     @tool

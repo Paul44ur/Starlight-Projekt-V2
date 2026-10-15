@@ -23,6 +23,7 @@ import hmac
 import json
 import re
 from collections import OrderedDict
+from collections.abc import Iterator
 from typing import Any
 
 import httpx
@@ -34,6 +35,7 @@ from starlight.core.ui import current_ui
 
 YES = {"y", "yes", "ja", "j", "ok", "okay", "sure", "allow", "approve"}
 MAX_TEXT = 4000  # WhatsApp allows 4096 characters per text message
+MAX_BODY = 1024**2  # Meta's deliveries are a few KB; the endpoint is public, so cap the rest
 
 
 class Config(BaseModel):
@@ -63,7 +65,8 @@ def valid_signature(secret: str, body: bytes, header: str | None) -> bool:
     if not header or not header.startswith("sha256="):
         return False
     expected = hmac.new(secret.encode(), body, hashlib.sha256).hexdigest()
-    return hmac.compare_digest(expected, header.removeprefix("sha256="))
+    # bytes: compare_digest raises TypeError on a non-ASCII str, and the header is untrusted
+    return hmac.compare_digest(expected.encode(), header.removeprefix("sha256=").encode())
 
 
 class WhatsAppUI:
@@ -76,8 +79,9 @@ class WhatsAppUI:
         loop = asyncio.get_running_loop()
         future: asyncio.Future[str] = loop.create_future()
         self.module.pending.append(future)
-        await self.module.send(text)
         try:
+            if not await self.module.send(text):
+                return None  # you never saw the question; do not wait for an answer
             return await asyncio.wait_for(future, self.module.config.reply_timeout)
         except TimeoutError:
             await self.module.send("No answer, so I did not do it.")
@@ -162,8 +166,13 @@ class WhatsAppModule(Module):
             self.app, host=self.config.host, port=self.config.port, log_level="warning",
             access_log=False, log_config=None,
         )  # fmt: skip
-        self._server = uvicorn.Server(config)
-        self._server.install_signal_handlers = lambda: None  # the core owns Ctrl+C
+
+        class WebhookServer(uvicorn.Server):
+            @contextlib.contextmanager
+            def capture_signals(self) -> Iterator[None]:
+                yield  # the core owns Ctrl+C; shutdown() stops this server
+
+        self._server = WebhookServer(config)
         self._server_task = asyncio.create_task(self._serve(), name="whatsapp-webhook")
         self.ctx.logger.info("webhook listening", host=self.config.host, port=self.config.port)
 
@@ -192,14 +201,24 @@ class WhatsAppModule(Module):
             if (
                 params.get("hub.mode") == "subscribe"
                 and expected
-                and hmac.compare_digest(token, expected)
+                and hmac.compare_digest(token.encode(), expected.encode())
             ):
                 return Response(params.get("hub.challenge", ""), media_type="text/plain")
             return Response(status_code=403)
 
         @app.post(path)
         async def receive(request: Request) -> Response:
-            body = await request.body()
+            declared = request.headers.get("content-length", "")
+            if declared.isdigit() and int(declared) > MAX_BODY:
+                return Response(status_code=413)
+            chunks: list[bytes] = []
+            size = 0
+            async for chunk in request.stream():
+                size += len(chunk)
+                if size > MAX_BODY:
+                    return Response(status_code=413)
+                chunks.append(chunk)
+            body = b"".join(chunks)
             secret = self.ctx.vault.get(self.config.app_secret_key) or ""
             if not secret or not valid_signature(
                 secret, body, request.headers.get("x-hub-signature-256")

@@ -114,7 +114,7 @@ const log = document.getElementById("log");
 const input = document.getElementById("input");
 const connPill = document.getElementById("conn");
 let ws, current = null, conversation = null, lastQuestion = null, attached = [];
-let answering = null, regenPending = false;  // see handle()
+let answering = null, regenPending = false, resync = false;  // see handle() and connect()
 
 function atBottom() { return log.scrollHeight - log.scrollTop - log.clientHeight < 80; }
 function scroll() { log.scrollTop = log.scrollHeight; }
@@ -174,8 +174,21 @@ function addSys(text) { const stick = atBottom(); log.appendChild(el("div", "msg
 
 function connect() {
   ws = new WebSocket((location.protocol === "https:" ? "wss://" : "ws://") + location.host + "/ws");
-  ws.onopen = () => { connPill.textContent = "connected"; connPill.className = "pill on"; };
-  ws.onclose = () => { connPill.textContent = "offline"; connPill.className = "pill off"; setTimeout(connect, 1500); };
+  ws.onopen = () => {
+    connPill.textContent = "connected"; connPill.className = "pill on";
+    if (resync && conversation) open(conversation);  // an answer that was replaced is shown again
+    resync = false;
+  };
+  ws.onclose = () => {
+    connPill.textContent = "offline"; connPill.className = "pill off";
+    // The server drops the answer in progress and the questions it was waiting on with the
+    // socket: forget them here too, or Regenerate would wait for an answer that never ends.
+    if (current || answering) addSys("Connection lost: the answer was interrupted.");
+    if (regenPending) resync = true;
+    current = null; answering = null; regenPending = false;
+    log.querySelectorAll(".confirm").forEach(card => card.remove());
+    setTimeout(connect, 1500);
+  };
   ws.onmessage = (ev) => handle(JSON.parse(ev.data));
 }
 

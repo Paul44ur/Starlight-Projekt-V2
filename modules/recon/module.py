@@ -23,7 +23,6 @@ import ipaddress
 import json
 import re
 import socket
-import ssl
 import sys
 from datetime import UTC, datetime
 from typing import Any
@@ -140,7 +139,7 @@ class ReconModule(Module):
             return list(range(1, 65536))[: self.config.max_ports]
         if not ports.strip():
             return [p for p, _ in COMMON[: self.config.top_ports]]
-        chosen: list[int] = []
+        chosen: dict[int, None] = {}  # a port named twice is scanned once
         for piece in ports.replace(",", " ").split():
             try:
                 value = int(piece)
@@ -148,10 +147,10 @@ class ReconModule(Module):
                 raise ToolError(f"'{piece}' is not a port number") from None
             if not 1 <= value <= 65535:
                 raise ToolError("ports are 1-65535")
-            chosen.append(value)
+            chosen[value] = None
         if len(chosen) > self.config.max_ports:
             raise ToolError(f"too many ports (limit {self.config.max_ports})")
-        return chosen
+        return list(chosen)
 
     # -- the scan ------------------------------------------------------------------------
 
@@ -159,19 +158,20 @@ class ReconModule(Module):
     async def scan(self, target: str, ports: str = "", full: bool = False) -> dict[str, Any]:
         """Scan one host you own or are authorized to test, and report everything found:
         open TCP ports, the service and banner on each, TLS certificates, HTTP headers, and
-        DNS. `target` is a single IP or hostname (not a range). `ports` is optional
-        (e.g. "22 80 443" or "8000-less" not supported - list them); empty scans the common
-        ports. full=true scans many more ports (slower, noisier). Asks you to confirm you
-        are authorized before anything is sent, and never attacks - it only gathers info."""
+        DNS. `target` is a single IP or hostname (not a range). `ports` is optional: port
+        numbers such as "22 80 443" (ranges are not supported - list them); empty scans the
+        common ports. full=true scans many more ports (slower, noisier). Asks you to confirm
+        you are authorized before anything is sent, and never attacks - it only gathers
+        info."""
         host = self._one_host(target)
-        ips = self._resolve(host)
+        ips = await asyncio.to_thread(self._resolve, host)  # a slow lookup must not block
         ip = ips[0]
         wanted = self._port_list(ports, full)
         desc = "the common ports" if not ports.strip() and not full else f"{len(wanted)} ports"
         await self._authorize(host, ip, desc)
         self.ctx.kill_switch.check()
 
-        dns = await self._dns(host, ips)
+        dns = await self._dns(ips)
         ping = await self._ping(ip)
         open_ports = await self._scan_ports(ip, wanted)
         details = await self._probe_open(host, ip, [p for p, _ in open_ports])
@@ -190,7 +190,7 @@ class ReconModule(Module):
             "note": f"{len(open_ports)} open of {len(wanted)} scanned. Reconnaissance only.",
         }
 
-    async def _dns(self, host: str, ips: list[str]) -> dict[str, Any]:
+    async def _dns(self, ips: list[str]) -> dict[str, Any]:
         reverse: dict[str, str] = {}
         for ip in ips:
             try:
@@ -214,7 +214,7 @@ class ReconModule(Module):
             return False
 
     async def _scan_ports(self, ip: str, ports: list[int]) -> list[tuple[int, str]]:
-        service = {p: s for p, s in COMMON}
+        service = dict(COMMON)
         semaphore = asyncio.Semaphore(self.config.concurrency)
         open_ports: list[tuple[int, str]] = []
 
@@ -282,14 +282,18 @@ class ReconModule(Module):
             reader, writer = await asyncio.wait_for(
                 asyncio.open_connection(ip, port), self.config.connect_timeout
             )
+        except (OSError, TimeoutError):
+            return {}
+        try:
             writer.write(request)
             await asyncio.wait_for(writer.drain(), self.config.read_timeout)
             raw = await asyncio.wait_for(reader.read(MAX_BANNER), self.config.read_timeout)
         except (OSError, TimeoutError):
             return {}
         finally:
-            with contextlib.suppress(Exception):
-                writer.close()
+            writer.close()
+            with contextlib.suppress(OSError, TimeoutError):
+                await asyncio.wait_for(writer.wait_closed(), 1)
         return self._parse_http(raw)
 
     @staticmethod
@@ -312,11 +316,11 @@ class ReconModule(Module):
 
     async def _tls(self, host: str, ip: str, port: int) -> dict[str, Any]:
         try:
-            reader, writer = await asyncio.wait_for(
+            _, writer = await asyncio.wait_for(
                 asyncio.open_connection(ip, port, ssl=unverified_context(), server_hostname=host),
                 self.config.connect_timeout,
             )
-        except (OSError, TimeoutError, ssl.SSLError) as exc:
+        except (OSError, TimeoutError) as exc:  # a failed handshake (SSLError) is an OSError
             return {"tls": f"handshake failed: {type(exc).__name__}"}
         try:
             ssl_object = writer.get_extra_info("ssl_object")
@@ -328,7 +332,6 @@ class ReconModule(Module):
             writer.close()
             with contextlib.suppress(Exception):
                 await asyncio.wait_for(writer.wait_closed(), 1)
-        del reader
         return {"tls": self._cert_summary(cert)}
 
     @staticmethod
@@ -340,12 +343,12 @@ class ReconModule(Module):
             flat = {k: v for rdn in parts for k, v in rdn}
             return flat.get("commonName") or flat.get("organizationName") or ""
 
+        expires = cert.get("notAfter")
         summary: dict[str, Any] = {
             "subject": name(cert.get("subject", [])),
             "issuer": name(cert.get("issuer", [])),
-            "expires": cert.get("notAfter"),
+            "expires": expires,
         }
-        expires = cert.get("notAfter")
         if expires:
             try:
                 when = datetime.strptime(expires, "%b %d %H:%M:%S %Y %Z").replace(tzinfo=UTC)
@@ -362,4 +365,4 @@ class ReconModule(Module):
         """Resolve a hostname to its IP addresses, and look up reverse DNS. Read-only, no
         confirmation needed."""
         host = self._one_host(host)
-        return await self._dns(host, self._resolve(host))
+        return await self._dns(await asyncio.to_thread(self._resolve, host))

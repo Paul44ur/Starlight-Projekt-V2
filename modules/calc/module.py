@@ -151,6 +151,10 @@ def _round_half_up(value: float, digits: int = 0) -> int | float:
     digits = int(digits)
     if isinstance(value, int) and digits >= 0:
         return value
+    if not isinstance(value, int | float) or (
+        isinstance(value, float) and not math.isfinite(value)
+    ):
+        raise ValueError("only a finite real number can be rounded")
     number = Decimal(repr(value))
     places = number.adjusted() + digits + 3  # digits the result has: 1e30 needs 31
     with localcontext(prec=max(28, places)):
@@ -214,8 +218,12 @@ def evaluate(expression: str, max_digits: int = 4000) -> int | float:
         result = walk(tree)
     except ZeroDivisionError as exc:
         raise ToolError("division by zero") from exc
-    except (ValueError, OverflowError, TypeError) as exc:
+    except (ValueError, ArithmeticError, TypeError) as exc:
         raise ToolError(f"cannot calculate that: {exc}") from exc
+    if isinstance(result, complex):  # (-8)^0.5; sqrt(-8) refuses as well
+        raise ToolError("the result is not a real number")
+    if isinstance(result, float) and not math.isfinite(result):
+        raise ToolError("the result is too large (or not defined)")
     if isinstance(result, int) and result.bit_length() * math.log10(2) > max_digits:
         raise ToolError(f"the result has more than {max_digits} digits")
     if isinstance(result, float) and result.is_integer() and abs(result) < 1e15:
@@ -329,7 +337,7 @@ def convert(value: float, from_unit: str, to_unit: str) -> float:
     (kind, factor), (other, to_factor) = _UNITS[source], _UNITS[target]
     if kind != other:
         raise ToolError(f"cannot convert {kind} ({from_unit}) to {other} ({to_unit})")
-    return round(value * factor / to_factor, 10)
+    return float(f"{value * factor / to_factor:.12g}")  # 12 significant digits: 1 B = 1e-12 TB
 
 
 # -- dates -------------------------------------------------------------------------------
@@ -350,7 +358,11 @@ def parse_date(text: str, today: date, future: bool = False) -> date:
         except ValueError as exc:
             raise ToolError(f"'{text}' is not a valid date") from exc
         if future and day < today:
-            day = day.replace(year=today.year + 1)
+            for year in range(today.year + 1, today.year + 9):  # 29 February: the next leap year
+                try:
+                    return day.replace(year=year)
+                except ValueError:
+                    continue
         return day
     for fmt in ("%Y-%m-%d", "%d.%m.%Y", "%d/%m/%Y"):
         try:

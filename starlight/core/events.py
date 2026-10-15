@@ -52,10 +52,6 @@ class EventBus:
         self._subscriptions.append(sub)
         return sub
 
-    def unsubscribe(self, sub: Subscription) -> None:
-        if sub in self._subscriptions:
-            self._subscriptions.remove(sub)
-
     def unsubscribe_owner(self, owner: str) -> None:
         self._subscriptions = [s for s in self._subscriptions if s.owner != owner]
 

@@ -521,7 +521,7 @@ def create_app(paths: Paths | None = None) -> Any:
         uploads[upload_id] = Upload(name, b"" if text is not None else data, now, text)
         return {"id": upload_id, "name": name, "kind": kind, "size": len(data)}
 
-    async def attach(text: str, ids: list[Any]) -> tuple[str, list[bytes]]:
+    def attach(text: str, ids: list[Any]) -> tuple[str, list[bytes]]:
         images: list[bytes] = []
         parts = [text]
         for upload_id in ids[:10]:
@@ -757,13 +757,9 @@ def create_app(paths: Paths | None = None) -> Any:
                     if ask_task is not None and not ask_task.done():
                         await send({"type": "busy"})
                         continue
-                    try:
-                        text, images = await attach(
-                            str(message["text"]).strip(), list(message.get("attachments") or [])
-                        )
-                    except ValueError as exc:
-                        await send({"type": "error", "text": str(exc)})
-                        continue
+                    text, images = attach(
+                        str(message["text"]).strip(), list(message.get("attachments") or [])
+                    )
                     ask_task = asyncio.create_task(
                         _run_ask(
                             k,
@@ -919,8 +915,6 @@ async def _run_ask(
 def run(paths: Paths | None = None) -> None:
     import uvicorn
 
-    from starlight.service import shutdown_file
-
     paths = paths or Paths.discover()
     config = load_config(paths)
     if config.web.host not in LOOPBACK:
@@ -938,21 +932,4 @@ def run(paths: Paths | None = None) -> None:
             proxy_headers=False,  # who is remote is decided from the headers, not by uvicorn
         )
     )
-    request = shutdown_file(paths.data, "web")
-    request.unlink(missing_ok=True)
-
-    async def watch_for_stop() -> None:
-        while not server.should_exit:
-            if request.exists():
-                request.unlink(missing_ok=True)
-                server.should_exit = True
-            await asyncio.sleep(1)
-
-    async def main() -> None:
-        watcher = asyncio.create_task(watch_for_stop())
-        try:
-            await server.serve()
-        finally:
-            watcher.cancel()
-
-    asyncio.run(main())
+    asyncio.run(server.serve())

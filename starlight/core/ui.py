@@ -1,6 +1,6 @@
 """How the core and modules talk to you while a task runs: confirmations, questions
 (for example a 2FA code) and notices. The CLI provides a terminal version; WhatsApp
-(Step 10) can provide another."""
+can provide another."""
 
 from __future__ import annotations
 

@@ -6,8 +6,9 @@
   control your desktop).
 * Linux: systemd user units (``systemctl --user``), which run in your session.
 
-``starlight service stop`` asks both to shut down cleanly (a request file they watch),
-so the core still releases keys, closes browsers and writes its logs.
+``starlight service stop`` shuts both down cleanly, so the core still releases keys,
+closes browsers and writes its logs: on Windows through a request file they watch, on Linux
+with ``systemctl --user stop`` (SIGTERM, which both handle).
 """
 
 from __future__ import annotations
@@ -19,7 +20,6 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 TASKS = {"core": "serve", "viewer": "viewer"}
-ACTIONS = ("install", "uninstall", "start", "stop", "status")
 
 
 def shutdown_file(data_dir: Path, kind: str) -> Path:
@@ -93,15 +93,25 @@ def windows_plan(root: Path, action: str, data_dir: Path, folder: Path | None = 
     return result
 
 
+def _systemd_word(part: str) -> str:
+    """One word of ExecStart=: systemd splits on spaces, reads quotes and backslashes, and
+    expands % and $ itself."""
+    part = part.replace("\\", "\\\\").replace("%", "%%").replace("$", "$$")
+    if any(c.isspace() or c in "\"'" for c in part):
+        part = '"' + part.replace('"', '\\"') + '"'
+    return part
+
+
 def systemd_unit(root: Path, kind: str) -> str:
     description = "Starlight core" if kind == "core" else "Starlight statistics viewer"
+    command = " ".join(_systemd_word(part) for part in background_command(root, kind))
     return f"""[Unit]
 Description={description}
 After=graphical-session.target network-online.target
 
 [Service]
-ExecStart={" ".join(background_command(root, kind))}
-WorkingDirectory={root}
+ExecStart={command}
+WorkingDirectory={str(root).replace("%", "%%")}
 Restart=on-failure
 RestartSec=5
 
@@ -110,7 +120,7 @@ WantedBy=default.target
 """
 
 
-def linux_plan(root: Path, action: str, data_dir: Path, unit_dir: Path | None = None) -> Plan:
+def linux_plan(root: Path, action: str, unit_dir: Path | None = None) -> Plan:
     unit_dir = unit_dir or Path.home() / ".config" / "systemd" / "user"
     units = {kind: f"starlight-{kind}.service" for kind in TASKS}
     result = Plan()
@@ -131,7 +141,7 @@ def linux_plan(root: Path, action: str, data_dir: Path, unit_dir: Path | None = 
 def plan(root: Path, action: str, data_dir: Path) -> Plan:
     if sys.platform == "win32":
         return windows_plan(root, action, data_dir)
-    return linux_plan(root, action, data_dir)
+    return linux_plan(root, action)
 
 
 def apply(service_plan: Plan) -> int:

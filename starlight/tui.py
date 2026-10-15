@@ -42,7 +42,6 @@ class ChatView:
         self.assume_yes = assume_yes
         self.rich = _rich_available()
         self._console: Any = None
-        self._streaming = False
         if self.rich:
             from rich.console import Console
 
@@ -134,9 +133,6 @@ class ChatView:
         stop += f"{hotkey or 'the hotkey'} or a screen corner stops everything"
         self._console.print(f"[dim]{stop}[/dim]\n")
 
-    def read(self) -> str:
-        return console.read_request(USER_PROMPT if self.rich else "you> ").strip()
-
     async def aread(self) -> str:
         """The next request, read without stopping Starlight's background work."""
         prompt = USER_PROMPT if self.rich else "you> "
@@ -149,7 +145,6 @@ class ChatView:
         def emit(token: str) -> None:
             if not started[0]:
                 started[0] = True
-                self._streaming = True
                 if self.rich:
                     sys.stdout.write(f"\x1b[1;32mstarlight ›\x1b[0m {ANSWER}")  # noqa: RUF001
                 else:
@@ -163,7 +158,6 @@ class ChatView:
         if streamed:
             sys.stdout.write(RESET + "\n")
             sys.stdout.flush()
-        self._streaming = False
 
     def answer(self, text: str) -> None:
         """Print a full answer that was not streamed (e.g. the test model)."""

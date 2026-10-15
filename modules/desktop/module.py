@@ -24,11 +24,10 @@ import sys
 import threading
 import time
 from collections.abc import Iterator
-from typing import Any
+from typing import TYPE_CHECKING, Any
 from urllib.parse import urlsplit
 
 import numpy as np
-from PIL import Image
 from pydantic import BaseModel, Field
 
 from starlight.core import Message, Module, ModuleContext, Permission, ToolError, tool
@@ -51,6 +50,9 @@ from .backends import (
     make_dpi_aware,
 )
 from .indicator import Indicator
+
+if TYPE_CHECKING:  # Pillow is in the optional 'desktop' extra: the module must load without
+    from PIL import Image
 
 DEFAULT_APPS = {
     "notepad": ["notepad.exe"],
@@ -132,6 +134,7 @@ class DesktopModule(Module):
         self._uia: UiAutomation | None = None
         self._vision: ModelProvider | None = None
         self.indicator = Indicator(self.config.indicator, self.config.hotkey_label)
+        self._bounds: tuple[float, tuple[int, int, int, int]] | None = None  # (when, bounds)
         self._acting = 0
         self._lock = threading.Lock()
         self._failsafe_stop = threading.Event()
@@ -164,6 +167,7 @@ class DesktopModule(Module):
     @screen.setter
     def screen(self, value: Screen) -> None:
         self._screen = value
+        self._bounds = None
 
     @property
     def input(self) -> Input:
@@ -209,9 +213,18 @@ class DesktopModule(Module):
 
     # -- safety ------------------------------------------------------------------------
 
+    def _screen_bounds(self) -> tuple[int, int, int, int]:
+        """The screen size for the failsafe, looked up at most once a second: it is polled
+        20 times a second and every lookup opens a screen-capture session."""
+        cached = self._bounds
+        now = time.monotonic()
+        if cached is None or now - cached[0] > 1.0:
+            cached = self._bounds = (now, self.screen.bounds())
+        return cached[1]
+
     def _in_corner(self) -> bool:
         x, y = self.input.position()
-        left, top, width, height = self.screen.bounds()
+        left, top, width, height = self._screen_bounds()
         m = self.config.failsafe_margin
         at_x = x <= left + m or x >= left + width - 1 - m
         at_y = y <= top + m or y >= top + height - 1 - m
@@ -227,6 +240,7 @@ class DesktopModule(Module):
             self.ctx.kill_switch.check()
 
     def _failsafe_loop(self) -> None:
+        reported = False
         while not self._failsafe_stop.wait(0.05):
             try:
                 if self._in_corner():
@@ -234,8 +248,10 @@ class DesktopModule(Module):
                         "failsafe: mouse moved into a screen corner", source="failsafe"
                     )
                     return
-            except Exception:
-                return
+            except Exception as exc:  # e.g. a display change: keep watching, say so once
+                if not reported:
+                    reported = True
+                    self.ctx.logger.warning("failsafe check failed", error=str(exc))
 
     @contextlib.contextmanager
     def _controlling(self) -> Iterator[None]:
@@ -259,7 +275,7 @@ class DesktopModule(Module):
                     self._failsafe_stop.set()
                     self.indicator.hide()
 
-    def _act(self, action: Any, expect_text: str = "", region: Any = None) -> dict[str, Any]:
+    def _act(self, action: Any, expect_text: str = "") -> dict[str, Any]:
         """Run an input action, then take a new screenshot to confirm it worked."""
         self._check()
         before = self.screen.capture()

@@ -7,7 +7,6 @@ Everything is local, in data/modules/todo/todo.json.
 
 from __future__ import annotations
 
-import re
 import uuid
 from datetime import datetime, timedelta
 from typing import Any, Literal
@@ -16,7 +15,7 @@ from pydantic import BaseModel, Field
 
 from starlight.core import Module, ModuleContext, ToolError, tool
 from starlight.core.jsonfile import load_json, save_json
-from starlight.core.schedule import has_clock_time, parse_when
+from starlight.core.schedule import names_time_of_day, parse_when
 
 Priority = Literal["low", "normal", "high"]
 _RANK = {"high": 0, "normal": 1, "low": 2}
@@ -65,10 +64,7 @@ class TodoModule(Module):
             return None
         moment = parse_when(when, self._now())
         # a day without a time ("tomorrow", "friday", "in 3 days") means that whole day
-        text = when.strip().lower()
-        timed = has_clock_time(text) or re.fullmatch(
-            r"in\s+\S+\s*(s|secs?|seconds?|m|mins?|minutes?|h|hrs?|hours?)", text
-        )
+        timed = names_time_of_day(when)
         return moment.isoformat(timespec="minutes") if timed else moment.date().isoformat()
 
     def _list_name(self, name: str) -> str:

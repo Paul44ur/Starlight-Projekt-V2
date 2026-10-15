@@ -16,9 +16,10 @@ import sys
 import time
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Protocol
+from typing import TYPE_CHECKING, Any, Protocol
 
-from PIL import Image
+if TYPE_CHECKING:  # Pillow is in the optional 'desktop' extra: the module must load without
+    from PIL import Image
 
 
 class DesktopUnavailable(Exception):
@@ -58,10 +59,12 @@ class MssScreen:
     def __init__(self) -> None:
         try:
             import mss
+            from PIL import Image
         except ImportError as exc:
-            raise DesktopUnavailable("install the 'desktop' extra (mss)") from exc
+            raise DesktopUnavailable("install the 'desktop' extra (mss, Pillow)") from exc
         # mss 10 renamed mss.mss to mss.MSS
         self._open = getattr(mss, "MSS", None) or mss.mss
+        self._frombytes = Image.frombytes
 
     def bounds(self) -> tuple[int, int, int, int]:
         with self._open() as sct:
@@ -86,7 +89,7 @@ class MssScreen:
                 left, top, width, height = region
                 area = {"left": left, "top": top, "width": width, "height": height}
             shot = sct.grab(area)
-            return Image.frombytes("RGB", shot.size, shot.bgra, "raw", "BGRX")
+            return self._frombytes("RGB", shot.size, shot.bgra, "raw", "BGRX")
 
 
 # -- input ---------------------------------------------------------------------------------
@@ -113,7 +116,6 @@ class PynputInput:
         self._mouse = mouse.Controller()
         self._keyboard = keyboard.Controller()
         self._pressed_keys: list[Any] = []
-        self._pressed_buttons: list[Any] = []
 
     def position(self) -> tuple[int, int]:
         x, y = self._mouse.position
@@ -224,15 +226,21 @@ class TesseractOcr:
         return out
 
 
-def boxes_to_text(boxes: list[Box]) -> str:
-    """Words back into lines, top to bottom."""
+def _lines(boxes: list[Box]) -> list[list[Box]]:
+    """Words grouped into lines (top to bottom), each line left to right. OCR boxes of one
+    line differ by a pixel or two in y, so a line is matched with a tolerance."""
     lines: list[list[Box]] = []
     for box in sorted(boxes, key=lambda b: (b.y, b.x)):
         if lines and abs(lines[-1][0].y - box.y) <= max(6, box.height // 2):
             lines[-1].append(box)
         else:
             lines.append([box])
-    return "\n".join(" ".join(b.text for b in sorted(line, key=lambda b: b.x)) for line in lines)
+    return [sorted(line, key=lambda b: b.x) for line in lines]
+
+
+def boxes_to_text(boxes: list[Box]) -> str:
+    """Words back into lines, top to bottom."""
+    return "\n".join(" ".join(b.text for b in line) for line in _lines(boxes))
 
 
 def find_phrase(boxes: list[Box], phrase: str) -> list[Box]:
@@ -240,27 +248,25 @@ def find_phrase(boxes: list[Box], phrase: str) -> list[Box]:
     words = phrase.lower().split()
     if not words:
         return []
-    ordered = sorted(boxes, key=lambda b: (b.y, b.x))
     matches = []
-    for i in range(len(ordered)):
-        window = ordered[i : i + len(words)]
-        if len(window) < len(words):
-            break
-        if all(w in b.text.lower() for w, b in zip(words, window, strict=True)):
-            left = min(b.x for b in window)
-            top = min(b.y for b in window)
-            right = max(b.x + b.width for b in window)
-            bottom = max(b.y + b.height for b in window)
-            matches.append(
-                Box(
-                    " ".join(b.text for b in window),
-                    left,
-                    top,
-                    right - left,
-                    bottom - top,
-                    min(b.confidence for b in window),
+    for line in _lines(boxes):  # the same lines read_screen shows; a phrase stays on one
+        for i in range(len(line) - len(words) + 1):
+            window = line[i : i + len(words)]
+            if all(w in b.text.lower() for w, b in zip(words, window, strict=True)):
+                left = min(b.x for b in window)
+                top = min(b.y for b in window)
+                right = max(b.x + b.width for b in window)
+                bottom = max(b.y + b.height for b in window)
+                matches.append(
+                    Box(
+                        " ".join(b.text for b in window),
+                        left,
+                        top,
+                        right - left,
+                        bottom - top,
+                        min(b.confidence for b in window),
+                    )
                 )
-            )
     return matches
 
 

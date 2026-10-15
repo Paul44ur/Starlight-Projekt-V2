@@ -9,7 +9,7 @@ from __future__ import annotations
 import asyncio
 from typing import Any
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 
 from starlight.core import Event, Module, ModuleContext, ToolError, tool
 
@@ -19,8 +19,8 @@ MAX_LEN = 1000
 
 
 class Config(BaseModel):
-    app_name: str = "Starlight"
-    default_title: str = Field(default="Starlight")
+    app_name: str = "Starlight"  # the sender shown on a Windows toast / by notify-send
+    default_title: str = "Starlight"
     on_deliver: bool = True  # also pop up reminders, alerts and briefings Starlight sends you
 
 
@@ -29,7 +29,7 @@ class NotifyModule(Module):
 
     async def setup(self, ctx: ModuleContext) -> None:
         self.config: Config = ctx.config
-        self.backend: Backend | None = detect()
+        self.backend: Backend | None = detect(self.config.app_name)
         if self.config.on_deliver and self.backend is not None:
             ctx.bus.subscribe("deliver", self._on_deliver, owner=ctx.name, background=True)
         ctx.logger.info("ready", backend=self.backend.name if self.backend else None)

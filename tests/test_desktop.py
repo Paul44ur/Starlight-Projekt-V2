@@ -11,16 +11,18 @@ import threading
 import time
 from collections.abc import Callable, Iterator
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import pytest
-from PIL import Image, ImageDraw
 
 from starlight.core import Kernel, KillSwitchEngaged, Paths
 from starlight.core.model import ModelResponse, ToolCall
 from tests.conftest import ScriptedProvider
 
-pytest.importorskip("PIL")
+pytest.importorskip("PIL")  # the 'desktop' extra, which CI installs
+
+if TYPE_CHECKING:
+    from PIL import Image
 
 
 class FakeDesktop:
@@ -42,6 +44,8 @@ class FakeDesktop:
         return [(0, 0, half, self.height), (half, 0, self.width - half, self.height)]
 
     def capture(self, region: Any = None) -> Image.Image:
+        from PIL import Image, ImageDraw
+
         image = Image.new("RGB", (self.width, self.height), "white")
         draw = ImageDraw.Draw(image)
         for i, _ in enumerate(self.text):  # each character paints a block
@@ -271,6 +275,64 @@ def test_ocr_helpers() -> None:
     assert boxes_to_text(boxes) == "File Save\nSave as"
     [match] = find_phrase(boxes, "save AS")
     assert (match.x, match.width, match.text) == (10, 50, "Save as")
+
+
+def test_phrases_are_found_in_the_lines_read_screen_shows() -> None:
+    """OCR puts the words of one line 1-2 px apart in y: the phrase must still be found
+    (it was matched in plain (y, x) order, where "Save" sorted before "File")."""
+    from starlight.core.modules import discover, import_module_class
+    from tests.test_network import REPO
+
+    found, _ = discover(REPO / "modules")
+    import_module_class(*found["desktop"])
+    from starlight_modules.desktop.backends import Box, boxes_to_text, find_phrase
+
+    boxes = [
+        Box("Save", 50, 5, 30, 12, 93),
+        Box("File", 10, 6, 30, 12, 95),
+        Box("as", 90, 40, 15, 12, 85),  # the next line: never part of "Save as" above
+        Box("Edit", 10, 41, 30, 12, 80),
+    ]
+    assert boxes_to_text(boxes) == "File Save\nEdit as"
+    [match] = find_phrase(boxes, "file save")
+    assert (match.x, match.y, match.width, match.text) == (10, 5, 70, "File Save")
+    assert find_phrase(boxes, "save as") == []  # a phrase does not run into the next line
+    assert [m.text for m in find_phrase(boxes, "edit as")] == ["Edit as"]
+
+
+def test_the_module_loads_without_pillow(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Pillow is only in the optional 'desktop' extra: without it the module still loads
+    and says what to install when a screen is needed."""
+    from starlight.core.modules import discover, import_module_class
+    from tests.test_network import REPO
+
+    monkeypatch.setitem(sys.modules, "PIL", None)  # importing it now raises ImportError
+    found, _ = discover(REPO / "modules")
+    import_module_class(*found["desktop"])
+    from starlight_modules.desktop.backends import DesktopUnavailable, MssScreen
+
+    with pytest.raises(DesktopUnavailable, match="desktop"):
+        MssScreen()
+
+
+async def test_the_failsafe_keeps_watching_after_a_failed_check(desktop_project: Paths) -> None:
+    fake = FakeDesktop()
+    async with Kernel(desktop_project, ui=Yes()) as kernel:
+        module = install(kernel, fake)
+        real_position = fake.position
+        calls = [0]
+
+        def flaky_position() -> tuple[int, int]:  # a display change breaks the first checks
+            calls[0] += 1
+            if calls[0] <= 2:
+                raise OSError("display changed")
+            return real_position()
+
+        fake.position = flaky_position  # type: ignore[method-assign]
+        fake.mouse = (0, 0)  # and then the mouse is in the corner
+        module._failsafe_stop.clear()
+        module._failsafe_loop()  # runs until it has triggered the kill switch
+        assert calls[0] == 3 and kernel.kill_switch.engaged
 
 
 @pytest.fixture

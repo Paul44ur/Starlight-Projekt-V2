@@ -6,11 +6,12 @@
     "Tell me when 'in stock' appears"           when="contains in stock"
     "Tell me when 'sold out' is gone"           when="gone sold out"
 
-Each watch is checked on its own interval (at least every 15 minutes), only by the
-primary Starlight process, through the shared polite web client (robots.txt, rate limits,
-response size cap). ``part`` (a CSS selector such as ``.price`` or ``#availability``)
-limits a watch to one part of the page, which makes price and change watches reliable on
-busy pages. Pages built entirely by JavaScript may show nothing to a plain fetch.
+Each watch is checked on its own interval (at least ``min_every_minutes``, see
+config/modules/watch.yaml), only by the primary Starlight process, through the shared
+polite web client (robots.txt, rate limits, response size cap). ``part`` (a CSS selector
+such as ``.price`` or ``#availability``) limits a watch to one part of the page, which makes
+price and change watches reliable on busy pages. Pages built entirely by JavaScript may show
+nothing to a plain fetch.
 
 A hit is delivered on every open channel and published as ``watch.changed`` or
 ``watch.price``, so automations can act on it. Watches live in
@@ -31,7 +32,7 @@ from urllib.parse import urlsplit
 from bs4 import BeautifulSoup
 from pydantic import BaseModel, Field
 
-from starlight.core import Module, ModuleContext, Permission, ToolError, tool
+from starlight.core import KillSwitchEngaged, Module, ModuleContext, Permission, ToolError, tool
 from starlight.core.http import HttpError
 from starlight.core.jsonfile import load_json, save_json
 from starlight.core.schedule import UNITS
@@ -64,7 +65,7 @@ def parse_number(raw: str) -> float | None:
     elif last_dot >= 0 or last_comma >= 0:
         sep = "." if last_dot >= 0 else ","
         head, _, tail = text.rpartition(sep)
-        if len(tail) == 3 and text.count(sep) >= 1 and head:  # 1.234 / 12,500: thousands
+        if len(tail) == 3 and head:  # 1.234 / 12,500: thousands
             text = text.replace(sep, "")
         else:
             text = head.replace(sep, "") + "." + tail
@@ -283,7 +284,18 @@ class WatchModule(Module):
         due = [i for i in items if i.get("due", 0) <= now]
         for item in due:
             self.ctx.kill_switch.check()
-            seen = await self._check(item)
+            try:
+                seen = await self._check(item)
+            except KillSwitchEngaged:
+                raise
+            except Exception as exc:  # one broken watch must not lose the whole round
+                self.ctx.logger.warning(
+                    "watch check failed", watch=item.get("name"), error=repr(exc)
+                )
+                item["last_error"] = f"check failed: {exc!r}"
+                if item.get("due", 0) <= now:  # not again on the next round
+                    item["due"] = now + 3600
+                seen = {"name": item.get("name"), "error": item["last_error"], "hit": False}
             results.append(seen)
         if due:
             self._merge_save(due)
@@ -307,7 +319,7 @@ class WatchModule(Module):
         """Watch a web page and tell the user when something happens. `when`: "changes",
         "price below 50", "price above 200", "contains in stock" or "gone sold out".
         `every`: how often to look, e.g. "30m", "2h", "daily" (at least min_every_minutes from the
-        watch settings, 5 by default).
+        watch settings; too often is refused with the minimum).
         `part`: optional CSS selector for the part to watch, e.g. ".price"."""
         url = url.strip()
         if urlsplit(url).scheme not in ("http", "https") or not urlsplit(url).netloc:
@@ -320,10 +332,12 @@ class WatchModule(Module):
                 f"that is too often for someone else's site; at least every "
                 f"{self.config.min_every_minutes} minutes"
             )
-        items = self._load()
-        if len(items) >= self.config.max_watches:
+        if len(self._load()) >= self.config.max_watches:
             raise ToolError(f"too many watches (limit {self.config.max_watches}); remove some")
         title, text = await self._read(url, part)  # fails now, not silently later
+        items = self._load()  # fresh: a round of checks or a remove may have saved meanwhile
+        if len(items) >= self.config.max_watches:
+            raise ToolError(f"too many watches (limit {self.config.max_watches}); remove some")
         label = " ".join((name or title or urlsplit(url).netloc).split())[:60]
         taken = {i["name"].lower() for i in items}
         base, n = label, 2
