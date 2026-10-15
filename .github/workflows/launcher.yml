@@ -124,7 +124,7 @@ jobs:
         with:
           tag_name: ${{ inputs.version || github.ref_name }}
           target_commitish: ${{ github.sha }}
-          generate_release_notes: true
+          body_path: docs/release-notes.md
           files: |
             Starlight-*-windows.zip
             dist/Starlight.exe
