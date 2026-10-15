@@ -12,7 +12,7 @@
 Starlight uses a language model on your own graphics card, with no account, no
 subscription and no token limits. It remembers what you tell it and can browse the web.
 It can check your servers, read the screen, use mouse and keyboard, write and test code,
-and answer you on WhatsApp. Anything risky asks you first, and one key press stops it.
+and answer you on WhatsApp. It will ask you before it does anything risky. And one key press stops it.
 
 - [What it can do](#what-it-can-do)
 - [What you need](#what-you-need)
