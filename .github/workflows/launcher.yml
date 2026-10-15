@@ -1,6 +1,7 @@
 # Builds Starlight.exe (the launcher) and tests it end to end on a clean Windows machine:
 # it downloads uv, Python, Chromium, the llama.cpp model server and a small model, then
-# asks the AI a question. On a version tag (v...) it publishes a release with the exe.
+# asks the AI a question. On a version tag (v...), or when run by hand with a version, it
+# publishes a release with the exe.
 name: Launcher
 
 on:
@@ -9,6 +10,11 @@ on:
     tags: ["v*"]
   pull_request:
   workflow_dispatch:
+    inputs:
+      version:
+        description: "Publish a release with this tag (for example v0.1.0); empty = build and test only"
+        required: false
+        default: ""
 
 permissions:
   contents: read
@@ -95,7 +101,7 @@ jobs:
           if-no-files-found: error
 
   release:
-    if: startsWith(github.ref, 'refs/tags/v')
+    if: startsWith(github.ref, 'refs/tags/v') || inputs.version != ''
     needs: build
     runs-on: ubuntu-latest
     permissions:
@@ -107,13 +113,18 @@ jobs:
           name: Starlight-windows
           path: dist
       - name: Package Starlight with Starlight.exe
+        env:
+          VERSION: ${{ inputs.version || github.ref_name }}
         run: |
-          name="Starlight-${GITHUB_REF_NAME}-windows.zip"
+          name="Starlight-${VERSION}-windows.zip"
           git archive --format=zip --prefix=Starlight/ -o "$name" HEAD
           mkdir -p pkg/Starlight && cp dist/Starlight.exe pkg/Starlight/
           (cd pkg && zip -q "../$name" Starlight/Starlight.exe)
       - uses: softprops/action-gh-release@v2
         with:
+          tag_name: ${{ inputs.version || github.ref_name }}
+          target_commitish: ${{ github.sha }}
+          generate_release_notes: true
           files: |
             Starlight-*-windows.zip
             dist/Starlight.exe
