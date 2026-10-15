@@ -11,6 +11,8 @@ import os
 import subprocess
 import sys
 import time
+import urllib.error
+import urllib.request
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any
@@ -213,7 +215,9 @@ def answering() -> Any:
     server = ThreadingHTTPServer(("127.0.0.1", 0), Answers)
     import threading
 
-    threading.Thread(target=server.serve_forever, daemon=True).start()
+    threading.Thread(
+        target=server.serve_forever, kwargs={"poll_interval": 0.01}, daemon=True
+    ).start()
     yield server.server_address[1]
     server.shutdown()
     server.server_close()
@@ -232,6 +236,24 @@ def test_the_model_health_is_read_from_its_server(answering: int) -> None:
 def test_local_json_is_none_when_nothing_answers(answering: int) -> None:
     assert L.fetch_json(f"http://127.0.0.1:{answering}/api/status") == {"kill": {"engaged": False}}
     assert L.fetch_json("http://127.0.0.1:9/api/status", timeout=0.5) is None
+
+
+def test_local_calls_do_not_go_through_a_system_proxy(
+    answering: int, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Behind a company proxy that does not skip loopback, the model server on this PC must
+    still be reached directly, or the launcher waits for it forever."""
+    for name in ("NO_PROXY", "no_proxy"):
+        monkeypatch.delenv(name, raising=False)
+    for name in ("HTTP_PROXY", "http_proxy"):
+        monkeypatch.setenv(name, "http://127.0.0.1:9")  # nothing listens there
+    # (urlopen reads the proxy settings once, when its opener is built)
+    monkeypatch.setattr("urllib.request._opener", urllib.request.build_opener())
+    with pytest.raises(urllib.error.URLError):  # the setup of this test: the proxy is in the way
+        urllib.request.urlopen(f"http://127.0.0.1:{answering}/health", timeout=2)
+    assert L.health_status(answering) == 200
+    assert L.fetch_json(f"http://127.0.0.1:{answering}/api/status") == {"kill": {"engaged": False}}
+    L.wait_for_model(answering, None, tmp_path / "model.log", L.Ui(True), timeout=10)
 
 
 def test_the_status_says_loading_then_ready(

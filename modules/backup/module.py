@@ -18,11 +18,12 @@ import os
 import re
 import threading
 import zipfile
+import zlib
 from datetime import datetime
 from pathlib import Path
 from typing import Any
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ValidationError
 
 from starlight.core import Module, ModuleContext, Permission, ToolError, tool
 from starlight.core.config import write_yaml_config
@@ -46,6 +47,11 @@ class Config(BaseModel):
 
 
 CHUNK = 1024 * 1024  # a file is written in pieces this big, and a stop is noticed between them
+# What reading a damaged or missing zip member can raise: a wrong CRC, cut-off or garbled
+# compressed data, a file that is not in the zip.
+UNREADABLE = (
+    KeyError, EOFError, NotImplementedError, RuntimeError, zipfile.BadZipFile, zlib.error, OSError
+)  # fmt: skip
 
 
 class BackupModule(Module):
@@ -131,13 +137,20 @@ class BackupModule(Module):
         partial = target.with_suffix(".partial")
         patterns = [*SKIP, *plan.exclude]
         files: list[dict[str, Any]] = []
+
+        def unreadable(exc: OSError) -> None:  # os.walk would just leave the folder out
+            if exc.filename is None or Path(exc.filename) == source:
+                raise ToolError(f"can't read {source}: {exc.strerror or exc}") from exc
+            relative = Path(exc.filename).relative_to(source).as_posix()
+            files.append({"path": relative, "error": str(exc)})
+
         try:
             # strict_timestamps=False: a file dated before 1980 (zip's earliest date) is
             # stored with 1980 instead of stopping the whole backup.
             with zipfile.ZipFile(
                 partial, "w", zipfile.ZIP_DEFLATED, allowZip64=True, strict_timestamps=False
             ) as archive:
-                for current, dirs, names in os.walk(source):
+                for current, dirs, names in os.walk(source, onerror=unreadable):
                     here = Path(current)
                     dirs[:] = [d for d in dirs if not any(fnmatch.fnmatch(d, p) for p in patterns)]
                     for name in names:
@@ -178,24 +191,36 @@ class BackupModule(Module):
         }
 
     def _verify(self, archive_path: Path) -> dict[str, Any]:
+        """Read every file back and compare it with the checksum in the manifest. A backup that
+        is damaged on disk (bit rot, a cut-off copy) is reported as damaged, not as a crash."""
+        name = archive_path.name
         bad: list[str] = []
-        with zipfile.ZipFile(archive_path) as archive:
-            broken = archive.testzip()
-            if broken:
-                bad.append(broken)
-            manifest = json.loads(archive.read(MANIFEST))
-            for entry in manifest["files"]:
+        try:
+            archive = zipfile.ZipFile(archive_path)
+        except (zipfile.BadZipFile, OSError) as exc:
+            return {"backup": name, "ok": False, "damaged": [], "error": f"can't be opened: {exc}"}
+        with archive:
+            try:
+                entries = json.loads(archive.read(MANIFEST))["files"]
+            except (*UNREADABLE, TypeError, ValueError) as exc:
+                error = f"its list of files can't be read: {exc!r}"
+                return {"backup": name, "ok": False, "damaged": [], "error": error}
+            for entry in entries:
                 if "sha256" not in entry:
                     continue
                 self.ctx.kill_switch.check()
                 digest = hashlib.sha256()
-                with archive.open(entry["path"]) as handle:
-                    while chunk := handle.read(1024 * 1024):
-                        digest.update(chunk)
-                if digest.hexdigest() != entry["sha256"]:
+                try:
+                    with archive.open(entry["path"]) as handle:
+                        while chunk := handle.read(CHUNK):
+                            digest.update(chunk)  # a wrong CRC or damaged bytes raise here
+                    intact = digest.hexdigest() == entry["sha256"]
+                except UNREADABLE:
+                    intact = False  # missing from the zip, or not readable
+                if not intact:
                     bad.append(entry["path"])
-        return {"backup": archive_path.name, "ok": not bad, "damaged": bad[:50],
-                "files": len(manifest["files"])}  # fmt: skip
+        files = sum("error" not in entry for entry in entries)  # as many as _make reports
+        return {"backup": name, "ok": not bad, "damaged": bad[:50], "files": files}
 
     def _pick(self, key: str, plan: BackupSet, version: str) -> Path:
         versions = self._versions(key, plan)
@@ -220,11 +245,24 @@ class BackupModule(Module):
         key = name.strip().lower()
         if not NAME.match(key):
             raise ToolError("a name is lowercase letters, digits, - or _ (max 40)")
-        plan = BackupSet(source=source, target=target, keep=keep, exclude=exclude or [])
+        try:
+            plan = BackupSet(source=source, target=target, keep=keep, exclude=exclude or [])
+        except ValidationError as exc:
+            problems = "; ".join(
+                f"{'.'.join(map(str, e['loc']))}: {e['msg']}" for e in exc.errors()
+            )
+            raise ToolError(f"that backup is not valid: {problems}") from exc
         self._check_paths(expand(source), self._folder(key, plan))
-        if not await self.ctx.ui.confirm(
+        question = (
             f"Back up {expand(source)} to {self._folder(key, plan)}, keeping {keep} versions?"
-        ):
+        )
+        old = self.config.sets.get(key)
+        if old is not None:
+            question = (
+                f"A backup called '{key}' already exists ({expand(old.source)} to "
+                f"{self._folder(key, old)}, keeping {old.keep}). Replace it? " + question
+            )
+        if not await self.ctx.ui.confirm(question):
             raise ToolError("not confirmed, nothing changed")
         self.config.sets[key] = plan
         self._save()
@@ -316,7 +354,7 @@ class BackupModule(Module):
                     continue
                 target.parent.mkdir(parents=True, exist_ok=True)
                 with archive.open(member) as source, target.open("wb") as out:
-                    while chunk := source.read(1024 * 1024):
+                    while chunk := source.read(CHUNK):
                         out.write(chunk)
                 restored += 1
         return {"restored": restored, "skipped_existing": skipped, "into": str(destination),

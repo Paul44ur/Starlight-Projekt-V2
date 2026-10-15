@@ -36,8 +36,6 @@ class Window:
 
 
 class Backend(Protocol):
-    name: str
-
     def programs(self, extra: list[Path]) -> list[Program]: ...
     def start(self, program: Program) -> None: ...
     def open(self, target: str) -> None: ...
@@ -62,8 +60,6 @@ _SKIP = re.compile(r"uninstall|deinstall|readme|help|website|release notes", re.
 
 
 class WindowsBackend:
-    name = "windows"
-
     def __init__(self) -> None:
         import ctypes
         from ctypes import wintypes
@@ -137,8 +133,6 @@ class WindowsBackend:
 
 
 class LinuxBackend:
-    name = "linux"
-
     def programs(self, extra: list[Path]) -> list[Program]:
         data_dirs = os.environ.get("XDG_DATA_DIRS", "/usr/local/share:/usr/share").split(":")
         folders = [Path.home() / ".local/share/applications"]
@@ -167,7 +161,7 @@ class LinuxBackend:
         tool = shutil.which("wmctrl")
         if tool is None:
             raise AppsUnavailable("window control needs 'wmctrl' (sudo apt install wmctrl)")
-        return subprocess.run([tool, *args], capture_output=True, text=True, timeout=5).stdout
+        return _run([tool, *args])
 
     def windows(self) -> list[Window]:
         found = []
@@ -185,13 +179,26 @@ class LinuxBackend:
             tool = shutil.which("xdotool")
             if tool is None:
                 raise AppsUnavailable("minimizing needs 'xdotool'")
-            subprocess.run([tool, "windowminimize", str(window.id)], timeout=5, check=False)
+            _run([tool, "windowminimize", str(window.id)])
             return
         action = "add" if state == "maximize" else "remove"
         self._wmctrl("-i", "-r", hex(window.id), "-b", f"{action},maximized_vert,maximized_horz")
 
     def close(self, window: Window) -> None:
         self._wmctrl("-i", "-c", hex(window.id))
+
+
+def _run(command: list[str]) -> str:
+    """Run a window-control tool and return its output. A failure (no display, a window that
+    is gone) or a hang is an error, not a silent success."""
+    program = Path(command[0]).name
+    try:
+        done = subprocess.run(command, capture_output=True, text=True, timeout=5, check=False)
+    except subprocess.TimeoutExpired as exc:
+        raise AppsUnavailable(f"{program} did not answer") from exc
+    if done.returncode != 0:
+        raise AppsUnavailable(f"{program} failed: {done.stderr.strip() or done.returncode}")
+    return done.stdout
 
 
 def _desktop_entry(path: Path) -> dict[str, str]:

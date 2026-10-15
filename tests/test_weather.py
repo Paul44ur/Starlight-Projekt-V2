@@ -13,7 +13,11 @@ import pytest
 from starlight.core import Kernel, Paths
 
 
-def mock_openmeteo(unknown: bool = False) -> tuple[httpx.MockTransport, list[str]]:
+def mock_openmeteo(
+    unknown: bool = False,
+    geocode: httpx.Response | None = None,
+    daily: dict[str, Any] | None = None,
+) -> tuple[httpx.MockTransport, list[str]]:
     seen: list[str] = []
 
     def handler(request: httpx.Request) -> httpx.Response:
@@ -22,6 +26,8 @@ def mock_openmeteo(unknown: bool = False) -> tuple[httpx.MockTransport, list[str
         if path == "/robots.txt":
             return httpx.Response(404)
         if host == "geocoding-api.open-meteo.com":
+            if geocode is not None:
+                return geocode
             if unknown:
                 return httpx.Response(200, json={"results": []})
             return httpx.Response(
@@ -55,7 +61,8 @@ def mock_openmeteo(unknown: bool = False) -> tuple[httpx.MockTransport, list[str
         return httpx.Response(
             200,
             json={
-                "daily": {
+                "daily": daily
+                or {
                     "time": ["2026-10-06", "2026-10-07", "2026-10-08"],
                     "weather_code": [0, 61, 95],
                     "temperature_2m_max": [14, 13, 11],
@@ -119,3 +126,37 @@ async def test_imperial_units_reach_the_api(project: Paths) -> None:
         result = await call(k, "now", place="Vienna")
     assert "°F" in result.output["temperature"]
     assert any("temperature_unit=fahrenheit" in url for url in seen)
+
+
+async def test_geocoder_trouble_is_not_reported_as_an_unknown_place(project: Paths) -> None:
+    for answer in (
+        httpx.Response(500, json={"error": True, "reason": "overloaded"}),
+        httpx.Response(200, text="<html>Bad gateway</html>"),
+    ):
+        transport, _ = mock_openmeteo(geocode=answer)
+        async with Kernel(project, http_transport=transport) as k:
+            result = await call(k, "now", place="Vienna")
+        assert not result.ok and "could not find" not in str(result.error)
+        assert "weather service" in str(result.error)
+
+
+async def test_the_place_is_url_encoded(project: Paths) -> None:
+    transport, seen = mock_openmeteo()
+    async with Kernel(project, http_transport=transport) as k:
+        await call(k, "now", place="A&B #1+2")
+    geocode = next(url for url in seen if "geocoding" in url)
+    assert "name=A%26B+%231%2B2&" in geocode and "#" not in geocode
+
+
+async def test_a_forecast_with_a_missing_series_still_answers(project: Paths) -> None:
+    daily = {
+        "time": ["2026-10-06", "2026-10-07"],
+        "weather_code": [0, 61],
+        "temperature_2m_max": [14],  # cut short
+    }
+    transport, _ = mock_openmeteo(daily=daily)
+    async with Kernel(project, http_transport=transport) as k:
+        result = await call(k, "forecast", place="Vienna", days=2)
+    first, second = result.output["days"]
+    assert first["high"] == "14°C" and first["rain_chance"] == "n/a" and first["low"] == "n/a"
+    assert second["conditions"] == "light rain" and second["high"] == "n/a"

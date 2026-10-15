@@ -1,9 +1,10 @@
 """Web search and polite scraping.
 
-Every request goes through the core's shared HTTP client (``ctx.http``): at most 5
-requests in any second across all modules, 1 per second per domain, robots.txt and
-crawl-delay respected, 429/503 back off with Retry-After, and pages cached. Plain HTTP
-first; a headless browser only for pages that need JavaScript.
+Every request goes through the core's shared HTTP client (``ctx.http``): the limits of
+the ``http`` section of config/starlight.yaml (requests per second across all modules, and
+spacing per domain), robots.txt and crawl-delay respected, 429/503 back off with
+Retry-After, and pages cached. Plain HTTP first; a headless browser only for pages that
+need JavaScript.
 """
 
 from __future__ import annotations
@@ -14,7 +15,7 @@ from typing import Any, Literal
 from pydantic import BaseModel
 
 from starlight.browser import Browser, BrowserUnavailable
-from starlight.core import Module, ModuleContext, tool
+from starlight.core import KillSwitchEngaged, Module, ModuleContext, tool
 from starlight.core.http import HttpError, RobotsDisallowed
 from starlight.text import html_to_text
 
@@ -134,18 +135,25 @@ class WebModule(Module):
                 "text": response.text[:limit],
                 "from_cache": response.from_cache,
             }
-        page = html_to_text(response.text, response.url, limit)
+        page = html_to_text(response.text, response.url)  # whole page: judge it before cutting
         if self.config.browser_fallback and self._needs_js(page.text):
             try:
                 return await self._render(url, limit, robots)
             except BrowserUnavailable:
                 pass
+            except KillSwitchEngaged:
+                raise
+            except Exception as exc:  # the browser failed; the plain page is still good
+                self.ctx.logger.warning("browser fallback failed", url=url, error=repr(exc))
+        text = page.text
+        if len(text) > limit:
+            text = text[:limit].rstrip() + " …"
         await self.ctx.publish("web.fetched", {"url": response.url, "status": response.status})
         return {
             "url": response.url,
             "status": response.status,
             "title": page.title,
-            "text": page.text,
+            "text": text,
             "links": len(page.links),
             "from_cache": response.from_cache,
         }

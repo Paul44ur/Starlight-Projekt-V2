@@ -10,6 +10,9 @@ Both only apply in an interactive terminal; piped input is read line by line as 
 from __future__ import annotations
 
 import asyncio
+import contextlib
+import logging
+import os
 import sys
 import threading
 import time
@@ -95,10 +98,14 @@ class LineReader:
     At most one read is in flight. If a question is abandoned (Ctrl+C at a confirmation),
     its read is still waiting for a line; the next prompt takes that read over instead of
     starting a second one, which would otherwise swallow the user's next line. The thread
-    is a daemon, so leaving Starlight never waits for Enter."""
+    is a daemon, so leaving Starlight never waits for Enter (see leave_if_reading)."""
 
     def __init__(self) -> None:
         self._pending: Future[str] | None = None
+
+    def waiting(self) -> bool:
+        """True while a read is still waiting for a line."""
+        return self._pending is not None and not self._pending.done()
 
     async def read(self, reader: Callable[[str], str], prompt: str) -> str:
         if self._pending is not None and not self._pending.done():
@@ -124,3 +131,15 @@ def _run(future: Future[str], reader: Callable[[str], str], prompt: str) -> None
 
 
 lines = LineReader()
+
+
+def leave_if_reading(code: int) -> None:
+    """Exit now when a prompt that Ctrl+C abandoned is still reading in its thread. The C
+    library holds the lock of stdin for that read, so a normal exit would hang until Enter."""
+    if not (lines.waiting() and interactive()):
+        return
+    for stream in (sys.stdout, sys.stderr):
+        with contextlib.suppress(OSError, ValueError):
+            stream.flush()
+    logging.shutdown()
+    os._exit(code)

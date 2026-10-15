@@ -35,7 +35,6 @@ _PROGRAM_FUNCTIONS = re.compile(
     re.IGNORECASE,
 )
 _FILE_EVENTS = {"open", "os.listdir", "os.scandir", "os.remove", "os.rename", "shutil.rmtree"}
-_SSH = os.path.normcase(os.path.join(os.path.expanduser("~"), ".ssh"))
 
 
 def _denied_path(path: object) -> bool:
@@ -47,8 +46,7 @@ def _denied_path(path: object) -> bool:
         return False
     if full == _WORKDIR or full.startswith(_WORKDIR + os.sep):
         return False  # the sandbox's own folder, even if it lives under a denied one
-    roots = [*_DENY, _SSH]
-    return any(full == root or full.startswith(root + os.sep) for root in roots)
+    return any(full == root or full.startswith(root + os.sep) for root in _DENY)
 
 
 def _hook(event: str, args: tuple[object, ...]) -> None:

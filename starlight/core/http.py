@@ -12,14 +12,13 @@ from __future__ import annotations
 
 import asyncio
 import codecs
-import contextlib
 import email.utils
 import json
+import math
 import re
 import sqlite3
 import threading
 import time
-from collections.abc import AsyncIterator
 from contextvars import ContextVar
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -219,14 +218,19 @@ class ResponseCache:
 
 
 def parse_retry_after(value: str | None, default: float) -> float:
+    """Seconds to wait from a Retry-After header (a number or an HTTP date); ``default`` when
+    the header is missing or makes no sense."""
     if not value:
         return default
     try:
-        return max(0.0, float(value))
+        seconds = float(value)
     except ValueError:
         pass
-    parsed = email.utils.parsedate_to_datetime(value) if value else None
-    if parsed is None:
+    else:
+        return default if math.isnan(seconds) else max(0.0, seconds)
+    try:
+        parsed = email.utils.parsedate_to_datetime(value)
+    except (TypeError, ValueError):  # Python 3.10+ raises instead of returning None
         return default
     return max(0.0, parsed.timestamp() - time.time())
 
@@ -332,16 +336,6 @@ class PoliteHttp:
         self._log.info("request", url=url, method=method, **extra)
         if self.stats is not None:
             self.stats.record("web.requests", host=urlsplit(url).netloc)
-
-    @contextlib.asynccontextmanager
-    async def permit(self, url: str, respect_robots: bool = True) -> AsyncIterator[None]:
-        """Wait until a request to ``url`` is allowed. For clients that fetch on their own,
-        so they stay under the same limits."""
-        host, delay = await self._prepare(url, respect_robots)
-        async with host.lock:
-            await self._wait_turn(host, delay)
-            self._note(url, via="permit")
-        yield
 
     async def navigation_permit(self, url: str, respect_robots: bool = True) -> None:
         """Browser page loads: kill switch, robots.txt and per-domain spacing. The requests

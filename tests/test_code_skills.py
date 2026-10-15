@@ -188,6 +188,31 @@ async def test_process_sandbox_blocks_what_matters(tmp_path: Path) -> None:
     assert list((tmp_path / "sb").iterdir()) == []  # nothing left behind
 
 
+async def test_process_sandbox_blocks_the_real_ssh_folder(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Inside the sandbox HOME is its work folder, so ~/.ssh has to be resolved outside."""
+    home = tmp_path / "home"
+    (home / ".ssh").mkdir(parents=True)
+    key = home / ".ssh" / "id_test"
+    key.write_text("PRIVATE")
+    (home / "notes.txt").write_text("fine")
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.setenv("USERPROFILE", str(home))
+    sandbox = ProcessSandbox(tmp_path / "sb", deny=[])
+
+    async def run(code: str) -> tuple[bool, str]:
+        result = await sandbox.run({"main.py": code}, ["python", "main.py"])
+        return result.ok, result.stdout + result.stderr
+
+    ok, output = await run(f"print(open({str(key)!r}).read())")
+    assert not ok and "outside the sandbox" in output and "PRIVATE" not in output
+    ok, output = await run(f"import os; print(os.listdir({str(key.parent)!r}))")
+    assert not ok and "outside the sandbox" in output
+    ok, output = await run(f"print(open({str(home / 'notes.txt')!r}).read())")
+    assert ok and output.strip() == "fine"  # the rest of the home folder is not blocked
+
+
 @pytest.mark.skipif(not docker_available(), reason="Docker not running")
 async def test_docker_sandbox(tmp_path: Path) -> None:
     sandbox = DockerSandbox(tmp_path)

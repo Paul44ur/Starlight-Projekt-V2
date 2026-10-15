@@ -59,6 +59,12 @@ SUBCOMMANDS = {
     "zpool": {"status", "list"},
 }
 FORBIDDEN_ARGS = {"-f", "--follow"}  # would never return
+# "git log --output=FILE" (also "--output FILE") writes the output to FILE; git accepts no
+# abbreviation of it.
+_GIT_OUTPUT_FILE = re.compile(r"--output(=.*)?")
+# A program given with a path counts only from the system's own program folders: "/tmp/x/cat"
+# or "./ls" is some other program that happens to be called cat or ls.
+_SYSTEM_DIRS = {"/bin", "/sbin", "/usr/bin", "/usr/sbin", "/usr/local/bin", "/usr/local/sbin"}
 
 # Programs that read with some arguments and change things with others ("date -s",
 # "ip link set", "journalctl --vacuum-time"): read-only only with no arguments or with
@@ -118,7 +124,9 @@ def is_read_only(command: str) -> bool:
         return False
     if not words or words[0] == "sudo":
         return False
-    program = words[0].rsplit("/", 1)[-1]
+    folder, slash, program = words[0].rpartition("/")
+    if slash and folder not in _SYSTEM_DIRS:
+        return False
     if any(w in FORBIDDEN_ARGS for w in words[1:]):
         return False
     if program == "top":
@@ -129,6 +137,8 @@ def is_read_only(command: str) -> bool:
         if not (len(words) > 1 and words[1] in SUBCOMMANDS[program]):
             return False
         key, rest = f"{program} {words[1]}", words[2:]
+        if program == "git" and any(_GIT_OUTPUT_FILE.fullmatch(w) for w in rest):
+            return False
         return key not in _ONLY_THESE or all(_ONLY_THESE[key].fullmatch(w) for w in rest)
     if program == "ip":
         return _ip_reads(words[1:])

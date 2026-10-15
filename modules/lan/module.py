@@ -109,8 +109,16 @@ class LanModule(Module):
                     return parse_neighbours(table.read())
             except OSError:
                 command = ["ip", "neigh"]
+        flags = 0x08000000 if sys.platform == "win32" else 0  # no console window
         try:
-            done = subprocess.run(command, capture_output=True, text=True, timeout=10, check=False)
+            done = subprocess.run(
+                command,
+                capture_output=True,
+                text=True,
+                timeout=10,
+                check=False,
+                creationflags=flags,
+            )
         except (OSError, subprocess.TimeoutExpired) as exc:
             raise ToolError(f"could not read the network table: {exc}") from exc
         return parse_neighbours(done.stdout)

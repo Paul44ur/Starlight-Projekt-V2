@@ -28,7 +28,7 @@ _WINDOWS_TOAST = (
     "[void]$texts.Item(1).AppendChild("
     "$tpl.CreateTextNode($env:STARLIGHT_NOTIFY_MESSAGE))\n"
     "$toast = [Windows.UI.Notifications.ToastNotification]::new($tpl)\n"
-    f"{_MGR}::CreateToastNotifier('Starlight').Show($toast)\n"
+    f"{_MGR}::CreateToastNotifier($env:STARLIGHT_NOTIFY_APP).Show($toast)\n"
 )
 
 
@@ -40,18 +40,25 @@ class NotifyUnavailable(Exception):
 class Backend:
     name: str
     kind: str  # "windows", "mac" or "linux"
+    app_name: str = "Starlight"  # shown as the sender of a toast (Windows) or in notify-send
 
     def send(self, title: str, message: str, urgent: bool = False) -> None:
         if self.kind == "windows":
             self._run(
                 ["powershell", "-NoProfile", "-NonInteractive", "-Command", _WINDOWS_TOAST],
-                env={"STARLIGHT_NOTIFY_TITLE": title, "STARLIGHT_NOTIFY_MESSAGE": message},
+                env={
+                    "STARLIGHT_NOTIFY_TITLE": title,
+                    "STARLIGHT_NOTIFY_MESSAGE": message,
+                    "STARLIGHT_NOTIFY_APP": self.app_name or "Starlight",
+                },
             )
         elif self.kind == "mac":
             script = f"display notification {_osa(message)} with title {_osa(title)}"
             self._run(["osascript", "-e", script])
         else:
             args = ["notify-send"]
+            if self.app_name:
+                args += ["-a", self.app_name]
             if urgent:
                 args += ["-u", "critical"]
             args += [title, message]
@@ -62,7 +69,14 @@ class Backend:
         import os
 
         full_env = {**os.environ, **env} if env else None
-        result = subprocess.run(args, capture_output=True, text=True, timeout=15, env=full_env)
+        result = subprocess.run(
+            args,
+            capture_output=True,
+            text=True,
+            timeout=15,
+            env=full_env,
+            creationflags=0x08000000 if sys.platform == "win32" else 0,  # no console window
+        )
         if result.returncode != 0:
             raise NotifyUnavailable(result.stderr.strip() or "the notification was not shown")
 
@@ -72,12 +86,12 @@ def _osa(text: str) -> str:
     return '"' + text.replace("\\", "\\\\").replace('"', '\\"') + '"'
 
 
-def detect() -> Backend | None:
+def detect(app_name: str = "Starlight") -> Backend | None:
     """A notification backend for this computer, or None if there is no usable one."""
     if sys.platform == "win32":
-        return Backend("powershell-toast", "windows")
+        return Backend("powershell-toast", "windows", app_name)
     if sys.platform == "darwin":
-        return Backend("osascript", "mac")
+        return Backend("osascript", "mac", app_name)
     if shutil.which("notify-send"):
-        return Backend("notify-send", "linux")
+        return Backend("notify-send", "linux", app_name)
     return None

@@ -1,4 +1,4 @@
-# The email module (modules/email). Set this up from the chat with email.setup - that stores
+# The email module (modules/mail). Set this up from the chat with mail.configure - that stores
 # the app-password in the OS keyring and fills in the servers below. Use an app-password from
 # your mail provider, never your main password. Nothing secret is stored in this file.
 username: ""       # your email address / login
@@ -10,3 +10,6 @@ from_name: ""      # display name on messages you send (optional)
 watch: false       # true: check for new mail in the background (publishes mail.new)
 check_minutes: 5
 notify_from: []    # tell me at once about mail from these, e.g. ["landlord@", "@bank.de"]
+verify_certificate: true  # check the mail server's TLS certificate (IMAP and SMTP). Set false
+                          # only for your own server with a self-signed certificate: the
+                          # connection stays encrypted, but the server is no longer checked

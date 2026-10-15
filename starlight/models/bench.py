@@ -36,6 +36,13 @@ def _numbers(row: str) -> list[float]:
     return [float(v) for v in re.findall(r'"([\d.]+)"', row)]
 
 
+def _number(text: str) -> float | None:
+    try:
+        return float(text)
+    except ValueError:  # nvidia-smi prints "[N/A]" for what a GPU or driver does not report
+        return None
+
+
 def gpu_status() -> dict[str, Any] | None:
     """VRAM in use (and total, and utilization in %, where known), from whichever tool
     this machine has: rocm-smi, nvidia-smi or the Windows performance counters."""
@@ -60,13 +67,15 @@ def gpu_status() -> dict[str, Any] | None:
         ]
     )
     if out:
-        used, total, util = (float(x) for x in out.splitlines()[0].split(","))
-        return {
-            "source": "nvidia-smi",
-            "used_bytes": int(used * 2**20),
-            "total_bytes": int(total * 2**20),
-            "utilization": util,
-        }
+        values = [_number(x) for x in out.splitlines()[0].split(",")]
+        used, total, util = [*values, None, None, None][:3]
+        if used is not None or util is not None:
+            return {
+                "source": "nvidia-smi",
+                "used_bytes": None if used is None else int(used * 2**20),
+                "total_bytes": None if total is None else int(total * 2**20),
+                "utilization": util,
+            }
     if sys.platform == "win32":
         # Windows performance counters work for AMD, NVIDIA and Intel GPUs.
         out = _run([
@@ -77,18 +86,15 @@ def gpu_status() -> dict[str, Any] | None:
             rows = [r for r in out.splitlines() if r.startswith('"')]
             if len(rows) >= 2:
                 header = re.findall(r'"([^"]*)"', rows[0])[1:]
-                values = _numbers(rows[-1])
-                memory = [v for h, v in zip(header, values, strict=False) if "Memory" in h]
-                engine = [v for h, v in zip(header, values, strict=False) if "Engine" in h]
+                readings = _numbers(rows[-1])
+                memory = [v for h, v in zip(header, readings, strict=False) if "Memory" in h]
+                engine = [v for h, v in zip(header, readings, strict=False) if "Engine" in h]
                 return {
                     "source": "typeperf",
                     "used_bytes": int(max(memory)) if memory else None,
                     "utilization": round(min(100.0, sum(engine)), 1) if engine else None,
                 }
     return None
-
-
-gpu_memory = gpu_status  # older name
 
 
 async def benchmark(

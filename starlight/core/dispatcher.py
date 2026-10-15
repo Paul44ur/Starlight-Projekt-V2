@@ -80,9 +80,6 @@ class Dispatcher:
     def tools(self) -> list[Tool]:
         return sorted(self._tools.values(), key=lambda t: t.qualified_name)
 
-    def schemas(self) -> list[dict[str, Any]]:
-        return [t.json_schema() for t in self.tools()]
-
     # -- calls -------------------------------------------------------------------------
 
     async def call(
@@ -127,9 +124,10 @@ class Dispatcher:
         )
         await self.bus.publish("tool.called", {"tool": name, "request_id": request_id})
         started = time.perf_counter()
+        budget = asyncio.timeout(None if tool.own_timeout else self.timeout)
         try:
-            limit = None if tool.own_timeout else self.timeout
-            output = await asyncio.wait_for(tool.run(validated), timeout=limit)
+            async with budget:
+                output = await tool.run(validated)
             result = ToolResult(name, True, output=output)
         except ToolError as exc:  # turned down for a reason, not a crash
             self._log.warning("tool refused", tool=name, reason=str(exc))
@@ -137,8 +135,13 @@ class Dispatcher:
         except ConfigError as exc:  # a settings file the user can fix
             self._log.warning("tool config error", tool=name, error=str(exc))
             result = ToolResult(name, False, error=f"configuration error: {exc}")
-        except TimeoutError:
-            result = ToolResult(name, False, error=f"timed out after {self.timeout}s")
+        except TimeoutError as exc:
+            if budget.expired():
+                error = f"timed out after {self.timeout}s"
+            else:  # the tool's own limit (ssh_run, a wait_for inside it), not ours
+                error = f"timed out: {exc}" if str(exc) else "timed out"
+            self._log.warning("tool timed out", tool=name, error=error)
+            result = ToolResult(name, False, error=error)
         except KillSwitchEngaged:
             self.audit.record("tool.killed", tool=name, request_id=request_id)
             raise

@@ -3,15 +3,19 @@
 Reading is free: git status/log/diff/branches, the list of containers and their logs and
 stats, and which program listens on which port. Changing things asks first: git commit and
 pull, and starting, stopping or restarting a container. Commands are run directly (no shell)
-with a time limit, and git never waits for a password prompt.
+with a time limit (a program that takes longer is stopped together with everything it
+started), and git is told not to ask for a password.
 """
 
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import os
 import re
 import shutil
+import signal
+import subprocess
 import sys
 from pathlib import Path
 from typing import Any
@@ -32,13 +36,38 @@ class Config(BaseModel):
     max_output: int = Field(default=12000, ge=1000)
 
 
+def kill_tree(process: asyncio.subprocess.Process) -> None:
+    """Stop a program and everything it started (a git hook, ssh, a credential helper),
+    which would otherwise keep its output open and the call waiting."""
+    if sys.platform == "win32":
+        if process.returncode is None:
+            subprocess.run(
+                ["taskkill", "/T", "/F", "/PID", str(process.pid)],
+                capture_output=True,
+                check=False,
+                creationflags=0x08000000,  # CREATE_NO_WINDOW
+            )
+    else:  # its own process group (see _exec)
+        with contextlib.suppress(ProcessLookupError, PermissionError):
+            os.killpg(process.pid, signal.SIGKILL)
+    if process.returncode is None:
+        with contextlib.suppress(ProcessLookupError):
+            process.kill()
+
+
 class DevModule(Module):
     Config = Config
 
     async def setup(self, ctx: ModuleContext) -> None:
         self.config: Config = ctx.config
+        self._running: set[asyncio.subprocess.Process] = set()
+        ctx.kill_switch.add_cleanup(self._kill_all, owner=ctx.name)
 
-    async def _exec(self, program: str, *args: str, cwd: Path | None = None) -> str:
+    def _kill_all(self) -> None:
+        for process in list(self._running):
+            kill_tree(process)
+
+    async def _exec(self, program: str, *args: str) -> str:
         """Run a program and return its output; a non-zero exit is a ToolError."""
         self.ctx.kill_switch.check()
         found = shutil.which(program)
@@ -47,15 +76,24 @@ class DevModule(Module):
         env = {**os.environ, "GIT_TERMINAL_PROMPT": "0", "GIT_PAGER": "cat", "LC_ALL": "C"}
         flags = 0x08000000 if sys.platform == "win32" else 0  # no console window
         process = await asyncio.create_subprocess_exec(
-            found, *args, cwd=cwd, env=env, creationflags=flags,
+            found, *args, env=env, creationflags=flags,
+            stdin=asyncio.subprocess.DEVNULL,
             stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
+            start_new_session=sys.platform != "win32",  # one group to stop
         )  # fmt: skip
+        self._running.add(process)
         try:
             out, err = await asyncio.wait_for(process.communicate(), self.config.timeout)
         except TimeoutError as exc:
-            process.kill()
-            await process.communicate()
+            kill_tree(process)
+            with contextlib.suppress(TimeoutError):
+                await asyncio.wait_for(process.communicate(), 5)  # its last words, if any
             raise ToolError(f"{program} took longer than {self.config.timeout:.0f} s") from exc
+        except asyncio.CancelledError:  # the kill switch or the tool time limit
+            kill_tree(process)
+            raise
+        finally:
+            self._running.discard(process)
         text = out.decode("utf-8", errors="replace")
         if process.returncode != 0:
             message = (err.decode("utf-8", errors="replace") or text).strip()
@@ -69,7 +107,8 @@ class DevModule(Module):
         name = repo.strip()
         if not name:
             raise ToolError("which repository? a folder path or a name from dev.repos")
-        path = expand(self.config.repos.get(name.lower(), name))
+        repos = {key.lower(): folder for key, folder in self.config.repos.items()}
+        path = expand(repos.get(name.lower(), name))
         if not path.is_dir():
             raise ToolError(f"{path} is not a folder")
         return path
@@ -79,7 +118,9 @@ class DevModule(Module):
             raise ToolError("Starlight does not change its own folder; do that yourself")
 
     async def _git(self, repo: str, *args: str) -> str:
-        return await self._exec(self.config.git, "-C", str(self._repo(repo)), *args)
+        # quotepath=off: non-ASCII file names come back as they are, not as octal escapes
+        folder = str(self._repo(repo))
+        return await self._exec(self.config.git, "-c", "core.quotepath=off", "-C", folder, *args)
 
     @tool
     def repos(self) -> dict[str, str]:

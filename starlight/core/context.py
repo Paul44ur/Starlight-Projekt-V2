@@ -3,7 +3,7 @@
 When the estimated prompt grows past ``context_window - reserve_tokens``, the oldest
 turns (never the system prompt, never the most recent ``keep_recent`` messages, never
 half a tool call) are summarized by the model. The summary replaces them in the prompt
-and is published as ``conversation.summarized`` so the memory (Step 5) can keep it.
+and is published as ``conversation.summarized`` so memory can keep it.
 """
 
 from __future__ import annotations
@@ -67,11 +67,6 @@ class ContextManager:
         while cut > 1 and messages[cut].role == "tool":
             cut -= 1
         return cut
-
-    async def fit(self, messages: list[Message], tools: list[dict[str, Any]]) -> list[Message]:
-        """Return messages that fit the budget (`compact`, then `shorten`). Modifies
-        nothing in place."""
-        return self.shorten(await self.compact(messages, tools), tools)
 
     async def compact(self, messages: list[Message], tools: list[dict[str, Any]]) -> list[Message]:
         """Over the budget: the older turns as one summary, the recent ones as they are.

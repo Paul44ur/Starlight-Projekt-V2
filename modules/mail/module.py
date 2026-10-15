@@ -3,7 +3,8 @@
 Set it up once from the chat ("set up my email ..."): the password (use an app-password, not
 your main password) goes into the OS keyring, and the server settings into
 config/modules/mail.yaml - no project files to edit by hand. Reading your inbox is allowed
-freely and never marks anything as read; sending or replying always asks first.
+freely and never marks anything as read; sending or replying asks first (unless you
+auto-approved ``mail.send`` / ``mail.reply`` under ``permissions`` in config/starlight.yaml).
 
 Beyond reading and sending, it helps with the inbox: what is unread, a summary sorted into
 important / can wait / probably spam (by your local model), a draft reply you can change
@@ -12,6 +13,10 @@ checks for new mail every few minutes, publishes ``mail.new`` (automations can r
 tells you at once about mail from the senders in ``notify_from``.
 
 Messages are named by their IMAP UID, which stays the same across sessions.
+
+The server's TLS certificate is checked on every connection. A home server with a
+self-signed certificate fails with an error that names the ``verify_certificate`` setting
+in config/modules/mail.yaml; set it to ``false`` to accept such a certificate anyway.
 
 Uses only the Python standard library; no third-party packages.
 """
@@ -22,9 +27,9 @@ import asyncio
 import email
 import email.utils
 import imaplib
-import json
 import re
 import smtplib
+import ssl
 from email import message_from_bytes
 from email.header import Header, decode_header
 from email.message import EmailMessage, Message
@@ -34,9 +39,11 @@ from pydantic import BaseModel, Field
 
 from starlight.core import Module, ModuleContext, Permission, ToolError, tool
 from starlight.core.config import write_yaml_config
+from starlight.core.jsonfile import load_json, save_json
 from starlight.core.model import Message as ChatMessage
 
 PASSWORD_KEY = "mail.password"
+CONNECT_TIMEOUT = 30  # seconds, for IMAP and SMTP alike
 
 
 class Config(BaseModel):
@@ -51,6 +58,10 @@ class Config(BaseModel):
     check_minutes: int = Field(default=5, ge=1)
     # Tell me at once about new mail from these (addresses or parts of them, e.g. "@bank.de").
     notify_from: list[str] = Field(default_factory=list)
+    # Check the mail server's TLS certificate (IMAP and SMTP). Set this to false only for your
+    # own server with a self-signed certificate: the connection stays encrypted, but anyone
+    # on the network could then pose as the server and read the password and your mail.
+    verify_certificate: bool = True
 
 
 SUMMARY_PROMPT = """\
@@ -128,18 +139,8 @@ class EmailModule(Module):
         self.config.smtp_port = smtp_port
         write_yaml_config(
             self.ctx.paths.module_configs / "mail.yaml",
-            {
-                "username": username,
-                "imap_host": imap_host,
-                "imap_port": imap_port,
-                "smtp_host": smtp_host,
-                "smtp_port": smtp_port,
-                "from_name": self.config.from_name,
-                "watch": self.config.watch,
-                "check_minutes": self.config.check_minutes,
-                "notify_from": list(self.config.notify_from),
-            },
-            "# The email module (modules/email). The app-password is in the keyring, not here.",
+            self.config.model_dump(),  # every setting, so hand-made ones are kept
+            "# The email module (modules/mail). The app-password is in the keyring, not here.",
         )
         return {
             "configured": True,
@@ -212,7 +213,7 @@ class EmailModule(Module):
             "to": original["reply_target"],
             "subject": _reply_subject(original["subject"]),
             "body": draft,
-            "note": "Nothing was sent. Send it with mail.reply (it asks first).",
+            "note": "Nothing was sent. Send it with mail.reply.",
         }
 
     async def _write(self, prompt: str) -> str:
@@ -222,12 +223,13 @@ class EmailModule(Module):
         response = await model.chat([ChatMessage("user", prompt)], [])
         return response.content.strip()
 
-    # -- sending (asks first) ------------------------------------------------------------
+    # -- sending (asks first unless auto-approved) ---------------------------------------
 
     @tool(permission=Permission.CONFIRM)
     async def send(self, to: str, subject: str, body: str) -> dict[str, Any]:
-        """Send an email from your address. Asks for confirmation first. `to` is the
-        recipient address, `subject` the subject line, `body` the message text."""
+        """Send an email from your address (asks for confirmation first unless it was
+        auto-approved). `to` is the recipient address, `subject` the subject line, `body`
+        the message text."""
         password = self._require()
         if "@" not in to:
             raise EmailError("give a recipient address, e.g. 'name@example.com'")
@@ -237,8 +239,8 @@ class EmailModule(Module):
 
     @tool(permission=Permission.CONFIRM)
     async def reply(self, id: str, body: str, reply_all: bool = False) -> dict[str, Any]:
-        """Reply to a message (by its id), in the same thread. Asks for confirmation
-        first. `body` is the text of the reply."""
+        """Reply to a message (by its id), in the same thread (asks for confirmation first
+        unless it was auto-approved). `body` is the text of the reply."""
         password = self._require()
         if not body.strip():
             raise EmailError("what should the reply say?")
@@ -261,13 +263,6 @@ class EmailModule(Module):
 
     # -- new mail (background) -----------------------------------------------------------
 
-    def _load_seen(self) -> dict[str, Any] | None:
-        try:
-            data = json.loads(self.seen_file.read_text("utf-8"))
-        except (OSError, json.JSONDecodeError):
-            return None
-        return data if isinstance(data, dict) else None
-
     async def check_new(self) -> list[dict[str, Any]]:
         """Look for unread mail not seen before; publish mail.new for each one, and tell
         the user about mail from senders in notify_from. The first look only takes note
@@ -276,12 +271,11 @@ class EmailModule(Module):
             return []
         password = self._require()
         validity, unseen = await asyncio.to_thread(self._imap_unseen, password)
-        state = self._load_seen()
-        known = set(state.get("uids", [])) if state and state.get("validity") == validity else None
+        state = load_json(self.seen_file, {})  # {} (no file yet) is the first look
+        known = set(state.get("uids", [])) if state.get("validity") == validity else None
         fresh = [] if known is None else [m for m in unseen if m["id"] not in known]
         remembered = sorted({*(known or set()), *(m["id"] for m in unseen)}, key=int)[-2000:]
-        self.seen_file.parent.mkdir(parents=True, exist_ok=True)
-        self.seen_file.write_text(json.dumps({"validity": validity, "uids": remembered}))
+        save_json(self.seen_file, {"validity": validity, "uids": remembered})
         for message in fresh:
             await self.ctx.publish("mail.new", dict(message))
             sender = message["from"].lower()
@@ -293,8 +287,22 @@ class EmailModule(Module):
 
     # -- IMAP/SMTP (blocking; run via asyncio.to_thread; stubbable in tests) --------------
 
+    def _tls_context(self) -> ssl.SSLContext:
+        """The TLS settings for IMAP and SMTP: the server's certificate is checked unless
+        verify_certificate is off."""
+        context = ssl.create_default_context()
+        if not self.config.verify_certificate:
+            context.check_hostname = False  # before verify_mode: the order matters
+            context.verify_mode = ssl.CERT_NONE
+        return context
+
     def _imap_connect(self, password: str) -> imaplib.IMAP4_SSL:
-        client = imaplib.IMAP4_SSL(self.config.imap_host, self.config.imap_port)
+        client = imaplib.IMAP4_SSL(
+            self.config.imap_host,
+            self.config.imap_port,
+            ssl_context=self._tls_context(),
+            timeout=CONNECT_TIMEOUT,
+        )
         client.login(self.config.username, password)
         return client
 
@@ -302,6 +310,8 @@ class EmailModule(Module):
         try:
             client = self._imap_connect(password)
             client.select("INBOX", readonly=True)  # read-only: nothing is marked as read
+        except ssl.SSLCertVerificationError as exc:
+            raise EmailError(f"could not reach the mailbox: {_certificate_problem(exc)}") from exc
         except (imaplib.IMAP4.error, OSError) as exc:
             raise EmailError(f"could not reach the mailbox: {exc}") from exc
         return client
@@ -417,12 +427,25 @@ class EmailModule(Module):
             message[key] = value
         message.set_content(body)
         try:
-            with smtplib.SMTP(self.config.smtp_host, self.config.smtp_port, timeout=30) as server:
-                server.starttls()
+            with smtplib.SMTP(
+                self.config.smtp_host, self.config.smtp_port, timeout=CONNECT_TIMEOUT
+            ) as server:
+                server.starttls(context=self._tls_context())
                 server.login(self.config.username, password)
                 server.send_message(message)
+        except ssl.SSLCertVerificationError as exc:
+            raise EmailError(f"could not send the email: {_certificate_problem(exc)}") from exc
         except (smtplib.SMTPException, OSError) as exc:
             raise EmailError(f"could not send the email: {exc}") from exc
+
+
+def _certificate_problem(exc: ssl.SSLCertVerificationError) -> str:
+    return (
+        f"the server's certificate was not accepted ({exc.verify_message or exc}). If this is "
+        "your own server with a self-signed certificate, set `verify_certificate: false` in "
+        "config/modules/mail.yaml (the connection stays encrypted, but the server is no "
+        "longer checked); otherwise do not send your password to it."
+    )
 
 
 def _payload(fetched: Any) -> bytes:

@@ -158,7 +158,13 @@ async def _status(base: str) -> dict[str, str]:
 async def _post(base: str, path: str, view: Any) -> None:
     try:
         async with httpx.AsyncClient(timeout=5) as client:
-            await client.post(f"{base}{path}")
+            response = await client.post(f"{base}{path}")
+        if not response.is_success:  # e.g. 403: /resume is refused for a viewer that is not local
+            detail = ""
+            with contextlib.suppress(ValueError, AttributeError):
+                detail = str(response.json().get("detail") or "")
+            view.error(f"the backend refused it (HTTP {response.status_code}) {detail}".strip())
+            return
         view.info("Kill switch engaged." if path.endswith("kill") else "Kill switch released.")
     except httpx.HTTPError as exc:
         view.error(f"could not reach the backend: {exc}")

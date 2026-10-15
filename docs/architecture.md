@@ -40,9 +40,9 @@ modules/            hello, web, login, network, recon, cve, certs, breach, deskt
                     reminders, mail, pdf, code, files, access, whatsapp, todo,
                     calendar, briefing, calc, translate, automations, apps, media,
                     commands, office, dev, research, docs, notes, transcripts,
-                    voice, home, lan, backup (+ _template)
+                    voice, home, lan, backup, watch, focus (+ _template)
 skills/             skills it learns (one folder each)
-scripts/            install.ps1, install.sh
+scripts/            install.ps1, install.sh, e2e_chat.py (the end-to-end chat test CI runs)
 memory/             what the AI learns (one Markdown file per fact)
 config/             starlight.yaml, servers.yaml, modules/<name>.yaml
 logs/               starlight.log, audit.log, modules/<name>.log (JSON, rotated)
@@ -71,15 +71,18 @@ into each prompt. After each task the model picks what is worth keeping; a fact 
 existing topic updates that file instead of adding a new one. Tools: `memory.remember`,
 `memory.recall`, `memory.forget` (asks first).
 
-**Step 6, web.** One shared HTTP client for every module: at most 5 requests in any
-one-second window (a sliding window, so bursts can never exceed it), 1 per second per
-site, robots.txt and crawl-delay, back-off on 429/503 with Retry-After, and a page cache.
+**Step 6, web.** One shared HTTP client for every module: a cap on requests in any
+one-second window (a sliding window, so bursts can never exceed it), a gap between
+requests to the same site (both in the `http` section of `config/starlight.yaml`; shipped:
+10 per second, 0.5 s), robots.txt and crawl-delay, back-off on 429/503 with Retry-After, and a page cache.
 The headless browser counts each of its requests against the same cap. `web.search`
 (SearXNG or Brave), `web.fetch`, `web.fetch_many`, `web.links`. The `login` module fills
 login forms with credentials from the vault, asks you for 2FA codes, asks before the first
 login to each site and saves the session so later visits skip the login.
 
-**Step 7, network.** `config/servers.yaml` is the allow-list; anything else is refused.
+**Step 7, network.** `config/servers.yaml` lists your servers (SSH logins, ports, health
+checks); with `network.any_host: false` it is an allow-list and anything else is refused,
+and the shipped config sets `any_host: true`.
 Ping, TCP port, DNS and HTTP checks with latency recorded for statistics; SSH (keys from
 the vault), HTTP/REST, TCP and WebSocket. Read-only SSH commands (`df`, `uptime`,
 `systemctl status`, ...) run freely; anything that could change the server asks first.
@@ -96,7 +99,8 @@ control, and screenshots stay in memory and only go to a model on this computer.
 **Step 9, code and skills.** The core routes code work to a coding model
 (`roles: code:`). `code.write_code` writes a program with tests, runs the tests in the
 sandbox, feeds errors back and retries a few times, then reports; `code.run_python` runs a
-snippet. Both ask first. The sandbox is a Docker container (no network, read-only, capped
+snippet. Both ask first (the shipped config lists them under `permissions.auto_approve`,
+see "Fewer questions" below). The sandbox is a Docker container (no network, read-only, capped
 memory/CPU/processes, no privileges) when Docker runs, otherwise a separate process with a
 time limit and audit hooks that block network, the vault, Starlight's private folders and
 starting programs. When the same kind of task succeeds again, the model drafts a skill
@@ -111,10 +115,10 @@ number accepted. Text becomes a task and the answer comes back; confirmations ar
 on the phone (reply yes/no); `/kill` stops everything, `/status` reports; server alerts
 and new draft skills are sent to you. The statistics viewer is a separate web app that
 reads `data/stats.db` read-only: tasks, tool calls per module, errors, web requests (with
-the busiest second against the 5/s cap), tokens per second, GPU use, VRAM, memory size
+the busiest second against the requests-per-second cap), tokens per second, GPU use, VRAM, memory size
 and skills, plus Prometheus metrics at `/metrics`. Hardening: end-to-end tests per
 module, a test that the kill switch stops every tool of every module, a load test of the
-5 requests/s cap, vault values masked in every log line, and `starlight logs scan`.
+requests-per-second cap, vault values masked in every log line, and `starlight logs scan`.
 
 **Add-on modules.** Beyond the build plan, a set of everyday, security and productivity
 modules follow the same pattern (config, `@tool`, confirmations, the shared HTTP client,
@@ -128,7 +132,8 @@ the kill switch) and are enabled by default. Free or local, no API keys except w
   only a hash prefix is sent, the password never leaves the PC).
 - *Productivity:* `reminders` (one-off and recurring: daily, weekdays, chosen days, every
   N minutes/hours, monthly; delivered to every open channel, saved to disk), `mail` (IMAP/SMTP with an app-password in
-  the vault; reading is free, sending asks first), `pdf` (read text from PDFs and make simple
+  the vault; reading is free, sending asks first unless `mail.send` is in
+  `permissions.auto_approve`, as in the shipped config), `pdf` (read text from PDFs and make simple
   ones; needs the `pdf` extra — pypdf and reportlab).
 
 - *Daily life:* `todo` (lists, due dates, priorities), `calendar` (a standard `.ics` file,
@@ -145,12 +150,13 @@ the kill switch) and are enabled by default. Free or local, no API keys except w
   primary core; an automation started by another one stops at depth 3.
 
 - *Your PC and tech:* `apps` (Start-menu programs via `os.startfile`, windows via the Win32
-  API through ctypes - no extra packages; the first start of each program asks, the yes is
-  remembered; files are opened only if they are not programs or scripts), `media` (media
+  API through ctypes - no extra packages; with `ask_first_open: true` the first start of
+  each program asks and the yes is remembered, the shipped config sets it to false; files
+  are opened only if they are not programs or scripts), `media` (media
   and volume keys; playerctl/pactl on Linux), `commands` (only your named commands from
   `config/modules/commands.yaml`, argument lists without a shell, `{placeholders}` filled
   as single arguments that can't start with "-", a time limit and the kill switch),
-  `office` (python-docx/openpyxl in the `office` extra; cells starting with = + - @ are
+  `office` (python-docx/openpyxl in the `office` extra; cells starting with = are
   written as text), `dev` (git with no password prompts, Docker, listening ports via
   psutil; changes are CONFIRM tools), `research` (plans searches with the model, reads
   pages through the `web` module and writes a report citing numbered sources).
@@ -320,7 +326,7 @@ a still-unfinished tool call rescanned only when something that can end it arriv
 | 3 | Module system | done |
 | 4 | Local model on the GPU | done: Ollama and llama.cpp providers, router, summarizing, streaming, benchmark |
 | 5 | Memory and the Memory folder | done |
-| 6 | Web: search, scraping (max 5 req/s) and logins | done |
+| 6 | Web: search, scraping (rate-limited) and logins | done |
 | 7 | Network: ping and interact with servers | done |
 | 8 | Desktop: read the screen, emulate input | done |
 | 9 | Writing code and learning skills | done |
@@ -329,14 +335,14 @@ a still-unfinished tool call rescanned only when something that can end it arriv
 Everything is tested with mock servers, a local SSH server, a real headless browser, a
 real sandbox process and fake screens. What needs your PC (GPU speed, Windows UI
 Automation, Docker, your accounts, servers and WhatsApp number) is in
-[docs/setup-windows.md](docs/setup-windows.md).
+[setup-windows.md](setup-windows.md).
 
 ## Writing modules
 
 See [writing-modules.md](writing-modules.md):
 
 ```bash
-uv run starlight modules new weather   # copy the template, then edit modules/weather/module.py
+uv run starlight modules new my_weather   # copy the template, then edit modules/my_weather/module.py
 ```
 
 ## Development

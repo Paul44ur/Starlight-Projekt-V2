@@ -216,10 +216,6 @@ class ToolRouter:
 
     # -- scoring -------------------------------------------------------------------------
 
-    async def scores(self, request: str) -> dict[str, float]:
-        """A score per tool: matching words (rarer words count more), plus meaning."""
-        return (await self._scored(request))[1]
-
     async def _scored(self, request: str) -> tuple[dict[str, _Entry], dict[str, float]]:
         """(the index as it was, a score per tool in it). The index can be replaced while
         this waits for the embedder (a module loads or unloads); callers use the copy."""

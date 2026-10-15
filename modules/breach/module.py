@@ -11,24 +11,13 @@ import hashlib
 import re
 from typing import Any
 
-from pydantic import BaseModel
-
-from starlight.core import Module, ModuleContext, ToolError, tool
+from starlight.core import Module, ToolError, tool
 from starlight.core.http import HttpError
 
 RANGE_API = "https://api.pwnedpasswords.com/range/"
 
 
-class Config(BaseModel):
-    pass
-
-
 class BreachModule(Module):
-    Config = Config
-
-    async def setup(self, ctx: ModuleContext) -> None:
-        self.config: Config = ctx.config
-
     @tool
     async def password_pwned(self, password: str) -> dict[str, Any]:
         """Check whether a password has appeared in known data breaches. Only a short hash
@@ -77,11 +66,12 @@ class BreachModule(Module):
             weaknesses.append("few character types (mix letters, digits and symbols)")
         if re.search(r"(.)\1\1", password):
             weaknesses.append("a character repeats three or more times")
+            score -= 8
         if password.lower() in _COMMON or re.fullmatch(r"\d+", password):
             weaknesses.append("looks like a very common password")
             score = min(score, 10)
         rating = "strong" if score >= 35 else "ok" if score >= 25 else "weak"
-        return {"rating": rating, "score": min(score, 40), "out_of": 40, "weaknesses": weaknesses}
+        return {"rating": rating, "score": score, "out_of": 40, "weaknesses": weaknesses}
 
 
 _COMMON = {

@@ -24,14 +24,14 @@ import time
 from pathlib import Path
 from typing import Any
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, ValidationError, field_validator
 
 from starlight.core import Module, ModuleContext, Permission, ToolError, tool
 from starlight.core.config import write_yaml_config
 
 NAME = re.compile(r"^[a-z0-9][a-z0-9_-]{0,40}$")
 PLACEHOLDER = re.compile(r"\{([a-z_][a-z0-9_]*)\}")
-SAFE_VALUE = re.compile(r"^[^\-\n\r\x00][^\n\r\x00]{0,500}$")
+SAFE_VALUE = re.compile(r"^[^\-\n\r\x00][^\n\r\x00]{0,500}\Z")  # \Z: "$" allows a final \n
 
 
 class Command(BaseModel):
@@ -337,8 +337,10 @@ class CommandsModule(Module):
             raise ToolError("a name is lowercase letters, digits, - or _ (max 40)")
         try:
             command = Command(run=run, description=description, ask=ask, timeout=timeout)
-        except ValueError as exc:
-            raise ToolError(str(exc).splitlines()[-1]) from exc
+        except ValidationError as exc:
+            problem = exc.errors()[0]
+            where = ".".join(str(part) for part in problem["loc"])
+            raise ToolError(f"{where}: {problem['msg'].removeprefix('Value error, ')}") from exc
         verb = "Replace" if key in self.config.commands else "Add"
         question = f"{verb} the command '{key}': {' '.join(run)}"
         question += (

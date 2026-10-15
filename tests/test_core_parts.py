@@ -65,11 +65,11 @@ async def test_tools_schema_and_validation() -> None:
     assert schema["name"] == "sample.add"
     assert schema["description"] == "Add two numbers."
     assert schema["parameters"]["required"] == ["a"]
-    assert await tools["add"].invoke({"a": 1}) == 3
-    assert await tools["add"].invoke({"a": "4", "b": 1}) == 5
+    assert await tools["add"].run(tools["add"].validate({"a": 1})) == 3
+    assert await tools["add"].run(tools["add"].validate({"a": "4", "b": 1})) == 5
     assert tools["sleepy"].permission is Permission.CONFIRM
     with pytest.raises(Exception, match="extra"):
-        await tools["add"].invoke({"a": 1, "c": 2})
+        tools["add"].validate({"a": 1, "c": 2})
 
 
 def test_redact() -> None:

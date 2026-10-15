@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-from typing import Any
-
 from starlight.core.banner import banner
 
 TEXT = "Starlight is controlling mouse and keyboard  ·  {hotkey} or a screen corner stops it"
@@ -16,17 +14,14 @@ class Indicator:
         self.enabled = enabled
         self.text = TEXT.format(hotkey=hotkey)
         self.linger = linger
-        self.visible = False
 
     def show(self) -> None:
-        self.visible = True
         if self.enabled:
             banner().show(self.text)
 
     def hide(self, immediately: bool = False) -> None:
-        self.visible = False
         if self.enabled:
             banner().hide(after=0.0 if immediately else self.linger)
 
-    def close(self, *_: Any) -> None:
+    def close(self) -> None:
         self.hide(immediately=True)

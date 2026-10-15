@@ -7,10 +7,12 @@ Starlight's shared web client, so the rate limits and the size/time caps apply.
 from __future__ import annotations
 
 from typing import Any, Literal
+from urllib.parse import urlencode
 
 from pydantic import BaseModel, Field
 
 from starlight.core import Module, ModuleContext, ToolError, tool
+from starlight.core.http import HttpError
 
 GEOCODE = "https://geocoding-api.open-meteo.com/v1/search"
 FORECAST = "https://api.open-meteo.com/v1/forecast"
@@ -35,6 +37,15 @@ def describe(code: Any) -> str:
         return CODES.get(int(code), f"code {code}")
     except (TypeError, ValueError):
         return "unknown"
+
+
+def at(series: Any, index: int) -> Any:
+    """``series[index]``, or None when the service left that series out or cut it short."""
+    return series[index] if isinstance(series, list) and 0 <= index < len(series) else None
+
+
+def shown(value: Any, suffix: str = "") -> str:
+    return "n/a" if value is None else f"{value}{suffix}"
 
 
 class Config(BaseModel):
@@ -67,10 +78,8 @@ class WeatherModule(Module):
                 "which place? (or tell me where you live, or set default_place in "
                 "config/modules/weather.yaml)"
             )
-        response = await self.ctx.http.get(
-            f"{GEOCODE}?name={place}&count=1&language=en&format=json", respect_robots=False
-        )
-        results = (response.json() or {}).get("results") or []
+        query = urlencode({"name": place, "count": 1, "language": "en", "format": "json"})
+        results = (await self._fetch(f"{GEOCODE}?{query}", use_cache=True)).get("results") or []
         if not results:
             raise ToolError(f"could not find a place called '{place}'")
         top = results[0]
@@ -98,14 +107,15 @@ class WeatherModule(Module):
         temp = current.get("temperature_2m")
         feels = current.get("apparent_temperature")
         sky = describe(current.get("weather_code"))
+        deg = units["deg"]
         return {
             "place": self._place_name(spot),
-            "summary": f"{sky}, {temp}{units['deg']} (feels like {feels}{units['deg']})",
-            "temperature": f"{temp}{units['deg']}",
-            "feels_like": f"{feels}{units['deg']}",
+            "summary": f"{sky}, {shown(temp, deg)} (feels like {shown(feels, deg)})",
+            "temperature": shown(temp, deg),
+            "feels_like": shown(feels, deg),
             "conditions": sky,
-            "humidity": f"{current.get('relative_humidity_2m')}%",
-            "wind": f"{current.get('wind_speed_10m')} {units['spd']}",
+            "humidity": shown(current.get("relative_humidity_2m"), "%"),
+            "wind": shown(current.get("wind_speed_10m"), f" {units['spd']}"),
             "is_day": bool(current.get("is_day")),
         }
 
@@ -123,30 +133,33 @@ class WeatherModule(Module):
         )
         daily = (await self._fetch(url)).get("daily") or {}
         dates = daily.get("time") or []
+        codes = daily.get("weather_code")
+        highs, lows = daily.get("temperature_2m_max"), daily.get("temperature_2m_min")
+        rain = daily.get("precipitation_probability_max")
         days_out = [
             {
-                "date": dates[i],
-                "conditions": describe((daily.get("weather_code") or [])[i]),
-                "high": f"{(daily.get('temperature_2m_max') or [])[i]}{units['deg']}",
-                "low": f"{(daily.get('temperature_2m_min') or [])[i]}{units['deg']}",
-                "rain_chance": f"{(daily.get('precipitation_probability_max') or [None])[i]}%",
+                "date": date,
+                "conditions": describe(at(codes, i)),
+                "high": shown(at(highs, i), units["deg"]),
+                "low": shown(at(lows, i), units["deg"]),
+                "rain_chance": shown(at(rain, i), "%"),
             }
-            for i in range(len(dates))
+            for i, date in enumerate(dates)
         ]
         return {"place": self._place_name(spot), "days": days_out}
 
-    async def _fetch(self, url: str) -> dict[str, Any]:
-        from starlight.core.http import HttpError
-
+    async def _fetch(self, url: str, use_cache: bool = False) -> dict[str, Any]:
+        """The service's JSON answer; the weather itself is never cached (current data)."""
         try:
-            response = await self.ctx.http.get(
-                url, respect_robots=False, use_cache=False
-            )  # current data
+            response = await self.ctx.http.get(url, respect_robots=False, use_cache=use_cache)
         except HttpError as exc:
             raise ToolError(f"could not reach the weather service: {exc}") from exc
         if not response.ok:
             raise ToolError(f"the weather service returned HTTP {response.status}")
-        data = response.json()
+        try:
+            data = response.json()
+        except ValueError as exc:
+            raise ToolError("the weather service sent an answer I could not read") from exc
         return data if isinstance(data, dict) else {}
 
     @staticmethod

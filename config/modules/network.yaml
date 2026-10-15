@@ -1,4 +1,5 @@
-# Network module (Step 7). Servers it may touch are listed in config/servers.yaml.
+# Network module (Step 7). Your servers (with their SSH logins) are in config/servers.yaml;
+# any_host below decides whether other hosts may be touched too.
 timeout: 5
 watch: false          # ping every server on a schedule and alert when one goes down
 watch_interval: 60

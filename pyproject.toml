@@ -16,10 +16,11 @@ dependencies = [
     "structlog>=24.1",
     "tzdata>=2024.1; sys_platform == 'win32'",  # time zones for calendars on Windows
     "uvicorn>=0.29",
+    "websockets>=13.0",  # the web chat's /ws (uvicorn has no websocket library of its own) and `starlight connect`
 ]
 
 [project.optional-dependencies]
-# Global kill-switch hotkey (Ctrl+Alt+K). Works on Windows and Linux desktops.
+# Global kill-switch hotkey (Ctrl+Alt+J). Works on Windows and Linux desktops.
 hotkey = ["pynput>=1.7"]
 # Step 6: pages that need JavaScript, and logins
 browser = ["playwright>=1.48"]

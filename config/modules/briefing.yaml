@@ -6,4 +6,4 @@ news_topic: ""     # empty: your followed feeds / top stories
 news_count: 3
 mail_count: 5
 # To get it every morning, ask: "send me the briefing every weekday at 7:30"
-# (an automation), or `starlight` will offer it when automations are set up.
+# (an automation), or ask for the automations template "morning-briefing".

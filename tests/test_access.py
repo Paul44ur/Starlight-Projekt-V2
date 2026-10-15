@@ -59,7 +59,7 @@ async def test_add_a_server_from_chat_then_it_is_reachable(project: Paths) -> No
 
         forgotten = await call(k, "network.forget", name="10.0.0.5")
         assert forgotten.ok
-        assert await call(k, "network.servers") and (await call(k, "network.servers")).output == []
+        assert (await call(k, "network.servers")).output == []
     # written to the real config file, not hand-edited
     assert "10.0.0.5" not in (project.config / "servers.yaml").read_text()
 

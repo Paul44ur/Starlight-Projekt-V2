@@ -13,9 +13,7 @@ from __future__ import annotations
 import re
 from typing import Any
 
-from pydantic import BaseModel
-
-from starlight.core import Module, ModuleContext, ToolError, tool
+from starlight.core import Module, ToolError, tool
 from starlight.core.config import read_yaml
 from starlight.core.permissions import Permission, save_rule
 
@@ -23,16 +21,7 @@ KEY = re.compile(r"^[a-z0-9][a-z0-9_.-]*$")
 PATTERN = re.compile(r"^[a-z0-9_.][a-z0-9_.*?-]*$")
 
 
-class AccessConfig(BaseModel):
-    pass
-
-
 class AccessModule(Module):
-    Config = AccessConfig
-
-    async def setup(self, ctx: ModuleContext) -> None:
-        self.ctx = ctx
-
     # -- secrets -------------------------------------------------------------------------
 
     @tool

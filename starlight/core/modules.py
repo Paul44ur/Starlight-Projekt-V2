@@ -90,7 +90,6 @@ class Services:
     model: ModelProvider | None = None  # the main model (e.g. for vision or summaries)
     # Model for a role such as "code" or "vision" (falls back to the main model).
     models: Callable[[str], ModelProvider] | None = None
-    skills: Any = None  # the skill manager (Step 9)
     output_dir: Path | None = None  # where files made for the user go (output.folder)
     output_error: str | None = None  # why output.folder can't be used, if it can't
     write_anywhere: bool = False  # output.write_anywhere: new files anywhere, no question
@@ -354,14 +353,17 @@ class ModuleState:
         raw = read_yaml(self.path)
         return set(raw.get("enabled") or []), set(raw.get("disabled") or [])
 
-    def is_enabled(self, manifest: ModuleManifest) -> bool:
+    def is_enabled(
+        self, manifest: ModuleManifest, lists: tuple[set[str], set[str]] | None = None
+    ) -> bool:
+        """``lists`` is a ``_read()`` result, so a pass over many modules reads the file once."""
         # STARLIGHT_MODULES, when set, is an allow-list: only those modules load (comma or
         # space separated). Handy for a minimal run or a fast smoke test; empty/unset means
         # the normal enabled/disabled rules apply.
         only = os.environ.get("STARLIGHT_MODULES", "").replace(",", " ").split()
         if only:
             return manifest.name in only
-        enabled, disabled = self._read()
+        enabled, disabled = lists or self._read()
         if manifest.name in disabled:
             return False
         return manifest.name in enabled or manifest.enabled_by_default
@@ -382,33 +384,64 @@ class ModuleState:
         )
 
 
-def discover(modules_dir: Path) -> tuple[dict[str, tuple[ModuleManifest, Path]], dict[str, str]]:
+type ManifestCache = dict[Path, tuple[bytes, ModuleManifest | str]]
+
+
+def _manifest_or_error(
+    manifest_file: Path, folder: str, cache: ManifestCache | None
+) -> ModuleManifest | str:
+    """The folder's manifest, or what is wrong with it. ``cache`` remembers the answer for a
+    manifest's exact content, so one that did not change is not parsed again."""
+    raw: bytes | None = None
+    if cache is not None:
+        try:
+            raw = manifest_file.read_bytes()
+        except OSError:
+            raw = None
+        hit = cache.get(manifest_file)
+        if raw is not None and hit is not None and hit[0] == raw:
+            return hit[1]
+    result: ModuleManifest | str
+    try:
+        result = ModuleManifest.model_validate(read_yaml(manifest_file))
+    except ValidationError as exc:
+        result = f"invalid {MANIFEST}: {describe_errors(exc, [manifest_file], ModuleManifest)}"
+    except ConfigError as exc:
+        result = f"invalid {MANIFEST}: {exc}"
+    else:
+        if result.name != folder:
+            result = f"manifest name '{result.name}' must match the folder name"
+    if cache is not None and raw is not None:
+        cache[manifest_file] = (raw, result)
+    return result
+
+
+def discover(
+    modules_dir: Path, cache: ManifestCache | None = None
+) -> tuple[dict[str, tuple[ModuleManifest, Path]], dict[str, str]]:
     """Find module folders. Folders starting with '_' or '.' (like _template) are skipped.
-    Returns (found modules, errors by folder name)."""
+    Returns (found modules, errors by folder name). Pass the same ``cache`` on every call
+    to skip parsing manifests that did not change."""
     found: dict[str, tuple[ModuleManifest, Path]] = {}
     errors: dict[str, str] = {}
     if not modules_dir.is_dir():
         return found, errors
+    seen: set[Path] = set()
     for folder in sorted(modules_dir.iterdir()):
         if not folder.is_dir() or folder.name.startswith(("_", ".")):
             continue
         manifest_file = folder / MANIFEST
         if not manifest_file.is_file():
             continue
-        try:
-            manifest = ModuleManifest.model_validate(read_yaml(manifest_file))
-        except ValidationError as exc:
-            errors[folder.name] = (
-                f"invalid {MANIFEST}: {describe_errors(exc, [manifest_file], ModuleManifest)}"
-            )
-            continue
-        except ConfigError as exc:
-            errors[folder.name] = f"invalid {MANIFEST}: {exc}"
-            continue
-        if manifest.name != folder.name:
-            errors[folder.name] = f"manifest name '{manifest.name}' must match the folder name"
-            continue
-        found[manifest.name] = (manifest, folder)
+        seen.add(manifest_file)
+        result = _manifest_or_error(manifest_file, folder.name, cache)
+        if isinstance(result, str):
+            errors[folder.name] = result
+        else:
+            found[result.name] = (result, folder)
+    if cache is not None:
+        for gone in [path for path in cache if path not in seen]:
+            del cache[gone]
     return found, errors
 
 
@@ -508,11 +541,12 @@ class ModuleManager:
         self.state = ModuleState(paths.module_state_file)
         self.records: dict[str, ModuleRecord] = {}
         self.errors: dict[str, str] = {}
+        self._manifests: ManifestCache = {}
         self._lock = asyncio.Lock()
         self._log = get_logger("modules")
 
     def rescan(self) -> None:
-        found, self.errors = discover(self.paths.modules)
+        found, self.errors = discover(self.paths.modules, self._manifests)
         for name, error in self.errors.items():
             self._log.error("module skipped", module=name, error=error)
         for name, (manifest, path) in found.items():
@@ -552,20 +586,22 @@ class ModuleManager:
     async def load_all(self) -> None:
         async with self._lock:
             self.rescan()
+            lists = self.state._read()
             for name in self.load_order():
                 record = self.records[name]
                 if record.status is ModuleStatus.LOADED:
                     continue
-                if self.state.is_enabled(record.manifest):
+                if self.state.is_enabled(record.manifest, lists):
                     await self._load(name)
 
     async def sync_state(self) -> None:
         """Apply enable/disable changes made from another process (`starlight modules ...`)."""
         async with self._lock:
             self.rescan()
+            lists = self.state._read()
             for name in self.load_order():
                 record = self.records[name]
-                wanted = self.state.is_enabled(record.manifest)
+                wanted = self.state.is_enabled(record.manifest, lists)
                 if wanted and record.status is not ModuleStatus.LOADED:
                     await self._load(name)
                 elif not wanted and record.status is ModuleStatus.LOADED:
@@ -573,10 +609,6 @@ class ModuleManager:
 
     # Public entry points take the lock: two requests at once (terminal and WhatsApp)
     # must never load or unload the same module twice.
-
-    async def load(self, name: str) -> ModuleRecord:
-        async with self._lock:
-            return await self._load(name)
 
     async def unload(self, name: str) -> None:
         async with self._lock:
@@ -604,6 +636,7 @@ class ModuleManager:
 
         log = module_logger(name)
         instance: Module | None = None
+        setup_started = False
         try:
             cls = import_module_class(record.manifest, record.path)
             instance = cls()
@@ -614,6 +647,7 @@ class ModuleManager:
             instance.ctx = ModuleContext(
                 name, config, log, self.bus, self.kill_switch, self.paths, data_dir, self.services
             )
+            setup_started = True
             await instance.setup(instance.ctx)
             tools = instance.tools()
             for tool in tools:
@@ -622,6 +656,17 @@ class ModuleManager:
                 self.dispatcher.register(tool)
         except Exception as exc:
             self.dispatcher.unregister_module(name)
+            # setup() subscribes and adds kill-switch cleanups before it can fail: take them
+            # back, or a failed module keeps getting events and a retry doubles them.
+            self.bus.unsubscribe_owner(name)
+            self.kill_switch.remove_cleanups(name)
+            if setup_started and instance is not None:
+                try:
+                    await instance.shutdown()  # release what setup() opened before it failed
+                except Exception as shutdown_exc:
+                    log.warning(
+                        "shutdown after the failed load also failed", error=str(shutdown_exc)
+                    )
             started = getattr(instance, "ctx", None)
             if started is not None:
                 await started.stop_background()

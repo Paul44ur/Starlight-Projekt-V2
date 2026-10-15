@@ -1,5 +1,5 @@
 """ModelProvider interface. The core never depends on one runtime: llama.cpp, Ollama or a
-test double all sit behind ``chat()``. Step 4 registers the real GPU providers."""
+test double all sit behind ``chat()``; ``create_provider`` picks the one in the config."""
 
 from __future__ import annotations
 
@@ -62,7 +62,7 @@ class ModelProvider(Protocol):
 
 
 class EchoProvider:
-    """Deterministic stand-in for a real model, used until Step 4 and in tests.
+    """Deterministic stand-in for a real model: the default provider, and the test double.
 
     * ``!hello.greet {"name": "Paul"}`` calls that tool with those arguments
     * after a tool result, it answers with the result

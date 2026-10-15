@@ -100,7 +100,3 @@ class Profile:
                 tags=["profile"],
             )
         )
-
-    def describe(self) -> str:
-        values = self.read()
-        return "; ".join(f"{FIELDS[k].lower()}: {v}" for k, v in values.items() if k in FIELDS)

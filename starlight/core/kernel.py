@@ -43,7 +43,7 @@ from starlight.core.ui import ContextualUI, NoUser, UserIO, current_ui
 from starlight.core.vault import Vault, VaultBackend
 
 
-def confirmer_for(ui: UserIO, policy: PermissionPolicy) -> Confirmer:
+def confirmer_for(ui: UserIO) -> Confirmer:
     """Turn the user interface into the dispatcher's confirmation callback."""
 
     async def confirm(tool: Tool, args: dict[str, Any]) -> bool:
@@ -103,7 +103,7 @@ class Kernel:
             self.policy,
             self.bus,
             self.audit,
-            confirmer=channel_confirmer(confirmer or confirmer_for(self.ui.default, self.policy)),
+            confirmer=channel_confirmer(confirmer or confirmer_for(self.ui.default)),
             timeout=self.config.tools.timeout,
             stats=self.stats,
         )
@@ -167,7 +167,6 @@ class Kernel:
             stats=self.stats,
             model=self.provider,
             models=self.model_for,
-            skills=self.skills,
             output_dir=output_dir,
             output_error=output_error,
             write_anywhere=self.config.output.write_anywhere,
@@ -221,7 +220,7 @@ class Kernel:
     def set_ui(self, ui: UserIO) -> None:
         """The default interface (the terminal); other channels set theirs per request."""
         self.ui.default = ui
-        self.dispatcher.confirmer = channel_confirmer(confirmer_for(ui, self.policy))
+        self.dispatcher.confirmer = channel_confirmer(confirmer_for(ui))
 
     def set_confirmer(self, confirmer: Confirmer) -> None:
         """Replace the terminal's tool confirmation (other channels still ask themselves)."""
@@ -404,35 +403,42 @@ class Kernel:
         from starlight.models.bench import gpu_status
 
         interval = self.config.stats.gpu_sample_interval
+        sampled_at = float("-inf")
         while True:
-            if not self.services.primary:
-                if not self.core_lock.acquire():
-                    await asyncio.sleep(self.takeover_interval)
-                    continue
-                self.services.primary = True
-                self.log.info("this process now runs the background parts")
-                await self.bus.publish("core.primary")
-            self.stats.record("core.heartbeat")
-            if time.monotonic() - self._housekeeping_at >= self.HOUSEKEEPING_EVERY:
-                await self._housekeeping()
-            if self.focus.expired():  # focus time is over: deliver what was held
-                try:
-                    await finish(self.focus, self.deliver)
-                except Exception:
-                    self.log.exception("could not end focus mode")
-            status = None
-            if interval > 0:
-                try:
-                    status = await asyncio.to_thread(gpu_status)
-                except Exception:
-                    status = None
-            if status:
-                if status.get("used_bytes") is not None:
-                    self.stats.record("gpu.vram_used_bytes", status["used_bytes"])
-                if status.get("total_bytes"):
-                    self.stats.record("gpu.vram_total_bytes", status["total_bytes"])
-                if status.get("utilization") is not None:
-                    self.stats.record("gpu.utilization_percent", status["utilization"])
+            try:
+                if not self.services.primary:
+                    if not self.core_lock.acquire():
+                        await asyncio.sleep(self.takeover_interval)
+                        continue
+                    self.services.primary = True
+                    self.log.info("this process now runs the background parts")
+                    await self.bus.publish("core.primary")
+                self.stats.record("core.heartbeat")
+                if time.monotonic() - self._housekeeping_at >= self.HOUSEKEEPING_EVERY:
+                    await self._housekeeping()
+                if self.focus.expired():  # focus time is over: deliver what was held
+                    try:
+                        await finish(self.focus, self.deliver)
+                    except Exception:
+                        self.log.exception("could not end focus mode")
+                status = None
+                # The beat stays at 30 s at most (the viewer calls the core "not running"
+                # after 120 s); the GPU is sampled every ``interval``, a bit early is fine.
+                if interval > 0 and time.monotonic() - sampled_at >= interval - 0.5:
+                    sampled_at = time.monotonic()
+                    try:
+                        status = await asyncio.to_thread(gpu_status)
+                    except Exception:
+                        status = None
+                if status:
+                    if status.get("used_bytes") is not None:
+                        self.stats.record("gpu.vram_used_bytes", status["used_bytes"])
+                    if status.get("total_bytes"):
+                        self.stats.record("gpu.vram_total_bytes", status["total_bytes"])
+                    if status.get("utilization") is not None:
+                        self.stats.record("gpu.utilization_percent", status["utilization"])
+            except Exception:  # one bad beat must not end the heartbeat for good
+                self.log.exception("heartbeat failed")
             await asyncio.sleep(min(interval, 30) if interval > 0 else 30)
 
     async def ask(
@@ -503,6 +509,7 @@ class Kernel:
                 self._keep(conversation, kept)
             except (OSError, KeyError):  # deleted meanwhile, or the disk is full
                 self.log.exception("could not save the conversation", conversation=conversation)
+            self._taken_back.pop(conversation, None)  # a Regenerate that worked: nothing to restore
         return result
 
     @property

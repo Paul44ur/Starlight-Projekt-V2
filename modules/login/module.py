@@ -21,7 +21,6 @@ Configure sites in ``config/modules/login.yaml``:
 
 from __future__ import annotations
 
-import json
 import re
 from pathlib import Path
 from typing import Any
@@ -31,6 +30,7 @@ from pydantic import BaseModel, Field, ValidationError
 from starlight.browser import Browser
 from starlight.core import Module, ModuleContext, ToolError, tool
 from starlight.core.config import read_yaml, write_yaml_config
+from starlight.core.jsonfile import load_json, save_json
 from starlight.text import html_to_text
 
 
@@ -98,9 +98,7 @@ class LoginModule(Module):
         return self.sessions / f"{name}.json"
 
     def _approved(self) -> set[str]:
-        if not self.approved_file.is_file():
-            return set()
-        return set(json.loads(self.approved_file.read_text(encoding="utf-8")))
+        return set(load_json(self.approved_file, []))  # a damaged file: asked again
 
     async def _ensure_approved(self, name: str, site: Site) -> None:
         approved = self._approved()
@@ -112,7 +110,7 @@ class LoginModule(Module):
         if not ok:
             raise LoginError(f"login to '{name}' not approved")
         approved.add(name)
-        self.approved_file.write_text(json.dumps(sorted(approved)), encoding="utf-8")
+        save_json(self.approved_file, sorted(approved))
         self.ctx.logger.info("site approved for login", site=name)
 
     @tool
@@ -239,22 +237,25 @@ class LoginModule(Module):
         config = self._site(site)
         if not self._session(site).is_file():
             await self.login(site)
-        for attempt in range(2):
-            context = await self.browser.new_context(self._session(site))
-            try:
-                page = await context.new_page()
-                page.set_default_timeout(self.config.timeout * 1000)
-                status = await self.browser.goto(page, url)
-                expired = await page.locator(config.password_selector).first.is_visible()
-                html, final = await page.content(), page.url
-            finally:
-                await context.close()
-            if expired and attempt == 0:
-                await self.login(site)  # the saved session no longer works
-                continue
-            text = html_to_text(html, final, max_chars)
-            return {"url": final, "status": status, "title": text.title, "text": text.text}
-        raise LoginError(f"could not open {url} as '{site}'")
+        status, html, final, expired = await self._fetch(site, config, url)
+        if expired:
+            await self.login(site)  # the saved session no longer works
+            status, html, final, _ = await self._fetch(site, config, url)
+        text = html_to_text(html, final, max_chars)
+        return {"url": final, "status": status, "title": text.title, "text": text.text}
+
+    async def _fetch(self, site: str, config: Site, url: str) -> tuple[int | None, str, str, bool]:
+        """Open a page with the saved session: (status, html, final url, whether the page
+        shows the login form, so the session has expired)."""
+        context = await self.browser.new_context(self._session(site))
+        try:
+            page = await context.new_page()
+            page.set_default_timeout(self.config.timeout * 1000)
+            status = await self.browser.goto(page, url)
+            expired = await page.locator(config.password_selector).first.is_visible()
+            return status, await page.content(), page.url, expired
+        finally:
+            await context.close()
 
     @tool
     def logout(self, site: str) -> str:

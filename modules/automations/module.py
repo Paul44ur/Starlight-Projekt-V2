@@ -30,6 +30,8 @@ from pydantic import BaseModel, Field, ValidationError, model_validator
 
 from starlight.core import Event, Module, ModuleContext, ToolError, tool
 from starlight.core.config import write_yaml_config
+from starlight.core.fsutil import write_atomic
+from starlight.core.jsonfile import load_json, save_json
 from starlight.core.permissions import Permission
 from starlight.core.schedule import ScheduleError, parse_schedule
 from starlight.core.ui import current_ui
@@ -161,7 +163,7 @@ class AutomationUI:
             name in self.rule.allow_anywhere or (name == self.step_tool and name in self.rule.allow)
         ):
             return True
-        self.refused.append(match.group(1) if match else question[:120])
+        self.refused.append(name or question[:120])
         return False
 
     async def ask(self, question: str, secret: bool = False) -> str | None:
@@ -208,22 +210,24 @@ class AutomationsModule(Module):
 
     def _restore(self) -> None:
         try:
-            saved = json.loads(self.state_file.read_text("utf-8"))
-        except (OSError, json.JSONDecodeError):
+            saved = load_json(self.state_file, {})
+        except OSError:  # locked: start from the schedules instead
             saved = {}
         now = self._now()
         for rule in self.config.rules:
             if not rule.when:
                 continue
-            due = saved.get(rule.name)
-            when = datetime.fromisoformat(due) if isinstance(due, str) else None
+            when = _parse_time(saved.get(rule.name))
             if when is None or when < now - GRACE:  # never set, or missed long ago: skip it
                 when = parse_schedule(rule.when).next_after(now)
             self._next[rule.name] = when
 
     def _save_state(self) -> None:
         data = {name: when.isoformat() for name, when in self._next.items()}
-        self.state_file.write_text(json.dumps(data, indent=2), encoding="utf-8")
+        try:
+            save_json(self.state_file, data)
+        except OSError:  # only the next run times: a rule that is due must still run
+            self.ctx.logger.exception("could not save the automation schedule")
 
     def _record(self, entry: dict[str, Any]) -> None:
         line = json.dumps(entry, ensure_ascii=False, default=str)
@@ -232,7 +236,7 @@ class AutomationsModule(Module):
         with contextlib.suppress(OSError):
             lines = self.history_file.read_text("utf-8").splitlines()
             if len(lines) > HISTORY_KEEP * 2:
-                self.history_file.write_text("\n".join(lines[-HISTORY_KEEP:]) + "\n", "utf-8")
+                write_atomic(self.history_file, "\n".join(lines[-HISTORY_KEEP:]) + "\n")
 
     # -- triggers ------------------------------------------------------------------------
 
@@ -272,7 +276,7 @@ class AutomationsModule(Module):
             task.add_done_callback(self._runs.discard)
 
     async def settle(self) -> None:
-        """Wait for automations started by events (tests, shutdown)."""
+        """Wait for automations started by events (used by the tests)."""
         while self._runs:
             await asyncio.gather(*list(self._runs), return_exceptions=True)
 
@@ -350,20 +354,16 @@ class AutomationsModule(Module):
                 continue
             if not self.ctx.has_tool(action.tool):
                 raise ToolError(f"there is no tool '{action.tool}' (is its module enabled?)")
-            if self._permission(action.tool) is Permission.BLOCKED:
+            permission = self.ctx.permission_of(action.tool)
+            if permission is Permission.BLOCKED:
                 raise ToolError(f"'{action.tool}' is blocked by your permission rules")
-            if self._permission(action.tool) is Permission.CONFIRM:
+            if permission is Permission.CONFIRM:
                 names.append(action.tool)
         return names
 
-    def _permission(self, name: str) -> Permission:
-        return self.ctx.permission_of(name)
-
-    async def _save_rule(self, rule: Rule, replace: bool = False) -> dict[str, Any]:
+    async def _save_rule(self, rule: Rule) -> dict[str, Any]:
         others = [r for r in self.config.rules if r.name != rule.name]
-        if len(others) == len(self.config.rules) and replace:
-            raise ToolError(f"no automation named '{rule.name}'")
-        if len(others) != len(self.config.rules) and not replace:
+        if len(others) != len(self.config.rules):
             raise ToolError(f"an automation named '{rule.name}' exists; pick another name")
         needs = self._needs_ok(rule)
         question = f"Create the automation '{rule.name}': {rule.describe()}?"
@@ -545,6 +545,15 @@ class AutomationsModule(Module):
 _OPS = ("<=", ">=", "==", "!=", "<", ">", "~")
 
 
+def _parse_time(value: Any) -> datetime | None:
+    """A saved time from state.json, or None if it is missing or not a usable time."""
+    try:
+        when = datetime.fromisoformat(value) if isinstance(value, str) else None
+    except ValueError:
+        return None
+    return when if when is not None and when.tzinfo is None else None
+
+
 def _lookup(data: Any, path: str) -> Any:
     value = data
     for part in path.split("."):
@@ -572,13 +581,13 @@ def matches(condition: str, data: Any) -> bool:
     if value is None:  # no such field (a typo?): only "!=" holds, nothing fires by accident
         return op == "!="
     if op == "~":
-        return target.lower() in str(value if value is not None else "").lower()
+        return target.lower() in str(value).lower()
     a: Any
     b: Any
     try:
         a, b = float(value), float(target)
     except (TypeError, ValueError):
-        a, b = str(value if value is not None else "").lower(), target.lower()
+        a, b = str(value).lower(), target.lower()
     return bool({
         "==": a == b, "!=": a != b, "<": a < b, "<=": a <= b, ">": a > b, ">=": a >= b,
     }[op])  # fmt: skip

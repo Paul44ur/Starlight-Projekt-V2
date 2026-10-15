@@ -176,7 +176,7 @@ def load_settings(args: argparse.Namespace) -> Settings:
     saved = settings.root / "config" / "launcher.json"  # optional, for your own defaults
     if saved.is_file():
         try:
-            data = json.loads(saved.read_text(encoding="utf-8"))
+            data = json.loads(saved.read_text(encoding="utf-8-sig"))  # Notepad may add a BOM
             if not isinstance(data, dict):
                 raise ValueError("expected an object")
             if "model" in data and "model_url" not in data:  # a preset; model_url wins
@@ -235,8 +235,8 @@ class Ui:
     files and the CI see); ConsoleUi adds colors and a progress bar, and the window
     (launcher_gui.py) has its own."""
 
-    #: True: output of the programs the launcher runs (uv, winget) goes to run_output()
-    #: instead of the console, so a window can show it.
+    #: True: output of the programs the launcher runs (uv, see run_checked) goes to
+    #: run_output() instead of the console, so a window can show it.
     captures_output = False
 
     def __init__(self, assume_yes: bool) -> None:
@@ -882,7 +882,7 @@ def ensure_voice(settings: Settings, ui: Ui) -> None:
             archive = download(settings.whisper_url, settings.tools / "whisper.zip", ui)
             extract_member(archive, exe("whisper-server"), whisper, keep=("models",))
             archive.unlink()
-        model = whisper / "models" / settings.whisper_model_url.rstrip("/").split("/")[-1]
+        model = whisper / "models" / _file_name(settings.whisper_model_url)
         if not model.is_file():
             ui.step(f"Downloading the speech model {model.name}")
             download(settings.whisper_model_url, model, ui)
@@ -904,7 +904,7 @@ def ensure_voice(settings: Settings, ui: Ui) -> None:
 
 def ensure_model(settings: Settings, ui: Ui, remote: RemoteFile | None) -> Path:
     dest = settings.model_file
-    if dest.is_file() and (remote is None or remote.size in (None, dest.stat().st_size)):
+    if dest.is_file():  # (a download only becomes the model file once it is complete)
         return dest
     ui.step(f"Downloading the model {dest.name}")
     return download(settings.model_url, dest, ui, sha256=remote.sha256 if remote else None)
@@ -1188,6 +1188,14 @@ def port_in_use(port: int) -> bool:
         return probe_socket.connect_ex(("127.0.0.1", port)) == 0
 
 
+def _local_open(request: urllib.request.Request | str, timeout: float) -> Any:
+    """Open a URL on this PC. A system or company proxy is not used for those: it cannot
+    reach 127.0.0.1, and urllib would send the request to it all the same."""
+    return urllib.request.build_opener(urllib.request.ProxyHandler({})).open(
+        request, timeout=timeout
+    )
+
+
 def wait_for_web(port: int, ui: Ui, timeout: float = 60) -> None:
     """Wait until the web backend is accepting connections before the terminal connects."""
     started = time.monotonic()
@@ -1213,7 +1221,7 @@ def wait_for_model(
             )
         with (
             contextlib.suppress(urllib.error.URLError, ConnectionError, TimeoutError, OSError),
-            urllib.request.urlopen(url, timeout=5) as response,
+            _local_open(url, 5) as response,
         ):
             if response.status == 200:
                 ui.say(f"\r   model ready after {time.monotonic() - started:.0f} s".ljust(40))
@@ -1338,7 +1346,13 @@ def maybe_tesseract(settings: Settings, ui: Ui) -> None:
             "https://github.com/UB-Mannheim/tesseract/wiki"
         )
         return
-    subprocess.run(
+    install_tesseract(ui)
+
+
+def install_tesseract(ui: Ui) -> None:
+    """Install Tesseract with winget (it shows its own progress and the administrator
+    question). Optional: a failure is reported, and the setup goes on."""
+    result = subprocess.run(
         [
             "winget",
             "install",
@@ -1350,6 +1364,11 @@ def maybe_tesseract(settings: Settings, ui: Ui) -> None:
         ],
         check=False,
     )
+    if result.returncode != 0:
+        ui.say(
+            f"   Tesseract was not installed (winget exit code {result.returncode}); install it "
+            "from https://github.com/UB-Mannheim/tesseract/wiki to read the screen."
+        )
 
 
 @dataclass
@@ -1450,6 +1469,14 @@ def save_choices(root: Path, choices: dict[str, Any], drop: tuple[str, ...] = ()
 VIEWER_PORT = 8765
 
 
+def chat_url() -> str:
+    return f"http://127.0.0.1:{WEB_PORT}"
+
+
+def viewer_url() -> str:
+    return f"http://127.0.0.1:{VIEWER_PORT}"
+
+
 @dataclass
 class Status:
     """What the status window shows."""
@@ -1473,7 +1500,7 @@ def fetch_json(
         url, method=method, headers=headers, data=b"" if method == "POST" else None
     )
     try:
-        with urllib.request.urlopen(request, timeout=timeout) as response:
+        with _local_open(request, timeout) as response:
             data = json.loads(response.read().decode("utf-8", errors="replace") or "{}")
     except (OSError, ValueError, http.client.HTTPException):
         return None
@@ -1486,7 +1513,7 @@ def health_status(port: int) -> int | None:
         f"http://127.0.0.1:{port}/health", headers={"User-Agent": USER_AGENT}
     )
     try:
-        with urllib.request.urlopen(request, timeout=2) as response:
+        with _local_open(request, 2) as response:
             return int(response.status)
     except urllib.error.HTTPError as exc:
         return exc.code
@@ -1507,30 +1534,18 @@ class Services:
         self.logs = settings.root / "logs"
         self.watchdog: ModelServerWatchdog | None = None
         self.started = time.monotonic()
-        self.reused_model_server = False
-
-    @property
-    def chat_url(self) -> str:
-        return f"http://127.0.0.1:{WEB_PORT}"
-
-    @property
-    def viewer_url(self) -> str:
-        return f"http://127.0.0.1:{VIEWER_PORT}"
 
     def start(self) -> None:
         settings, uv = self.settings, self.installed.uv
         self.started = time.monotonic()
-        if settings.use_model:
-            if port_in_use(settings.port):
-                self.reused_model_server = True
-            else:
-                serve = starlight(uv, "model", "serve")
-                log = self.logs / "llama-server.log"
-                process = self.group.start(serve, log, settings.root)
-                self.watchdog = ModelServerWatchdog(
-                    self.group, serve, process, log, settings.root, self.ui
-                )
-                self.watchdog.start()
+        if settings.use_model and not port_in_use(settings.port):  # else: a server runs already
+            serve = starlight(uv, "model", "serve")
+            log = self.logs / "llama-server.log"
+            process = self.group.start(serve, log, settings.root)
+            self.watchdog = ModelServerWatchdog(
+                self.group, serve, process, log, settings.root, self.ui
+            )
+            self.watchdog.start()
         if settings.viewer and not port_in_use(VIEWER_PORT):
             self.group.start(starlight(uv, "viewer"), self.logs / "viewer.log", settings.root)
         if not port_in_use(WEB_PORT):
@@ -1564,7 +1579,7 @@ class Services:
             else:
                 model, detail = "loading", ""
         chat = port_in_use(WEB_PORT)
-        status = fetch_json(f"{self.chat_url}/api/status") if chat else None
+        status = fetch_json(f"{chat_url()}/api/status") if chat else None
         kill = None
         if status is not None:
             engaged = (status.get("kill") or {}).get("engaged")
@@ -1589,7 +1604,7 @@ class Services:
     def set_kill_switch(self, engaged: bool) -> bool:
         """Engage or release the kill switch through the chat backend. True on success."""
         path = "/api/kill" if engaged else "/api/resume"
-        answer = fetch_json(self.chat_url + path, method="POST", origin=self.chat_url)
+        answer = fetch_json(chat_url() + path, method="POST", origin=chat_url())
         return answer is not None
 
     def stop(self) -> None:
@@ -1618,15 +1633,14 @@ def start(settings: Settings, ui: Ui, installed: Installed, ask: str | None) -> 
                 watchdog = ModelServerWatchdog(group, serve, server_process, log, settings.root, ui)
                 watchdog.start()
         if settings.viewer and ask is None:
-            viewer_port = 8765
-            if not port_in_use(viewer_port):
+            if not port_in_use(VIEWER_PORT):
                 group.start(starlight(uv, "viewer"), logs / "viewer.log", settings.root)
-            ui.say(f"\nStatistics viewer: http://127.0.0.1:{viewer_port}")
+            ui.say(f"\nStatistics viewer: {viewer_url()}")
         if ask is not None:
             result = subprocess.run(starlight(uv, "ask", "-y", ask), cwd=settings.root, check=False)
             return result.returncode
         if settings.both:
-            url = f"http://127.0.0.1:{WEB_PORT}"
+            url = chat_url()
             ui.say(f"\nOpening the chat in your browser: {url}")
             ui.say("A terminal chat opens here too - both talk to the same Starlight.")
             ui.say("Type /quit to leave the terminal; close this window to stop everything.\n")
@@ -1637,7 +1651,7 @@ def start(settings: Settings, ui: Ui, installed: Installed, ask: str | None) -> 
                 starlight(uv, "connect"), cwd=settings.root, check=False
             ).returncode
         if settings.web:
-            url = f"http://127.0.0.1:{WEB_PORT}"
+            url = chat_url()
             ui.say(f"\nOpening the chat in your browser: {url}")
             ui.say("Close this window (or press Ctrl+C) to stop everything.\n")
             threading.Timer(2.5, _open_browser, args=(url,)).start()

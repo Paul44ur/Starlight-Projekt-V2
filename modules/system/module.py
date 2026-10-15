@@ -1,7 +1,8 @@
 """How your PC is doing: CPU, memory, disk space, battery, uptime and running programs,
 and power: lock the screen, sleep, shut down or restart (now or in a few minutes).
 
-Reading and locking are safe. Closing a program, sleep, shutdown and restart ask first.
+Reading and locking are safe. Closing a program, sleep, shutdown and restart ask first
+(unless you listed one under ``permissions: auto_approve:`` in starlight.yaml).
 A shutdown or restart Starlight scheduled is cancelled by cancel_shutdown - and by the
 kill switch.
 
@@ -11,6 +12,7 @@ picture; without it, it still reports what the standard library can.
 
 from __future__ import annotations
 
+import contextlib
 import json
 import os
 import platform
@@ -60,9 +62,6 @@ def human_duration(seconds: float) -> str:
 
 class Config(BaseModel):
     top_processes: int = Field(default=10, ge=1, le=50)
-
-
-POWER_ACTIONS = ("lock", "sleep", "shutdown", "restart", "cancel")
 
 
 def power_command(action: str, minutes: int, platform_name: str) -> list[str]:
@@ -157,9 +156,7 @@ class SystemModule(Module):
     def _cancel_on_kill(self) -> None:
         """The kill switch also stops a shutdown or restart Starlight scheduled."""
         if self._pending is not None:
-            import contextlib
-
-            with contextlib.suppress(ToolError, KeyError):
+            with contextlib.suppress(ToolError):
                 self._run(power_command("cancel", 0, self._platform()))
             self._pending = None
             self._pending_file.unlink(missing_ok=True)
@@ -280,20 +277,28 @@ class SystemModule(Module):
         if by not in ("memory", "cpu"):
             raise ToolError("by must be 'memory' or 'cpu'")
         if ps is None:
+            if by == "cpu":
+                raise ToolError("ranking by CPU needs the 'system' extra (psutil)")
             return self._processes_fallback(limit)
+        procs = list(ps.process_iter(["pid", "name", "memory_info"]))
+        if by == "cpu":  # the first reading is always 0.0: measure over a short moment
+            for proc in procs:
+                with contextlib.suppress(ps.NoSuchProcess, ps.AccessDenied):
+                    proc.cpu_percent(None)
+            time.sleep(0.3)
         rows: list[dict[str, Any]] = []
-        for proc in ps.process_iter(["pid", "name", "memory_info", "cpu_percent"]):
+        for proc in procs:
             try:
                 mem = proc.info["memory_info"]
-                rows.append(
-                    {
-                        "pid": proc.info["pid"],
-                        "name": proc.info["name"],
-                        "memory": human_bytes(mem.rss if mem else 0),
-                        "_mem": mem.rss if mem else 0,
-                        "cpu_percent": proc.info.get("cpu_percent") or 0.0,
-                    }
-                )
+                row: dict[str, Any] = {
+                    "pid": proc.info["pid"],
+                    "name": proc.info["name"],
+                    "memory": human_bytes(mem.rss if mem else 0),
+                    "_mem": mem.rss if mem else 0,
+                }
+                if by == "cpu":
+                    row["cpu_percent"] = proc.cpu_percent(None)
+                rows.append(row)
             except (ps.NoSuchProcess, ps.AccessDenied):
                 continue
         key = "_mem" if by == "memory" else "cpu_percent"
@@ -304,23 +309,30 @@ class SystemModule(Module):
 
     @tool(permission=Permission.CONFIRM)
     def close_app(self, name: str) -> dict[str, Any]:
-        """Close a running program by name (e.g. "notepad"). Asks first. This ends the
-        program - unsaved work in it is lost."""
+        """Close a running program by name (e.g. "notepad"). Asks first unless it is
+        auto-approved. This ends the program - unsaved work in it is lost. The name must
+        match the program's name (with or without ".exe"); only if none does, a part of the
+        name of at least 3 letters is tried."""
         ps = _psutil()
         if ps is None:
             raise ToolError("closing programs needs the 'system' extra (psutil)")
         name = name.strip().lower()
         if not name:
             raise ToolError("give the program name")
+        keep = {os.getpid(), os.getppid()}  # never close Starlight itself or what started it
+        running = [
+            (proc, (proc.info["name"] or "").lower())
+            for proc in ps.process_iter(["pid", "name"])
+            if proc.pid not in keep
+        ]
+        found = [proc for proc, pname in running if pname in (name, f"{name}.exe")]
+        if not found and len(name) >= 3:  # "word" finds WINWORD.EXE, but "e" finds nothing
+            found = [proc for proc, pname in running if name in pname]
         closed: list[int] = []
-        for proc in ps.process_iter(["pid", "name"]):
+        for proc in found:
             try:
-                pname = (proc.info["name"] or "").lower()
-                if name in pname or pname == f"{name}.exe":
-                    if proc.pid == os.getpid():
-                        continue  # never close Starlight itself
-                    proc.terminate()
-                    closed.append(proc.pid)
+                proc.terminate()
+                closed.append(proc.pid)
             except (ps.NoSuchProcess, ps.AccessDenied):
                 continue
         if not closed:
@@ -372,24 +384,37 @@ class SystemModule(Module):
         return result
 
     def _processes_fallback(self, limit: int) -> list[dict[str, Any]]:
-        import subprocess
-
+        """The programs using the most memory, without psutil."""
         try:
             if sys.platform == "win32":
                 out = subprocess.run(
-                    ["tasklist", "/fo", "csv", "/nh"], capture_output=True, text=True, timeout=10
+                    ["tasklist", "/fo", "csv", "/nh"],
+                    capture_output=True,
+                    text=True,
+                    timeout=10,
+                    check=False,
                 ).stdout
-                rows = []
+                listed: list[tuple[int, dict[str, Any]]] = []
                 for line in out.splitlines():
                     fields = [f.strip('"') for f in line.split('","')]
-                    if len(fields) >= 5:
-                        rows.append({"name": fields[0], "pid": fields[1], "memory": fields[4]})
-                return rows[:limit]
+                    if len(fields) < 5 or not fields[1].isdigit():
+                        continue
+                    kb = "".join(c for c in fields[4] if c.isdigit())  # reads like "12.345 K"
+                    if kb:
+                        row = {
+                            "pid": int(fields[1]),
+                            "name": fields[0],
+                            "memory": human_bytes(int(kb) * 1024),
+                        }
+                        listed.append((int(kb), row))
+                listed.sort(key=lambda item: item[0], reverse=True)
+                return [row for _, row in listed[:limit]]
             out = subprocess.run(
                 ["ps", "-eo", "pid,comm,rss", "--sort=-rss"],
                 capture_output=True,
                 text=True,
                 timeout=10,
+                check=False,
             ).stdout
             rows = []
             for line in out.splitlines()[1 : limit + 1]:

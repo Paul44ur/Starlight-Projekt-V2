@@ -199,6 +199,8 @@ class OpenAICompatProvider:
         """llama-server loads the model at start; just check it is up."""
         root = self.base_url.removesuffix("/v1")
         response = await self._client.get(f"{root}/health")
+        if response.status_code == 404:  # no /health: LM Studio, vLLM ... ask for the models
+            response = await self._client.get(f"{self.base_url}/models")
         response.raise_for_status()
 
     async def aclose(self) -> None:

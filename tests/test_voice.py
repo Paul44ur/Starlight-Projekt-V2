@@ -4,9 +4,12 @@ use the same. The speech programs are small Python stand-ins, so this runs anywh
 
 from __future__ import annotations
 
+import asyncio
+import contextlib
 import io
 import shutil
 import socket
+import subprocess
 import sys
 import textwrap
 import wave
@@ -14,6 +17,7 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
+import httpx
 import pytest
 
 from starlight.core import Kernel, Paths
@@ -172,3 +176,60 @@ def test_microphone_and_speaker_in_the_web_chat(project: Paths, tmp_path: Path) 
         assert spoken.headers["content-type"] == "audio/wav" and spoken.content[:4] == b"RIFF"
         stranger = {"host": "127.0.0.1:8700", "origin": "https://evil.example"}
         assert c.post("/api/speak", headers=stranger, json={"text": "x"}).status_code == 403
+
+
+async def test_server_still_loading_is_not_treated_as_ready(project: Paths, tmp_path: Path) -> None:
+    (tmp_path / "fake" / "whisper.py").write_text("import time\ntime.sleep(2)\n" + FAKE_WHISPER)
+    async with Kernel(project) as k:
+        voice = fake(k, tmp_path / "fake")
+        voice.start_timeout = 0.6
+        with pytest.raises(Exception, match="did not start in time"):
+            await voice.transcribe_audio(recording())
+        loading = voice._server
+        assert loading.poll() is None and not voice._ready  # still loading, so not "ready"
+        voice.start_timeout = 20
+        assert await voice.transcribe_audio(recording()) == "I heard a wav file (auto)"
+        assert voice._server is loading and voice._ready  # the same process, waited for
+
+
+async def test_a_speech_server_that_already_answers_is_reused(
+    project: Paths, tmp_path: Path
+) -> None:
+    async with Kernel(project) as k:
+        voice = fake(k, tmp_path / "fake")
+        other = subprocess.Popen(voice._server_command())  # e.g. started by another process
+        try:
+            for _ in range(100):  # wait until it listens
+                with (
+                    contextlib.suppress(OSError),
+                    socket.create_connection(("127.0.0.1", voice.config.whisper_port), timeout=0.2),
+                ):
+                    break
+                await asyncio.sleep(0.1)
+            voice._server_command = lambda: ["never-started"]  # a second one would fail
+            voice.start_timeout = 20
+            assert await voice.transcribe_audio(recording()) == "I heard a wav file (auto)"
+            assert voice._server is None and voice._ready
+        finally:
+            other.terminate()
+            other.wait(5)
+
+
+async def test_network_and_json_errors_become_tool_errors(project: Paths) -> None:
+    def refuse(request: httpx.Request) -> httpx.Response:
+        raise httpx.ConnectError("gone")
+
+    async with Kernel(project) as k:
+        voice = k.modules.records["voice"].instance
+        assert voice is not None
+
+        async def ready() -> None:
+            voice._ready = True  # type: ignore[attr-defined]
+
+        voice._ensure_server = ready  # type: ignore[attr-defined]
+        for handler in (refuse, lambda request: httpx.Response(200, text="<html>not json")):
+            voice._client = httpx.AsyncClient(transport=httpx.MockTransport(handler))  # type: ignore[attr-defined]
+            with pytest.raises(Exception, match="speech recognition failed") as caught:
+                await voice.transcribe_audio(recording())  # type: ignore[attr-defined]
+            assert type(caught.value).__name__ == "ToolError"
+            assert not voice._ready  # type: ignore[attr-defined]  # asks again next time

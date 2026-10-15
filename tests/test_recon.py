@@ -115,9 +115,7 @@ async def test_public_host_needs_authorization_and_is_remembered(project: Paths)
         module._probe_open = _no_details
         module._ping = _no_ping
         await module.scan("8.8.8.8", ports="80")
-        reach = await k.dispatcher.call("network.ping", {"server": "8.8.8.8"})
     assert "allowed this host before" in again.questions[0]  # asked, no legal warning again
-    assert reach is None or not reach.ok  # network tools still can't touch it
 
 
 async def test_only_one_host_no_ranges(project: Paths) -> None:

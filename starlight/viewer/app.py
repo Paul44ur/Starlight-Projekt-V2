@@ -114,7 +114,8 @@ class StatsReader:
                 "json_extract(m.labels, '$.status'))"
             )
         }
-        # The busiest single second in each interval: comparable with the 5-per-second cap.
+        # The busiest single second in each interval: comparable with the per-second cap
+        # (http.max_requests_per_second).
         web_series = [
             [float(b), float(v)]
             for b, v in self._rows(
@@ -230,7 +231,8 @@ def create_app(paths: Paths | None = None) -> Any:
     @app.get("/", response_class=HTMLResponse)
     def index() -> str:
         html = (STATIC / "index.html").read_text(encoding="utf-8")
-        return html.replace("__REFRESH__", str(config.viewer.refresh_seconds * 1000))
+        html = html.replace("__REFRESH__", str(config.viewer.refresh_seconds * 1000))
+        return html.replace("__WEB_CAP__", str(config.http.max_requests_per_second))
 
     @app.get("/api/summary")
     def summary(minutes: int = Query(60, ge=5, le=60 * 24 * 30)) -> dict[str, Any]:

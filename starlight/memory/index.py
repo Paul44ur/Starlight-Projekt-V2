@@ -19,6 +19,8 @@ import numpy as np
 from starlight.memory.embed import Embedder, Vector
 from starlight.memory.store import MemoryEntry, MemoryStore
 
+PAIR_BLOCK = 512  # rows compared at a time by similar_pairs
+
 
 @dataclass
 class Hit:
@@ -111,12 +113,15 @@ class MemoryIndex:
         """Pairs of entries at least ``threshold`` alike, most alike first."""
         if len(self._entries) < 2:
             return []
-        scores = self._matrix @ self._matrix.T
-        first, second = np.nonzero(np.triu(scores >= threshold, k=1))
-        found = [
-            (self._entries[i], self._entries[j], float(scores[i, j]))
-            for i, j in zip(first.tolist(), second.tolist(), strict=True)
-        ]
+        found: list[tuple[MemoryEntry, MemoryEntry, float]] = []
+        # A block of rows against the rows after it, not the whole n x n matrix at once.
+        for start in range(0, len(self._entries), PAIR_BLOCK):
+            scores = self._matrix[start : start + PAIR_BLOCK] @ self._matrix[start:].T
+            first, second = np.nonzero(np.triu(scores >= threshold, k=1))
+            found += [
+                (self._entries[start + i], self._entries[start + j], float(scores[i, j]))
+                for i, j in zip(first.tolist(), second.tolist(), strict=True)
+            ]
         return sorted(found, key=lambda pair: -pair[2])
 
     def __len__(self) -> int:

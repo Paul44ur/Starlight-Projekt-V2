@@ -9,9 +9,7 @@ import re
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 from typing import Any
-
-with contextlib.suppress(ImportError):
-    from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 _DAYS = ["MO", "TU", "WE", "TH", "FR", "SA", "SU"]
 MAX_OCCURRENCES = 2000  # safety net for endless repeat rules
@@ -35,12 +33,9 @@ class Event:
         """Start times of this event that overlap the window."""
         length = self.end - self.start
         if not self.rule:
-            hits = (
-                [self.start]
-                if self.start < window_end and self.start + length > window_start
-                else []
-            )
-            return hits
+            if self.start < window_end and self.start + length > window_start:
+                return [self.start]
+            return []
         found: list[datetime] = []
         for start in _expand(self.start, self.rule, after=window_start - length):
             if start >= window_end:
@@ -108,7 +103,7 @@ def parse_time(value: str, params: dict[str, str]) -> tuple[datetime, bool]:
         try:
             aware = moment.replace(tzinfo=ZoneInfo(zone))
             return aware.astimezone().replace(tzinfo=None), False
-        except (NameError, ZoneInfoNotFoundError, ValueError, OSError):
+        except (ZoneInfoNotFoundError, ValueError, OSError):
             pass  # unknown zone: take the time as local
     return moment, False
 
@@ -295,7 +290,7 @@ def _expand(start: datetime, rule: dict[str, str], after: datetime | None = None
                 candidates = [c for c in candidates if c.weekday() in by_day]
         step += 1
         for candidate in candidates:
-            if candidate is None or candidate < start:
+            if candidate < start:
                 continue
             if until is not None and candidate > until:
                 return

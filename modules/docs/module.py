@@ -21,16 +21,19 @@ from pathlib import Path
 from typing import Any
 
 import numpy as np
+import numpy.typing as npt
 from pydantic import BaseModel, Field
 
-from starlight.core import Message, Module, ModuleContext, ToolError, tool
+from starlight.core import KillSwitchEngaged, Message, Module, ModuleContext, ToolError, tool
 from starlight.core.config import write_yaml_config
 from starlight.core.safepaths import expand, inside
 from starlight.text import decode_text
 
 TEXT = {".txt", ".md", ".markdown", ".csv", ".log", ".json", ".yaml", ".yml", ".ini", ".rst"}
 HTML = {".html", ".htm"}
-SKIP_DIRS = {"node_modules", "__pycache__", ".git", ".venv", "venv", "$RECYCLE.BIN", "AppData"}
+# (folders starting with a dot, like .git and .venv, are skipped as well)
+SKIP_DIRS = {"node_modules", "__pycache__", "venv", "$RECYCLE.BIN", "AppData"}
+type Matrix = npt.NDArray[np.float32]
 ANSWER = (
     "Answer the question using ONLY the numbered excerpts from the user's own files below. "
     "Be short and direct, in the language of the question. After each fact put its excerpt "
@@ -150,8 +153,8 @@ class DocsModule(Module):
         )
         self._lock = threading.Lock()
         self._busy = asyncio.Lock()
-        self._parts: list[Part] | None = None
-        self._matrix = np.zeros((0, 1), dtype=np.float32)
+        self._index: tuple[list[Part], Matrix] | None = None  # (parts, their vectors as a matrix)
+        self._generation = 0  # bumped whenever the index is dropped
         if self.config.reindex_minutes:
             ctx.every(self.config.reindex_minutes * 60, self.reindex, "reindex", first_delay=30)
 
@@ -197,6 +200,50 @@ class DocsModule(Module):
     def _embedder_id(self) -> str:
         return str(getattr(self.ctx.embedder, "id", "embedder"))
 
+    @contextlib.contextmanager
+    def _transaction(self) -> Iterator[sqlite3.Connection]:
+        """One commit for a group of writes (the connection is in autocommit mode, where
+        every row would be its own fsync, and a crash could leave a file without parts)."""
+        with self._lock:
+            self._db.execute("BEGIN")
+            try:
+                yield self._db
+            except BaseException:
+                with contextlib.suppress(sqlite3.Error):
+                    self._db.execute("ROLLBACK")
+                raise
+            self._db.execute("COMMIT")
+
+    def _store(
+        self,
+        key: str,
+        stat: os.stat_result,
+        parts: list[tuple[int, str]],
+        vectors: list[Any],
+    ) -> None:
+        rows = [
+            (key, page, text, np.asarray(v, dtype=np.float32).tobytes())
+            for (page, text), v in zip(parts, vectors, strict=True)
+        ]
+        with self._transaction() as db:
+            db.execute("DELETE FROM parts WHERE path = ?", (key,))
+            db.executemany("INSERT INTO parts (path, page, text, vector) VALUES (?, ?, ?, ?)", rows)
+            db.execute(
+                "INSERT OR REPLACE INTO files VALUES (?, ?, ?, ?)",
+                (key, stat.st_mtime, stat.st_size, self._embedder_id),
+            )
+
+    def _invalidate(self) -> None:
+        self._index = None  # reload on the next search
+        self._generation += 1
+
+    async def _embedder_down(self) -> bool:
+        try:
+            await self.ctx.embedder.embed(["ok"])
+        except Exception:
+            return True
+        return False
+
     async def reindex(self) -> dict[str, Any]:
         """Read new and changed files, forget deleted ones."""
         async with self._busy:
@@ -204,76 +251,86 @@ class DocsModule(Module):
             known = {r[0]: (r[1], r[2], r[3]) for r in self._sql("SELECT * FROM files")}
             seen: set[str] = set()
             changed = failed = 0
-            for path in await asyncio.to_thread(lambda: list(self._files())):
-                key = str(path)
-                seen.add(key)
-                stat = path.stat()
-                if known.get(key) == (stat.st_mtime, stat.st_size, self._embedder_id):
-                    continue
-                self.ctx.kill_switch.check()
-                try:
-                    pages = await asyncio.to_thread(read_pages, path)
-                except Exception as exc:  # a damaged or locked file must not stop the rest
-                    self.ctx.logger.warning("could not read", file=key, error=str(exc))
-                    failed += 1
-                    continue
-                parts = [
-                    (page, piece)
-                    for page, text in pages
-                    for piece in chunks(text, self.config.chunk_chars)
-                ]
-                vectors = []
-                for start in range(0, len(parts), 32):
-                    batch = [p[1] for p in parts[start : start + 32]]
-                    vectors.extend(await self.ctx.embedder.embed(batch))
-                with self._lock:
-                    self._db.execute("DELETE FROM parts WHERE path = ?", (key,))
-                    self._db.executemany(
-                        "INSERT INTO parts (path, page, text, vector) VALUES (?, ?, ?, ?)",
-                        [
-                            (key, page, text, np.asarray(v, dtype=np.float32).tobytes())
-                            for (page, text), v in zip(parts, vectors, strict=True)
-                        ],
-                    )
-                    self._db.execute(
-                        "INSERT OR REPLACE INTO files VALUES (?, ?, ?, ?)",
-                        (key, stat.st_mtime, stat.st_size, self._embedder_id),
-                    )
-                changed += 1
+            touched = False
+            try:
+                for path in await asyncio.to_thread(lambda: list(self._files())):
+                    key = str(path)
+                    seen.add(key)
+                    try:
+                        stat = path.stat()
+                        if known.get(key) == (stat.st_mtime, stat.st_size, self._embedder_id):
+                            continue
+                        self.ctx.kill_switch.check()
+                        pages = await asyncio.to_thread(read_pages, path)
+                    except KillSwitchEngaged:
+                        raise
+                    except Exception as exc:  # a damaged or locked file must not stop the rest
+                        self.ctx.logger.warning("could not read", file=key, error=str(exc))
+                        failed += 1
+                        continue
+                    parts = [
+                        (page, piece)
+                        for page, text in pages
+                        for piece in chunks(text, self.config.chunk_chars)
+                    ]
+                    try:
+                        vectors: list[Any] = []
+                        for start in range(0, len(parts), 32):
+                            batch = [p[1] for p in parts[start : start + 32]]
+                            vectors.extend(await self.ctx.embedder.embed(batch))
+                        touched = True
+                        await asyncio.to_thread(self._store, key, stat, parts, vectors)
+                    except KillSwitchEngaged:
+                        raise
+                    except Exception as exc:  # e.g. a part too long for the embedding model
+                        self.ctx.logger.warning("could not index", file=key, error=str(exc))
+                        failed += 1
+                        if await self._embedder_down():  # it is the embedder, not this file
+                            raise
+                        continue
+                    changed += 1
+            finally:
+                if touched:
+                    self._invalidate()  # also after an aborted run: what it stored is searchable
             gone = set(known) - seen
-            with self._lock:
-                for key in gone:
-                    self._db.execute("DELETE FROM parts WHERE path = ?", (key,))
-                    self._db.execute("DELETE FROM files WHERE path = ?", (key,))
-            if changed or gone:
-                self._parts = None  # reload on the next search
+            if gone:
+                with self._transaction() as db:
+                    for key in gone:
+                        db.execute("DELETE FROM parts WHERE path = ?", (key,))
+                        db.execute("DELETE FROM files WHERE path = ?", (key,))
+                self._invalidate()
             total = self._sql("SELECT COUNT(*) FROM files")[0][0]
             return {"files": total, "read": changed, "removed": len(gone), "unreadable": failed}
 
-    def _load(self) -> None:
+    def _load(self) -> tuple[list[Part], Matrix]:
         rows = self._sql("SELECT path, page, text, vector FROM parts")
-        self._parts = [Part(r[0], r[1], r[2]) for r in rows]
-        self._matrix = (
+        parts = [Part(r[0], r[1], r[2]) for r in rows]
+        matrix = (
             np.vstack([np.frombuffer(r[3], dtype=np.float32) for r in rows])
             if rows
             else np.zeros((0, 1), dtype=np.float32)
         )
+        return parts, matrix
 
     async def _search(self, query: str, top_k: int) -> list[tuple[Part, float]]:
         if not query.strip():
             raise ToolError("what should I look for?")
-        if self._parts is None:
-            await asyncio.to_thread(self._load)
-        assert self._parts is not None
-        if not self._parts:
+        index = self._index  # one snapshot: a reindex may reset self._index while we wait
+        if index is None:
+            generation = self._generation
+            index = await asyncio.to_thread(self._load)
+            if generation == self._generation:  # not invalidated while it was loading
+                self._index = index
+        parts, matrix = index
+        if not parts:
             raise ToolError(
                 "the knowledge base is empty: add a folder with docs.add_folder, then wait "
                 "for it to be read (or run docs.reindex)"
             )
         [vector] = await self.ctx.embedder.embed([query])
-        scores = self._matrix @ np.asarray(vector, dtype=np.float32)
+        scores = matrix @ np.asarray(vector, dtype=np.float32)
         order = np.argsort(-scores)[:top_k]
-        return [(self._parts[i], float(scores[i])) for i in order]
+        return [(parts[i], float(scores[i])) for i in order]
 
     @staticmethod
     def _where(part: Part) -> str:

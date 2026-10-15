@@ -117,10 +117,7 @@ class BriefingModule(Module):
         out = await self._use("certs.expiring")
         if not out:
             return []
-        lines = [
-            f"⚠ Certificate for {c.get('host')} expires in {c['days_left']} days"
-            for c in out.get("expiring", [])
-        ]
+        lines = [_cert_line(c) for c in out.get("expiring", [])]
         lines += [f"⚠ {c.get('host')} is unreachable" for c in out.get("unreachable", [])]
         return lines
 
@@ -158,6 +155,14 @@ class BriefingModule(Module):
         made = await self.briefing(sections)
         await self.ctx.deliver(made["text"], title="Briefing")
         return {"sent": True, "sections": made["sections"]}
+
+
+def _cert_line(cert: dict[str, Any]) -> str:
+    host, days = cert.get("host"), cert["days_left"]
+    if days < 0:  # certs.expiring also lists the ones that have already run out
+        return f"⚠ Certificate for {host} expired {-days} day{'s' if days != -1 else ''} ago"
+    when = "today" if days == 0 else f"in {days} day{'s' if days != 1 else ''}"
+    return f"⚠ Certificate for {host} expires {when}"
 
 
 def _daytime(hour: int) -> str:

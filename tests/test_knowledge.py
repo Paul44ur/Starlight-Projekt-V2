@@ -10,7 +10,7 @@ from typing import Any
 
 import pytest
 
-from starlight.core import Kernel, Paths
+from starlight.core import Kernel, KillSwitchEngaged, Paths
 from starlight.core.model import Message, ModelResponse
 
 
@@ -135,6 +135,91 @@ async def test_starlights_own_folder_and_declining(project: Paths, library: Path
         assert "off-limits" in await fails(k, "docs.add_folder", path=str(project.root))
         assert "not confirmed" in await fails(k, "docs.add_folder", path=str(library))
         assert (await call(k, "docs.folders"))["files"] == 0
+
+
+class Flaky:
+    """Wraps the real embedder: fails for parts containing POISON, and after `fail_after`
+    calls when that is set; `on_query` runs while a search waits for its query vector."""
+
+    def __init__(self, inner: Any, fail_after: int | None = None) -> None:
+        self.inner = inner
+        self.fail_after = fail_after
+        self.on_query: Callable[[], None] | None = None
+        self.calls = 0
+
+    @property
+    def id(self) -> str:
+        return str(self.inner.id)
+
+    async def embed(self, texts: list[str]) -> Any:
+        self.calls += 1
+        if self.fail_after is not None and self.calls > self.fail_after:
+            raise ConnectionError("embedder is down")
+        if any("POISON" in t for t in texts):
+            raise ValueError("input is too long for the embedding model")
+        if texts == ["QUERY"] and self.on_query:
+            self.on_query()
+        return await self.inner.embed(texts)
+
+
+def docs_of(k: Kernel) -> Any:
+    return k.modules.records["docs"].instance
+
+
+async def test_one_bad_file_does_not_stop_the_reindex(project: Paths, library: Path) -> None:
+    (library / "aaa bad.txt").write_text("POISON " * 20)
+    (library / "zzz late.txt").write_text("The boiler is serviced every October.")
+    async with Kernel(project, ui=User(True), provider=Reader()) as k:
+        k.services.embedder = Flaky(k.services.embedder)
+        added = await call(k, "docs.add_folder", path=str(library))
+        assert added["unreadable"] == 1 and added["read"] == 3  # the files after it are read
+        hits = (await call(k, "docs.search", query="boiler serviced October"))["results"]
+        assert hits[0]["file"].endswith("zzz late.txt")  # and searchable right away
+        # A file that vanishes after the folder was walked is skipped, too.
+        module = docs_of(k)
+        walk = module._files
+        module._files = lambda: iter([library / "gone.txt", *walk()])
+        again = await call(k, "docs.reindex")
+        assert again["unreadable"] == 2 and again["read"] == 0
+
+
+async def test_a_dead_embedder_stops_the_run_but_keeps_what_was_stored(
+    project: Paths, library: Path
+) -> None:
+    async with Kernel(project, ui=User(True), provider=Reader()) as k:
+        assert "empty" in await fails(k, "docs.search", query="cat")  # cache: nothing yet
+        k.services.embedder = Flaky(k.services.embedder, fail_after=1)  # one file, then down
+        result = await k.dispatcher.call("docs.add_folder", {"path": str(library)})
+        assert not result.ok and "down" in str(result.error)  # not hidden file after file
+        assert (await call(k, "docs.folders"))["files"] == 1
+        # What the aborted run stored is found (the cache is not left stale).
+        k.services.embedder = k.services.embedder.inner
+        assert (await call(k, "docs.search", query="cat"))["results"]
+
+
+async def test_the_kill_switch_is_not_swallowed_by_the_reindex(
+    project: Paths, library: Path
+) -> None:
+    async with Kernel(project, ui=User(True), provider=Reader()) as k:
+        await call(k, "docs.add_folder", path=str(library))
+        (library / "pasta.md").write_text("Changed, so it is read again.")
+        flaky = k.services.embedder = Flaky(k.services.embedder)
+
+        async def engaged(texts: list[str]) -> Any:
+            raise KillSwitchEngaged("stopped")
+
+        flaky.embed = engaged  # type: ignore[method-assign]
+        with pytest.raises(KillSwitchEngaged):
+            await docs_of(k).reindex()
+
+
+async def test_a_reindex_during_a_search_does_not_break_it(project: Paths, library: Path) -> None:
+    async with Kernel(project, ui=User(True), provider=Reader()) as k:
+        await call(k, "docs.add_folder", path=str(library))
+        flaky = k.services.embedder = Flaky(k.services.embedder)
+        flaky.on_query = docs_of(k)._invalidate  # a reindex finishes while the query is embedded
+        assert (await call(k, "docs.search", query="QUERY"))["results"]
+        assert docs_of(k)._index is None  # dropped, so the next search loads the new state
 
 
 def test_chunks_overlap_and_respect_size() -> None:

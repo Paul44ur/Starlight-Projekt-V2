@@ -4,7 +4,7 @@ version: 0.1.0
 description: Starter module, copied by `starlight modules new <name>`
 entrypoint: module:TemplateModule
 # Highest permission any tool here needs: safe, confirm or blocked (documentation for you).
-permissions: [safe]
+permissions: [safe, confirm]
 # Other modules that must be loaded first.
 dependencies: []
 enabled_by_default: true

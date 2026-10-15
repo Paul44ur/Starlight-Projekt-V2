@@ -126,11 +126,11 @@ async def test_permissions_in_dispatcher(paths: Paths) -> None:
         greet = await kernel.dispatcher.call("hello.greet", {"name": "x"})
         shout = await kernel.dispatcher.call("hello.shout", {"text": "x"})
         unknown = await kernel.dispatcher.call("nope.tool")
-        bad_args = await kernel.dispatcher.call("hello.greet", {})
+        bad_args = await kernel.dispatcher.call("hello.shout", {})  # not blocked: invalid
     assert greet.error == "blocked by permissions"
     assert shout.error == "not confirmed by user" and asked == ["hello.shout"]
     assert unknown.error == "unknown tool 'nope.tool'"
-    assert bad_args.error == "blocked by permissions"
+    assert bad_args.error is not None and bad_args.error.startswith("invalid arguments")
 
 
 async def test_step_limit(paths: Paths, write_module: ModuleWriter) -> None:

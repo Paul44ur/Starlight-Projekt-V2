@@ -156,6 +156,7 @@ class MediaModule(Module):
                 "Windows does not tell other programs what is playing without extra "
                 "packages; ask me to look at the player's window instead"
             )
-        out = self._run("playerctl", "metadata", "--format", "{{status}}|{{artist}}|{{title}}")
-        status, artist, title = [*out.split("|"), "", ""][:3]
+        # Tabs between the parts: unlike "|", they do not turn up in artists and titles.
+        out = self._run("playerctl", "metadata", "--format", "{{status}}\t{{artist}}\t{{title}}")
+        status, artist, title = [*out.split("\t", 2), "", ""][:3]
         return {"status": status.lower(), "artist": artist, "title": title}

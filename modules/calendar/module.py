@@ -7,6 +7,7 @@ the address is a password, so it goes into the keyring.
 
 from __future__ import annotations
 
+import hashlib
 import json
 import re
 import uuid
@@ -17,10 +18,10 @@ from pydantic import BaseModel, Field
 
 from starlight.core import Module, ModuleContext, ToolError, tool
 from starlight.core.config import write_yaml_config
-from starlight.core.fsutil import write_atomic
+from starlight.core.fsutil import retry_on_lock, write_atomic
 from starlight.core.http import HttpError
 from starlight.core.safepaths import PathGuard
-from starlight.core.schedule import ScheduleError, has_clock_time, parse_clock, parse_when
+from starlight.core.schedule import ScheduleError, names_time_of_day, parse_clock, parse_when
 
 from . import ics
 
@@ -33,6 +34,16 @@ _RULES = {
     "yearly": {"FREQ": "YEARLY"},
 }
 FEED_KEY = "calendar.feed.{}"
+MAX_REMINDER = 366 * 24 * 60  # minutes; how far ahead check_alerts looks for any reminder
+
+
+def short_id(uid: str) -> str:
+    """The id shown for an event. Our own ids are uuids and start differently; a foreign UID
+    (imported or from a feed) may share a long prefix with others - every Outlook UID starts
+    with the same 32 characters - so it is shown as a short hash of the whole UID."""
+    if uid.endswith("@starlight"):
+        return uid[:8]
+    return hashlib.sha256(uid.encode("utf-8")).hexdigest()[:8]
 
 
 class Config(BaseModel):
@@ -52,7 +63,7 @@ class CalendarModule(Module):
         self.file = ctx.data_dir / "calendar.ics"
         self.alerted_file = ctx.data_dir / "alerted.json"
         self._feeds: dict[str, tuple[datetime, list[ics.Event]]] = {}
-        if self.config.check_interval > 0 and self.config.remind_minutes >= 0:
+        if self.config.check_interval > 0:
             ctx.every(self.config.check_interval, self.check_alerts, "alerts")
 
     def _now(self) -> datetime:
@@ -61,10 +72,18 @@ class CalendarModule(Module):
     # -- storage -------------------------------------------------------------------------
 
     def _local(self) -> list[ics.Event]:
+        """Your own events. Only a missing file means "no calendar yet": any other failure
+        to read it must stop the tool, or the next save would write a calendar with just
+        the new event over the real one."""
         try:
-            return ics.parse(self.file.read_text("utf-8"))
-        except OSError:
+            text = retry_on_lock(lambda: self.file.read_text("utf-8"))
+        except FileNotFoundError:
             return []
+        except (OSError, UnicodeDecodeError) as exc:
+            raise ToolError(
+                f"could not read the calendar file {self.file.name}, nothing was changed: {exc}"
+            ) from exc
+        return ics.parse(text)
 
     def _save(self, events: list[ics.Event]) -> None:
         write_atomic(self.file, ics.write(events), newline="")
@@ -97,9 +116,15 @@ class CalendarModule(Module):
             events += await self._feed(name)
         return events
 
-    async def _between(self, start: datetime, end: datetime) -> list[tuple[datetime, ics.Event]]:
-        found = [(when, e) for e in await self._all() for when in e.occurrences(start, end)]
+    @staticmethod
+    def _within(
+        events: list[ics.Event], start: datetime, end: datetime
+    ) -> list[tuple[datetime, ics.Event]]:
+        found = [(when, e) for e in events for when in e.occurrences(start, end)]
         return sorted(found, key=lambda pair: (not pair[1].all_day, pair[0]))
+
+    async def _between(self, start: datetime, end: datetime) -> list[tuple[datetime, ics.Event]]:
+        return self._within(await self._all(), start, end)
 
     # -- parsing helpers ----------------------------------------------------------------
 
@@ -108,7 +133,7 @@ class CalendarModule(Module):
         raw = text.strip().lower()
         if not raw:
             raise ToolError("when is it? e.g. 'tomorrow 15:00' or 'friday'")
-        timed = has_clock_time(raw)  # "24.12.2026" alone is a day, not midnight
+        timed = names_time_of_day(raw)  # "24.12.2026" alone is a day, not midnight
         try:
             moment = parse_when(text, self._now())
         except ScheduleError as exc:
@@ -135,7 +160,7 @@ class CalendarModule(Module):
 
     @staticmethod
     def _view(when: datetime, event: ics.Event) -> dict[str, Any]:
-        view: dict[str, Any] = {"id": event.uid[:8], "title": event.title}
+        view: dict[str, Any] = {"id": short_id(event.uid), "title": event.title}
         if event.all_day:
             view["date"] = when.date().isoformat()
             view["all_day"] = True
@@ -157,7 +182,12 @@ class CalendarModule(Module):
 
     def _find(self, events: list[ics.Event], id: str) -> ics.Event:
         key = id.strip().lower()
-        exact = [e for e in events if e.uid[:8].lower() == key or e.uid.lower() == key]
+        whole = [e for e in events if e.uid.lower() == key]
+        if whole:
+            return whole[0]
+        exact = [e for e in events if short_id(e.uid).lower() == key]
+        if len({e.uid for e in exact}) > 1:  # two UIDs with one short id: never guess
+            raise ToolError(f"'{id}' matches {len(exact)} events; use a word from the title")
         if exact:
             return exact[0]
         named = [e for e in events if key and key in e.title.lower()]
@@ -348,10 +378,17 @@ class CalendarModule(Module):
     async def check_alerts(self, now: datetime | None = None) -> list[str]:
         """Deliver an alert for each event starting within its reminder time."""
         moment = now or self._now()
-        horizon = moment + timedelta(minutes=max(self.config.remind_minutes, 120))
+        try:
+            events = await self._all()
+        except ToolError as exc:  # an unreadable calendar file: try again next round
+            self.ctx.logger.warning("calendar alerts skipped", error=str(exc))
+            return []
+        # look as far ahead as the longest reminder (an event may ask for a day before)
+        ahead = max(120, self.config.remind_minutes, *(e.remind_minutes or 0 for e in events))
+        horizon = moment + timedelta(minutes=min(ahead, MAX_REMINDER))
         alerted = self._alerted(moment)
         sent: list[str] = []
-        for when, event in await self._between(moment, horizon):
+        for when, event in self._within(events, moment, horizon):
             minutes = (
                 self.config.remind_minutes if event.remind_minutes is None else event.remind_minutes
             )

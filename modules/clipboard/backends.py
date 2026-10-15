@@ -23,18 +23,38 @@ class Backend:
     get_cmd: list[str]
     set_cmd: list[str]
 
+    @staticmethod
+    def _run(command: list[str], text: str | None = None) -> subprocess.CompletedProcess[str]:
+        # UTF-8 on both sides, whatever the code page of this PC is (umlauts stay umlauts)
+        try:
+            return subprocess.run(
+                command,
+                input=text,
+                capture_output=True,
+                text=True,
+                encoding="utf-8",
+                errors="replace",
+                timeout=10,
+                check=False,
+            )
+        except (subprocess.TimeoutExpired, OSError) as exc:
+            raise ClipboardUnavailable(f"the clipboard program did not answer: {exc}") from exc
+
     def get(self) -> str:
-        result = subprocess.run(self.get_cmd, capture_output=True, text=True, timeout=10)
+        result = self._run(self.get_cmd)
         if result.returncode != 0:
             raise ClipboardUnavailable(result.stderr.strip() or "could not read the clipboard")
-        return result.stdout
+        return result.stdout.removeprefix("\ufeff")
 
     def set(self, text: str) -> None:
-        result = subprocess.run(
-            self.set_cmd, input=text, capture_output=True, text=True, timeout=10
-        )
+        result = self._run(self.set_cmd, text)
         if result.returncode != 0:
             raise ClipboardUnavailable(result.stderr.strip() or "could not set the clipboard")
+
+
+# PowerShell reads and writes the PC's old console code page (cp850 on a German Windows)
+# unless told otherwise.
+_UTF8 = "[Console]::InputEncoding=[Console]::OutputEncoding=[System.Text.Encoding]::UTF8; "
 
 
 def detect() -> Backend | None:
@@ -42,8 +62,8 @@ def detect() -> Backend | None:
     if sys.platform == "win32":
         return Backend(
             "powershell",
-            ["powershell", "-NoProfile", "-Command", "Get-Clipboard -Raw"],
-            ["powershell", "-NoProfile", "-Command", "$input | Set-Clipboard"],
+            ["powershell", "-NoProfile", "-Command", _UTF8 + "Get-Clipboard -Raw"],
+            ["powershell", "-NoProfile", "-Command", _UTF8 + "$input | Set-Clipboard"],
         )
     if sys.platform == "darwin":
         return Backend("pbcopy", ["pbpaste"], ["pbcopy"])

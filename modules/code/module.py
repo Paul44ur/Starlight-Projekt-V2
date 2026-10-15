@@ -139,9 +139,14 @@ class CodeModule(Module):
             command = solution["test_command"] or (
                 "python test_main.py" if "test_main.py" in solution["files"] else "python main.py"
             )
-            run = await self.sandbox.run(
-                solution["files"], shlex.split(command), self.config.timeout, allowed
-            )
+            try:
+                run = await self.sandbox.run(
+                    solution["files"], shlex.split(command), self.config.timeout, allowed
+                )
+            except ValueError as exc:  # a bad file name or command: it costs one attempt
+                history.append({"attempt": attempt, "error": str(exc)})
+                messages.append(Message("user", FIX.format(output=str(exc))))
+                continue
             history.append({"attempt": attempt, "ok": run.ok, "exit_code": run.exit_code})
             if self.ctx.stats is not None:
                 self.ctx.stats.record("code.attempts", 1, ok=run.ok)

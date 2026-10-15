@@ -22,15 +22,12 @@ class FocusModule(Module):
     async def setup(self, ctx: ModuleContext) -> None:
         self.focus = ctx.focus
 
-    def _now(self) -> datetime:
-        return datetime.now()
-
     @tool
     async def start(self, minutes: int = 0, until: str = "") -> dict[str, Any]:
         """Turn on focus mode: hold back messages until the user is done. Give `minutes`
         (e.g. 90) or `until` (e.g. "15:00", "in 2h"); with neither it lasts until
         focus.stop."""
-        now = self._now()
+        now = datetime.now()
         end: datetime | None = None
         if until.strip():
             end = parse_when(until, now)

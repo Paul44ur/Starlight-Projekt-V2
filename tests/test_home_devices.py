@@ -124,6 +124,22 @@ async def test_home_assistant_switches_freely_but_asks_for_locks(project: Paths)
     assert "secret-token" not in (project.module_configs / "home.yaml").read_text()
 
 
+async def test_a_failed_connect_keeps_the_working_setup(project: Paths) -> None:
+    ha = FakeHA()
+    async with Kernel(project, ui=User(), vault_backend=MemoryBackend()) as k:
+        home = instance(k, "home")
+        home.transport = httpx.MockTransport(ha)
+        await call(k, "home.connect", url="http://ha.local:8123", token="secret-token")
+        saved = (project.module_configs / "home.yaml").read_text()
+        assert "refused the token" in await fails(
+            k, "home.connect", url="http://other.local:8123", token="typo"
+        )
+        assert k.vault.get("home.token") == "secret-token"  # nothing was replaced
+        assert home.config.url == "http://ha.local:8123"
+        assert (project.module_configs / "home.yaml").read_text() == saved
+        assert (await call(k, "home.get", entity="light.living_room"))["state"] == "on"
+
+
 async def test_watched_entities_announce_changes(project: Paths) -> None:
     ha = FakeHA()
     (project.module_configs / "home.yaml").write_text(

@@ -1,7 +1,7 @@
 """Research a question: plan a few searches, read the best pages and write a short report
 with numbered sources [1], [2] ... that you can check. Pages are read through the web
-module, so its limits (5 requests a second, robots.txt) apply. `save` puts the report in
-your Starlight folder (Research/).
+module, so its limits (the rate limits in the `http` section of config/starlight.yaml,
+robots.txt) apply. `save` puts the report in your Starlight folder (Research/).
 """
 
 from __future__ import annotations

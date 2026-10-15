@@ -222,7 +222,7 @@ async def test_context_is_summarized_not_cut() -> None:
         messages.append(Message("tool", "result " + "y" * 60, name="a.b"))
         messages.append(Message("assistant", f"answer {i}"))
 
-    fitted = await manager.fit(messages, [])
+    fitted = manager.shorten(await manager.compact(messages, []), [])
     assert fitted[0].content == "You are Starlight."
     assert fitted[1].content.startswith(SUMMARY_PREFIX)
     assert "NAS at 10.0.0.5" in fitted[1].content

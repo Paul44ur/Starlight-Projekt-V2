@@ -3,7 +3,7 @@
 Layers:
   * a global hotkey (default Ctrl+Alt+J, needs the optional ``pynput`` extra)
   * a STOP file, created by ``starlight kill`` and polled while the core runs
-  * a WhatsApp ``/kill`` command from your own number (Step 10), via ``trigger()``
+  * a WhatsApp ``/kill`` command from your own number, via ``trigger()``
 
 On trigger, running tasks are cancelled, cleanup callbacks registered by modules run
 (release keyboard and mouse, close browser sessions), and the reason goes to the audit log.
@@ -75,7 +75,13 @@ class KillSwitch:
         if self._reason:
             return self._reason
         if self.stop_file.exists():
-            return self.stop_file.read_text(encoding="utf-8").strip() or "STOP file present"
+            # Another process may remove or replace the file right now (`starlight resume`;
+            # on Windows a reader can be locked out for a moment): it is still a stop.
+            try:
+                text = self.stop_file.read_text(encoding="utf-8").strip()
+            except (OSError, UnicodeDecodeError):
+                text = ""
+            return text or "STOP file present"
         return None
 
     def check(self) -> None:
@@ -210,9 +216,12 @@ class KillSwitch:
         """Poll for the STOP file so `starlight kill` from another terminal stops a run."""
         self._loop = asyncio.get_running_loop()
         while True:
-            self._sync()
-            if not self._fired and self.stop_file.exists():
-                self._fire(self.reason or "STOP file present", source="stop_file")
+            try:
+                self._sync()
+                if not self._fired and self.stop_file.exists():
+                    self._fire(self.reason or "STOP file present", source="stop_file")
+            except Exception:  # one bad poll must not end the watcher
+                self._log.exception("kill-switch watcher poll failed")
             await asyncio.sleep(interval)
 
     def start_hotkey(self, combo: str) -> bool:

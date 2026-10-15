@@ -40,7 +40,9 @@ class Health(BaseHTTPRequestHandler):
 @pytest.fixture
 def http_port() -> Iterator[int]:
     server = ThreadingHTTPServer(("127.0.0.1", 0), Health)
-    threading.Thread(target=server.serve_forever, daemon=True).start()
+    threading.Thread(
+        target=server.serve_forever, kwargs={"poll_interval": 0.01}, daemon=True
+    ).start()
     yield server.server_address[1]
     server.shutdown()
     server.server_close()
@@ -250,3 +252,30 @@ def test_ping_output_parsing() -> None:
         "3",
         "1",
     ]
+
+
+async def test_a_dropped_ssh_connection_is_replaced_not_reused(
+    paths: Paths, network: MemoryBackend, ssh: SshServer
+) -> None:
+    async with Kernel(paths, vault_backend=network) as kernel:
+        call = kernel.dispatcher.call
+        module = kernel.modules.records["network"].instance
+        first = await call("network.ssh_check", {"server": "homeserver", "command": "uptime"})
+        assert first.ok, first.error
+        (connection,) = module._ssh.values()  # type: ignore[union-attr]
+        connection.abort()  # the server rebooted or the network went away
+        await connection.wait_closed()
+        again = await call("network.ssh_check", {"server": "homeserver", "command": "uptime"})
+        assert again.ok, again.error
+        (fresh,) = module._ssh.values()  # type: ignore[union-attr]
+        assert fresh is not connection
+
+        async def dead(*args: Any, **kwargs: Any) -> Any:
+            raise ConnectionResetError("connection lost")
+
+        fresh.run = dead  # looks open, but nothing gets through
+        broken = await call("network.ssh_check", {"server": "homeserver", "command": "uptime"})
+        assert not broken.ok
+        healed = await call("network.ssh_check", {"server": "homeserver", "command": "uptime"})
+        assert healed.ok, healed.error
+    assert ssh.commands == ["uptime", "uptime", "uptime"]

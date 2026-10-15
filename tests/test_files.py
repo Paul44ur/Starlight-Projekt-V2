@@ -227,7 +227,7 @@ async def test_the_ai_saves_what_it_wrote(project: Paths, documents: Path) -> No
     )
     async with Kernel(project, provider=provider, ui=User()) as kernel:
         result = await kernel.ask("Write a letter about the broken heating and save it")
-        assert "files.save" in {t["name"] for t in kernel.dispatcher.schemas()}
+        assert kernel.dispatcher.get("files.save") is not None
     assert result.tool_results[0].ok
     assert (documents / "Starlight" / "heating.txt").read_text(encoding="utf-8") == letter
 

@@ -4,8 +4,9 @@ version: 0.1.0
 description: Example module made from the template (greet, shout)
 keywords: ["greet", "hello"]
 entrypoint: module:HelloModule
-# Highest permission any tool here needs: safe, confirm or blocked (documentation for you).
-permissions: [safe]
+# Informational only (nothing reads it): which permissions the tools here use. Each tool's
+# @tool tag is what decides; `shout` asks first.
+permissions: [safe, confirm]
 # Other modules that must be loaded first.
 dependencies: []
 enabled_by_default: true

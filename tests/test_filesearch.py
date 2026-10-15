@@ -90,3 +90,38 @@ async def test_starlight_own_folder_is_never_searched(project: Paths) -> None:
     async with Kernel(project) as k:
         result = await call(k, "info", path=str(project.root / "config"))
     assert not result.ok and "off-limits" in str(result.error)
+
+
+async def test_a_search_that_hit_the_scan_cap_says_so(project: Paths, tree: Path) -> None:
+    for i in range(150):
+        (tree / f"file{i:03}.log").write_text("x")
+    (tree / "sub").mkdir()
+    (tree / "sub" / "zzz_invoice.txt").write_text("needle in the last folder")
+    config = project.module_configs / "filesearch.yaml"
+    config.write_text(config.read_text() + "max_files_scanned: 100\n")
+    async with Kernel(project) as k:
+        found = await call(k, "find", name_pattern="zzz_invoice")
+        grepped = await call(k, "grep", text="needle")
+        recent = await call(k, "recent", days=1)
+        narrow = await call(k, "find", name_pattern="zzz_invoice", root=str(tree / "sub"))
+    for result in (found, grepped, recent):  # not "no match": the search did not get that far
+        assert "stopped after scanning 100 files" in result.output["note"]
+    assert found.output["count"] == 0 and grepped.output["files"] == 0
+    assert narrow.output["count"] == 1 and "note" not in narrow.output  # a smaller folder works
+
+
+async def test_find_and_recent_show_the_really_newest_files(project: Paths, tree: Path) -> None:
+    config = project.module_configs / "filesearch.yaml"
+    config.write_text(config.read_text() + "max_hits: 1\n")
+    now = time.time()
+    for i in range(12):  # more matches than max_hits * 4, the newest one last
+        file = tree / f"log{i:02}.txt"
+        file.write_text("x")
+        os.utime(file, (now - (12 - i) * 60, now - (12 - i) * 60))
+    async with Kernel(project) as k:
+        found = await call(k, "find", name_pattern="log*.txt")
+        recent = await call(k, "recent", days=1)
+    assert [f["name"] for f in found.output["files"]] == ["log11.txt"]
+    assert found.output["note"] == "showing the newest 1 of 12"
+    assert recent.output["count"] == 1
+    assert recent.output["note"].startswith("showing the newest 1 of ")

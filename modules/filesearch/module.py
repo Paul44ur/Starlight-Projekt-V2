@@ -11,6 +11,8 @@ from __future__ import annotations
 import fnmatch
 import os
 import time
+from collections.abc import Iterator
+from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 from typing import Any
@@ -21,11 +23,9 @@ from starlight.core import Module, ModuleContext, ToolError, tool
 from starlight.core.output import known_folders
 from starlight.core.safepaths import expand, inside
 
-# Folders not worth searching: huge, and never what the user means.
-_SKIP_DIRS = {
-    ".git", "node_modules", "__pycache__", ".venv", "venv", ".mypy_cache",
-    ".pytest_cache", "site-packages", ".cache", "$RECYCLE.BIN", "AppData",
-}  # fmt: skip
+# Folders not worth searching: huge, and never what the user means (folders starting with a
+# dot, like .git and .venv, are skipped as well).
+_SKIP_DIRS = {"node_modules", "__pycache__", "venv", "site-packages", "$RECYCLE.BIN", "AppData"}
 # Treat these as text for content search; everything else is skipped by grep.
 _TEXT_SUFFIXES = {
     ".txt", ".md", ".rst", ".log", ".csv", ".tsv", ".json", ".yaml", ".yml", ".toml",
@@ -41,6 +41,18 @@ class Config(BaseModel):
     max_files_scanned: int = Field(default=50_000, ge=100)  # safety cap per search
     max_hits: int = Field(default=100, ge=1, le=1000)
     max_grep_mb: float = Field(default=5, gt=0)  # largest file grep will read
+
+
+@dataclass
+class _Scan:
+    """How a walk went: it stops after ``limit`` files, and the tool must then say so."""
+
+    limit: int
+    capped: bool = False
+
+    @property
+    def note(self) -> str:
+        return f"stopped after scanning {self.limit} files; give a narrower `root` folder"
 
 
 class FileSearchModule(Module):
@@ -72,6 +84,9 @@ class FileSearchModule(Module):
     def _in_starlight(self, path: Path) -> bool:
         return inside(path, self.star_root)
 
+    def _allowed(self, path: Path) -> bool:
+        return any(inside(path, folder) for folder in self.allowed)
+
     def _roots(self, root: str) -> list[Path]:
         if not root.strip():
             live = [p for p in self.allowed if p.is_dir()]
@@ -81,7 +96,7 @@ class FileSearchModule(Module):
         given = expand(root)
         if self._in_starlight(given):
             raise ToolError("Starlight's own folder is not searchable")
-        if not any(given == a or given.is_relative_to(a) for a in self.allowed):
+        if not self._allowed(given):
             allowed = ", ".join(str(p) for p in self.allowed) or "(none)"
             raise ToolError(
                 f"{given} is outside the allowed folders. Allowed: {allowed}. "
@@ -91,8 +106,9 @@ class FileSearchModule(Module):
             raise ToolError(f"{given} is not a folder that exists")
         return [given]
 
-    def _walk(self, roots: list[Path]) -> Any:
-        """Yield files under the roots, skipping heavy/irrelevant folders and Starlight's."""
+    def _walk(self, roots: list[Path], scan: _Scan) -> Iterator[Path]:
+        """Yield files under the roots, skipping heavy/irrelevant folders and Starlight's.
+        Stops after max_files_scanned files and sets ``scan.capped``."""
         scanned = 0
         walked: list[Path] = []  # roots inside one another (home and Documents): once each
         for base in roots:
@@ -106,7 +122,8 @@ class FileSearchModule(Module):
                 dirnames[:] = [d for d in dirnames if d not in _SKIP_DIRS and not d.startswith(".")]
                 for filename in filenames:
                     scanned += 1
-                    if scanned > self.config.max_files_scanned:
+                    if scanned > scan.limit:
+                        scan.capped = True
                         return
                     yield here / filename
             walked.append(base)
@@ -133,21 +150,39 @@ class FileSearchModule(Module):
             raise ToolError("give a name or pattern, e.g. '*.pdf' or 'invoice'")
         glob = pattern if any(c in pattern for c in "*?[") else f"*{pattern}*"
         glob_lower = glob.lower()
-        hits: list[tuple[float, dict[str, Any]]] = []
-        for file in self._walk(self._roots(root)):
+        hits: list[tuple[float, Path]] = []
+        scan = _Scan(self.config.max_files_scanned)
+        for file in self._walk(self._roots(root), scan):
             if fnmatch.fnmatch(file.name.lower(), glob_lower):
                 try:
-                    hits.append((file.stat().st_mtime, self._info(file)))
+                    hits.append((file.stat().st_mtime, file))
                 except OSError:
                     continue
-                if len(hits) > self.config.max_hits * 4:
-                    break
-        hits.sort(key=lambda h: h[0], reverse=True)
-        shown = [info for _, info in hits[: self.config.max_hits]]
+        shown, note = self._newest(hits, scan)
         result: dict[str, Any] = {"pattern": glob, "count": len(shown), "files": shown}
-        if len(hits) > len(shown):
-            result["note"] = f"showing the newest {len(shown)}"
+        if note:
+            result["note"] = note
         return result
+
+    def _newest(
+        self, hits: list[tuple[float, Path]], scan: _Scan
+    ) -> tuple[list[dict[str, Any]], str]:
+        """The newest max_hits of (modified, file) as file info, and a note when the result
+        is not everything there is."""
+        hits.sort(key=lambda h: h[0], reverse=True)
+        limit = self.config.max_hits
+        shown: list[dict[str, Any]] = []
+        for _, file in hits:
+            if len(shown) >= limit:
+                break
+            try:
+                shown.append(self._info(file))
+            except OSError:  # gone since it was listed
+                continue
+        notes = [f"showing the newest {limit} of {len(hits)}"] if len(hits) > limit else []
+        if scan.capped:
+            notes.append(scan.note)
+        return shown, "; ".join(notes)
 
     @tool
     def grep(self, text: str, root: str = "", max_hits: int = 0) -> dict[str, Any]:
@@ -162,7 +197,8 @@ class FileSearchModule(Module):
         cap = int(self.config.max_grep_mb * 1024**2)
         matches: list[dict[str, Any]] = []
         files_with_hits = 0
-        for file in self._walk(self._roots(root)):
+        scan = _Scan(self.config.max_files_scanned)
+        for file in self._walk(self._roots(root), scan):
             if file.suffix.lower() not in _TEXT_SUFFIXES:
                 continue
             try:
@@ -182,7 +218,10 @@ class FileSearchModule(Module):
                             "matches": matches,
                             "note": f"stopped at {limit} matches",
                         }
-        return {"text": needle, "files": files_with_hits, "matches": matches}
+        result: dict[str, Any] = {"text": needle, "files": files_with_hits, "matches": matches}
+        if scan.capped:
+            result["note"] = scan.note
+        return result
 
     @staticmethod
     def _scan_file(file: Path, needle_lower: str) -> list[tuple[int, str]]:
@@ -205,10 +244,10 @@ class FileSearchModule(Module):
     @tool
     def info(self, path: str) -> dict[str, Any]:
         """Details about one file or folder: size, when it changed, and whether it exists."""
-        given = Path(os.path.expandvars(path.strip())).expanduser().resolve()
+        given = expand(path)
         if self._in_starlight(given):
             raise ToolError("Starlight's own folder is off-limits")
-        if not any(given == a or given.is_relative_to(a) for a in self.allowed):
+        if not self._allowed(given):
             raise ToolError(f"{given} is outside the allowed folders")
         if not given.exists():
             raise ToolError(f"{given} does not exist")
@@ -226,19 +265,20 @@ class FileSearchModule(Module):
         if days < 1:
             raise ToolError("days must be at least 1")
         cutoff = time.time() - days * 86400
-        hits: list[tuple[float, dict[str, Any]]] = []
-        for file in self._walk(self._roots(root)):
+        hits: list[tuple[float, Path]] = []
+        scan = _Scan(self.config.max_files_scanned)
+        for file in self._walk(self._roots(root), scan):
             try:
                 mtime = file.stat().st_mtime
             except OSError:
                 continue
             if mtime >= cutoff:
-                hits.append((mtime, self._info(file)))
-                if len(hits) > self.config.max_hits * 4:
-                    break
-        hits.sort(key=lambda h: h[0], reverse=True)
-        shown = [info for _, info in hits[: self.config.max_hits]]
-        return {"days": days, "count": len(shown), "files": shown}
+                hits.append((mtime, file))
+        shown, note = self._newest(hits, scan)
+        result: dict[str, Any] = {"days": days, "count": len(shown), "files": shown}
+        if note:
+            result["note"] = note
+        return result
 
 
 def _human(size: int) -> str:

@@ -66,12 +66,9 @@ class FakeDesktop:
     name = "fake"
 
     def __init__(self) -> None:
-        from types import SimpleNamespace
-
         self.started: list[str] = []
         self.opened: list[str] = []
         self.actions: list[tuple[str, str]] = []
-        self.ns = SimpleNamespace
 
     def programs(self, extra: list[Path]) -> list[Any]:
         from starlight_modules.apps.backends import Program  # type: ignore[import-not-found]
@@ -338,7 +335,6 @@ class Researcher:
 
 async def test_research_reads_pages_and_cites_them(project: Paths, documents: Path) -> None:
     async with Kernel(project, provider=Researcher()) as k:
-        web = instance(k, "web")
         searched: list[str] = []
 
         async def search(query: str, max_results: int = 8) -> list[dict[str, str]]:
@@ -357,7 +353,6 @@ async def test_research_reads_pages_and_cites_them(project: Paths, documents: Pa
 
         k.dispatcher.get("web.search").func = search  # type: ignore[union-attr]
         k.dispatcher.get("web.fetch_many").func = fetch_many  # type: ignore[union-attr]
-        del web
         out = await call(k, "research.research", question="Are solar panels worth it?",
                          depth="deep", save=True)  # fmt: skip
     assert searched[0] == "Are solar panels worth it?" and "solar payback time" in searched

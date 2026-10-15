@@ -112,6 +112,9 @@ def _kill_switch(paths: Paths, audited: bool = False) -> KillSwitch:
 async def cmd_ask(paths: Paths, args: argparse.Namespace) -> int:
     async with _kernel(paths, assume_yes=args.yes) as kernel:
         result = await kernel.ask(" ".join(args.text))
+    if result.failed:  # the model server is down or turned the request down: say so in the code
+        print(result.answer, file=sys.stderr)
+        return 1
     print(result.answer)
     if result.stopped:
         print("Kill switch is engaged. Run `starlight resume` to continue.", file=sys.stderr)
@@ -178,7 +181,8 @@ async def cmd_run(paths: Paths, args: argparse.Namespace) -> int:
         while True:
             try:
                 line = await view.aread()
-            except (EOFError, KeyboardInterrupt):
+            except (EOFError, KeyboardInterrupt, asyncio.CancelledError):
+                # Ctrl+C at the prompt reaches asyncio.run as a cancelled main task.
                 print()
                 break
             if not line:
@@ -500,8 +504,6 @@ def cmd_skills(paths: Paths, args: argparse.Namespace) -> int:
 async def cmd_serve(paths: Paths, args: argparse.Namespace) -> int:
     """The core in the background: modules (WhatsApp webhook, watchers), kill hotkey,
     no terminal. Questions go to the channel a request came from."""
-    import signal
-
     stop = asyncio.Event()
     loop = asyncio.get_running_loop()
     for sig in (signal.SIGTERM, signal.SIGINT):
@@ -796,6 +798,12 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def main(argv: Sequence[str] | None = None) -> int:
+    code = _main(argv)
+    console.leave_if_reading(code)  # after Ctrl+C at a prompt: its read would hold up the exit
+    return code
+
+
+def _main(argv: Sequence[str] | None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
     if args.command is None:

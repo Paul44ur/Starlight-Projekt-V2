@@ -236,6 +236,66 @@ async def test_searxng_search(paths: Paths, use_module: Callable[[str], Path]) -
     ]
 
 
+def pages_transport(short: str, long: str) -> httpx.MockTransport:
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/robots.txt":
+            return httpx.Response(404)
+        body = short if request.url.path == "/short" else long
+        return httpx.Response(200, html=f"<html><body><main>{body}</main></body></html>")
+
+    return httpx.MockTransport(handler)
+
+
+class BrokenBrowser:
+    """Stands in for a Chromium that cannot start."""
+
+    def __init__(self) -> None:
+        self.launches = 0
+
+    async def new_context(self) -> Any:
+        self.launches += 1
+        raise RuntimeError("chromium crashed")
+
+    async def close(self) -> None:
+        pass
+
+
+async def test_a_browser_that_fails_keeps_the_page_the_plain_fetch_read(
+    paths: Paths, use_module: Callable[[str], Path]
+) -> None:
+    use_module("web")
+    transport = pages_transport("<p>Short page</p>", "<p>" + "Plenty of text. " * 40 + "</p>")
+    async with Kernel(paths, http_transport=transport) as kernel:
+        web: Any = kernel.modules.records["web"].instance
+        web.browser = BrokenBrowser()
+        one = await kernel.dispatcher.call("web.fetch", {"url": "https://a.example/short"})
+        many = await kernel.dispatcher.call(
+            "web.fetch_many",
+            {"urls": ["https://a.example/short", "https://b.example/long"]},
+        )
+    assert one.ok and one.output["text"] == "Short page"
+    assert web.browser.launches == 2  # tried each time, never fatal
+    assert [r["text"][:10] for r in many.output] == ["Short page", "Plenty of "]
+
+
+async def test_a_small_character_limit_does_not_start_the_browser(
+    paths: Paths, use_module: Callable[[str], Path]
+) -> None:
+    use_module("web")
+    transport = pages_transport("", "<p>" + "Plenty of text. " * 40 + "</p>")
+    async with Kernel(paths, http_transport=transport) as kernel:
+        web: Any = kernel.modules.records["web"].instance
+        web.browser = BrokenBrowser()
+        result = await kernel.dispatcher.call(
+            "web.fetch", {"url": "https://b.example/long", "max_chars": 100}
+        )
+    assert result.ok and web.browser.launches == 0
+    assert result.output["text"].startswith("Plenty of text.") and result.output["text"].endswith(
+        "…"
+    )
+    assert len(result.output["text"]) <= 102
+
+
 # -- a local site for the browser tests -------------------------------------------------
 
 
@@ -312,7 +372,9 @@ class DemoSite(BaseHTTPRequestHandler):
 def site() -> Iterator[str]:
     DemoSite.login_posts = 0
     server = ThreadingHTTPServer(("127.0.0.1", 0), DemoSite)
-    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread = threading.Thread(
+        target=server.serve_forever, kwargs={"poll_interval": 0.01}, daemon=True
+    )
     thread.start()
     yield f"http://127.0.0.1:{server.server_address[1]}"
     server.shutdown()
