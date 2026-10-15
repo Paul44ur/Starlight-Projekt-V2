@@ -292,7 +292,10 @@ def test_service_files(tmp_path: Path) -> None:
 
     linux = linux_plan(tmp_path, "install", unit_dir=tmp_path / "units")
     unit = linux.files[tmp_path / "units" / "starlight-core.service"]
-    assert f"--home {tmp_path} serve" in unit and "Restart=on-failure" in unit
+    # systemd reads a backslash as an escape, so the unit writes each one twice (only
+    # matters when this test runs on Windows, where tmp_path has backslashes)
+    home = str(tmp_path).replace("\\", "\\\\")
+    assert f"--home {home} serve" in unit and "Restart=on-failure" in unit
     assert ["systemctl", "--user", "enable", "--now", "starlight-viewer.service"] in linux.commands
     assert linux_plan(tmp_path, "stop").commands[0][:3] == ["systemctl", "--user", "stop"]
 

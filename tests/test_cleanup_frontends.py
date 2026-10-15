@@ -10,7 +10,7 @@ import signal
 import subprocess
 import sys
 import time
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import Any
 
 import httpx
@@ -158,17 +158,19 @@ def test_doctor_asks_another_openai_server_for_its_model_list(paths: Paths) -> N
 
 
 def test_systemd_unit_quotes_a_path_with_a_space() -> None:
-    unit = systemd_unit(Path("/home/o'brien/My Starlight"), "core")
+    # Pure POSIX paths: a unit is only ever written on Linux, and a Windows Path would
+    # bring backslashes (which systemd reads as escapes) into the expected text.
+    unit = systemd_unit(PurePosixPath("/home/o'brien/My Starlight"), "core")
     start = next(line for line in unit.splitlines() if line.startswith("ExecStart="))
     assert '"/home/o\'brien/My Starlight"' in start and start.endswith(" serve")
     assert "WorkingDirectory=/home/o'brien/My Starlight\n" in unit
     plain = next(
         line
-        for line in systemd_unit(Path("/srv/starlight"), "viewer").splitlines()
+        for line in systemd_unit(PurePosixPath("/srv/starlight"), "viewer").splitlines()
         if line.startswith("ExecStart=")
     )
     assert "--home /srv/starlight viewer" in plain and '"/srv' not in plain
-    percent = systemd_unit(Path("/srv/100%/$home"), "core")
+    percent = systemd_unit(PurePosixPath("/srv/100%/$home"), "core")
     assert "--home /srv/100%%/$$home serve" in percent  # systemd would expand these itself
 
 
@@ -230,7 +232,7 @@ async def test_a_crashed_browser_gets_its_old_driver_stopped(
     module.async_playwright = Starter  # type: ignore[attr-defined]
     monkeypatch.setitem(sys.modules, "playwright.async_api", module)
 
-    browser = Browser(None)  # type: ignore[arg-type]
+    browser = Browser(None)
     first = await browser._ensure()
     assert await browser._ensure() is first and len(drivers) == 1  # still connected: reused
     first.connected = False  # Chromium crashed
