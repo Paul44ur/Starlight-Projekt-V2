@@ -181,7 +181,8 @@ async def cmd_run(paths: Paths, args: argparse.Namespace) -> int:
         while True:
             try:
                 line = await view.aread()
-            except (EOFError, KeyboardInterrupt):
+            except (EOFError, KeyboardInterrupt, asyncio.CancelledError):
+                # Ctrl+C at the prompt reaches asyncio.run as a cancelled main task.
                 print()
                 break
             if not line:

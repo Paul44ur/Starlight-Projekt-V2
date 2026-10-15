@@ -15,7 +15,6 @@ from __future__ import annotations
 
 import os
 import re
-from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Literal
@@ -25,7 +24,7 @@ from pydantic import BaseModel, Field
 from starlight.core import Module, ModuleContext, ToolError, tool
 from starlight.core.fsutil import write_atomic
 from starlight.core.output import known_folders
-from starlight.core.safepaths import PathGuard, expand
+from starlight.core.safepaths import PathGuard, UserPath, expand
 from starlight.text import decode_text
 
 _INVALID = re.compile(r'[<>:"/\\|?*\x00-\x1f]')  # not allowed in Windows file names
@@ -60,13 +59,6 @@ class Config(BaseModel):
 
 class FileError(ToolError):
     """A request the module turns down. The message goes back to the AI."""
-
-
-@dataclass(frozen=True)
-class Target:
-    path: Path  # absolute, resolved
-    free: bool  # in the Starlight folder or a trusted folder: no question needed
-    new_free: bool = False  # a new file may be made here without a question (write_anywhere)
 
 
 def clean_name(part: str) -> str:
@@ -108,11 +100,6 @@ def free_name(path: Path) -> Path:
     raise FileError(f"too many files named like {path.name}")
 
 
-def decode(data: bytes, cut_off: bool = False) -> str:
-    """UTF-8 (with or without BOM), UTF-16, else Windows' own encoding (older files)."""
-    return decode_text(data, cut_off)
-
-
 class FilesModule(Module):
     Config = Config
 
@@ -120,17 +107,13 @@ class FilesModule(Module):
         self.config: Config = ctx.config
         self.root = ctx.paths.root.resolve()  # Starlight's own folder: off-limits
         self.output = ctx.output_dir
-        self.trusted = [self._expand(folder) for folder in self.config.trusted_folders]
+        self.trusted = [expand(folder) for folder in self.config.trusted_folders]
         self.guard = PathGuard(
             self.root, self.output, self.trusted, error=FileError, anywhere=ctx.write_anywhere
         )
         ctx.logger.info("ready", folder=str(self.output))
 
     # -- paths ---------------------------------------------------------------------------
-
-    @staticmethod
-    def _expand(text: str) -> Path:
-        return expand(text)
 
     @staticmethod
     def _relative_parts(text: str) -> list[str]:
@@ -142,17 +125,12 @@ class FilesModule(Module):
             )
         return [clean_name(p) for p in parts]
 
-    def _target(self, text: str) -> Target:
+    def _target(self, text: str) -> UserPath:
         """A file name inside the Starlight folder, or a full path anywhere else."""
         found = self.guard.resolve(text, clean=clean_name)
         if found.path.is_dir():
             raise FileError(f"{found.path} is a folder; give a file name")
-        return Target(found.path, found.free, found.new_free)
-
-    def _where(self, path: Path) -> str:
-        if path.is_relative_to(self.output):
-            return path.relative_to(self.output).as_posix()
-        return str(path)
+        return found
 
     # -- tools ---------------------------------------------------------------------------
 
@@ -208,7 +186,7 @@ class FilesModule(Module):
                 with dest.open("a", encoding=encoding) as handle:
                     handle.write(text)
             else:
-                _write_new(dest, text, encoding)
+                write_atomic(dest, text, encoding=encoding)  # a crash never leaves half a file
         except OSError as exc:
             reason = exc.strerror or str(exc)
             if isinstance(exc, PermissionError):
@@ -260,7 +238,7 @@ class FilesModule(Module):
             data = handle.read(limit)
         if b"\x00" in data[:8192]:
             raise FileError(f"{file.name} looks like a binary file, not text")
-        text = decode(data, cut_off=len(data) < size).replace("\r\n", "\n").replace("\r", "\n")
+        text = decode_text(data, cut_off=len(data) < size).replace("\r\n", "\n").replace("\r", "\n")
         cut = len(data) < size or len(text) > self.config.max_read_chars
         result: dict[str, Any] = {
             "path": str(file),
@@ -290,7 +268,7 @@ class FilesModule(Module):
             "folder": str(base),
             "files": [
                 {
-                    "name": self._where(file),
+                    "name": file.relative_to(self.output).as_posix(),
                     "size": size_text(size),
                     "modified": datetime.fromtimestamp(mtime).strftime("%Y-%m-%d %H:%M"),
                 }
@@ -323,8 +301,3 @@ def _ends_with_newline(file: Path) -> bool:
 
 def _is_temp(file: Path) -> bool:
     return file.name.startswith(".") and file.name.endswith(".tmp")
-
-
-def _write_new(dest: Path, text: str, encoding: str) -> None:
-    """Write a whole file at once: a crash never leaves half a file behind."""
-    write_atomic(dest, text, encoding=encoding)
