@@ -1,8 +1,9 @@
 """Ping and interact with your own servers.
 
-Only hosts listed in ``config/servers.yaml`` can be touched; anything else is refused
-(unless ``any_host`` is switched on in config/modules/network.yaml, which lets any host be
-pinged, checked and contacted; SSH still needs the login settings listed here):
+``config/servers.yaml`` lists your servers: names, SSH logins, health checks. With
+``any_host: true`` in config/modules/network.yaml (the shipped setting) any other host can
+be pinged, checked and contacted as well; with ``any_host: false`` only the listed hosts can
+be touched and anything else is refused. SSH always needs the login settings listed here:
 
     servers:
       homeserver:
@@ -167,7 +168,8 @@ class NetworkModule(Module):
         ]
 
     SERVERS_HEADER = (
-        "# Servers Starlight may touch (Step 7). Anything not listed here is refused.\n"
+        "# Your servers (Step 7), with SSH logins and health checks. Other hosts work too while\n"
+        "# any_host is true in config/modules/network.yaml; with false, only these are allowed.\n"
         "# Starlight edits this from the chat (network.allow / network.forget); you may also\n"
         "# edit it by hand (two spaces per level, no tabs). SSH keys go in the vault.\n"
         "#\n"

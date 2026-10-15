@@ -235,8 +235,8 @@ class Ui:
     files and the CI see); ConsoleUi adds colors and a progress bar, and the window
     (launcher_gui.py) has its own."""
 
-    #: True: output of the programs the launcher runs (uv, winget) goes to run_output()
-    #: instead of the console, so a window can show it.
+    #: True: output of the programs the launcher runs (uv, see run_checked) goes to
+    #: run_output() instead of the console, so a window can show it.
     captures_output = False
 
     def __init__(self, assume_yes: bool) -> None:
@@ -1191,7 +1191,9 @@ def port_in_use(port: int) -> bool:
 def _local_open(request: urllib.request.Request | str, timeout: float) -> Any:
     """Open a URL on this PC. A system or company proxy is not used for those: it cannot
     reach 127.0.0.1, and urllib would send the request to it all the same."""
-    return urllib.request.build_opener(urllib.request.ProxyHandler({})).open(request, timeout=timeout)
+    return urllib.request.build_opener(urllib.request.ProxyHandler({})).open(
+        request, timeout=timeout
+    )
 
 
 def wait_for_web(port: int, ui: Ui, timeout: float = 60) -> None:
@@ -1344,7 +1346,13 @@ def maybe_tesseract(settings: Settings, ui: Ui) -> None:
             "https://github.com/UB-Mannheim/tesseract/wiki"
         )
         return
-    subprocess.run(
+    install_tesseract(ui)
+
+
+def install_tesseract(ui: Ui) -> None:
+    """Install Tesseract with winget (it shows its own progress and the administrator
+    question). Optional: a failure is reported, and the setup goes on."""
+    result = subprocess.run(
         [
             "winget",
             "install",
@@ -1356,6 +1364,11 @@ def maybe_tesseract(settings: Settings, ui: Ui) -> None:
         ],
         check=False,
     )
+    if result.returncode != 0:
+        ui.say(
+            f"   Tesseract was not installed (winget exit code {result.returncode}); install it "
+            "from https://github.com/UB-Mannheim/tesseract/wiki to read the screen."
+        )
 
 
 @dataclass
@@ -1456,6 +1469,14 @@ def save_choices(root: Path, choices: dict[str, Any], drop: tuple[str, ...] = ()
 VIEWER_PORT = 8765
 
 
+def chat_url() -> str:
+    return f"http://127.0.0.1:{WEB_PORT}"
+
+
+def viewer_url() -> str:
+    return f"http://127.0.0.1:{VIEWER_PORT}"
+
+
 @dataclass
 class Status:
     """What the status window shows."""
@@ -1513,30 +1534,18 @@ class Services:
         self.logs = settings.root / "logs"
         self.watchdog: ModelServerWatchdog | None = None
         self.started = time.monotonic()
-        self.reused_model_server = False
-
-    @property
-    def chat_url(self) -> str:
-        return f"http://127.0.0.1:{WEB_PORT}"
-
-    @property
-    def viewer_url(self) -> str:
-        return f"http://127.0.0.1:{VIEWER_PORT}"
 
     def start(self) -> None:
         settings, uv = self.settings, self.installed.uv
         self.started = time.monotonic()
-        if settings.use_model:
-            if port_in_use(settings.port):
-                self.reused_model_server = True
-            else:
-                serve = starlight(uv, "model", "serve")
-                log = self.logs / "llama-server.log"
-                process = self.group.start(serve, log, settings.root)
-                self.watchdog = ModelServerWatchdog(
-                    self.group, serve, process, log, settings.root, self.ui
-                )
-                self.watchdog.start()
+        if settings.use_model and not port_in_use(settings.port):  # else: a server runs already
+            serve = starlight(uv, "model", "serve")
+            log = self.logs / "llama-server.log"
+            process = self.group.start(serve, log, settings.root)
+            self.watchdog = ModelServerWatchdog(
+                self.group, serve, process, log, settings.root, self.ui
+            )
+            self.watchdog.start()
         if settings.viewer and not port_in_use(VIEWER_PORT):
             self.group.start(starlight(uv, "viewer"), self.logs / "viewer.log", settings.root)
         if not port_in_use(WEB_PORT):
@@ -1570,7 +1579,7 @@ class Services:
             else:
                 model, detail = "loading", ""
         chat = port_in_use(WEB_PORT)
-        status = fetch_json(f"{self.chat_url}/api/status") if chat else None
+        status = fetch_json(f"{chat_url()}/api/status") if chat else None
         kill = None
         if status is not None:
             engaged = (status.get("kill") or {}).get("engaged")
@@ -1595,7 +1604,7 @@ class Services:
     def set_kill_switch(self, engaged: bool) -> bool:
         """Engage or release the kill switch through the chat backend. True on success."""
         path = "/api/kill" if engaged else "/api/resume"
-        answer = fetch_json(self.chat_url + path, method="POST", origin=self.chat_url)
+        answer = fetch_json(chat_url() + path, method="POST", origin=chat_url())
         return answer is not None
 
     def stop(self) -> None:
@@ -1624,15 +1633,14 @@ def start(settings: Settings, ui: Ui, installed: Installed, ask: str | None) -> 
                 watchdog = ModelServerWatchdog(group, serve, server_process, log, settings.root, ui)
                 watchdog.start()
         if settings.viewer and ask is None:
-            viewer_port = 8765
-            if not port_in_use(viewer_port):
+            if not port_in_use(VIEWER_PORT):
                 group.start(starlight(uv, "viewer"), logs / "viewer.log", settings.root)
-            ui.say(f"\nStatistics viewer: http://127.0.0.1:{viewer_port}")
+            ui.say(f"\nStatistics viewer: {viewer_url()}")
         if ask is not None:
             result = subprocess.run(starlight(uv, "ask", "-y", ask), cwd=settings.root, check=False)
             return result.returncode
         if settings.both:
-            url = f"http://127.0.0.1:{WEB_PORT}"
+            url = chat_url()
             ui.say(f"\nOpening the chat in your browser: {url}")
             ui.say("A terminal chat opens here too - both talk to the same Starlight.")
             ui.say("Type /quit to leave the terminal; close this window to stop everything.\n")
@@ -1643,7 +1651,7 @@ def start(settings: Settings, ui: Ui, installed: Installed, ask: str | None) -> 
                 starlight(uv, "connect"), cwd=settings.root, check=False
             ).returncode
         if settings.web:
-            url = f"http://127.0.0.1:{WEB_PORT}"
+            url = chat_url()
             ui.say(f"\nOpening the chat in your browser: {url}")
             ui.say("Close this window (or press Ctrl+C) to stop everything.\n")
             threading.Timer(2.5, _open_browser, args=(url,)).start()

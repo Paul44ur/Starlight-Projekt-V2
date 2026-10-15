@@ -43,6 +43,7 @@ class FakeRoot:
     def __init__(self) -> None:
         self.scheduled: list[tuple[str, int, Any]] = []
         self.cancelled: list[str] = []
+        self.fired: list[str] = []
 
     def after(self, milliseconds: int, callback: Any) -> str:
         job = f"job{len(self.scheduled)}"
@@ -52,8 +53,15 @@ class FakeRoot:
     def after_cancel(self, job: str) -> None:
         self.cancelled.append(job)
 
+    def fire(self, number: int) -> None:
+        job, _, callback = self.scheduled[number]
+        self.fired.append(job)
+        callback()
+
     def live(self) -> list[str]:
-        return [job for job, _, _ in self.scheduled if job not in self.cancelled]
+        """The timers that are still going to fire."""
+        gone = self.cancelled + self.fired
+        return [job for job, _, _ in self.scheduled if job not in gone]
 
 
 def bare_app() -> tuple[Any, FakeRoot, list[str]]:
@@ -111,7 +119,7 @@ def test_a_restart_does_not_start_a_second_polling_chain() -> None:
     app, root, _ = bare_app()
     app.on_running()
     assert root.live() == ["job0"]
-    root.scheduled[0][2]()  # the timer fires: the chain goes on with one new timer
+    root.fire(0)  # the timer fires: the chain goes on with one new timer
     assert root.live() == ["job1"]
     app.on_running()  # "Save and restart" ended with the status page again
     assert root.live() == ["job2"]  # the old chain was cancelled, not left running beside it

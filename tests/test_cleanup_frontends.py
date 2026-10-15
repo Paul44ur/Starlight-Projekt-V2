@@ -23,6 +23,8 @@ from starlight.service import linux_plan, systemd_unit
 from starlight.web import client
 from tests.test_tui import _minimal_home
 
+PROMPT = "you \u203a"  # the chat prompt of a real terminal
+
 # -- `starlight ask` ---------------------------------------------------------------------------
 
 
@@ -61,11 +63,14 @@ def test_ctrl_c_at_the_prompt_leaves_cleanly(tmp_path: Path) -> None:
     output = ""
     try:
         end = time.monotonic() + 60
-        while "you ›" not in output and time.monotonic() < end:
+        while PROMPT not in output and time.monotonic() < end:
             ready, _, _ = select.select([master], [], [], 0.5)
             if ready:
-                output += os.read(master, 4096).decode(errors="replace")
-        assert "you ›" in output, output[-2000:]
+                try:
+                    output += os.read(master, 4096).decode(errors="replace")
+                except OSError:  # the program ended: the assertion below shows why
+                    break
+        assert PROMPT in output, output[-2000:]
         time.sleep(0.3)  # the prompt is up: the read is waiting
         process.send_signal(signal.SIGINT)
         assert process.wait(timeout=30) == 0  # like /quit, not the 130 of an interrupted run
@@ -170,3 +175,64 @@ def test_linux_plan_needs_no_data_folder() -> None:
         "--user",
         "start",
     ]
+
+
+# -- the browser: a crashed Chromium must not leave its driver running -------------------------
+
+
+class FakeChromium:
+    def __init__(self, drivers: list[Any]) -> None:
+        self.drivers = drivers
+        self.browsers: list[Any] = []
+
+    async def launch(self, **options: Any) -> Any:
+        browser = type("FakeBrowser", (), {})()
+        browser.connected = True
+        browser.is_connected = lambda: browser.connected
+
+        async def close() -> None:
+            if not browser.connected:
+                raise RuntimeError("Target closed")  # what Playwright says for a dead browser
+            browser.connected = False
+
+        browser.close = close
+        self.browsers.append(browser)
+        return browser
+
+
+class FakeDriver:
+    def __init__(self, drivers: list[Any]) -> None:
+        self.chromium = FakeChromium(drivers)
+        self.stopped = False
+
+    async def stop(self) -> None:
+        self.stopped = True
+
+
+async def test_a_crashed_browser_gets_its_old_driver_stopped(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import types
+
+    from starlight.browser import Browser
+
+    drivers: list[FakeDriver] = []
+
+    class Starter:
+        async def start(self) -> FakeDriver:
+            drivers.append(FakeDriver(drivers))
+            return drivers[-1]
+
+    module = types.ModuleType("playwright.async_api")
+    module.async_playwright = Starter  # type: ignore[attr-defined]
+    monkeypatch.setitem(sys.modules, "playwright.async_api", module)
+
+    browser = Browser(None)  # type: ignore[arg-type]
+    first = await browser._ensure()
+    assert await browser._ensure() is first and len(drivers) == 1  # still connected: reused
+    first.connected = False  # Chromium crashed
+    second = await browser._ensure()
+    assert second is not first and len(drivers) == 2
+    assert drivers[0].stopped and not drivers[1].stopped  # no driver process left behind
+    await browser.close()
+    assert drivers[1].stopped

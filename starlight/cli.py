@@ -504,8 +504,6 @@ def cmd_skills(paths: Paths, args: argparse.Namespace) -> int:
 async def cmd_serve(paths: Paths, args: argparse.Namespace) -> int:
     """The core in the background: modules (WhatsApp webhook, watchers), kill hotkey,
     no terminal. Questions go to the channel a request came from."""
-    import signal
-
     stop = asyncio.Event()
     loop = asyncio.get_running_loop()
     for sig in (signal.SIGTERM, signal.SIGINT):

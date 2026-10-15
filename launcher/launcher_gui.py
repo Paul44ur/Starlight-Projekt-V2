@@ -140,7 +140,7 @@ def system_uses_light_theme() -> bool:
     try:
         import winreg
 
-        key = r"Software\\Microsoft\\Windows\\CurrentVersion\\Themes\\Personalize"
+        key = r"Software\Microsoft\Windows\CurrentVersion\Themes\Personalize"
         with winreg.OpenKey(winreg.HKEY_CURRENT_USER, key) as handle:
             return bool(winreg.QueryValueEx(handle, "AppsUseLightTheme")[0])
     except OSError:
@@ -196,6 +196,8 @@ class GuiUi:
         self.events.put(("say", line))
 
     def ask(self, question: str, default: bool) -> bool:
+        if self.assume_yes:
+            return default
         reply: queue.Queue[bool] = queue.Queue(maxsize=1)
         self.events.put(("ask", question, default, reply))
         return reply.get()
@@ -203,8 +205,6 @@ class GuiUi:
 
 class App:
     """The window and everything on it."""
-
-    PAGES = ("setup", "progress", "running", "error")
 
     def __init__(self, launcher: Any, args: Any) -> None:
         self.L = launcher
@@ -215,7 +215,6 @@ class App:
         self.root.withdraw()
         self.c = LIGHT if system_uses_light_theme() else DARK
         self.scale = max(1.0, self.root.winfo_fpixels("1i") / 96)
-        self.exit_code = 0
         self.services: Any = None
         self.group: Any = None
         self.page = ""
@@ -223,10 +222,10 @@ class App:
         self._poll_busy = False
         self.opened_browser = False
         self.polling = False
+        self._poll_job: str | None = None  # the timer of the status polling
         self.closing = False
         self.exited = False
         self.in_settings = False
-        self.working = False
         self.sizes: dict[str, int | None] = {}  # download size per model link; None: unknown
         self.gpu: Any = None
         self.fatal = ""
@@ -873,21 +872,46 @@ class App:
                 ("error", f"Something unexpected went wrong: {exc}", traceback.format_exc())
             )
 
+    def try_again(self) -> None:
+        """The error page's button. After a problem with the settings (no Starlight folder, a
+        broken launcher.json) they are read again first, and the setup page is rebuilt."""
+        if self.fatal:
+            try:
+                settings = self.L.load_settings(self.args)
+            except self.L.LauncherError as exc:
+                self.fatal = str(exc)
+                self.on_error(self.fatal)
+                return
+            self.fatal = ""
+            settings.assume_yes = True  # the setup page is the question
+            self.settings = settings
+            self.ui.log = settings.root / "logs" / "launcher.log"
+            self.pages["setup"].destroy()
+            self._build_setup()
+            if self.needs_setup_page():
+                self.open_setup(settings_mode=False)
+                self._start_background_lookups()
+                return
+        self.begin()
+
     def on_begin(self) -> None:
         self.begin()
 
     def on_running(self) -> None:
         self.show("running")
         self.polling = True
+        if self._poll_job is not None:  # after a restart, the earlier timer is still running
+            self.root.after_cancel(self._poll_job)
         self._poll_tick()
 
     def _poll_tick(self) -> None:
+        self._poll_job = None
         if self.closing or not self.polling:
             return
         if self.services is not None and not self._poll_busy:
             self._poll_busy = True
             threading.Thread(target=self._poll_once, name="poll", daemon=True).start()
-        self.root.after(1500, self._poll_tick)
+        self._poll_job = self.root.after(1500, self._poll_tick)
 
     def _poll_once(self) -> None:
         try:
@@ -978,8 +1002,7 @@ class App:
             self._set_row("Model", c.bad, "Stopped: " + (status.model_detail or "see the logs"))
         else:
             self._set_row("Model", c.warn, f"Loading into video memory ... {elapsed}")
-        chat_url = f"http://127.0.0.1:{L.WEB_PORT}"
-        viewer_url = f"http://127.0.0.1:{L.VIEWER_PORT}"
+        chat_url, viewer_url = L.chat_url(), L.viewer_url()
         self._set_row(
             "Chat", c.ok if status.chat else c.warn, chat_url if status.chat else "Starting ..."
         )
@@ -1036,10 +1059,10 @@ class App:
             self.open_chat()
 
     def open_chat(self) -> None:
-        webbrowser.open(f"http://127.0.0.1:{self.L.WEB_PORT}")
+        webbrowser.open(self.L.chat_url())
 
     def open_stats(self) -> None:
-        webbrowser.open(f"http://127.0.0.1:{self.L.VIEWER_PORT}")
+        webbrowser.open(self.L.viewer_url())
 
     def open_logs(self) -> None:
         open_folder(self.settings.root / "logs")
@@ -1148,7 +1171,7 @@ class App:
             buttons, "Copy details", lambda: self._copy(self.err_text.get("1.0", "end"))
         ).grid(row=0, column=2, padx=self.px(6))
         self._button(buttons, "Quit", self.quit_app).grid(row=0, column=3, padx=self.px(6))
-        self._button(buttons, "Try again", self.begin, "Accent.TButton").grid(row=0, column=4)
+        self._button(buttons, "Try again", self.try_again, "Accent.TButton").grid(row=0, column=4)
 
     def on_error(self, message: str, details: str = "") -> None:
         self.polling = False
@@ -1215,15 +1238,19 @@ class App:
     def _pump(self) -> None:
         """Handle what the worker threads reported."""
         try:
-            while True:
+            while not self.exited:
                 event = self.events.get_nowait()
                 handler = getattr(self, f"on_{event[0]}", None)
                 if handler is not None:
-                    handler(*event[1:])
+                    try:
+                        handler(*event[1:])
+                    except Exception as exc:  # shown on the error page; the loop must go on
+                        self._callback_failed(type(exc), exc, exc.__traceback__)
         except queue.Empty:
             pass
-        if not self.exited:
-            self.root.after(60, self._pump)
+        finally:
+            if not self.exited:
+                self.root.after(60, self._pump)
 
     def run(self) -> int:
         if self.fatal:
@@ -1236,7 +1263,7 @@ class App:
         self.root.deiconify()
         self.root.after(60, self._pump)
         self.root.mainloop()
-        return self.exit_code
+        return 0
 
     def selftest(self) -> int:
         """Build and fill every page (no screen interaction): the check CI runs on the exe."""

@@ -53,7 +53,7 @@ class Config(BaseModel):
     ask_before_replacing: bool = True
     # More folders where saving and reading need no question, e.g. ["D:/Work/Reports"].
     trusted_folders: list[str] = Field(default_factory=list)
-    max_file_mb: float = Field(default=10, gt=0)  # largest file it saves or reads
+    max_file_mb: float = Field(default=10, gt=0)  # larger files are not saved; reads are cut off
     max_read_chars: int = Field(default=40_000, ge=1000)  # longer files are cut off
 
 

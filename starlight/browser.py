@@ -10,6 +10,7 @@ Set ``STARLIGHT_CHROMIUM`` to use an already installed Chromium instead.
 
 from __future__ import annotations
 
+import contextlib
 import os
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
@@ -49,6 +50,11 @@ class Browser:
             from playwright.async_api import async_playwright
         except ImportError as exc:
             raise BrowserUnavailable("install the 'browser' extra (playwright)") from exc
+        if self._browser is not None or self._playwright is not None:
+            # The browser crashed (or a launch failed): stop its driver before starting a new
+            # one, or every crash would leave a driver process behind.
+            with contextlib.suppress(Exception):
+                await self.close()
         self._playwright = await async_playwright().start()
         self._browser = await self._playwright.chromium.launch(
             headless=self.headless, executable_path=self.executable_path
@@ -81,9 +87,11 @@ class Browser:
         return response.status if response is not None else None
 
     async def close(self) -> None:
-        if self._browser is not None:
-            await self._browser.close()
-            self._browser = None
-        if self._playwright is not None:
-            await self._playwright.stop()
-            self._playwright = None
+        browser, playwright = self._browser, self._playwright
+        self._browser = self._playwright = None
+        try:
+            if browser is not None:
+                await browser.close()
+        finally:  # the driver stops even when the browser is already gone
+            if playwright is not None:
+                await playwright.stop()

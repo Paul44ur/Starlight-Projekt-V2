@@ -10,6 +10,7 @@ Both only apply in an interactive terminal; piped input is read line by line as 
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import logging
 import os
 import sys
@@ -138,9 +139,7 @@ def leave_if_reading(code: int) -> None:
     if not (lines.waiting() and interactive()):
         return
     for stream in (sys.stdout, sys.stderr):
-        try:
+        with contextlib.suppress(OSError, ValueError):
             stream.flush()
-        except (OSError, ValueError):
-            pass
     logging.shutdown()
     os._exit(code)
