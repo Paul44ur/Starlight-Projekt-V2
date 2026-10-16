@@ -34,9 +34,8 @@ class Message:
 @dataclass
 class ModelResponse:
     """``usage`` keys when known: prompt_tokens, completion_tokens, tokens_per_second,
-    prompt_tokens_per_second, duration_s, model, finish_reason. The agent adds a note to
-    the answer for two finish reasons: "length" (the answer hit the max_tokens limit and
-    was cut off) and "stalled" (the stream stopped part way; set by openai_compat)."""
+    prompt_tokens_per_second, duration_s, model, finish_reason ("length": the answer hit
+    the max_tokens limit and was cut off)."""
 
     content: str = ""
     tool_calls: list[ToolCall] = field(default_factory=list)
@@ -53,12 +52,6 @@ class ModelProvider(Protocol):
     * ``supports_streaming = True`` and accept ``on_token=`` in ``chat()``
     * ``async warmup()`` to load the model into VRAM at start-up
     * ``async aclose()`` to release connections
-    * ``summarizer``: the provider to use for summaries (the router's fast model); the
-      context manager, memory and skills use it, else the provider itself
-    * ``stand_in = True``: not a real model (EchoProvider); the kernel then learns
-      nothing from its answers (no memory extraction, no skill drafts)
-
-    All of these are looked up with ``getattr``, so a missing one is not an error.
     """
 
     name: str

@@ -36,13 +36,12 @@ from starlight.core.config import RemoteConfig, load_config
 from starlight.core.output import describe_output_folder
 from starlight.core.permissions import Permission, extra_blocked, extra_confirm, save_rule
 from starlight.core.ui import current_ui
-from starlight.web.auth import CODE_SECONDS, COOKIE, Device, Devices
+from starlight.web.auth import COOKIE, Device, Devices
 
 STATIC = Path(__file__).with_name("static")
 LOOPBACK = {"127.0.0.1", "localhost", "::1"}
 LOOPBACK_PEERS = {"127.0.0.1", "::1"}
-MB = 1024**2
-MAX_UNPACKED = 200 * MB  # a Word/Excel file may unpack to at most this much
+MAX_UNPACKED = 200 * 1024**2  # a Word/Excel file may unpack to at most this much
 SECURITY_HEADERS = {
     "X-Frame-Options": "DENY",  # no other page may show the chat in a frame (clickjacking)
     "Content-Security-Policy": "frame-ancestors 'none'",
@@ -50,15 +49,10 @@ SECURITY_HEADERS = {
     "Referrer-Policy": "no-referrer",
 }
 FORWARDED = ("x-forwarded-for", "x-forwarded-host", "forwarded", "tailscale-user-login")
-MAX_UPLOAD = 20 * MB
+MAX_UPLOAD = 20 * 1024**2
 UPLOAD_KEEP = 3600  # seconds an uploaded file waits to be sent with a message
-MAX_PENDING_UPLOADS = 20  # files added but not sent yet; beyond this the oldest is dropped
-MAX_ATTACHMENTS = 10  # files sent with one message
-MAX_ATTACHED_CHARS = 60_000  # of one document's text, put into the message
-MAX_SHEET_ROWS = 2000  # read from each sheet of an Excel file
 IMAGES = {".png", ".jpg", ".jpeg", ".webp", ".gif"}
 TEXTS = {".txt", ".md", ".csv", ".json", ".log", ".yaml", ".yml", ".html", ".htm"}
-APPROVE = "yes"  # the "reply" value that approves a "confirm" (chat.html, web/client.py)
 
 
 def _hostname(value: str) -> str:
@@ -160,7 +154,7 @@ class WebUI:
             self._pending.pop(reply_id, None)
 
     async def confirm(self, question: str) -> bool:
-        return await self._ask_browser({"type": "confirm", "question": question}) == APPROVE
+        return await self._ask_browser({"type": "confirm", "question": question}) == "yes"
 
     async def ask(self, question: str, secret: bool = False) -> str | None:
         answer = await self._ask_browser({"type": "prompt", "question": question, "secret": secret})
@@ -205,9 +199,7 @@ def extract_text(name: str, data: bytes) -> str:
         except zipfile.BadZipFile as exc:
             raise ValueError(f"{name} is not a valid {suffix} file") from exc
         if unpacked > MAX_UNPACKED:
-            raise ValueError(
-                f"{name} unpacks to more than {MAX_UNPACKED // MB} MB; it can't be added"
-            )
+            raise ValueError(f"{name} unpacks to more than 200 MB; it can't be added")
     with tempfile.TemporaryDirectory() as folder:
         path = Path(folder) / f"upload{suffix}"
         path.write_bytes(data)
@@ -227,7 +219,7 @@ def extract_text(name: str, data: bytes) -> str:
                 return "\n".join(
                     " | ".join("" if v is None else str(v) for v in row)
                     for sheet in book.worksheets
-                    for row in sheet.iter_rows(values_only=True, max_row=MAX_SHEET_ROWS)
+                    for row in sheet.iter_rows(values_only=True, max_row=2000)
                 )
             finally:
                 book.close()
@@ -372,7 +364,7 @@ def create_app(paths: Paths | None = None) -> Any:
     @app.post("/api/pair/code")
     def pair_code(request: Request) -> dict[str, Any]:
         local_only(request)
-        return {"code": devices.new_code(), "valid_seconds": CODE_SECONDS}
+        return {"code": devices.new_code(), "valid_seconds": 300}
 
     @app.get("/api/devices")
     def list_devices(request: Request) -> dict[str, Any]:
@@ -401,9 +393,7 @@ def create_app(paths: Paths | None = None) -> Any:
         record = k.modules.records.get("access")
         if who.local and record is not None and record.instance is not None:
             # read directly: this page polls every few seconds, and going through the
-            # dispatcher would write an audit entry and a statistic each time.
-            # The access module's `status` tool (modules/access/module.py); chat.html shows
-            # its "servers", "login_sites" and "secrets". If it fails, the panel says "none".
+            # dispatcher would write an audit entry and a statistic each time
             with contextlib.suppress(Exception):
                 read_status = getattr(record.instance, "status", None)
                 if callable(read_status):
@@ -436,7 +426,6 @@ def create_app(paths: Paths | None = None) -> Any:
     def conversations(request: Request, search: str = "") -> dict[str, Any]:
         viewer(request)
         store = kernel().conversations
-        # current first: reading it may create a new conversation, which the list then includes
         return {"current": store.current, "conversations": store.list(search)}
 
     @app.post("/api/conversations")
@@ -463,10 +452,8 @@ def create_app(paths: Paths | None = None) -> Any:
         except KeyError as exc:
             raise HTTPException(status_code=404, detail="no such conversation") from exc
         name = re.sub(r"[^\w\- ]+", "", title).strip()[:60] or "conversation"
-        # For old browsers, an ASCII name too: "ü" decomposes to "u" + a combining mark,
-        # which the ASCII-only pattern then drops (with anything else that is not ASCII).
-        decomposed = unicodedata.normalize("NFKD", name)
-        plain = re.sub(r"[^\w\- ]+", "", decomposed, flags=re.ASCII).strip() or "conversation"
+        ascii_name = unicodedata.normalize("NFKD", name)  # "ü" -> "u" for old browsers
+        plain = re.sub(r"[^\w\- ]+", "", ascii_name, flags=re.ASCII).strip() or "conversation"
         return Response(
             text,
             media_type="text/markdown; charset=utf-8",
@@ -497,19 +484,17 @@ def create_app(paths: Paths | None = None) -> Any:
 
     # -- files dropped into the chat -------------------------------------------------------
 
-    too_large = f"files can be up to {MAX_UPLOAD // MB} MB"
-
     async def limited_body(request: Request) -> bytes:
-        """The request body, refusing anything over MAX_UPLOAD before it is all in memory."""
+        """The request body, refusing anything over 20 MB before it is all in memory."""
         declared = request.headers.get("content-length", "")
         if declared.isdigit() and int(declared) > MAX_UPLOAD:
-            raise HTTPException(status_code=413, detail=too_large)
+            raise HTTPException(status_code=413, detail="files can be up to 20 MB")
         chunks: list[bytes] = []
         size = 0
         async for chunk in request.stream():
             size += len(chunk)
             if size > MAX_UPLOAD:
-                raise HTTPException(status_code=413, detail=too_large)
+                raise HTTPException(status_code=413, detail="files can be up to 20 MB")
             chunks.append(chunk)
         return b"".join(chunks)
 
@@ -523,8 +508,8 @@ def create_app(paths: Paths | None = None) -> Any:
         now = time.time()
         for key in [k for k, u in uploads.items() if now - u.added > UPLOAD_KEEP]:
             uploads.pop(key, None)
-        while len(uploads) >= MAX_PENDING_UPLOADS:
-            uploads.pop(next(iter(uploads)))  # the oldest: a dict keeps the order things were added
+        while len(uploads) >= 20:
+            uploads.pop(next(iter(uploads)))
         kind = "image" if Path(name).suffix.lower() in IMAGES else "document"
         text: str | None = None
         if kind == "document":
@@ -533,15 +518,13 @@ def create_app(paths: Paths | None = None) -> Any:
             except Exception as exc:
                 raise HTTPException(status_code=415, detail=str(exc)) from exc
         upload_id = uuid.uuid4().hex
-        # A document keeps only its text; a picture keeps its bytes.
-        kept = data if text is None else b""
-        uploads[upload_id] = Upload(name=name, data=kept, added=now, text=text)
+        uploads[upload_id] = Upload(name, b"" if text is not None else data, now, text)
         return {"id": upload_id, "name": name, "kind": kind, "size": len(data)}
 
     def attach(text: str, ids: list[Any]) -> tuple[str, list[bytes]]:
         images: list[bytes] = []
         parts = [text]
-        for upload_id in ids[:MAX_ATTACHMENTS]:
+        for upload_id in ids[:10]:
             item = uploads.pop(str(upload_id), None)
             if item is None:
                 continue
@@ -549,14 +532,12 @@ def create_app(paths: Paths | None = None) -> Any:
                 images.append(item.data)
                 continue
             content = item.text or ""
-            parts.append(f"\n\n[Attached file: {item.name}]\n{content[:MAX_ATTACHED_CHARS]}")
+            parts.append(f"\n\n[Attached file: {item.name}]\n{content[:60000]}")
         return "".join(parts), images
 
     # -- voice ----------------------------------------------------------------------------
 
     def voice() -> Any:
-        """The voice module's instance (modules/voice/module.py). Not typed: its
-        transcribe_audio and synthesize_audio are called by name below (and in cli._talk)."""
         record = kernel().modules.records.get("voice")
         if record is None or record.instance is None:
             raise HTTPException(status_code=404, detail="the voice module is off")
@@ -750,21 +731,6 @@ def create_app(paths: Paths | None = None) -> Any:
 
     @app.websocket("/ws")
     async def ws(websocket: WebSocket) -> None:
-        """The chat socket, used by chat.html (handle()) and web/client.py. JSON messages:
-
-        from the page
-            {"type": "ask", "text", "conversation", "attachments": [upload ids]}
-            {"type": "regenerate", "conversation", "question"}  (the question the page shows)
-            {"type": "reply", "id", "value"}  (to confirm: APPROVE or "no"; to prompt: the text)
-            {"type": "stop"}
-        to the page
-            {"type": "start", "conversation"}, then {"type": "token", "text"} pieces, then
-            {"type": "answer", "text", "stopped", "failed", "conversation", "stats"},
-            or {"type": "stopped"} / {"type": "error", "text"}
-            {"type": "busy"}  (an answer is still being written)
-            {"type": "confirm", "id", "question"}, {"type": "prompt", "id", "question", "secret"}
-            {"type": "notify", "text"}
-        """
         peer = websocket.client.host if websocket.client else None
         who = gate.viewer(websocket.headers, dict(websocket.cookies), peer)
         if who is None:
@@ -800,10 +766,10 @@ def create_app(paths: Paths | None = None) -> Any:
                             web_ui,
                             send,
                             text,
-                            images=images,
-                            conversation=message.get("conversation") or None,
-                            confirm_more=confirm_more,
-                            block_more=block_more,
+                            images,
+                            message.get("conversation") or None,
+                            confirm_more,
+                            block_more,
                         )
                     )
                 elif kind == "regenerate":
@@ -816,10 +782,10 @@ def create_app(paths: Paths | None = None) -> Any:
                             web_ui,
                             send,
                             str(message.get("question") or ""),
-                            images=None,  # the question's own pictures are sent again
-                            conversation=message.get("conversation") or None,
-                            confirm_more=confirm_more,
-                            block_more=block_more,
+                            None,
+                            message.get("conversation") or None,
+                            confirm_more,
+                            block_more,
                             regenerate=True,
                         )
                     )
@@ -843,8 +809,7 @@ def create_app(paths: Paths | None = None) -> Any:
 
 
 def answer_stats(usage: list[dict[str, Any]]) -> dict[str, Any]:
-    """How long the model took for an answer and how many tokens it wrote, summed over all
-    steps, and how fast it wrote in the last step (the one that wrote the answer)."""
+    """How long the model took for an answer, and how fast it wrote (over all steps)."""
     seconds = sum(float(u.get("duration_s") or 0) for u in usage)
     tokens = sum(int(u.get("completion_tokens") or 0) for u in usage)
     speeds = [float(u["tokens_per_second"]) for u in usage if u.get("tokens_per_second")]

@@ -53,19 +53,7 @@ def _scan(folders: list[Path], suffix: str) -> list[Path]:
     return found
 
 
-# Start-menu shortcuts that are not programs: uninstallers, read-me files, links to help pages
 _SKIP = re.compile(r"uninstall|deinstall|readme|help|website|release notes", re.IGNORECASE)
-
-# Win32 constants
-GW_OWNER = 4  # GetWindow: the window that owns this one
-SW_MAXIMIZE, SW_MINIMIZE, SW_RESTORE = 3, 6, 9  # ShowWindow
-SHOW_STATES = {"minimize": SW_MINIMIZE, "maximize": SW_MAXIMIZE, "restore": SW_RESTORE}
-VK_MENU, KEYEVENTF_KEYUP = 0x12, 2  # the Alt key, and "let go of it" for keybd_event
-WM_CLOSE = 0x0010
-# Always there and "visible", but not windows of a program you opened: the desktop itself
-# (Program Manager) and, most likely, the frame of the Settings app, which Windows keeps
-# hidden (cloaked) in the background.
-NOT_APP_WINDOWS = ("Program Manager", "Settings")
 
 
 # -- Windows -------------------------------------------------------------------------------
@@ -103,7 +91,7 @@ class WindowsBackend:
         )
 
         def visit(hwnd: int, _: int) -> bool:
-            if not self.user32.IsWindowVisible(hwnd) or self.user32.GetWindow(hwnd, GW_OWNER):
+            if not self.user32.IsWindowVisible(hwnd) or self.user32.GetWindow(hwnd, 4):
                 return True  # hidden, or owned by another window (dialogs, tool windows)
             length = self.user32.GetWindowTextLengthW(hwnd)
             if length:
@@ -113,7 +101,7 @@ class WindowsBackend:
             return True
 
         self.user32.EnumWindows(proto(visit), 0)
-        return [w for w in found if w.title not in NOT_APP_WINDOWS]
+        return [w for w in found if w.title not in ("Program Manager", "Settings")]
 
     def _program(self, hwnd: int) -> str:
         pid = self.wintypes.DWORD()
@@ -127,18 +115,18 @@ class WindowsBackend:
 
     def focus(self, window: Window) -> None:
         if self.user32.IsIconic(window.id):
-            self.user32.ShowWindow(window.id, SW_RESTORE)
+            self.user32.ShowWindow(window.id, 9)  # SW_RESTORE
         # Windows only lets the foreground app hand over focus; a no-op key press makes
         # this process count as the one the user last used.
-        self.user32.keybd_event(VK_MENU, 0, 0, 0)  # Alt down
-        self.user32.keybd_event(VK_MENU, 0, KEYEVENTF_KEYUP, 0)  # Alt up
+        self.user32.keybd_event(0x12, 0, 0, 0)  # Alt down
+        self.user32.keybd_event(0x12, 0, 2, 0)  # Alt up
         self.user32.SetForegroundWindow(window.id)
 
     def show(self, window: Window, state: str) -> None:
-        self.user32.ShowWindow(window.id, SHOW_STATES[state])
+        self.user32.ShowWindow(window.id, {"minimize": 6, "maximize": 3, "restore": 9}[state])
 
     def close(self, window: Window) -> None:
-        self.user32.PostMessageW(window.id, WM_CLOSE, 0, 0)  # the app may ask to save first
+        self.user32.PostMessageW(window.id, 0x0010, 0, 0)  # WM_CLOSE: the app may ask to save
 
 
 # -- Linux ---------------------------------------------------------------------------------
@@ -158,8 +146,6 @@ class LinuxBackend:
 
     def start(self, program: Program) -> None:
         entry = _desktop_entry(Path(program.target))
-        # Leave out the Desktop Entry field codes (%f, %F, %u, %U, ...): placeholders for the
-        # files or links to open with it, which just starting the program does not pass.
         command = [p for p in shlex.split(entry.get("Exec", "")) if not re.fullmatch(r"%\w", p)]
         if not command:
             raise AppsUnavailable(f"{program.name} has no command to run")
@@ -180,7 +166,6 @@ class LinuxBackend:
     def windows(self) -> list[Window]:
         found = []
         for line in self._wmctrl("-l").splitlines():
-            # "<window id, hex> <desktop> <host> <title, may contain spaces>"
             parts = line.split(None, 3)
             if len(parts) == 4:
                 found.append(Window(int(parts[0], 16), parts[3]))
@@ -234,7 +219,7 @@ def _desktop_entry(path: Path) -> dict[str, str]:
 
 def _startfile(target: str) -> None:
     """Open like a double-click in Explorer (Windows only)."""
-    system: Any = os  # os.startfile only exists on Windows; Any keeps mypy quiet on Linux
+    system: Any = os
     system.startfile(target)
 
 

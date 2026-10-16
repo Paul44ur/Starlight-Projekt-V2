@@ -54,38 +54,24 @@ class BreachModule(Module):
         if not password:
             raise ToolError("give a password to rate")
         length = len(password)
-        kinds = (r"[a-z]", r"[A-Z]", r"\d", r"[^A-Za-z0-9]")  # lower, upper, digit, symbol
-        classes = sum(bool(re.search(pattern, password)) for pattern in kinds)
-        score = min(length, LENGTH_POINTS) + classes * KIND_POINTS
+        classes = sum(
+            bool(re.search(pattern, password))
+            for pattern in (r"[a-z]", r"[A-Z]", r"\d", r"[^A-Za-z0-9]")
+        )
+        score = min(length, 20) + classes * 5
         weaknesses: list[str] = []
         if length < 12:
             weaknesses.append("shorter than 12 characters")
         if classes < 3:
             weaknesses.append("few character types (mix letters, digits and symbols)")
-        if re.search(r"(.)\1\1", password):  # the same character three times in a row
+        if re.search(r"(.)\1\1", password):
             weaknesses.append("a character repeats three or more times")
-            score -= REPEAT_PENALTY
+            score -= 8
         if password.lower() in _COMMON or re.fullmatch(r"\d+", password):
             weaknesses.append("looks like a very common password")
-            score = min(score, COMMON_CAP)
-        if score >= STRONG_FROM:
-            rating = "strong"
-        elif score >= OK_FROM:
-            rating = "ok"
-        else:
-            rating = "weak"
-        return {"rating": rating, "score": score, "out_of": MAX_SCORE, "weaknesses": weaknesses}
-
-
-# how_safe's score: a point per character up to LENGTH_POINTS, plus KIND_POINTS for each
-# kind of character used (lower case, upper case, digits, symbols: four kinds).
-LENGTH_POINTS = 20
-KIND_POINTS = 5
-MAX_SCORE = LENGTH_POINTS + 4 * KIND_POINTS  # 40
-REPEAT_PENALTY = 8  # "aaa" somewhere
-COMMON_CAP = 10  # a well-known password, or digits only, is weak whatever its length
-STRONG_FROM = 35
-OK_FROM = 25
+            score = min(score, 10)
+        rating = "strong" if score >= 35 else "ok" if score >= 25 else "weak"
+        return {"rating": rating, "score": score, "out_of": 40, "weaknesses": weaknesses}
 
 
 _COMMON = {

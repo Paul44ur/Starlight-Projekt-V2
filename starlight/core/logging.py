@@ -22,29 +22,20 @@ ROOT_LOGGER = "starlight"
 AUDIT_LOGGER = "starlight.audit"
 MODULE_PREFIX = "starlight.module."
 
-# A key that names a secret: one of these words as a whole part of the key, between the
-# start or end, "_" or "-" ("api_key", "X-Api-Key", "user_pass"). So "max_tokens" and
-# "passage" stay readable. camelCase parts count as parts too: see _names_a_secret.
 _SECRET_KEY = re.compile(
-    r"(^|[_-])(pass(word)?|passwd|secrets?|token|api[_-]?key|cookies?|credentials?"
+    r"(^|[_-])(pass(word)?|passwd|secret|token|api[_-]?key|cookies?|credentials?"
     r"|authorization|private[_-]?key)($|[_-])",
     re.IGNORECASE,
 )
-_CAMEL_CASE_BREAK = re.compile(r"(?<=[a-z0-9])(?=[A-Z])")  # "accessToken" -> "access|Token"
 REDACTED = "***"
-MIN_SECRET_CHARS = 6  # shorter known values are not masked: they would hit ordinary words
 
 
 _SECRET_VALUES: set[str] = set()
 
 
-def _names_a_secret(key: str) -> bool:
-    return bool(_SECRET_KEY.search(_CAMEL_CASE_BREAK.sub("_", key)))
-
-
 def add_secret_values(values: Any) -> None:
     """Known secrets (from the vault): masked wherever they appear in a log line."""
-    _SECRET_VALUES.update(v for v in values if isinstance(v, str) and len(v) >= MIN_SECRET_CHARS)
+    _SECRET_VALUES.update(v for v in values if isinstance(v, str) and len(v) >= 6)
 
 
 def _mask_known(text: str) -> str:
@@ -60,7 +51,7 @@ def redact(value: Any) -> Any:
         return _mask_known(value) if _SECRET_VALUES else value
     if isinstance(value, dict):
         return {
-            k: REDACTED if isinstance(k, str) and _names_a_secret(k) else redact(v)
+            k: REDACTED if isinstance(k, str) and _SECRET_KEY.search(k) else redact(v)
             for k, v in value.items()
         }
     if isinstance(value, list | tuple):

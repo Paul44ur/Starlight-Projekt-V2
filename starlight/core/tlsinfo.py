@@ -25,9 +25,6 @@ def unverified_context() -> ssl.SSLContext:
 
 def decode_der(der: bytes | None) -> dict[str, Any]:
     """A DER certificate as the dict ``getpeercert()`` returns for a verified one."""
-    # ssl._ssl._test_decode_cert is CPython's private, undocumented test helper: the same
-    # parser getpeercert() uses. It only reads a PEM file, hence the temporary file. A
-    # Python without it gives {} (no certificate details), not an error.
     decoder = getattr(getattr(ssl, "_ssl", None), "_test_decode_cert", None)
     if not der or decoder is None:
         return {}

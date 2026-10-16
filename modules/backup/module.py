@@ -47,13 +47,6 @@ class Config(BaseModel):
 
 
 CHUNK = 1024 * 1024  # a file is written in pieces this big, and a stop is noticed between them
-# A zip entry written piece by piece must be marked as ZIP64 up front if it may pass 2 GiB
-# (zipfile raises "File size too large, try using force_zip64" otherwise). From 1 GiB on,
-# so a file that grows while it is read still fits.
-ZIP64_FROM = 2**30
-# The version stamp in a backup's file name. It sorts by name in time order: _versions
-# (oldest first), taking the last one as the newest, and dropping old ones rely on it.
-STAMP = "%Y-%m-%d %H%M%S"
 # What reading a damaged or missing zip member can raise: a wrong CRC, cut-off or garbled
 # compressed data, a file that is not in the zip.
 UNREADABLE = (
@@ -81,7 +74,6 @@ class BackupModule(Module):
 
     def _versions(self, key: str, plan: BackupSet) -> list[Path]:
         folder = self._folder(key, plan)
-        # sorted by name is sorted by time (see STAMP): oldest first
         return sorted(folder.glob(f"{key} *.zip")) if folder.is_dir() else []
 
     def _check_paths(self, source: Path, target: Path) -> None:
@@ -102,7 +94,7 @@ class BackupModule(Module):
 
     # -- making a backup (blocking; runs in a thread) ---------------------------------------
 
-    def _raise_if_stopped(self, cancelled: threading.Event | None) -> None:
+    def _stopped(self, cancelled: threading.Event | None) -> None:
         self.ctx.kill_switch.check()
         if cancelled is not None and cancelled.is_set():
             raise ToolError("the backup was stopped")
@@ -122,10 +114,10 @@ class BackupModule(Module):
         digest, size = hashlib.sha256(), 0
         with (
             path.open("rb") as source,
-            archive.open(info, "w", force_zip64=path.stat().st_size > ZIP64_FROM) as target,
+            archive.open(info, "w", force_zip64=path.stat().st_size > 2**30) as target,
         ):
             while chunk := source.read(CHUNK):
-                self._raise_if_stopped(cancelled)
+                self._stopped(cancelled)
                 digest.update(chunk)
                 target.write(chunk)
                 size += len(chunk)
@@ -140,7 +132,7 @@ class BackupModule(Module):
         for stale in folder.glob(f"{key} *.partial"):  # left by a crash or a power cut
             with contextlib.suppress(OSError):
                 stale.unlink()
-        stamp = datetime.now().strftime(STAMP)
+        stamp = datetime.now().strftime("%Y-%m-%d %H%M%S")
         target = folder / f"{key} {stamp}.zip"
         partial = target.with_suffix(".partial")
         patterns = [*SKIP, *plan.exclude]
@@ -164,7 +156,7 @@ class BackupModule(Module):
                     for name in names:
                         if any(fnmatch.fnmatch(name, p) for p in patterns):
                             continue
-                        self._raise_if_stopped(cancelled)
+                        self._stopped(cancelled)
                         path = here / name
                         relative = path.relative_to(source).as_posix()
                         try:

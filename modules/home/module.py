@@ -109,23 +109,23 @@ class HomeModule(Module):
         if ENTITY.match(wanted):
             return wanted
         states = await self._api("GET", "/states")
-        names = {  # entity id -> its friendly name, lower-case
-            str(s["entity_id"]): str((s.get("attributes") or {}).get("friendly_name", "")).lower()
-            for s in states
-        }
         matches = [
-            entity
-            for entity, friendly in names.items()
-            if wanted in friendly or wanted.replace(" ", "_") in entity
+            s["entity_id"]
+            for s in states
+            if wanted in str((s.get("attributes") or {}).get("friendly_name", "")).lower()
+            or wanted.replace(" ", "_") in s["entity_id"]
         ]
         if len(matches) == 1:
-            return matches[0]
+            return str(matches[0])
         if not matches:
             raise ToolError(f"nothing called '{name}' in Home Assistant; see home.states")
-        # Several contain the name ("lamp"): one may be called exactly that.
-        exact = [entity for entity in matches if names[entity] == wanted]
+        exact = [
+            m for m in matches
+            if str(next(s for s in states if s["entity_id"] == m).get("attributes", {})
+                   .get("friendly_name", "")).lower() == wanted
+        ]  # fmt: skip
         if len(exact) == 1:
-            return exact[0]
+            return str(exact[0])
         raise ToolError(f"'{name}' could be: {', '.join(matches[:8])}. Say which one.")
 
     async def _allowed(self, entity: str, action: str) -> None:

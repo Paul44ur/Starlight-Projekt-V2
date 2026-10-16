@@ -129,7 +129,7 @@ document.getElementById("pair").onclick = async () => {
   try {
     const data = await api("/api/pair/code", { method: "POST" });
     document.getElementById("code").textContent = data.code;
-    document.getElementById("code-note").textContent = "works once, for " + Math.round(data.valid_seconds / 60) + " minutes";
+    document.getElementById("code-note").textContent = "works once, for 5 minutes";
     clearTimeout(pairTimer);
     pairTimer = setTimeout(() => { document.getElementById("code").textContent = ""; document.getElementById("code-note").textContent = ""; }, data.valid_seconds * 1000);
   } catch (e) { toast(e.message); }

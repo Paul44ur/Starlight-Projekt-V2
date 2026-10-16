@@ -19,12 +19,6 @@ from starlight.core.schedule import names_time_of_day, parse_when
 
 Priority = Literal["low", "normal", "high"]
 _RANK = {"high": 0, "normal": 1, "low": 2}
-NO_DUE = "9999"  # the sort key of a task without a due date: after every ISO date
-
-
-def _day(due: str) -> str:
-    """The date of a due value, which is "2026-12-24" or "2026-12-24T18:00" (see _due)."""
-    return due[:10]
 
 
 class Config(BaseModel):
@@ -49,9 +43,6 @@ class TodoModule(Module):
         return load_json(self.file, [])
 
     def _save(self, items: list[dict[str, Any]]) -> None:
-        """Save the tasks, and clear away those finished more than keep_done_days ago (this
-        is the only place that happens). ISO timestamps compare correctly as text; a
-        finished task without done_at counts as old."""
         cutoff = (self._now() - timedelta(days=self.config.keep_done_days)).isoformat()
         kept = [i for i in items if not i.get("done") or i.get("done_at", "") >= cutoff]
         save_json(self.file, kept)
@@ -134,12 +125,12 @@ class TodoModule(Module):
         """Tasks that are overdue or due within `days` days (0 = today)."""
         limit = (self._now().date() + timedelta(days=max(days, 0))).isoformat()
         items = [i for i in self._load() if not i.get("done") and i.get("due")]
-        soon = sorted((i for i in items if _day(i["due"]) <= limit), key=_order)
+        soon = sorted((i for i in items if i["due"][:10] <= limit), key=_order)
         today = self._now().date().isoformat()
         return {
             "count": len(soon),
-            "overdue": [self._view(i) for i in soon if _day(i["due"]) < today],
-            "due": [self._view(i) for i in soon if _day(i["due"]) >= today],
+            "overdue": [self._view(i) for i in soon if i["due"][:10] < today],
+            "due": [self._view(i) for i in soon if i["due"][:10] >= today],
         }
 
     @tool
@@ -197,7 +188,7 @@ class TodoModule(Module):
 
 def _order(item: dict[str, Any]) -> tuple[str, int, str]:
     return (
-        item.get("due") or NO_DUE,
+        item.get("due") or "9999",
         _RANK.get(item.get("priority", "normal"), 1),
         item["created"],
     )

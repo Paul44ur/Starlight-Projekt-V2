@@ -13,11 +13,8 @@ from pydantic import BaseModel, Field
 
 from starlight.core import Message, Module, ModuleContext, ToolError, tool
 
-# A YouTube video id is 11 characters of A-Z, a-z, 0-9, "_" and "-": found after the usual
-# URL markers (watch?v=, /shorts/, youtu.be/ ...) or given on its own.
 VIDEO_ID = re.compile(
-    r"(?:v=|/shorts/|/embed/|/live/|youtu\.be/|/v/)(?P<in_url>[A-Za-z0-9_-]{11})"
-    r"|^(?P<bare>[A-Za-z0-9_-]{11})$"
+    r"(?:v=|/shorts/|/embed/|/live/|youtu\.be/|/v/)([A-Za-z0-9_-]{11})|^([A-Za-z0-9_-]{11})$"
 )
 SUMMARY = (
     "Summarize this video transcript for the user in their language ({language}): first one "
@@ -39,7 +36,7 @@ def video_id(url: str) -> str:
     match = VIDEO_ID.search(url.strip())
     if not match:
         raise ToolError("give a YouTube link (youtube.com/watch?v=..., youtu.be/...)")
-    return match.group("in_url") or match.group("bare")
+    return match.group(1) or match.group(2)
 
 
 def _clock(seconds: float) -> str:
@@ -82,7 +79,7 @@ class TranscriptsModule(Module):
         vid = video_id(url)
         language, lines = await asyncio.to_thread(self._download, vid)
         parts: list[str] = []
-        last_mark = -60.0  # long enough ago that the first line gets a mark
+        last_mark = -60.0
         for start, text in lines:
             if start - last_mark >= 30:  # a time mark every half minute
                 parts.append(f"\n[{_clock(start)}] ")

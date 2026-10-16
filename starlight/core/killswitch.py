@@ -55,9 +55,6 @@ class KillSwitch:
 
     @property
     def engaged(self) -> bool:
-        """True while this or another process has stopped Starlight. Reading it also
-        releases this process when the STOP file it fired with was removed elsewhere
-        (``_sync``: `starlight resume`), which writes an audit entry."""
         self._sync()
         return self._fired or self.stop_file.exists()
 
@@ -107,8 +104,6 @@ class KillSwitch:
             self._reason = reason
         if self._write_stop_file(reason):
             with self._lock:
-                # Backed by the file only if still engaged: reset() from another thread may
-                # have run while the file was being written.
                 self._file_backed = self._fired
         # else: still stop this process; only reset() releases it then
         self._announce(reason, source)

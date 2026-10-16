@@ -55,8 +55,8 @@ class MediaModule(Module):
 
         user32: Any = ctypes.windll.user32  # type: ignore[attr-defined,unused-ignore]
         for _ in range(times):
-            user32.keybd_event(KEYS[key], 0, 0, 0)  # key down (flags 0)
-            user32.keybd_event(KEYS[key], 0, 2, 0)  # key up (KEYEVENTF_KEYUP)
+            user32.keybd_event(KEYS[key], 0, 0, 0)
+            user32.keybd_event(KEYS[key], 0, 2, 0)  # key up
             if times > 1:
                 time.sleep(0.005)
 
@@ -124,16 +124,19 @@ class MediaModule(Module):
             if change == "mute":
                 self._run("pactl", "set-sink-mute", sink, "toggle")
             else:
-                sign = "+" if change == "up" else "-"
-                level = f"{percent}%" if change == "set" else f"{sign}{amount}%"  # pactl: "+10%"
+                level = (
+                    f"{percent}%"
+                    if change == "set"
+                    else f"{'+' if change == 'up' else '-'}{amount}%"
+                )
                 self._run("pactl", "set-sink-volume", sink, level)
             return {"volume": change, "now": self._level()}
         if change == "mute":
             self._run("amixer", "-q", "set", "Master", "toggle")
         else:
-            sign = "+" if change == "up" else "-"
-            # amixer puts the sign after the number: "10%+", where pactl wants "+10%"
-            level = f"{percent}%" if change == "set" else f"{amount}%{sign}"
+            level = (
+                f"{percent}%" if change == "set" else f"{amount}%{'+' if change == 'up' else '-'}"
+            )
             self._run("amixer", "-q", "set", "Master", level)
         return {"volume": change}
 
@@ -155,6 +158,5 @@ class MediaModule(Module):
             )
         # Tabs between the parts: unlike "|", they do not turn up in artists and titles.
         out = self._run("playerctl", "metadata", "--format", "{{status}}\t{{artist}}\t{{title}}")
-        parts = out.split("\t", 2)
-        status, artist, title = parts + [""] * (3 - len(parts))  # a missing part is empty
+        status, artist, title = [*out.split("\t", 2), "", ""][:3]
         return {"status": status.lower(), "artist": artist, "title": title}

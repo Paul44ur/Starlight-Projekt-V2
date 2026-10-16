@@ -5,9 +5,9 @@ kill switch and the same permissions, because there is only one kernel (inside t
 server). The launcher uses it for "open both" - it starts the web server, opens the browser,
 and runs this client in the console.
 
-The protocol is the one the browser uses (listed in web/app.py, ``ws``): the client sends
-``ask``/``reply``/``stop`` and renders ``start``/``token``/``answer``/``confirm``/``prompt``/
-``notify``/``busy``/``stopped``/``error`` with the shared ChatView.
+The protocol is the one the browser uses (see web/app.py): the client sends ``ask``/``reply``/
+``stop`` and renders ``start``/``token``/``answer``/``confirm``/``prompt``/``notify``/
+``stopped``/``error`` with the shared ChatView.
 """
 
 from __future__ import annotations
@@ -55,7 +55,7 @@ async def run_turn(text: str, send: Sender, recv: Receiver, view: Any) -> None:
             emit(message.get("text", ""))
         elif kind == "answer":
             if streamed:
-                view.end_answer(streamed=True)
+                view.end_answer(True)
             else:
                 view.answer(message.get("text", ""))
             if message.get("stopped"):
@@ -72,7 +72,6 @@ async def run_turn(text: str, send: Sender, recv: Receiver, view: Any) -> None:
         elif kind == "confirm":
             approved = await view.confirm(message.get("question", ""))
             await send(
-                # "yes" approves: web/app.py APPROVE
                 {"type": "reply", "id": message.get("id", ""), "value": "yes" if approved else "no"}
             )
         elif kind == "prompt":
@@ -129,7 +128,7 @@ async def run_client(host: str, port: int, assume_yes: bool = False) -> int:
                     await _post(base, "/api/kill" if low == "/kill" else "/api/resume", view)
                     continue
                 if low == "/clear":
-                    print("\033[2J\033[H", end="")  # ANSI: clear the screen, cursor to the top
+                    print("\033[2J\033[H", end="")
                     continue
                 try:
                     await run_turn(line, send, recv, view)

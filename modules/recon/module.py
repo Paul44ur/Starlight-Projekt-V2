@@ -38,15 +38,6 @@ from .ports import COMMON, HTTP_PORTS, TLS_PORTS
 SERVERS_FILE = "servers.yaml"
 AUTHORIZED_FILE = "authorized.json"  # hosts the user authorized for scans
 MAX_BANNER = 2048  # never read more than this from one port, hostile or not
-# A ping round-trip time: "time=0.4 ms", "time<1ms", "Zeit=3ms" (German Windows).
-_PING_TIME = re.compile(r"(?:time|zeit)\s*[=<]\s*[\d.,]+\s*ms", re.IGNORECASE)
-
-
-def echo_reply(returncode: int | None, output: str) -> bool:
-    """Whether ping got a real answer. Windows' ping also exits with 0 when a router
-    answers "Destination host unreachable"; only a real echo reply carries a TTL (or a
-    time). The same check as the network module's (modules do not import each other)."""
-    return returncode == 0 and ("ttl=" in output.lower() or _PING_TIME.search(output) is not None)
 
 
 class Config(BaseModel):
@@ -92,7 +83,6 @@ class ReconModule(Module):
         target = target.strip()
         if not target:
             raise ToolError("give one host: an IP address or a hostname")
-        # An nmap-style range in the last part, like "192.168.1.1-20"
         numeric_range = re.fullmatch(r"\d+-\d+", target.split(".")[-1]) is not None
         if "/" in target or numeric_range or " " in target or "," in target:
             raise ToolError(
@@ -145,8 +135,8 @@ class ReconModule(Module):
         self.ctx.logger.info("scan authorized", target=target, ip=ip, public=not private)
 
     def _port_list(self, ports: str, full: bool) -> list[int]:
-        if full:  # ports 1 to max_ports (2048 shipped), not all 65535; max_ports is <= 65535
-            return list(range(1, self.config.max_ports + 1))
+        if full:
+            return list(range(1, 65536))[: self.config.max_ports]
         if not ports.strip():
             return [p for p, _ in COMMON[: self.config.top_ports]]
         chosen: dict[int, None] = {}  # a port named twice is scanned once
@@ -170,8 +160,7 @@ class ReconModule(Module):
         open TCP ports, the service and banner on each, TLS certificates, HTTP headers, and
         DNS. `target` is a single IP or hostname (not a range). `ports` is optional: port
         numbers such as "22 80 443" (ranges are not supported - list them); empty scans the
-        common ports. full=true scans ports 1 to max_ports (2048 by default; slower,
-        noisier), not all 65535. Asks you to confirm
+        common ports. full=true scans many more ports (slower, noisier). Asks you to confirm
         you are authorized before anything is sent, and never attacks - it only gathers
         info."""
         host = self._one_host(target)
@@ -213,17 +202,16 @@ class ReconModule(Module):
 
     async def _ping(self, ip: str) -> bool:
         if sys.platform == "win32":
-            cmd = ["ping", "-n", "1", "-w", "1500", ip]  # -w: milliseconds
+            cmd = ["ping", "-n", "1", "-w", "1500", ip]
         else:
-            cmd = ["ping", "-c", "1", "-W", "2", ip]  # -W: seconds
+            cmd = ["ping", "-c", "1", "-W", "2", ip]
         try:
             proc = await asyncio.create_subprocess_exec(
-                *cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.STDOUT
+                *cmd, stdout=asyncio.subprocess.DEVNULL, stderr=asyncio.subprocess.DEVNULL
             )
-            out, _ = await asyncio.wait_for(proc.communicate(), timeout=5)
+            return await asyncio.wait_for(proc.wait(), timeout=5) == 0
         except (OSError, TimeoutError):
             return False
-        return echo_reply(proc.returncode, out.decode(errors="replace"))
 
     async def _scan_ports(self, ip: str, ports: list[int]) -> list[tuple[int, str]]:
         service = dict(COMMON)

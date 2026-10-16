@@ -20,11 +20,6 @@ from starlight.core import Module, ModuleContext, ToolError, tool
 from starlight.core.http import HttpError
 
 STOOQ = "https://stooq.com/q/l/"
-# stooq's quote CSV. f = the fields: s symbol, n name, d2 date, t2 time, o/h/l/c/v open, high,
-# low, close, volume. h = a header row: its names (Symbol, Name, Date, Time, Open, High, Low,
-# Close, Volume) are the keys read in `stock`, so dropping "h" or a field breaks them. e = format.
-STOOQ_QUERY = "f=snd2t2ohlcv&h&e=csv"
-STOOQ_NO_DATA = "N/D"  # what stooq puts in every column for a symbol it does not know
 FRANKFURTER = "https://api.frankfurter.app/latest"
 COINGECKO = "https://api.coingecko.com/api/v3/simple/price"
 
@@ -64,15 +59,13 @@ class FinanceModule(Module):
         sym = symbol.strip().lower()
         if not sym:
             raise ToolError("give a ticker symbol, e.g. 'AAPL'")
-        # A bare ticker ("aapl") is tried as a US listing first; one with a market suffix
-        # ("vow.de") or an index ("^spx") as it is.
         tried = [sym] if ("." in sym or sym.startswith("^")) else [f"{sym}.us", sym]
         for candidate in tried:
-            url = f"{STOOQ}?s={candidate}&{STOOQ_QUERY}"
+            url = f"{STOOQ}?s={candidate}&f=snd2t2ohlcv&h&e=csv"
             response = await self._get(url, "stock")
             row = next(csv.DictReader(io.StringIO(response.text)), None)
             close = (row or {}).get("Close", "")
-            if row and close not in ("", STOOQ_NO_DATA):
+            if row and close not in ("", "N/D"):
                 return {
                     "symbol": (row.get("Symbol") or candidate).upper(),
                     "name": row.get("Name") or None,
