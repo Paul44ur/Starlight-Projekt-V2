@@ -30,6 +30,10 @@ from starlight.text import decode_text
 _INVALID = re.compile(r'[<>:"/\\|?*\x00-\x1f]')  # not allowed in Windows file names
 _RESERVED = re.compile(r"^(con|prn|aux|nul|com[0-9]|lpt[0-9])(\..*)?$", re.IGNORECASE)
 
+MAX_BYTES_PER_CHAR = 4  # in UTF-8 (and UTF-16): so many bytes always hold max_read_chars
+SNIFF_BYTES = 8192  # a NUL byte in the first 8 KiB: a binary file, not text
+UTF16_BOMS = (b"\xff\xfe", b"\xfe\xff")  # UTF-16 text (PowerShell 5 `>`) is full of NULs
+
 # Not plain text: written as text, these would be broken files.
 _DOCUMENTS = {".doc", ".docx", ".odt", ".pdf", ".pages", ".epub"}
 _SHEETS = {".xls", ".xlsx", ".xlsm", ".ods", ".numbers"}
@@ -171,11 +175,13 @@ class FilesModule(Module):
                 f"too large ({size_text(size)}); the limit is {self.config.max_file_mb:g} MB"
             )
 
-        # A new file anywhere is fine (write_anywhere), but never one Windows can run when
-        # it is opened: in the wrong folder (Startup) that runs at every login.
-        new_ok = target.new_free and mode in ("new", "rename")
-        free = target.free or (new_ok and dest.suffix.lower() not in _RUNNABLE)
-        question = self._save_question(dest, mode, size, free)
+        # No question inside the Starlight or a trusted folder (target.free). A new file
+        # anywhere else is fine too (write_anywhere: target.new_free), but never one Windows
+        # can run when it is opened: in the wrong folder (Startup) that runs at every login.
+        creates_file = mode in ("new", "rename")
+        safe_type = dest.suffix.lower() not in _RUNNABLE
+        no_question = target.free or (target.new_free and creates_file and safe_type)
+        question = self._save_question(dest, mode, size, no_question)
         if question is not None and not await self.ctx.ui.confirm(question):
             raise FileError(f"the user did not allow this, so nothing was saved to {dest}")
         self.ctx.kill_switch.check()  # the question may have taken a while
@@ -204,10 +210,14 @@ class FilesModule(Module):
             result["note"] = "replaced the old file" if mode == "replace" else "added to the end"
         return result
 
-    def _save_question(self, dest: Path, mode: str, size: int, free: bool) -> str | None:
-        if mode == "replace" and (not free or self.config.ask_before_replacing):
+    def _save_question(
+        self, dest: Path, mode: str, size: int, no_question: bool
+    ) -> str | None:
+        """What to ask before saving, or None. Replacing asks also where nothing else would,
+        while ask_before_replacing is on."""
+        if mode == "replace" and (not no_question or self.config.ask_before_replacing):
             question = f"Replace this file with a new version ({size_text(size)})?\n  {dest}"
-        elif free:
+        elif no_question:
             return None
         elif mode == "append":
             question = f"Add {size_text(size)} to the end of this file?\n  {dest}"
@@ -233,10 +243,15 @@ class FilesModule(Module):
             f"Let Starlight read this file ({size_text(size)})?\n  {file}"
         ):
             raise FileError(f"the user did not allow reading {file}")
-        limit = min(int(self.config.max_file_mb * 1024**2), self.config.max_read_chars * 4)
+        limit = min(
+            int(self.config.max_file_mb * 1024**2),
+            self.config.max_read_chars * MAX_BYTES_PER_CHAR,
+        )
         with file.open("rb") as handle:
             data = handle.read(limit)
-        if b"\x00" in data[:8192]:
+        # decode_text reads UTF-16 by its BOM (as filesearch.grep does); only other files
+        # with a NUL byte are binary.
+        if not data.startswith(UTF16_BOMS) and b"\x00" in data[:SNIFF_BYTES]:
             raise FileError(f"{file.name} looks like a binary file, not text")
         text = decode_text(data, cut_off=len(data) < size).replace("\r\n", "\n").replace("\r", "\n")
         cut = len(data) < size or len(text) > self.config.max_read_chars
@@ -300,4 +315,7 @@ def _ends_with_newline(file: Path) -> bool:
 
 
 def _is_temp(file: Path) -> bool:
+    """A temporary file of write_atomic (".letter.txt.1a2b3c4d.tmp", see
+    starlight/core/fsutil.py) that a crash left behind: not one of the user's files. Keep
+    this in step with the name write_atomic gives it."""
     return file.name.startswith(".") and file.name.endswith(".tmp")

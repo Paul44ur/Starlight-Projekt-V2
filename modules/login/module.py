@@ -29,7 +29,7 @@ from pydantic import BaseModel, Field, ValidationError
 
 from starlight.browser import Browser
 from starlight.core import Module, ModuleContext, ToolError, tool
-from starlight.core.config import read_yaml, write_yaml_config
+from starlight.core.config import describe_errors, read_yaml, write_yaml_config
 from starlight.core.jsonfile import load_json, save_json
 from starlight.text import html_to_text
 
@@ -79,11 +79,23 @@ class LoginModule(Module):
     def _config_file(self) -> Path:
         return self.ctx.paths.module_configs / "login.yaml"
 
-    def _live(self) -> LoginConfig:
-        """Re-read the config so sites added from the chat work without a restart."""
+    def _read_config(self) -> LoginConfig:
+        """login.yaml as it is now. A file that does not validate (e.g. a site without a
+        url, edited by hand) is logged and refused with what is wrong."""
+        path = self._config_file()
         try:
-            return LoginConfig.model_validate(read_yaml(self._config_file()))
-        except ValidationError:
+            return LoginConfig.model_validate(read_yaml(path))
+        except ValidationError as exc:
+            problem = describe_errors(exc, [path], LoginConfig, self.ctx.paths.root)
+            self.ctx.logger.warning("login.yaml does not validate", problem=problem)
+            raise LoginError(f"{path} has a mistake, fix it first: {problem}") from exc
+
+    def _live(self) -> LoginConfig:
+        """Re-read the config so sites added from the chat work without a restart. While
+        the file has a mistake, the config Starlight started with is used."""
+        try:
+            return self._read_config()
+        except LoginError:
             return self.config
 
     def _site(self, name: str) -> Site:
@@ -100,12 +112,12 @@ class LoginModule(Module):
     def _approved(self) -> set[str]:
         return set(load_json(self.approved_file, []))  # a damaged file: asked again
 
-    async def _ensure_approved(self, name: str, site: Site) -> None:
+    async def _ensure_approved(self, name: str, spec: Site) -> None:
         approved = self._approved()
         if name in approved:
             return
         ok = await self.ctx.ui.confirm(
-            f"Allow Starlight to log in to '{name}' ({site.url}) with your saved credentials?"
+            f"Allow Starlight to log in to '{name}' ({spec.url}) with your saved credentials?"
         )
         if not ok:
             raise LoginError(f"login to '{name}' not approved")
@@ -152,6 +164,7 @@ class LoginModule(Module):
             raise LoginError("site name: lowercase letters, digits, '-' and '_' only")
         if not url.strip().startswith(("http://", "https://")):
             raise LoginError("give the login page URL (https://...)")
+        self._read_config()  # a file with a mistake is refused now, never written over
         ok = await self.ctx.ui.confirm(
             f"Save a login for '{name}' at {url.strip()}?\n"
             "  The username and password go into the OS keyring (not any file). "
@@ -160,6 +173,7 @@ class LoginModule(Module):
         if not ok:
             raise LoginError("not confirmed, so nothing was saved")
         self.ctx.kill_switch.check()
+        config = self._read_config()  # fresh: the question may have taken a while
         self.ctx.vault.set(f"login.{name}.username", username)
         self.ctx.vault.set(f"login.{name}.password", password)
         fields: dict[str, Any] = {"url": url.strip()}
@@ -170,7 +184,6 @@ class LoginModule(Module):
         ):
             if value.strip():
                 fields[key] = value.strip()
-        config = self._live()
         config.sites[name] = Site(**fields)
         self._write_sites(config)
         self.ctx.logger.info("login site added", site=name)
@@ -179,35 +192,36 @@ class LoginModule(Module):
     @tool
     async def login(self, site: str) -> str:
         """Log in to one of your configured sites and save the session."""
-        config = self._site(site)
-        await self._ensure_approved(site, config)
+        # `site` is the site's name; `spec` its settings (self.config is the whole module's).
+        spec = self._site(site)
+        await self._ensure_approved(site, spec)
         vault = self.ctx.vault
-        username = vault.require(config.username_key or f"login.{site}.username")
-        password = vault.require(config.password_key or f"login.{site}.password")
+        username = vault.require(spec.username_key or f"login.{site}.username")
+        password = vault.require(spec.password_key or f"login.{site}.password")
         timeout_ms = self.config.timeout * 1000
 
         context = await self.browser.new_context()
         try:
             page = await context.new_page()
             page.set_default_timeout(timeout_ms)
-            await self.browser.goto(page, config.url)
-            await page.locator(config.username_selector).first.fill(username)
-            await page.locator(config.password_selector).first.fill(password)
-            await page.locator(config.submit_selector).first.click()
+            await self.browser.goto(page, spec.url)
+            await page.locator(spec.username_selector).first.fill(username)
+            await page.locator(spec.password_selector).first.fill(password)
+            await page.locator(spec.submit_selector).first.click()
             await page.wait_for_load_state("domcontentloaded")
 
-            if config.otp_selector and await self._visible(page, config.otp_selector):
+            if spec.otp_selector and await self._visible(page, spec.otp_selector):
                 code = await self.ctx.ui.ask(f"Enter the 2FA code for {site}")
                 if not code:
                     raise LoginError("no 2FA code given")
-                await page.locator(config.otp_selector).first.fill(code.strip())
-                if config.otp_submit_selector:
-                    await page.locator(config.otp_submit_selector).first.click()
+                await page.locator(spec.otp_selector).first.fill(code.strip())
+                if spec.otp_submit_selector:
+                    await page.locator(spec.otp_submit_selector).first.click()
                 else:
                     await page.keyboard.press("Enter")
                 await page.wait_for_load_state("domcontentloaded")
 
-            if not await self._logged_in(page, config):
+            if not await self._logged_in(page, spec):
                 raise LoginError(f"login to '{site}' did not succeed (check credentials)")
             await context.storage_state(path=str(self._session(site)))
         finally:
@@ -223,36 +237,36 @@ class LoginModule(Module):
         except Exception:
             return False
 
-    async def _logged_in(self, page: Any, site: Site) -> bool:
-        if site.success_url_contains and site.success_url_contains in page.url:
+    async def _logged_in(self, page: Any, spec: Site) -> bool:
+        if spec.success_url_contains and spec.success_url_contains in page.url:
             return True
-        if site.success_selector:
-            return await self._visible(page, site.success_selector)
+        if spec.success_selector:
+            return await self._visible(page, spec.success_selector)
         # Without a success marker: logged in if the password field is gone.
-        return not await page.locator(site.password_selector).first.is_visible()
+        return not await page.locator(spec.password_selector).first.is_visible()
 
     @tool
     async def open(self, site: str, url: str, max_chars: int = 8000) -> dict[str, Any]:
         """Read a page of one of your sites using the saved session (logs in if needed)."""
-        config = self._site(site)
+        spec = self._site(site)
         if not self._session(site).is_file():
             await self.login(site)
-        status, html, final, expired = await self._fetch(site, config, url)
+        status, html, final, expired = await self._fetch(site, spec, url)
         if expired:
             await self.login(site)  # the saved session no longer works
-            status, html, final, _ = await self._fetch(site, config, url)
+            status, html, final, _ = await self._fetch(site, spec, url)
         text = html_to_text(html, final, max_chars)
         return {"url": final, "status": status, "title": text.title, "text": text.text}
 
-    async def _fetch(self, site: str, config: Site, url: str) -> tuple[int | None, str, str, bool]:
-        """Open a page with the saved session: (status, html, final url, whether the page
-        shows the login form, so the session has expired)."""
-        context = await self.browser.new_context(self._session(site))
+    async def _fetch(self, name: str, spec: Site, url: str) -> tuple[int | None, str, str, bool]:
+        """Open a page of site ``name`` with its saved session: (status, html, final url,
+        whether the page shows the login form, so the session has expired)."""
+        context = await self.browser.new_context(self._session(name))
         try:
             page = await context.new_page()
             page.set_default_timeout(self.config.timeout * 1000)
             status = await self.browser.goto(page, url)
-            expired = await page.locator(config.password_selector).first.is_visible()
+            expired = await page.locator(spec.password_selector).first.is_visible()
             return status, await page.content(), page.url, expired
         finally:
             await context.close()

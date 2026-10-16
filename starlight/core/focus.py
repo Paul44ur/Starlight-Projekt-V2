@@ -108,5 +108,7 @@ async def finish(focus: Focus, deliver: Callable[..., Awaitable[None]]) -> str:
     """End focus and deliver the digest (urgent, so it is never held itself)."""
     text = digest(focus.stop())
     if text:
+        # (text, title, source, urgent), positionally like every Services.deliver call:
+        # the focus module's fallback only takes positional arguments.
         await deliver(text, "Focus", "focus", True)
     return text

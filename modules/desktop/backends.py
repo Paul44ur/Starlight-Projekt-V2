@@ -26,6 +26,10 @@ class DesktopUnavailable(Exception):
     pass
 
 
+ALL_MONITORS = 0  # mss: monitors[0] is the whole virtual screen, monitors[1:] each monitor
+PROCESS_PER_MONITOR_DPI_AWARE = 2  # Windows SetProcessDpiAwareness
+
+
 @dataclass
 class Box:
     text: str
@@ -68,17 +72,18 @@ class MssScreen:
 
     def bounds(self) -> tuple[int, int, int, int]:
         with self._open() as sct:
-            m = sct.monitors[0]
+            m = sct.monitors[ALL_MONITORS]
             return m["left"], m["top"], m["width"], m["height"]
 
     def monitors(self) -> list[tuple[int, int, int, int]]:
         with self._open() as sct:
+            # all but ALL_MONITORS: each monitor on its own
             return [(m["left"], m["top"], m["width"], m["height"]) for m in sct.monitors[1:]]
 
     def capture(self, region: tuple[int, int, int, int] | None = None) -> Image.Image:
         with self._open() as sct:
             if region is None:
-                m = sct.monitors[0]
+                m = sct.monitors[ALL_MONITORS]
                 area = {
                     "left": m["left"],
                     "top": m["top"],
@@ -212,7 +217,7 @@ class TesseractOcr:
         out = []
         for i, text in enumerate(data["text"]):
             conf = float(data["conf"][i])
-            if text.strip() and conf >= 0:
+            if text.strip() and conf >= 0:  # -1: a layout row (block, line), not a word
                 out.append(
                     Box(
                         text,
@@ -289,7 +294,7 @@ class UiAutomation:
         auto = self._auto
         if window:
             root = auto.WindowControl(searchDepth=1, SubName=window)
-            if not root.Exists(2):
+            if not root.Exists(2):  # Exists(n): waits up to n seconds for it to appear
                 raise DesktopUnavailable(f"no window matching '{window}'")
             return root
         return auto.GetForegroundControl().GetTopLevelControl()
@@ -300,7 +305,7 @@ class UiAutomation:
         if control_type:
             criteria["ControlTypeName"] = control_type
         control = root.Control(**criteria)
-        if not control.Exists(2):
+        if not control.Exists(2):  # seconds to wait (searchDepth is the tree depth)
             criteria.pop("Name")
             criteria["SubName"] = name
             control = root.Control(**criteria)
@@ -327,4 +332,4 @@ def make_dpi_aware() -> None:
     with contextlib.suppress(Exception):
         import ctypes
 
-        ctypes.windll.shcore.SetProcessDpiAwareness(2)
+        ctypes.windll.shcore.SetProcessDpiAwareness(PROCESS_PER_MONITOR_DPI_AWARE)

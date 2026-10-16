@@ -127,7 +127,7 @@
   <section class="grid">
     <article class="card"><h2>Tokens per second</h2><p class="sub">Model generation speed</p>
       <div class="chart" id="c-tps"></div><details><summary>Show data</summary><div id="t-tps"></div></details></article>
-    <article class="card"><h2>Web requests per second</h2><p class="sub">Busiest second in each interval; the cap is 5</p>
+    <article class="card"><h2>Web requests per second</h2><p class="sub">Busiest second in each interval; the cap is __WEB_CAP__</p>
       <div class="chart" id="c-web"></div><details><summary>Show data</summary><div id="t-web"></div></details></article>
     <article class="card"><h2>GPU use</h2><p class="sub">Percent busy</p>
       <div class="chart" id="c-gpu"></div><details><summary>Show data</summary><div id="t-gpu"></div></details></article>
@@ -144,7 +144,7 @@
 <div class="tooltip" id="tooltip"></div>
 
 <script>
-const REFRESH = __REFRESH__;
+const REFRESH = __REFRESH__;  // milliseconds (viewer.refresh_seconds), filled in by the server
 const WEB_CAP = __WEB_CAP__;  // http.max_requests_per_second, filled in by the server
 let minutes = 60;
 let last = null;

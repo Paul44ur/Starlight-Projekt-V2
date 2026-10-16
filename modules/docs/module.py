@@ -25,7 +25,7 @@ import numpy.typing as npt
 from pydantic import BaseModel, Field
 
 from starlight.core import KillSwitchEngaged, Message, Module, ModuleContext, ToolError, tool
-from starlight.core.config import write_yaml_config
+from starlight.core.config import ConfigError, write_yaml_config
 from starlight.core.safepaths import expand, inside
 from starlight.text import decode_text
 
@@ -169,7 +169,11 @@ class DocsModule(Module):
     def _roots(self) -> list[Path]:
         roots = [expand(f) for f in self.config.folders]
         if self.config.include_notes:
-            with contextlib.suppress(Exception):
+            # "Notes" must match the notes module's folder (`folder` in
+            # config/modules/notes.yaml, "Notes" by default): modules cannot import each
+            # other's settings, so a changed notes folder is not followed here.
+            # output.folder is invalid or cannot be resolved: index the other folders
+            with contextlib.suppress(ConfigError, OSError):
                 roots.append(self.ctx.output_dir / "Notes")
         own = self.ctx.paths.root.resolve()
         return [r for r in dict.fromkeys(roots) if r.is_dir() and not inside(r, own)]
@@ -229,7 +233,7 @@ class DocsModule(Module):
             db.execute("DELETE FROM parts WHERE path = ?", (key,))
             db.executemany("INSERT INTO parts (path, page, text, vector) VALUES (?, ?, ?, ?)", rows)
             db.execute(
-                "INSERT OR REPLACE INTO files VALUES (?, ?, ?, ?)",
+                "INSERT OR REPLACE INTO files (path, mtime, size, embedder) VALUES (?, ?, ?, ?)",
                 (key, stat.st_mtime, stat.st_size, self._embedder_id),
             )
 
@@ -248,7 +252,13 @@ class DocsModule(Module):
         """Read new and changed files, forget deleted ones."""
         async with self._busy:
             self.ctx.kill_switch.check()
-            known = {r[0]: (r[1], r[2], r[3]) for r in self._sql("SELECT * FROM files")}
+            # path -> (mtime, size, embedder): a file whose stat and embedder match is unchanged
+            known = {
+                path: (mtime, size, embedder)
+                for path, mtime, size, embedder in self._sql(
+                    "SELECT path, mtime, size, embedder FROM files"
+                )
+            }
             seen: set[str] = set()
             changed = failed = 0
             touched = False

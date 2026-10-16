@@ -94,8 +94,18 @@ VOICES = (
     "en/en_US/lessac/medium/en_US-lessac-medium",
 )
 GB = 1024**3
-WEB_PORT = 8700  # the local web chat (matches config web.port)
 MB = 1024**2
+# The defaults of config web.port and viewer.port (config/starlight.yaml). A port changed in
+# config/starlight.local.yaml is not seen here.
+WEB_PORT = 8700  # the local web chat
+VIEWER_PORT = 8765  # the statistics viewer
+
+# Rough download sizes: listed before the first download and added up for the free-space
+# check (the window's setup page adds up the same ones).
+FIRST_RUN_SIZE = 1.6 * GB  # uv, Python 3.12 and the packages ~1.3 GB + Chromium ~0.3 GB
+LLAMA_SIZE = 0.2 * GB  # the llama.cpp model server
+VOICE_SIZE = 0.6 * GB  # whisper.cpp, Piper, the speech model and two voices (--voice)
+SPARE_SPACE = GB  # kept free on top of the downloads
 
 
 class LauncherError(Exception):
@@ -243,6 +253,10 @@ class Ui:
         self.assume_yes = assume_yes
 
     def say(self, text: str = "") -> None:
+        """One line of output. A text starting with "\\r" replaces the line that waiting()
+        or progress() left open: ConsoleUi clears that line, the window drops the "\\r",
+        and this plain version only moves the cursor back, so such a text is padded to
+        cover the old line. A text starting with "\\n" keeps that line and goes below it."""
         print(text, flush=True)
 
     def step(self, text: str) -> None:
@@ -312,12 +326,16 @@ def enable_ansi() -> bool:
     try:
         import ctypes
 
+        std_output_handle = -11  # STD_OUTPUT_HANDLE
+        enable_virtual_terminal_processing = 0x0004  # the console understands \x1b[ codes
         kernel32 = ctypes.windll.kernel32  # type: ignore[attr-defined,unused-ignore]
-        handle = kernel32.GetStdHandle(-11)
+        handle = kernel32.GetStdHandle(std_output_handle)
         mode = ctypes.c_uint32()
         if not kernel32.GetConsoleMode(handle, ctypes.byref(mode)):
             return False
-        return bool(kernel32.SetConsoleMode(handle, mode.value | 0x0004))
+        return bool(
+            kernel32.SetConsoleMode(handle, mode.value | enable_virtual_terminal_processing)
+        )
     except (AttributeError, OSError):
         return False
 
@@ -360,7 +378,8 @@ class ConsoleUi(Ui):
             print(f"{self.CLEAR}   {bar} {fraction * 100:3.0f}%  {text}", end="", flush=True)
 
     def waiting(self, text: str) -> None:
-        print(f"{self.CLEAR}{self.DIM}{text.lstrip(chr(13))}{self.RESET}", end="", flush=True)
+        line = text.lstrip("\r")
+        print(f"{self.CLEAR}{self.DIM}{line}{self.RESET}", end="", flush=True)
 
 
 def make_ui(assume_yes: bool) -> Ui:
@@ -386,6 +405,9 @@ def _request(
 
 
 class _NoRedirect(urllib.request.HTTPRedirectHandler):
+    """Do not follow redirects: urllib then raises HTTPError for the 3xx answer itself,
+    whose headers (Hugging Face's X-Linked-Size and X-Linked-Etag) probe() reads."""
+
     def redirect_request(self, *args: Any, **kwargs: Any) -> None:
         return None
 
@@ -606,6 +628,7 @@ SNAPSHOT_LIMIT = 2 * GB  # a bigger folder is left out (with a note) rather than
 
 # What a copy before an update holds: your settings, your conversations and lists, your
 # memory. (The databases and caches are rebuilt by Starlight itself.)
+# Pairs of (folder name inside the copy, folder inside Starlight); the same names today.
 SNAPSHOT_PARTS = (("config", "config"), ("data", "data"), ("memory", "memory"))
 SNAPSHOT_SKIP = ("*.sqlite*", "*.db", "*.db-*", "*.lock", "*.tmp", "*.part", "web_cache*")
 
@@ -641,7 +664,8 @@ def snapshot_before_update(settings: Settings, ui: Ui) -> Path | None:
             continue
         shutil.copytree(source, target / name, ignore=shutil.ignore_patterns(*SNAPSHOT_SKIP))
         copied.append(name)
-    for old in sorted(root.glob("backups/update-*"))[: -BACKUPS_KEEP or None]:
+    copies = sorted(root.glob("backups/update-*"))  # oldest first: the names hold the time
+    for old in copies[:-BACKUPS_KEEP]:  # all but the newest BACKUPS_KEEP
         if old != target and old.is_dir():
             shutil.rmtree(old, ignore_errors=True)
     if not copied:
@@ -749,11 +773,11 @@ def ensure_uv(settings: Settings, ui: Ui) -> Path:
         expected = r.read().decode().split()[0]
     archive = download(f"{UV_DOWNLOAD}/{asset}", settings.tools / asset, ui, sha256=expected)
     folder = settings.tools / "uv"
-    moved = settings.update and set_aside(settings, folder, "uv")
+    moved = set_aside(settings, folder, "uv") if settings.update else False
     try:
         extract_member(archive, exe("uv"), folder)
         (folder / "source.txt").write_text(f"{UV_DOWNLOAD}/{asset}\n", encoding="utf-8")
-    except BaseException:
+    except BaseException:  # also Ctrl+C: never leave tools/uv half replaced
         if moved:
             put_back(settings, folder, "uv")
         raise
@@ -789,6 +813,8 @@ def _read_text(url: str, token: str | None = None) -> str:
 
 
 def _nightly_tag(text: str) -> str | None:
+    """The tag in a downloaded nightly-tag.txt, if it looks like a tag name (letters, digits,
+    "." "_" "-"): the text goes into a URL next."""
     tag = text.strip()
     return tag if re.fullmatch(r"[A-Za-z0-9._-]{1,64}", tag) else None
 
@@ -806,6 +832,9 @@ def resolve_llama(settings: Settings) -> tuple[str, str | None]:
         try:
             return pick_llama_asset(release, settings.variant)
         except LauncherError:
+            # No programs in this release: follow its nightly-tag.txt to the build release.
+            # Without a usable pointer, the "no matching download" error above stands (a
+            # LauncherError is not caught below, so the release page is not tried then).
             pointer = next(
                 (a for a in release.get("assets") or [] if a.get("name") == "nightly-tag.txt"),
                 None,
@@ -818,6 +847,8 @@ def resolve_llama(settings: Settings) -> tuple[str, str | None]:
             build = json.loads(_read_text(f"{LLAMA_API}/tags/{nightly}", token))
             return pick_llama_asset(build, settings.variant)
     except (urllib.error.URLError, TimeoutError, ValueError):
+        # The API is blocked or rate-limited (an HTTPError is a URLError), or its answer is
+        # not JSON: work it out from the release page below.
         pass
     folder = "latest/download" if tag == "latest" else f"download/{tag}"
     try:
@@ -829,15 +860,21 @@ def resolve_llama(settings: Settings) -> tuple[str, str | None]:
     if nightly:
         tag = nightly
     elif tag == "latest":  # an older release that has the programs itself
+        # .../releases/latest redirects to .../releases/tag/<tag>: the tag ends the final URL.
         with urllib.request.urlopen(_request(f"{LLAMA_RELEASES}/latest"), timeout=30) as r:
             tag = r.geturl().rstrip("/").split("/")[-1]
     name = f"llama-{tag}-{llama_asset_names(settings.variant)[0]}"
     return f"{LLAMA_RELEASES}/download/{tag}/{name}", None
 
 
+def llama_binary(settings: Settings) -> Path:
+    """Where ensure_llama puts llama-server for the chosen build."""
+    return settings.tools / "llama.cpp" / settings.variant / exe("llama-server")
+
+
 def ensure_llama(settings: Settings, ui: Ui) -> Path:
-    target = settings.tools / "llama.cpp" / settings.variant
-    binary = target / exe("llama-server")
+    binary = llama_binary(settings)
+    target = binary.parent
     if binary.is_file() and not settings.update:
         return binary
     ui.step(f"Downloading the llama.cpp model server ({settings.variant} build)")
@@ -845,11 +882,11 @@ def ensure_llama(settings: Settings, ui: Ui) -> Path:
     ui.say(f"   {url}")
     archive = download(url, settings.tools / url.split("/")[-1], ui, sha256=sha)
     name = f"llama.cpp-{settings.variant}"
-    moved = settings.update and set_aside(settings, target, name)
+    moved = set_aside(settings, target, name) if settings.update else False
     try:
         extract_member(archive, exe("llama-server"), target)
         (target / "source.txt").write_text(url + "\n", encoding="utf-8")
-    except BaseException:
+    except BaseException:  # also Ctrl+C: never leave the server folder half replaced
         if moved:
             put_back(settings, target, name)
         raise
@@ -860,6 +897,28 @@ def ensure_llama(settings: Settings, ui: Ui) -> Path:
 def voice_downloads() -> bool:
     """Ready-made speech programs are published for Windows only."""
     return os.name == "nt"
+
+
+def voice_files(settings: Settings) -> list[Path]:
+    """The files ensure_voice installs: both programs, the speech model and the voices."""
+    whisper = settings.tools / "whisper"
+    piper = settings.tools / "piper"
+    files = [
+        whisper / exe("whisper-server"),
+        whisper / "models" / _file_name(settings.whisper_model_url),
+        piper / exe("piper"),
+    ]
+    for voice in VOICES:
+        name = voice.split("/")[-1]
+        files += [piper / "voices" / f"{name}{suffix}" for suffix in (".onnx", ".onnx.json")]
+    return files
+
+
+def voice_will_download(settings: Settings) -> bool:
+    """Whether ensure_voice has something to download (for the size estimate)."""
+    if not settings.voice or not voice_downloads():
+        return False
+    return not all(path.is_file() for path in voice_files(settings))
 
 
 def ensure_voice(settings: Settings, ui: Ui) -> None:
@@ -938,6 +997,7 @@ def write_launcher_config(settings: Settings, server: Path | None, model: Path |
                     "binary": str(server),
                     "model_path": str(model),
                     "port": settings.port,
+                    # every layer on the GPU (also the core's default, starlight/core/config.py)
                     "gpu_layers": 999,
                 },
             }
@@ -986,6 +1046,8 @@ class ProcessGroup:
             stdout=output,
             stderr=subprocess.STDOUT,
             creationflags=flags,
+            # Its own process group (group id = its pid), so terminate() can end the whole
+            # tree with os.killpg(pid). Windows uses taskkill /T and the job object instead.
             start_new_session=sys.platform != "win32",
         )
         self.processes.append(process)
@@ -996,7 +1058,7 @@ class ProcessGroup:
         if process.poll() is not None:
             return
         if sys.platform == "win32":
-            subprocess.run(
+            subprocess.run(  # /T: with everything it started, /F: forced
                 ["taskkill", "/T", "/F", "/PID", str(process.pid)],
                 capture_output=True,
                 check=False,
@@ -1076,11 +1138,17 @@ class ModelServerWatchdog:
         self._thread.start()
 
     def _watch(self) -> None:
+        # Event.wait() returns True once stop() or restart_now() has set the event.
         while not self._stopped.wait(self.poll):
-            if self.process.poll() is not None and not self._restart():
-                return
+            if self.process.poll() is None:
+                continue  # still running
+            if not self._restart():
+                return  # gave up, or stop() came during the pause
 
     def _restart(self) -> bool:
+        """The server ended by itself: start it again after a pause that grows with each
+        restart. True: it runs again, keep watching. False: stop watching (``limit``
+        restarts within ``window``, it could not be started, or stop() during the pause)."""
         now = time.monotonic()
         self.restarts = [t for t in self.restarts if now - t < self.window]
         code = self.process.returncode
@@ -1099,7 +1167,7 @@ class ModelServerWatchdog:
         )
         self.restarting = True
         try:
-            if self._stopped.wait(self.backoff * len(self.restarts)):
+            if self._stopped.wait(self.backoff * len(self.restarts)):  # stop() during the pause
                 return False
             try:
                 self.process = self.group.start(self.command, self.log, self.cwd)
@@ -1165,6 +1233,8 @@ def _create_kill_on_close_job() -> Any:
         return None
     limits = ExtendedLimits()
     # BREAKAWAY_OK: apps Starlight opens for you (Notepad ...) may leave the job and stay.
+    # It only allows that: a program leaves only when it is started with
+    # CREATE_BREAKAWAY_FROM_JOB (modules/desktop start_app does); others end with the job.
     limits.BasicLimitInformation.LimitFlags = kill_on_close | breakaway_ok
     extended_limit_information = 9
     ok = kernel32.SetInformationJobObject(
@@ -1219,13 +1289,17 @@ def wait_for_model(
                 f"the model server stopped (exit code {process.returncode}). Last lines of "
                 f"{log}:\n{tail}"
             )
-        with (
-            contextlib.suppress(urllib.error.URLError, ConnectionError, TimeoutError, OSError),
-            _local_open(url, 5) as response,
-        ):
-            if response.status == 200:
-                ui.say(f"\r   model ready after {time.monotonic() - started:.0f} s".ljust(40))
-                return
+        try:
+            with _local_open(url, 5) as response:
+                ready = response.status == 200
+        except (OSError, http.client.HTTPException):
+            # Not listening yet, HTTPError 503 while loading (URLError, HTTPError and
+            # TimeoutError are all OSErrors), or a garbled answer while it starts.
+            ready = False
+        if ready:
+            # ljust: cover the longer "loading the model ..." line (see Ui.say)
+            ui.say(f"\r   model ready after {time.monotonic() - started:.0f} s".ljust(40))
+            return
         ui.waiting(f"   loading the model ... {time.monotonic() - started:4.0f} s")
         time.sleep(1)
     raise LauncherError(f"the model server did not become ready within {timeout:.0f} s")
@@ -1252,18 +1326,28 @@ def setup(settings: Settings, ui: Ui) -> Installed:
         remote = probe(settings.model_url)
     if first_run or (remote is not None):
         model_size = (remote.size or 0) if remote else 0
-        need = (1.6 * GB if first_run else 0) + (0.2 * GB if settings.use_model else 0) + model_size
+        # Only what will really be downloaded (see ensure_llama and ensure_voice).
+        llama = settings.use_model and (settings.update or not llama_binary(settings).is_file())
+        voice = voice_will_download(settings)
+        need = (
+            (FIRST_RUN_SIZE if first_run else 0)
+            + (LLAMA_SIZE if llama else 0)
+            + (VOICE_SIZE if voice else 0)
+            + model_size
+        )
         free = shutil.disk_usage(settings.root).free
         ui.say("Starlight will download and set up, inside " + str(settings.root) + ":")
         if first_run:
             ui.say("   - uv, Python 3.12 and Starlight's packages      ~1.3 GB")
             ui.say("   - the Chromium browser for web pages and logins ~0.3 GB")
-        if settings.use_model:
+        if llama:
             ui.say(f"   - the llama.cpp model server ({settings.variant})         ~0.2 GB")
+        if voice:
+            ui.say("   - speech input and output (whisper.cpp, Piper)  ~0.6 GB")
         if remote is not None:
             ui.say(f"   - the model {settings.model_file.name:<34} {model_size / GB:.1f} GB")
         ui.say(f"   Needed: about {need / GB:.1f} GB. Free on this drive: {free / GB:.1f} GB.")
-        if free < need + GB:
+        if free < need + SPARE_SPACE:
             raise LauncherError("not enough free disk space for the download")
         if not ui.ask("Continue?", default=True):
             raise LauncherError("cancelled; nothing was changed")
@@ -1320,14 +1404,18 @@ def run_checked(command: list[str], cwd: Path, ui: Ui | None = None) -> None:
         raise LauncherError(f"command failed ({returncode}): {' '.join(command)}")
 
 
+TESSERACT_EXE = Path(r"C:\Program Files\Tesseract-OCR\tesseract.exe")  # where its installer puts it
+
+
+def tesseract_found() -> bool:
+    """Tesseract is on the PATH or in its usual folder (the window asks the same)."""
+    return bool(shutil.which("tesseract")) or TESSERACT_EXE.exists()
+
+
 def maybe_tesseract(settings: Settings, ui: Ui) -> None:
     """Screen reading (OCR) is optional and needs an installer with administrator rights,
     so it is only offered, never installed silently."""
-    if (
-        os.name != "nt"
-        or shutil.which("tesseract")
-        or Path(r"C:\Program Files\Tesseract-OCR\tesseract.exe").exists()
-    ):
+    if os.name != "nt" or tesseract_found():
         return
     wanted = settings.tesseract
     if wanted is None:
@@ -1391,6 +1479,11 @@ def pick_gpu(entries: list[tuple[str, int | None]]) -> Gpu | None:
     return Gpu(name, vram)
 
 
+# The device class "Display adapters": one numbered subkey (0000, 0001 ...) per adapter
+# driver, next to a "Properties" key.
+DISPLAY_ADAPTERS = r"SYSTEM\CurrentControlSet\Control\Class\{4d36e968-e325-11ce-bfc1-08002be10318}"
+
+
 def detect_gpu() -> Gpu | None:
     """Name and video memory of the graphics card (Windows; from the driver's registry
     entries, which - unlike WMI's AdapterRAM - are right for cards over 4 GB)."""
@@ -1398,20 +1491,21 @@ def detect_gpu() -> Gpu | None:
         return None
     import winreg
 
-    base = r"SYSTEM\CurrentControlSet\Control\Class\{4d36e968-e325-11ce-bfc1-08002be10318}"
     entries: list[tuple[str, int | None]] = []
     try:
-        with winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, base) as root:
-            for index in range(32):
+        with winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, DISPLAY_ADAPTERS) as root:
+            for index in range(32):  # a cap; EnumKey raises OSError after the last subkey
                 try:
                     sub_name = winreg.EnumKey(root, index)
                 except OSError:
                     break
-                if not sub_name.isdigit():
+                if not sub_name.isdigit():  # "Properties"
                     continue
                 with contextlib.suppress(OSError), winreg.OpenKey(root, sub_name) as key:
                     name = str(winreg.QueryValueEx(key, "DriverDesc")[0])
                     vram: int | None = None
+                    # qwMemorySize (a QWORD, newer drivers) is right above 4 GB; MemorySize
+                    # (a DWORD or REG_BINARY bytes) is the older fallback.
                     for value in (
                         "HardwareInformation.qwMemorySize",
                         "HardwareInformation.MemorySize",
@@ -1464,9 +1558,6 @@ def save_choices(root: Path, choices: dict[str, Any], drop: tuple[str, ...] = ()
     part.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
     replace_file(part, path)
     return path
-
-
-VIEWER_PORT = 8765
 
 
 def chat_url() -> str:
@@ -1582,8 +1673,10 @@ class Services:
         status = fetch_json(f"{chat_url()}/api/status") if chat else None
         kill = None
         if status is not None:
-            engaged = (status.get("kill") or {}).get("engaged")
-            kill = bool(engaged) if engaged is not None else None
+            # /api/status (starlight/web/app.py): {"kill": {"engaged": bool, "reason": ...}}
+            kill_switch = status.get("kill") or {}
+            engaged = kill_switch.get("engaged")
+            kill = None if engaged is None else bool(engaged)
         return Status(
             model=model,
             model_detail=detail,
@@ -1637,6 +1730,7 @@ def start(settings: Settings, ui: Ui, installed: Installed, ask: str | None) -> 
                 group.start(starlight(uv, "viewer"), logs / "viewer.log", settings.root)
             ui.say(f"\nStatistics viewer: {viewer_url()}")
         if ask is not None:
+            # -y: approve every confirmation (nobody is there to answer in a one-shot run)
             result = subprocess.run(starlight(uv, "ask", "-y", ask), cwd=settings.root, check=False)
             return result.returncode
         if settings.both:
@@ -1678,7 +1772,11 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--version", action="version", version=f"Starlight launcher {VERSION}")
     parser.add_argument("-y", "--yes", action="store_true", help="do not ask; use defaults")
     parser.add_argument("--setup-only", action="store_true", help="install, then exit")
-    parser.add_argument("--ask", metavar="TEXT", help="one request, print the answer, exit")
+    parser.add_argument(
+        "--ask",
+        metavar="TEXT",
+        help="one request, print the answer, exit (actions that normally ask first are approved)",
+    )
     parser.add_argument("--update", action="store_true", help="download uv and llama.cpp again")
     parser.add_argument(
         "--rollback",
@@ -1751,9 +1849,16 @@ def relaunch_without_console() -> bool:
     window version, start a copy without one and let this one end (its console closes)."""
     if sys.platform != "win32" or not getattr(sys, "frozen", False):
         return False
-    if os.environ.get("STARLIGHT_NO_RELAUNCH"):
+    if os.environ.get("STARLIGHT_NO_RELAUNCH"):  # this is the copy
         return False
-    env = {**os.environ, "STARLIGHT_NO_RELAUNCH": "1", "PYINSTALLER_RESET_ENVIRONMENT": "1"}
+    env = {
+        **os.environ,
+        "STARLIGHT_NO_RELAUNCH": "1",  # so the copy does not start a copy of its own
+        # A PyInstaller onefile exe starting itself: the copy unpacks its own temporary _MEI
+        # folder instead of using ours, which is deleted when this process ends in a moment.
+        "PYINSTALLER_RESET_ENVIRONMENT": "1",
+    }
+    # No console for the copy, and not in the process group of this console (its Ctrl+C).
     flags = subprocess.CREATE_NO_WINDOW | subprocess.CREATE_NEW_PROCESS_GROUP
     try:
         subprocess.Popen(
@@ -1786,8 +1891,12 @@ def run_window(args: argparse.Namespace) -> int | None:
         import launcher_gui
     except ImportError:
         return None
+    # Before any ProcessGroup exists: on Windows it puts this process into a job that ends
+    # everything in it when this process ends, the copy included. --gui-selftest stays in
+    # this process, so the CI checks the window itself (its "gui ok" and exit code).
     if not args.gui_selftest and relaunch_without_console():
         return 0
+    # The module itself is handed over: in Starlight.exe it runs as __main__.
     return launcher_gui.run(sys.modules[__name__], args)
 
 
@@ -1798,6 +1907,8 @@ def main(argv: list[str] | None = None) -> int:
         if window_code is not None:
             return window_code
     ui = make_ui(args.yes)
+    # What the finally below sees: it stays 1 unless a branch sets it, so errors, Ctrl+C
+    # (which returns 130 = 128 + SIGINT) and unexpected exceptions all keep the window open.
     code = 1
     try:
         settings = load_settings(args)

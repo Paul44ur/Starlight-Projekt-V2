@@ -47,6 +47,8 @@ def confirmer_for(ui: UserIO) -> Confirmer:
     """Turn the user interface into the dispatcher's confirmation callback."""
 
     async def confirm(tool: Tool, args: dict[str, Any]) -> bool:
+        # modules/automations/module.py parses this exact wording ("Run <tool> with") to
+        # find the tool name: rewording it breaks approved automation steps.
         return await ui.confirm(f"Run {tool.qualified_name} with {args}?")
 
     return confirm
@@ -59,10 +61,36 @@ def channel_confirmer(fallback: Confirmer) -> Confirmer:
     async def confirm(tool: Tool, args: dict[str, Any]) -> bool:
         ui = current_ui.get()
         if ui is not None:
+            # Same wording as in confirmer_for: modules/automations/module.py parses it.
             return await ui.confirm(f"Run {tool.qualified_name} with {args}?")
         return await fallback(tool, args)
 
     return confirm
+
+
+def _last_user_index(history: list[Message]) -> int | None:
+    """Where the user's last message is in ``history``, or None if there is none."""
+    for index in range(len(history) - 1, -1, -1):
+        if history[index].role == "user":
+            return index
+    return None
+
+
+# Tool groups the core registers itself, not from a modules/ folder (so no module.yaml):
+# the names are MODULE in starlight/memory/service.py and starlight/skills/manager.py.
+# Their description and keywords for the tool router.
+BUILTIN_GROUPS: dict[str, tuple[str, list[str]]] = {
+    "memory": (
+        "Long-term memory: remember, recall and forget facts; the user's profile",
+        ["remember", "know", "profile", "forget", "tidy", "duplicates", "weißt"],
+    ),
+    "skills": ("Approved skills: how-tos learned from earlier tasks", ["skill"]),
+}
+
+# The heartbeat task's name. It runs for as long as the core does, so ``drain`` must not
+# wait for it (it would always cost the full timeout). Besides sampling the GPU it also
+# takes over as primary core, runs housekeeping and ends focus mode.
+HEARTBEAT_TASK = "gpu-heartbeat"
 
 
 class Kernel:
@@ -188,7 +216,8 @@ class Kernel:
         # turns so no exchange is lost from it.
         self.conversations = ConversationStore(self.paths.data / "conversations")
         self._histories: dict[str, list[Message]] = {}
-        self._taken_back: dict[str, tuple[int, list[Message]]] = {}  # see take_back
+        # conversation -> (length of the history left, the messages set aside): take_back
+        self._taken_back: dict[str, tuple[int, list[Message]]] = {}
         self._stamps: dict[str, tuple[int, int] | None] = {}  # file versions of _histories
         self._conversation_locks: dict[str, asyncio.Lock] = {}
         self._housekeeping_at = 0.0
@@ -205,16 +234,13 @@ class Kernel:
         return self.memory.profile.read() if self.config.memory.enabled else {}
 
     def _describe_module(self, name: str) -> tuple[str, list[str]]:
-        """A module's description and keywords, for the tool router."""
+        """A module's description and keywords, for the tool router. The core's own tool
+        groups (BUILTIN_GROUPS) have no module record; any other group (``tools``, the
+        router's own find tool) has none either and gets nothing."""
         record = self.modules.records.get(name)
         if record is None:
-            return {
-                "memory": (
-                    "Long-term memory: remember, recall and forget facts; the user's profile",
-                    ["remember", "know", "profile", "forget", "tidy", "duplicates", "weißt"],
-                ),
-                "skills": ("Approved skills: how-tos learned from earlier tasks", ["skill"]),
-            }.get(name, ("", []))
+            description, keywords = BUILTIN_GROUPS.get(name, ("", []))
+            return description, list(keywords)
         return record.manifest.description, record.manifest.keywords
 
     def set_ui(self, ui: UserIO) -> None:
@@ -265,7 +291,7 @@ class Kernel:
             self.bus.subscribe(event, self._refresh_router, owner="core")
         self.bus.subscribe("message.received", self._on_message, owner="core")
         await self._housekeeping()
-        self._spawn(self._heartbeat(), "gpu-heartbeat")
+        self._spawn(self._heartbeat(), HEARTBEAT_TASK)
         self._protect_secrets()
         await self._warmup()
         await self.modules.load_all()
@@ -514,7 +540,8 @@ class Kernel:
 
     @property
     def history(self) -> list[Message]:
-        """The current conversation's messages."""
+        """The current conversation's messages (there is always one: reading
+        ``conversations.current`` creates it if needed)."""
         return self._history_of(self.conversations.current)
 
     async def take_back(
@@ -524,21 +551,20 @@ class Kernel:
         that message again; returns it (with any pictures), or None if there is none. Only
         in memory: the file keeps the old exchange until a new answer is saved, so a crash
         or a stop loses nothing, and `put_back` restores it. ``expected``: the question the
-        caller means; if the last one is a different one (the page is behind, or another
-        window asked something since), ValueError."""
+        caller means (the start of it is enough); if the last one does not begin with it (the
+        page is behind, or another window asked something since), ValueError."""
         name = conversation or self.conversations.current
         lock = self._conversation_locks.setdefault(name, asyncio.Lock())
         async with lock:
             history = self._history_of(name)
-            last = next(
-                (i for i in range(len(history) - 1, -1, -1) if history[i].role == "user"), -1
-            )
-            if last < 0:
+            last = _last_user_index(history)
+            if last is None:
                 return None
             if expected is not None and not history[last].content.startswith(expected.strip()):
                 raise ValueError("the conversation changed since; open it again to see it")
-            self._histories[name] = history[:last]
-            self._taken_back[name] = (last, history[last:])
+            kept = history[:last]
+            self._histories[name] = kept
+            self._taken_back[name] = (len(kept), history[last:])
             return history[last]
 
     async def put_back(self, conversation: str | None = None) -> None:
@@ -549,7 +575,7 @@ class Kernel:
         async with lock:
             length, removed = self._taken_back.pop(name, (-1, []))
             history = self._history_of(name)
-            if removed and len(history) == length:
+            if removed and len(history) == length:  # still as take_back left it
                 self._histories[name] = [*history, *removed]
 
     def new_conversation(self, title: str = "") -> str:
@@ -584,8 +610,9 @@ class Kernel:
         await self.bus.publish("deliver", {"text": message, "title": title}, source=source)
 
     async def drain(self, timeout: float = 30.0) -> None:
-        """Wait for background work (memory writing, skill drafting) to finish."""
-        pending = [t for t in self._background if not t.get_name().startswith("gpu-")]
+        """Wait for background work (memory writing, skill drafting) to finish. Not for the
+        heartbeat: it never finishes."""
+        pending = [t for t in self._background if t.get_name() != HEARTBEAT_TASK]
         if pending:
             await asyncio.wait(pending, timeout=timeout)
         await self.bus.settle(timeout)

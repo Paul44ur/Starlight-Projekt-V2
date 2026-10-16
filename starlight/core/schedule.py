@@ -233,15 +233,16 @@ def parse_schedule(text: str) -> Schedule:
         seconds = amount * UNITS[interval.group(2)]
         if seconds < MIN_INTERVAL:
             raise ScheduleError("the shortest repeat is once a minute")
-        if seconds in (86400, 7 * 86400) and not interval.group(1):
-            pass  # "every day"/"every week" without a time: handled below
-        else:
+        # "every day" / "every week" with no count is a daily or weekly schedule that is
+        # missing its time: fall through, so the user is asked for one (not a 24 h interval).
+        if not (seconds in (UNITS["day"], UNITS["week"]) and not interval.group(1)):
             return Schedule("interval", seconds=seconds)
 
     # Work on whole words: removing "at" or "day" from inside a word would turn
     # "saturday" into "ur" and "tuesday" into "tues".
     words = re.sub(r"[,/&+]", " ", raw).split()
     monthly = "month" in words or "monthly" in words
+    weekly = "week" in words or "weekly" in words
     day_of_month: int | None = None
     weekdays: list[int] = []
     rest: list[str] = []
@@ -268,6 +269,9 @@ def parse_schedule(text: str) -> Schedule:
             "give a time, e.g. 'every day at 8:00', 'weekdays 7:30', 'monday 9am', "
             "'every 2 hours' or 'every month on the 1st at 9:00'"
         )
+    if weekly and not monthly and not weekdays:
+        # Without a day, "weekly at 9:00" would otherwise become every day at 9:00.
+        raise ScheduleError("say which day, e.g. 'every monday at 9:00' or 'weekly on friday 18:00'")
     hour, minute = clock
     if monthly:
         day = day_of_month or 1

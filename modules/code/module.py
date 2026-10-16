@@ -115,19 +115,20 @@ class CodeModule(Module):
         self, task: str, network: bool = False, max_attempts: int = 0
     ) -> dict[str, Any]:
         """Write a Python program with tests for a task, run the tests in the sandbox and
-        fix it until they pass (a few attempts at most). Asks first."""
+        fix it until they pass, at most `max_attempts` times (0: max_attempts from the
+        config, 4 as shipped). Asks first."""
         model = self.ctx.model_for("code")
         if model is None:
             raise RuntimeError("no model available for code")
         allowed = network or self.config.allow_network
-        attempts_left = max_attempts or self.config.max_attempts
+        attempts = max_attempts or self.config.max_attempts
         task_text = task + ("\n(Network access is allowed.)" if allowed else "")
         messages = [Message("system", SYSTEM), Message("user", task_text)]
         history: list[dict[str, Any]] = []
         solution: dict[str, Any] | None = None
         run: RunResult | None = None
 
-        for attempt in range(1, attempts_left + 1):
+        for attempt in range(1, attempts + 1):
             self.ctx.kill_switch.check()
             response = await model.chat(messages, [])
             messages.append(Message("assistant", response.content))
@@ -183,7 +184,8 @@ class CodeModule(Module):
         folder.mkdir(parents=True)
         for name, content in files.items():
             target = (folder / name).resolve()
-            if target.is_relative_to(folder.resolve()):
-                target.parent.mkdir(parents=True, exist_ok=True)
-                target.write_text(content, encoding="utf-8")
+            if not target.is_relative_to(folder.resolve()):
+                continue  # a name from the model that points outside ("../x"): never written
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_text(content, encoding="utf-8")
         return folder

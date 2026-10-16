@@ -7,7 +7,7 @@ modules that fit a request and sends their tools, plus:
 
 * tools named in the request (``!weather.now``, "use calendar.agenda")
 * the modules of tools used a moment ago in the same conversation (follow-up questions)
-* a few tools that are always there (memory, and ``tools.find``)
+* a few tools that are always there (memory, ``files.save`` and ``tools.find``)
 
 ``tools.find(need)`` lets the model ask for more when nothing it sees fits; what it finds
 is added for the rest of the request. Any registered tool can still be called.
@@ -36,6 +36,15 @@ from starlight.core.tools import Tool, make_tool
 FIND_TOOL = "tools.find"
 EMBED_RETRY = 300.0
 ALWAYS = ("memory.recall", "memory.remember", "files.save", FIND_TOOL)
+
+# Scoring constants:
+EMBED_NOISE_FLOOR = 0.1  # embedding similarity up to this counts as no match at all
+TOOL_SCORE_SHARE = 0.5  # how much of each tool's score adds to its module's score
+# Follow-up questions: modules of tools called in the last few turns of the conversation.
+RECENT_TURNS = 6
+MESSAGES_PER_TURN = 3  # rough: the request, an answer with tool calls, a tool result
+MAX_RECENT_MODULES = 3
+MAX_FOUND = 30  # tools.find returns at most this many, whatever limit it is given
 
 # Tools of the running request; tools.find adds to it (one set per request).
 active_tools: contextvars.ContextVar[set[str] | None] = contextvars.ContextVar(
@@ -240,7 +249,7 @@ class ToolRouter:
             for name, entry in entries.items():
                 if entry.vector is not None:
                     similarity = float(entry.vector @ vector)
-                    result[name] += max(0.0, similarity - 0.1)
+                    result[name] += max(0.0, similarity - EMBED_NOISE_FLOOR)
         return entries, result
 
     def module_scores(self, request: str) -> dict[str, float]:
@@ -280,7 +289,7 @@ class ToolRouter:
         best = {m: s for m, s in self.module_scores(request).items() if m in modules}
         for name, score in scores.items():
             module = entries[name].tool.module
-            best[module] = best.get(module, 0.0) + score / 2
+            best[module] = best.get(module, 0.0) + score * TOOL_SCORE_SHARE
         top = max(best.values(), default=0.0)
         floor = max(0.25, top * 0.4)  # only modules close to the best fit
         ranked = [m for m in sorted(best, key=lambda m: -best[m]) if best[m] >= floor]
@@ -293,14 +302,15 @@ class ToolRouter:
         return Selection(sorted(chosen), picked)
 
     @staticmethod
-    def _recent_modules(history: Iterable[Message], turns: int = 6) -> list[str]:
+    def _recent_modules(history: Iterable[Message], turns: int = RECENT_TURNS) -> list[str]:
+        """The modules of tools called in about the last ``turns`` turns, newest first."""
         modules: list[str] = []
-        for message in reversed(list(history)[-turns * 3 :]):
+        for message in reversed(list(history)[-turns * MESSAGES_PER_TURN :]):
             for call in message.tool_calls:
                 module = call.name.split(".", 1)[0]
                 if module not in modules:
                     modules.append(module)
-        return modules[:3]
+        return modules[:MAX_RECENT_MODULES]
 
     # -- the find tool -------------------------------------------------------------------
 
@@ -309,7 +319,7 @@ class ToolRouter:
             """Find more tools for a need (filled in from the loaded modules)."""
             entries, scores = await self._scored(need)
             ranked = sorted((s, n) for n, s in scores.items() if s > 0 and n != FIND_TOOL)
-            found = [n for _, n in reversed(ranked)][: max(1, min(limit, 30))]
+            found = [n for _, n in reversed(ranked)][: max(1, min(limit, MAX_FOUND))]
             active = active_tools.get()
             if active is not None:
                 active.update(found)

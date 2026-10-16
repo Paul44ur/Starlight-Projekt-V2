@@ -120,8 +120,11 @@ class SlidingWindowLimiter:
                     slot = Slot(now, pending=until_sent)
                     self._slots.append(slot)
                     return slot
-                done = [s.at for s in self._slots if not s.pending]
-                wait = self.window - (now - min(done)) + 0.001 if done else 0.01
+                sent = [s.at for s in self._slots if not s.pending]
+                if sent:  # the oldest sent request leaves the window then (+1 ms: really out)
+                    wait = self.window - (now - min(sent)) + 0.001
+                else:  # every slot allowed but not sent yet: nothing to time, look again soon
+                    wait = 0.01
                 await asyncio.sleep(max(wait, 0.001))
 
 
@@ -139,6 +142,9 @@ class _Host:
 
 
 MAX_HOSTS = 500  # sites whose robots.txt and pacing are remembered at once
+ROBOTS_TTL = 3600.0  # seconds a site's robots.txt is trusted (separate from http.cache_ttl)
+PURGE_EVERY_PUTS = 200  # the response cache tidies itself after this many new pages
+VACUUM_AFTER_ROWS = 50  # ... and compacts its file when a tidy removed at least this many
 
 _FINAL_URL = "x-starlight-final-url"  # stored with a cached page that was redirected
 
@@ -168,14 +174,15 @@ class ResponseCache:
         with self._lock:
             before = self._db.total_changes
             self._db.execute("DELETE FROM pages WHERE fetched < ?", (time.time() - self.MAX_AGE,))
-            # (rowid breaks ties: on Windows the clock ticks every ~15 ms)
+            # Every row after the newest MAX_ROWS (LIMIT -1 means no limit in SQLite; rowid
+            # breaks ties: on Windows the clock ticks every ~15 ms).
             self._db.execute(
                 "DELETE FROM pages WHERE url IN (SELECT url FROM pages "
                 "ORDER BY fetched DESC, rowid DESC LIMIT -1 OFFSET ?)",
                 (self.MAX_ROWS,),
             )
             removed = self._db.total_changes - before
-            if removed >= 50:
+            if removed >= VACUUM_AFTER_ROWS:  # give the space back to the disk
                 self._db.execute("VACUUM")
         return removed
 
@@ -208,7 +215,7 @@ class ResponseCache:
                 ),
             )
             self._puts += 1
-            due = self._puts % 200 == 0
+            due = self._puts % PURGE_EVERY_PUTS == 0
         if due:
             self.purge()
 
@@ -271,9 +278,13 @@ class PoliteHttp:
         if parts.scheme not in ("http", "https") or not parts.netloc:
             raise HttpError(f"not an http(s) URL: {url}")
         origin = f"{parts.scheme}://{parts.netloc}"
-        if origin not in self._hosts and len(self._hosts) >= MAX_HOSTS:
-            self._hosts.pop(next(iter(self._hosts)))  # the one contacted longest ago
-        return origin, self._hosts.setdefault(origin, _Host())
+        host = self._hosts.pop(origin, None)  # re-inserted below: the dict's order is by use
+        if host is None:
+            host = _Host()
+            if len(self._hosts) >= MAX_HOSTS:
+                self._hosts.pop(next(iter(self._hosts)))  # the one used longest ago
+        self._hosts[origin] = host
+        return origin, host
 
     async def _robots(self, origin: str, host: _Host) -> RobotFileParser:
         async with host.robots_lock:  # concurrent requests fetch robots.txt only once
@@ -287,8 +298,9 @@ class PoliteHttp:
             response = await self._send(
                 "GET", f"{origin}/robots.txt", host, self.config.per_domain_interval
             )
-            # RFC 9309: robots.txt that cannot be read for a 4xx reason (401 and 403
-            # included) means there are no rules for crawlers.
+            # Any answer but a success means no rules for crawlers. RFC 9309 says so for
+            # 4xx (401 and 403 included); for 5xx it asks crawlers to stay away, which
+            # Starlight does not do (nor for a request that failed, below).
             if response.ok:
                 parser.parse(response.text.splitlines())
             else:
@@ -296,7 +308,7 @@ class PoliteHttp:
         except httpx.HTTPError:
             parser.parse([])
         host.robots = parser
-        host.robots_until = time.monotonic() + 3600
+        host.robots_until = time.monotonic() + ROBOTS_TTL
         return parser
 
     async def _wait_turn(
@@ -415,6 +427,7 @@ class PoliteHttp:
     ) -> HttpResponse:
         """Make a request under every limit. Raises RobotsDisallowed or HttpError."""
         method = method.upper()
+        # The cache key is the URL alone, so a query given as params= is never cached.
         cacheable = method == "GET" and use_cache and not kwargs.get("params")
         if cacheable:
             cached = self.cache.get(url, self.config.cache_ttl)

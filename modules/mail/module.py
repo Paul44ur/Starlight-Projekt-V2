@@ -44,6 +44,8 @@ from starlight.core.model import Message as ChatMessage
 
 PASSWORD_KEY = "mail.password"
 CONNECT_TIMEOUT = 30  # seconds, for IMAP and SMTP alike
+WATCH_NEWEST = 50  # the watcher looks at this many of the newest unread messages
+REMEMBER_UIDS = 2000  # seen.json keeps the newest this many UIDs
 
 
 class Config(BaseModel):
@@ -175,7 +177,7 @@ class EmailModule(Module):
         not mark anything as read."""
         password = self._require()
         count = max(1, min(limit, 50))
-        messages = await asyncio.to_thread(self._imap_list, password, count, True)
+        messages = await asyncio.to_thread(self._imap_list, password, count, unseen=True)
         return {"count": len(messages), "messages": messages}
 
     @tool
@@ -184,7 +186,7 @@ class EmailModule(Module):
         spam. Nothing is marked as read."""
         password = self._require()
         count = max(1, min(limit, 40))
-        messages = await asyncio.to_thread(self._imap_list, password, count, True)
+        messages = await asyncio.to_thread(self._imap_list, password, count, unseen=True)
         if not messages:
             return {"count": 0, "summary": "No unread mail."}
         lines = [
@@ -265,16 +267,21 @@ class EmailModule(Module):
 
     async def check_new(self) -> list[dict[str, Any]]:
         """Look for unread mail not seen before; publish mail.new for each one, and tell
-        the user about mail from senders in notify_from. The first look only takes note
-        of what is there."""
+        the user about mail from senders in notify_from. The first look, and the first
+        after the server renumbered the mailbox, only take note of what is there."""
         if not (self.config.username and self.config.imap_host and self._password()):
             return []
         password = self._require()
         validity, unseen = await asyncio.to_thread(self._imap_unseen, password)
-        state = load_json(self.seen_file, {})  # {} (no file yet) is the first look
-        known = set(state.get("uids", [])) if state.get("validity") == validity else None
-        fresh = [] if known is None else [m for m in unseen if m["id"] not in known]
-        remembered = sorted({*(known or set()), *(m["id"] for m in unseen)}, key=int)[-2000:]
+        state = load_json(self.seen_file, {})
+        if state.get("validity") == validity:
+            known = set(state.get("uids", []))
+            fresh = [m for m in unseen if m["id"] not in known]
+        else:
+            # The first look ({}: no file yet), or UIDVALIDITY changed: the server renumbered
+            # the mailbox, so the saved UIDs mean nothing now. Only take note of what is there.
+            known, fresh = set(), []
+        remembered = sorted(known | {m["id"] for m in unseen}, key=int)[-REMEMBER_UIDS:]
         save_json(self.seen_file, {"validity": validity, "uids": remembered})
         for message in fresh:
             await self.ctx.publish("mail.new", dict(message))
@@ -322,8 +329,8 @@ class EmailModule(Module):
         return [u.decode() for u in (data[0].split() if data and data[0] else [])]
 
     @staticmethod
-    def _flags(client: imaplib.IMAP4_SSL, uids: list[str]) -> set[str]:
-        """Which of these UIDs are unread."""
+    def _unread_among(client: imaplib.IMAP4_SSL, uids: list[str]) -> set[str]:
+        """Which of these UIDs are unread (one UID SEARCH, not a FLAGS fetch per message)."""
         if not uids:
             return set()
         _, data = client.uid("SEARCH", None, f"UID {','.join(uids)} UNSEEN")  # type: ignore[arg-type]
@@ -333,11 +340,12 @@ class EmailModule(Module):
         client = self._imap_session(password)
         try:
             uids = self._uids(client, "UNSEEN" if unseen else "ALL")[-count:]
-            unread = set(uids) if unseen else self._flags(client, uids)
+            unread = set(uids) if unseen else self._unread_among(client, uids)
             messages: list[dict[str, Any]] = []
             for uid in reversed(uids):
                 # PEEK: reading never sets the "seen" flag. Unread mail: the start of the
-                # message too (headers and the first text), for a snippet.
+                # message too (headers and the first text), for a snippet - "<0.65536>" is
+                # an IMAP partial fetch of bytes 0 to 65535 (the first 64 KiB).
                 spec = "(BODY.PEEK[]<0.65536>)" if unseen else "(BODY.PEEK[HEADER])"
                 _, fetched = client.uid("FETCH", uid, spec)
                 parsed = message_from_bytes(_payload(fetched))
@@ -362,7 +370,7 @@ class EmailModule(Module):
             _, data = client.response("UIDVALIDITY")
             validity = data[0].decode() if data and isinstance(data[0], bytes) else ""
             messages = []
-            for uid in self._uids(client, "UNSEEN")[-50:]:
+            for uid in self._uids(client, "UNSEEN")[-WATCH_NEWEST:]:
                 _, fetched = client.uid(
                     "FETCH", uid, "(BODY.PEEK[HEADER.FIELDS (FROM SUBJECT DATE)])"
                 )
@@ -459,6 +467,7 @@ def _payload(fetched: Any) -> bytes:
 
 
 def _reply_subject(subject: str) -> str:
+    # Already a reply: "Re:", German "AW:" (Antwort) or Scandinavian "SV:" (Svar).
     return subject if re.match(r"(?i)\s*(re|aw|sv)\s*:", subject) else f"Re: {subject}"
 
 
