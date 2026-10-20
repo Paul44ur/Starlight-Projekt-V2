@@ -7,7 +7,7 @@
 <link rel="icon" href="/icon.svg" type="image/svg+xml" />
 <link rel="stylesheet" href="/style.css" />
 <style>
-  .setting { display: flex; gap: 4px; }
+  .setting { display: flex; flex-wrap: wrap; gap: 4px; }
   .setting button { padding: 3px 8px; font-size: 12px; }
   .setting button.sel { outline: 2px solid var(--accent); }
   td.name { font-family: ui-monospace, Consolas, monospace; font-size: 13px; }
@@ -19,7 +19,7 @@
 </head>
 <body>
 <header class="top">
-  <h1>⭐ Settings</h1><span class="spacer"></span>
+  <h1><img class="logo" src="/icon.svg" alt="" width="22" height="22" />Settings</h1><span class="spacer"></span>
   <nav><a href="/">Chat</a><a href="/memory">Memory</a></nav>
   <button id="theme" class="icon" onclick="cycleTheme()">◐</button>
 </header>

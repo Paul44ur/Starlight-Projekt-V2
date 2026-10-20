@@ -15,6 +15,8 @@
   }
 }
 * { box-sizing: border-box; }
+/* The hidden attribute must win over the display set by a class (.pill below). */
+[hidden] { display: none !important; }
 html, body { height: 100%; }
 body { margin: 0; font: 15px/1.5 -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
        background: var(--bg); color: var(--text); }
@@ -38,14 +40,18 @@ input[type=text], input[type=search], input[type=password], textarea, select {
 .pill.warn { color: #2b1d00; background: var(--warn); border-color: var(--warn); }
 .dim { color: var(--dim); }
 .small { font-size: 13px; }
-header.top { display: flex; align-items: center; gap: 10px; padding: 10px 14px;
-             border-bottom: 1px solid var(--border); background: var(--panel); }
-header.top h1 { font-size: 16px; margin: 0; font-weight: 700; white-space: nowrap; }
+/* The bar wraps on a narrow screen, so every button stays on screen. */
+header.top { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; row-gap: 6px;
+             padding: 10px 14px; border-bottom: 1px solid var(--border); background: var(--panel); }
+header.top h1 { display: flex; align-items: center; gap: 8px; font-size: 16px; margin: 0;
+                font-weight: 700; white-space: nowrap; }
+img.logo { width: 22px; height: 22px; flex: none; border-radius: 6px; }
 header.top .spacer { flex: 1; }
 header.top nav { display: flex; gap: 12px; font-size: 14px; }
 .page { max-width: 980px; margin: 0 auto; padding: 18px 16px 60px; }
+/* A wide table scrolls inside its card instead of pushing the whole page sideways. */
 .card { background: var(--panel); border: 1px solid var(--border); border-radius: 12px;
-        padding: 14px 16px; margin: 14px 0; }
+        padding: 14px 16px; margin: 14px 0; overflow-x: auto; }
 .card h2 { font-size: 15px; margin: 0 0 10px; }
 table { width: 100%; border-collapse: collapse; font-size: 14px; }
 td, th { text-align: left; padding: 6px 8px; border-bottom: 1px solid var(--border); vertical-align: top; }

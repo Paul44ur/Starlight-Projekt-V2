@@ -241,10 +241,7 @@ class App:
         self._init_fonts()
         self._init_style()
         self._build_header()
-        self.body = ttk.Frame(
-            self.root, padding=(self.px(28), self.px(18), self.px(28), self.px(18))
-        )
-        self.body.pack(fill="both", expand=True)
+        self._build_scroller()
         self.body.columnconfigure(0, weight=1)
         self.body.rowconfigure(0, weight=1)
         self._build_setup()
@@ -271,12 +268,73 @@ class App:
         root.configure(bg=self.c.bg)
         with contextlib.suppress(tk.TclError):
             root.iconphoto(True, tk.PhotoImage(data="".join(ICON_PNG)))
-        width, height = self.px(820), self.px(700)
-        root.minsize(self.px(720), self.px(600))
+        # Never bigger than the screen: a scaled laptop screen would hide the buttons at the
+        # bottom. The title bar and the taskbar take about 100 px; the pages scroll instead.
+        width = min(self.px(820), root.winfo_screenwidth() - 40)
+        height = min(self.px(700), root.winfo_screenheight() - 100)
+        root.minsize(min(self.px(720), width), min(self.px(600), height))
         x = max((root.winfo_screenwidth() - width) // 2, 0)
         y = max((root.winfo_screenheight() - height) // 3, 0)
         root.geometry(f"{width}x{height}+{x}+{y}")
         root.protocol("WM_DELETE_WINDOW", self.quit_app)
+
+    def _build_scroller(self) -> None:
+        """The pages sit in a canvas with a scrollbar that shows only when a page is taller
+        than the window, so the buttons at the bottom of a page stay reachable."""
+        holder = ttk.Frame(self.root)
+        holder.pack(fill="both", expand=True)
+        holder.columnconfigure(0, weight=1)
+        holder.rowconfigure(0, weight=1)
+        self.scroller = tk.Canvas(holder, bg=self.c.bg, highlightthickness=0, borderwidth=0)
+        self.scroller.grid(row=0, column=0, sticky="nsew")
+        self.scrollbar = ttk.Scrollbar(holder, orient="vertical", command=self.scroller.yview)
+        self.scroller.configure(yscrollcommand=self.scrollbar.set)
+        self.scrollbar.grid(row=0, column=1, sticky="ns")
+        self.scrollbar.grid_remove()
+        self._scrollable = False
+        self.body = ttk.Frame(
+            self.scroller, padding=(self.px(28), self.px(18), self.px(28), self.px(18))
+        )
+        self.body_item = self.scroller.create_window(0, 0, window=self.body, anchor="nw")
+        self.scroller.bind("<Configure>", self._fit_body)
+        self.body.bind("<Configure>", self._fit_body)
+        for sequence in ("<MouseWheel>", "<Button-4>", "<Button-5>"):
+            self.root.bind_all(sequence, self._scroll_wheel)
+
+    def _fit_body(self, _event: object = None) -> None:
+        """The page is as wide as the window and as tall as the window or its content, and the
+        scrollbar shows only when the content is taller than the window."""
+        window_height = self.scroller.winfo_height()
+        content = self.body.winfo_reqheight()
+        self.scroller.itemconfigure(
+            self.body_item, width=self.scroller.winfo_width(), height=max(window_height, content)
+        )
+        self.scroller.configure(
+            scrollregion=(0, 0, self.scroller.winfo_width(), max(window_height, content))
+        )
+        scrollable = content > window_height
+        if scrollable != self._scrollable:
+            self._scrollable = scrollable
+            if scrollable:
+                self.scrollbar.grid()
+            else:
+                self.scrollbar.grid_remove()
+
+    def _check_layout(self) -> None:
+        """Re-check the fit every 200 ms: a label that grew (say, the graphics card's name)
+        makes the page taller, and a resize is not the only thing that changes it."""
+        if self.exited:
+            return
+        self._fit_body()
+        self.root.after(200, self._check_layout)
+
+    def _scroll_wheel(self, event: tk.Event[tk.Misc]) -> None:
+        """Scroll the page with the mouse wheel. Text boxes scroll themselves, and a page that
+        fits is not scrolled."""
+        if not self._scrollable or isinstance(event.widget, tk.Text):
+            return
+        up = event.num == 4 or (event.num != 5 and event.delta > 0)
+        self.scroller.yview_scroll(-1 if up else 1, "units")
 
     def _init_fonts(self) -> None:
         family = (
@@ -1253,6 +1311,7 @@ class App:
                 self.root.after(60, self._pump)
 
     def run(self) -> int:
+        self._check_layout()
         if self.fatal:
             self.on_error(self.fatal)
         elif self.needs_setup_page():
