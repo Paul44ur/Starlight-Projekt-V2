@@ -250,7 +250,7 @@ class WhatsAppModule(Module):
         if message_id in self.seen:
             return  # Meta retries deliveries; act once
         self.seen[message_id] = None
-        while len(self.seen) > 500:
+        while len(self.seen) > 500:  # the latest 500 ids are plenty to catch Meta's retries
             self.seen.popitem(last=False)
 
         sender = digits(str(message.get("from", "")))
@@ -270,7 +270,7 @@ class WhatsAppModule(Module):
 
         command = text.lower().split()[0] if text.startswith("/") else ""
         if command == "/kill":
-            reason = text[5:].strip() or "WhatsApp /kill"
+            reason = text[len("/kill") :].strip() or "WhatsApp /kill"  # what follows the word
             self.ctx.kill_switch.trigger(reason, source="whatsapp")
             await self.send("Kill switch engaged. Everything is stopped.")
             return
@@ -348,4 +348,10 @@ class WhatsAppModule(Module):
     @tool
     async def send_to_me(self, text: str) -> str:
         """Send a WhatsApp message to the owner's phone (only that number)."""
-        return "Sent." if await self.send(text) else "Not sent: WhatsApp is not configured."
+        if await self.send(text):
+            return "Sent."
+        # send() says why in the log: not set up, no token in the vault, or Meta refused it
+        return (
+            "Not sent: WhatsApp is not set up, its token is missing from the vault, or Meta "
+            "refused the message (see the log)."
+        )

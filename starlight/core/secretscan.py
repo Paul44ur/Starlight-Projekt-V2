@@ -11,6 +11,8 @@ from collections.abc import Iterable
 from dataclasses import dataclass
 from pathlib import Path
 
+from starlight.core.logging import MIN_SECRET_CHARS, REDACTED
+
 PATTERNS: dict[str, re.Pattern[str]] = {
     "private key": re.compile(r"-----BEGIN [A-Z ]*PRIVATE KEY-----"),
     "bearer token": re.compile(r"\bBearer\s+[A-Za-z0-9._~+/=-]{20,}"),
@@ -18,8 +20,10 @@ PATTERNS: dict[str, re.Pattern[str]] = {
     "GitHub token": re.compile(r"\bgh[pousr]_[A-Za-z0-9]{30,}"),
     "API key (sk-)": re.compile(r"\bsk-[A-Za-z0-9_-]{20,}"),
     "AWS access key": re.compile(r"\bAKIA[0-9A-Z]{16}\b"),
+    # "password: hunter22", "token=abc..." -- but not a value the log already masked
     "password in text": re.compile(
-        r"(?i)\b(password|passwd|pwd|secret|api[_-]?key|token)\b\"?\s*[:=]\s*\"?(?!\*\*\*)[^\s\",}]{6,}"
+        r"(?i)\b(password|passwd|pwd|secret|api[_-]?key|token)\b\"?\s*[:=]\s*\"?"
+        rf"(?!{re.escape(REDACTED)})[^\s\",}}]{{{MIN_SECRET_CHARS},}}"
     ),
 }
 
@@ -32,7 +36,7 @@ class Finding:
 
 
 def scan_text(text: str, secrets: Iterable[str] = ()) -> list[tuple[int, str]]:
-    known = [s for s in secrets if s and len(s) >= 6]
+    known = [s for s in secrets if s and len(s) >= MIN_SECRET_CHARS]
     found: list[tuple[int, str]] = []
     for number, line in enumerate(text.splitlines(), 1):
         if any(secret in line for secret in known):

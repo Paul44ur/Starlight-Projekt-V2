@@ -66,6 +66,8 @@ class Banner:
             )
             label.pack()
             root.withdraw()
+            # The hide deadline travels from one poll to the next in a one-item list (a
+            # mutable box for the after() callbacks); 0.0 means no hide is pending.
             root.after(100, self._poll, root, label, [0.0])
             root.mainloop()
         finally:

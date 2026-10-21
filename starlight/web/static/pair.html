@@ -19,6 +19,7 @@
   <h1><img class="logo" src="/icon.svg" alt="" width="22" height="22" />Starlight</h1>
   <p class="dim">This device isn't paired yet. On your PC, open Starlight's <b>Settings</b> and press
     <b>Show a pairing code</b> (or run <code>starlight remote pair</code>), then enter the code here.</p>
+  <!-- 6 digits, as starlight/web/auth.py Devices.new_code makes them -->
   <input id="code" inputmode="numeric" autocomplete="one-time-code" maxlength="6" placeholder="000000" />
   <input id="name" type="text" placeholder="Name for this device (e.g. My phone)" />
   <button id="go" class="ok">Pair</button>

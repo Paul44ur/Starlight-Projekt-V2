@@ -34,6 +34,8 @@ class CoreLock:
             if sys.platform == "win32":
                 import msvcrt
 
+                # msvcrt.locking locks bytes from the current position, and "a+" opens at
+                # the end: every process must lock (and unlock) the same byte, byte 0.
                 handle.seek(0)
                 msvcrt.locking(handle.fileno(), msvcrt.LK_NBLCK, 1)
             else:
@@ -53,7 +55,7 @@ class CoreLock:
             if sys.platform == "win32":
                 import msvcrt
 
-                self._file.seek(0)
+                self._file.seek(0)  # the byte acquire() locked
                 msvcrt.locking(self._file.fileno(), msvcrt.LK_UNLCK, 1)
             else:
                 import fcntl

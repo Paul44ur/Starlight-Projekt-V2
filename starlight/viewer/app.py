@@ -1,5 +1,20 @@
 """The viewer's web app: a dashboard page, a JSON API and Prometheus metrics.
-It opens stats.db read-only and never writes anything."""
+It opens stats.db read-only and never writes anything.
+
+The metric names below are written elsewhere (``stats.record(name, ...)``):
+
+* core.heartbeat, core.stopped: core/kernel.py
+* gpu.*: core/kernel.py, models/bench.py
+* errors (label source): core/kernel.py, core/agent.py
+* tasks.completed, model.tokens_per_second: core/agent.py - the second is built there as
+  f"model.{key}", so searching for its full name finds only this file
+* tool.calls (labels module, tool, ok): core/dispatcher.py
+* web.requests: core/http.py
+* memory.entries: memory/service.py; skills.count (label status): skills/manager.py
+* model.bench.*: models/bench.py; whatsapp.received: modules/whatsapp
+
+Existing stats.db files hold these names: never rename one.
+"""
 
 from __future__ import annotations
 
@@ -16,6 +31,8 @@ HEARTBEAT_STALE = 120  # seconds without a heartbeat = the core is not running
 
 
 def bucket_for(minutes: int) -> int:
+    """Seconds per chart point for a time range of ``minutes``: one minute for up to an
+    hour, 15 minutes for up to a day, two hours beyond (sent to the page as bucket_seconds)."""
     if minutes <= 60:
         return 60
     if minutes <= 24 * 60:
@@ -47,13 +64,17 @@ class StatsReader:
         rows = self._rows(sql, params)
         return rows[0][0] if rows and rows[0] else None
 
-    def count(self, name: str, since: float, where: str = "", params: tuple[Any, ...] = ()) -> int:
-        sql = f"SELECT COALESCE(SUM(value), 0) FROM metrics WHERE name = ? AND ts >= ? {where}"
+    def count(
+        self, name: str, since: float, and_sql: str = "", params: tuple[Any, ...] = ()
+    ) -> int:
+        """The sum of ``name`` since ``since``. ``and_sql`` is more SQL for the WHERE clause,
+        starting with AND (e.g. "AND json_extract(labels, '$.ok') = 0"), ``params`` its values."""
+        sql = f"SELECT COALESCE(SUM(value), 0) FROM metrics WHERE name = ? AND ts >= ? {and_sql}"
         return int(self._one(sql, (name, since, *params)) or 0)
 
-    def latest(self, name: str, where: str = "", params: tuple[Any, ...] = ()) -> float | None:
-        sql = f"SELECT value FROM metrics WHERE name = ? {where} ORDER BY ts DESC LIMIT 1"
-        value = self._one(sql, (name, *params))
+    def latest(self, name: str) -> float | None:
+        sql = "SELECT value FROM metrics WHERE name = ? ORDER BY ts DESC LIMIT 1"
+        value = self._one(sql, (name,))
         return float(value) if value is not None else None
 
     def series(self, name: str, since: float, bucket: int, how: str = "AVG") -> list[list[float]]:
@@ -71,6 +92,8 @@ class StatsReader:
         bucket = bucket_for(minutes)
         heartbeat = self._one("SELECT MAX(ts) FROM metrics WHERE name = 'core.heartbeat'")
         stopped_at = self._one("SELECT MAX(ts) FROM metrics WHERE name = 'core.stopped'")
+        # A core.stopped at or after the last heartbeat: the core shut down cleanly, so it is
+        # not running even if that heartbeat is still recent.
         if heartbeat and stopped_at and float(stopped_at) >= float(heartbeat):
             heartbeat_fresh = False
         else:
@@ -105,6 +128,7 @@ class StatsReader:
             "WHERE name = 'web.requests' AND ts >= ? GROUP BY CAST(ts AS INTEGER))",
             (since,),
         )
+        # For each status, the value of its newest skills.count point.
         skills = {
             str(status): int(value)
             for status, value in self._rows(

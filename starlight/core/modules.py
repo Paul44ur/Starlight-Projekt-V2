@@ -54,13 +54,19 @@ NAME_PATTERN = r"^[a-z][a-z0-9_]*$"
 
 # Programs a module starts for you (e.g. Notepad) keep running when the module reloads or
 # Starlight stops; their handles live here, outside any module, for the whole process.
+# (A Popen dropped while its program still runs makes Python warn "subprocess N is still
+# running"; poll() collects the exit status of the ones that ended, and they are let go.)
 _KEPT: list[subprocess.Popen[bytes]] = []
 
 
 def keep_running(process: subprocess.Popen[bytes]) -> None:
-    _KEPT[:] = [p for p in _KEPT if p.poll() is None] + [process]
+    still_running = [p for p in _KEPT if p.poll() is None]
+    _KEPT.clear()
+    _KEPT.extend([*still_running, process])
 
 
+# Start of ModuleRecord.error for a module in a dependency cycle. The text doubles as the
+# mark: load_order() sets and clears it, and _load() refuses a module that carries it.
 CYCLE = "dependency cycle: "
 
 
@@ -263,7 +269,9 @@ class ModuleContext:
             await run()
 
         task = asyncio.create_task(runner(), name=f"{self.name}:{name}")
-        self.tasks[:] = [t for t in self.tasks if not t.done()] + [task]
+        still_running = [t for t in self.tasks if not t.done()]
+        self.tasks.clear()
+        self.tasks.extend([*still_running, task])
         return task
 
     def every(
@@ -294,7 +302,8 @@ class ModuleContext:
         return self.background(loop, name, primary_only)
 
     async def stop_background(self) -> None:
-        tasks, self.tasks[:] = list(self.tasks), []
+        tasks = list(self.tasks)
+        self.tasks.clear()
         for task in tasks:
             task.cancel()
         for task in tasks:
@@ -470,6 +479,12 @@ def _ensure_package(name: str, path: Path | None) -> None:
             raise
 
 
+# The .pyc header (PEP 552): 4 bytes magic number, then a 32-bit little-endian flags word.
+PYC_FLAGS = slice(4, 8)
+PYC_HASH_BASED = 0b01  # checked by the source's hash, not by its time and size
+PYC_CHECK_SOURCE = 0b10  # (hash-based only) the hash is compared with the source on import
+
+
 def _hash_checked_bytecode(path: Path) -> None:
     """Make the module's cached bytecode checked against the source's hash.
 
@@ -487,11 +502,11 @@ def _hash_checked_bytecode(path: Path) -> None:
             return
         try:
             with cached.open("rb") as f:
-                header = f.read(8)
-            flags = int.from_bytes(header[4:8], "little")
+                header = f.read(PYC_FLAGS.stop)
+            flags = int.from_bytes(header[PYC_FLAGS], "little")
         except OSError:
             flags = 0
-        if flags == 0b11:  # hash-based and checked
+        if flags == PYC_HASH_BASED | PYC_CHECK_SOURCE:
             continue
         with contextlib.suppress(OSError, py_compile.PyCompileError):
             py_compile.compile(
@@ -560,7 +575,11 @@ class ModuleManager:
                 del self.records[name]
 
     def load_order(self) -> list[str]:
-        """Dependencies first. Cycles are reported as failures, not loaded."""
+        """Dependencies first. Cycles are reported as failures, not loaded: this also marks
+        each module found in a dependency cycle (``record.error`` starting with CYCLE, old
+        marks cleared first), and ``_load`` refuses a marked module. So call it before
+        ``_load`` whenever the records may have changed, even when the order is not needed.
+        """
         order: list[str] = []
         visiting: set[str] = set()
         for record in self.records.values():  # found again below if it is still there
@@ -623,7 +642,7 @@ class ModuleManager:
                 raise KeyError(f"no module named '{name}' in {self.paths.modules}")
         if record.status is ModuleStatus.LOADED:
             return record
-        if record.error and record.error.startswith(CYCLE):
+        if record.error and record.error.startswith(CYCLE):  # marked by load_order()
             return self._fail(record, record.error)
 
         missing = [
@@ -729,7 +748,7 @@ class ModuleManager:
     async def enable(self, name: str) -> ModuleRecord:
         async with self._lock:
             self.state.set(name, True)
-            self.load_order()
+            self.load_order()  # marks dependency cycles for _load (the order is not needed)
             return await self._load(name)
 
     async def disable(self, name: str) -> None:

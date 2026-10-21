@@ -105,7 +105,9 @@ class CertsModule(Module):
 
     @tool
     async def expiring(self, days: int = 0) -> dict[str, Any]:
-        """Which of your servers' certificates expire within `days` days (default 30)."""
+        """Which of your servers' certificates expire within `days` days (0: default_warn_days
+        from the config, 30 as shipped), including ones that have already expired. Servers
+        that could not be reached are listed under `unreachable`."""
         within = days or self.config.default_warn_days
         results = await self._check_configured()
         soon = [

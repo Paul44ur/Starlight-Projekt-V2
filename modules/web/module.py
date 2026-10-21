@@ -28,6 +28,8 @@ JS_HINTS = (
 
 
 TEXT_TYPES = ("text/", "json", "xml", "javascript", "csv", "yaml")
+MIN_PAGE_CHARS = 200  # a page with less text than this is probably built by JavaScript
+MAX_FETCH_MANY = 50  # fetch_many reads at most this many URLs
 
 
 def is_text(content_type: str) -> bool:
@@ -105,7 +107,8 @@ class WebModule(Module):
     @tool
     async def fetch(self, url: str, render_js: bool = False, max_chars: int = 0) -> dict[str, Any]:
         """Read a web page as text. Set render_js only for pages that need JavaScript."""
-        return await self._fetch(url, render_js, max_chars, self.config.respect_robots_on_fetch)
+        robots = self.config.respect_robots_on_fetch
+        return await self._fetch(url, render_js=render_js, max_chars=max_chars, robots=robots)
 
     async def _fetch(
         self, url: str, render_js: bool, max_chars: int, robots: bool
@@ -125,10 +128,13 @@ class WebModule(Module):
                 "url": response.url,
                 "status": response.status,
                 "content_type": content_type.split(";")[0],
+                # About the size: the shared client keeps only the body decoded as text (and
+                # at most max_response_bytes of it), so this is not the exact byte count.
                 "bytes": len(response.text.encode(errors="replace")),
                 "note": "not a text page; content not shown",
             }
-        if "html" not in content_type and content_type:
+        # JSON, XML, CSV ... go back as they are; HTML (or no content-type at all) as text.
+        if content_type and "html" not in content_type:
             return {
                 "url": response.url,
                 "status": response.status,
@@ -161,7 +167,7 @@ class WebModule(Module):
     @staticmethod
     def _needs_js(text: str) -> bool:
         lowered = text.lower()
-        return len(text) < 200 or any(h in lowered for h in JS_HINTS)
+        return len(text) < MIN_PAGE_CHARS or any(h in lowered for h in JS_HINTS)
 
     async def _render(self, url: str, limit: int, robots: bool | None = None) -> dict[str, Any]:
         context = await self.browser.new_context()
@@ -186,16 +192,19 @@ class WebModule(Module):
 
     @tool
     async def fetch_many(self, urls: list[str], max_chars_each: int = 2000) -> list[dict[str, Any]]:
-        """Read several pages (for research). Requests are spread out to stay polite."""
+        """Read several pages (for research), at most 50. Requests are spread out to stay
+        polite."""
 
         async def one(url: str) -> dict[str, Any]:
             try:
                 # Crawling several pages always follows robots.txt.
-                return await self._fetch(url, False, max_chars_each, True)
+                return await self._fetch(
+                    url, render_js=False, max_chars=max_chars_each, robots=True
+                )
             except HttpError as exc:
                 return {"url": url, "error": str(exc)}
 
-        return list(await asyncio.gather(*(one(u) for u in urls[:50])))
+        return list(await asyncio.gather(*(one(u) for u in urls[:MAX_FETCH_MANY])))
 
     @tool
     async def links(self, url: str, same_site: bool = True) -> list[str]:

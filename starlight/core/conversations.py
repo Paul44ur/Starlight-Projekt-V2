@@ -82,7 +82,9 @@ class ConversationStore:
 
     @property
     def current(self) -> str:
-        """The conversation the terminal and a fresh browser page continue."""
+        """The conversation the terminal and a fresh browser page continue. Reading it
+        creates a new, empty conversation (and makes it current) when none is set or the
+        saved one was deleted."""
         with contextlib.suppress(OSError):
             found = (self.folder / CURRENT).read_text("utf-8").strip()
             if ID.match(found) and self._file(found).exists():
@@ -169,7 +171,7 @@ class ConversationStore:
         """The conversations, newest first. A file that did not change since the last call
         is not read again (unless searching, which looks into the messages): the page asks
         after every answer. Another program may write the files, so the key is the file's own
-        time, size and inode, as in ``stamp``."""
+        modification time, size and inode (``stamp`` uses time and size only)."""
         wanted = search.strip().casefold()
         found: list[dict[str, Any]] = []
         if not self.folder.is_dir():

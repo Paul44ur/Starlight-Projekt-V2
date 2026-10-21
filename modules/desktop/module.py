@@ -71,7 +71,7 @@ class Config(BaseModel):
     vision: ModelConfig | None = None  # e.g. {provider: ollama, options: {model: qwen2.5vl:7b}}
     vision_max_side: int = 1280  # screenshots are scaled down before the vision model
     # Screenshots never leave this computer. Set true to allow a vision model on another
-    # machine in your home network (10.x, 172.16-31.x, 192.168.x).
+    # machine in your home network (10.x, 172.16-31.x, 192.168.x, IPv6 fd00::/8).
     vision_allow_lan: bool = False
     ocr_languages: str = "eng"  # e.g. "eng+deu" (install the German Tesseract data)
     ocr_command: str = ""  # path to tesseract.exe if not on PATH
@@ -99,6 +99,10 @@ def start_app(command: list[str]) -> subprocess.Popen[bytes]:
 def is_local_url(url: str, allow_lan: bool = False) -> bool:
     """True if ``url`` points at this machine (or, with allow_lan, your home network)."""
     host = urlsplit(url).hostname or ""
+    # A URL without a host also counts as local. urlsplit finds no host in an empty URL,
+    # and none in an address written without "http://" either ("192.168.1.5:11434"), so
+    # such an address passes here; it is only the model client (httpx), which refuses a
+    # URL without a scheme, that keeps the screenshot from being sent there.
     if host in ("localhost", ""):
         return True
     try:
@@ -114,12 +118,21 @@ def is_local_url(url: str, allow_lan: bool = False) -> bool:
     return allow_lan and any(address in net for net in lan)
 
 
+# How "did the action change the screen?" is measured: both screenshots shrunk to a small
+# grey picture (cheap, and it blurs away noise), a pixel counts as changed when its grey
+# value moved by more than PIXEL_DELTA of 255, and the screen as changed when more than
+# CHANGED_SHARE of the pixels did (0.0005 of 320x180: about 29 pixels).
+THUMBNAIL = (320, 180)
+PIXEL_DELTA = 16
+CHANGED_SHARE = 0.0005
+
+
 def change_ratio(before: Image.Image, after: Image.Image) -> float:
     """Share of pixels that changed noticeably between two screenshots."""
-    size = (320, 180)
-    a = np.asarray(before.convert("L").resize(size), dtype=np.int16)
-    b = np.asarray(after.convert("L").resize(size), dtype=np.int16)
-    return float((np.abs(a - b) > 16).mean())
+    # int16: the uint8 grey values would wrap around when subtracted
+    a = np.asarray(before.convert("L").resize(THUMBNAIL), dtype=np.int16)
+    b = np.asarray(after.convert("L").resize(THUMBNAIL), dtype=np.int16)
+    return float((np.abs(a - b) > PIXEL_DELTA).mean())
 
 
 class DesktopModule(Module):
@@ -286,7 +299,7 @@ class DesktopModule(Module):
         ratio = change_ratio(before, after)
         result: dict[str, Any] = {
             "done": True,
-            "screen_changed": ratio > 0.0005,
+            "screen_changed": ratio > CHANGED_SHARE,
             "change": round(ratio, 4),
         }
         if expect_text:
@@ -412,7 +425,8 @@ class DesktopModule(Module):
         keep_running(start_app(command))
         time.sleep(max(1.5, self.config.settle))
         ratio = change_ratio(before, self.screen.capture())
-        return {"started": name, "screen_changed": ratio > 0.0005, "change": round(ratio, 4)}
+        changed = ratio > CHANGED_SHARE
+        return {"started": name, "screen_changed": changed, "change": round(ratio, 4)}
 
     @tool(permission=Permission.CONFIRM)
     def move_mouse(self, x: int, y: int, relative: bool = False) -> dict[str, Any]:

@@ -3,7 +3,9 @@
 A rule has a trigger - a schedule ("weekdays 7:30", "every 2 hours") or an event
 ("network.server_down", "calendar.soon", optionally with a condition) - and actions:
 run a tool, ask the assistant something, or send you a message. Results flow from one
-action to the next as {result}; event fields are {event.<field>}.
+action to the next as {result}; event fields are {event.<field>}. {event.name} is the
+event's name, unless the event carries a field called "name" of its own (backup.done
+does): then it is that field.
 
 Safety:
 - every action goes through the dispatcher: permission rules, the kill switch and the
@@ -42,7 +44,11 @@ MAX_TEXT = 4000
 HISTORY_KEEP = 500
 GRACE = timedelta(minutes=10)  # a run missed by less than this (sleep, restart) still happens
 
-_running: ContextVar[int] = ContextVar("automation_depth", default=0)
+# How deeply automations are nested right now: a rule's tool published an event that
+# started another rule. The bus calls _on_event synchronously in the publishing tool's
+# context, and asyncio.create_task copies that context, so a run started from there sees
+# the depth of the run that caused it.
+_depth: ContextVar[int] = ContextVar("automation_depth", default=0)
 
 
 class Action(BaseModel):
@@ -157,6 +163,9 @@ class AutomationUI:
         self.step_tool: str | None = None  # the tool step running now (None in "ask" steps)
 
     async def confirm(self, question: str) -> bool:
+        # The dispatcher asks "Run <tool> with <args>?" (starlight/core/kernel.py:
+        # confirmer_for and channel_confirmer); the tool name is read back from that text.
+        # Any other question is a tool's own confirmation and is refused.
         match = re.match(r"Run (\S+) with", question)
         name = match.group(1) if match else None
         if name is not None and (
@@ -235,6 +244,7 @@ class AutomationsModule(Module):
             handle.write(line + "\n")
         with contextlib.suppress(OSError):
             lines = self.history_file.read_text("utf-8").splitlines()
+            # Trimmed only at twice the size, so the file is not rewritten on every run.
             if len(lines) > HISTORY_KEEP * 2:
                 write_atomic(self.history_file, "\n".join(lines[-HISTORY_KEEP:]) + "\n")
 
@@ -262,13 +272,15 @@ class AutomationsModule(Module):
     def _on_event(self, event: Event) -> None:
         if event.source == self.ctx.name or not self.ctx.services.primary:
             return
-        if _running.get() >= MAX_DEPTH:
+        if _depth.get() >= MAX_DEPTH:
             return
         for rule in self.config.rules:
             if not (rule.enabled and rule.on) or not fnmatch.fnmatchcase(event.name, rule.on):
                 continue
             if rule.condition and not matches(rule.condition, event.data):
                 continue
+            # The event's own fields come last, so a "name" field of its own wins over the
+            # event's name in {event.name}.
             task = asyncio.create_task(
                 self.run(rule, {"name": event.name, **event.data}), name=f"automation-{rule.name}"
             )
@@ -290,7 +302,7 @@ class AutomationsModule(Module):
         """Run a rule's actions in order. Stops at the first failure."""
         ui = AutomationUI(self, rule)
         token_ui = current_ui.set(ui)
-        token_depth = _running.set(_running.get() + 1)
+        token_depth = _depth.set(_depth.get() + 1)
         steps: list[dict[str, Any]] = []
         result: Any = None
         ok = True
@@ -310,7 +322,7 @@ class AutomationsModule(Module):
                 if not ok:
                     break
         finally:
-            _running.reset(token_depth)
+            _depth.reset(token_depth)
             current_ui.reset(token_ui)
         if ui.refused:
             ok = False
@@ -446,10 +458,10 @@ class AutomationsModule(Module):
         data = TEMPLATES.get(template.strip().lower())
         if data is None:
             raise ToolError(f"no template '{template}'; see automations.templates")
-        rule = self._build(
-            {"name": template.strip().lower(), **data, **({"when": when} if when.strip() else {})}
-        )
-        return await self._save_rule(rule)
+        fields = {"name": template.strip().lower(), **data}
+        if when.strip():
+            fields["when"] = when  # your schedule instead of the template's
+        return await self._save_rule(self._build(fields))
 
     @tool(name="list")
     def list_rules(self) -> dict[str, Any]:
@@ -570,12 +582,13 @@ def matches(condition: str, data: Any) -> bool:
     """`field op value` (op: == != < <= > >= ~ for "contains"), or just `field` (true when
     present and not empty/zero). Numbers compare as numbers, everything else as text."""
     text = condition.strip()
-    for op in _OPS:
-        left, found, right = text.partition(f" {op} ")
-        if found:
-            break
-    else:
+    # The first operator of _OPS found in the text (with a space on each side) splits it.
+    # The spaces keep "<" from matching inside "<=", so the order of _OPS only decides
+    # which operator wins when a condition contains two.
+    op = next((op for op in _OPS if f" {op} " in text), None)
+    if op is None:  # just a field name: true when present and not empty/zero
         return bool(_lookup(data, text))
+    left, _, right = text.partition(f" {op} ")
     value = _lookup(data, left.strip())
     target = right.strip().strip("'\"")
     if value is None:  # no such field (a typo?): only "!=" holds, nothing fires by accident

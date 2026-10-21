@@ -35,6 +35,9 @@ _RULES = {
 }
 FEED_KEY = "calendar.feed.{}"
 MAX_REMINDER = 366 * 24 * 60  # minutes; how far ahead check_alerts looks for any reminder
+# A duration's unit by its first letter: every spelling _span accepts (m, min, minutes, h,
+# hrs, hours, d, days) starts with the letter of its unit.
+_SPAN_UNITS = {"m": "minutes", "h": "hours", "d": "days"}
 
 
 def short_id(uid: str) -> str:
@@ -86,6 +89,8 @@ class CalendarModule(Module):
         return ics.parse(text)
 
     def _save(self, events: list[ics.Event]) -> None:
+        # newline="": keep the \r\n iCalendar needs as it is (Windows text mode would turn it
+        # into \r\r\n)
         write_atomic(self.file, ics.write(events), newline="")
 
     async def _feed(self, name: str) -> list[ics.Event]:
@@ -121,6 +126,7 @@ class CalendarModule(Module):
         events: list[ics.Event], start: datetime, end: datetime
     ) -> list[tuple[datetime, ics.Event]]:
         found = [(when, e) for e in events for when in e.occurrences(start, end)]
+        # all-day events first (False sorts before True), then by start time
         return sorted(found, key=lambda pair: (not pair[1].all_day, pair[0]))
 
     async def _between(self, start: datetime, end: datetime) -> list[tuple[datetime, ics.Event]]:
@@ -150,13 +156,7 @@ class CalendarModule(Module):
         if not match:
             raise ToolError("give a duration like '30m', '1h' or '2 hours'")
         amount, unit = float(match.group(1)), match.group(2)[0]
-        return (
-            timedelta(minutes=amount)
-            if unit == "m"
-            else timedelta(hours=amount)
-            if unit == "h"
-            else timedelta(days=amount)
-        )
+        return timedelta(**{_SPAN_UNITS[unit]: amount})
 
     @staticmethod
     def _view(when: datetime, event: ics.Event) -> dict[str, Any]:
@@ -281,6 +281,7 @@ class CalendarModule(Module):
         )
         slots: list[dict[str, str]] = []
         cursor = window_start
+        # a zero-length "busy" block at the end of the working day closes the last gap
         for begin, finish in [*busy, (window_end, window_end)]:
             if begin - cursor >= timedelta(minutes=min_minutes):
                 slots.append(
@@ -383,7 +384,9 @@ class CalendarModule(Module):
         except ToolError as exc:  # an unreadable calendar file: try again next round
             self.ctx.logger.warning("calendar alerts skipped", error=str(exc))
             return []
-        # look as far ahead as the longest reminder (an event may ask for a day before)
+        # Look as far ahead as the longest reminder (an event may ask for a day before), and
+        # at least two hours. Only the reminder times decide what is alerted; the floor just
+        # makes the look-ahead never tiny.
         ahead = max(120, self.config.remind_minutes, *(e.remind_minutes or 0 for e in events))
         horizon = moment + timedelta(minutes=min(ahead, MAX_REMINDER))
         alerted = self._alerted(moment)
@@ -401,6 +404,7 @@ class CalendarModule(Module):
             left = max(0, int((when - moment).total_seconds() // 60))
             place = f" ({event.location})" if event.location else ""
             text = f"{event.title}{place} starts at {when:%H:%M} (in {left} min)"
+            # urgent (shown even in focus mode): it starts in five minutes or less
             await self.ctx.deliver(text, title="Calendar", urgent=left <= 5)
             await self.ctx.publish(
                 "calendar.soon", {"title": event.title, "start": when.isoformat()}
