@@ -158,6 +158,9 @@ def open_folder(path: Path) -> None:
             subprocess.Popen(["xdg-open", str(path)])
 
 
+LMSTUDIO = "lmstudio"  # the model card for LM Studio (it runs the model; nothing is downloaded)
+
+
 class GuiUi:
     """The launcher's Ui for the window: everything goes into a queue the window reads."""
 
@@ -473,6 +476,7 @@ class App:
         keys = list(self.L.MODEL_PRESETS)
         if self.settings.model_url not in self.L.MODEL_PRESETS.values():
             keys.append("custom")
+        keys.append(LMSTUDIO)
         for index, key in enumerate(keys, start=1):
             self._make_card(models, key, index)
         self.model_var.set(self._current_model_key())
@@ -546,6 +550,8 @@ class App:
         return bool(shutil.which("tesseract")) or installed
 
     def _current_model_key(self) -> str:
+        if self.settings.model_server == "lmstudio":
+            return LMSTUDIO
         for key, url in self.L.MODEL_PRESETS.items():
             if url == self.settings.model_url:
                 return str(key)
@@ -562,6 +568,9 @@ class App:
         if key == "custom":
             title = f"Your own model: {self.L._file_name(self.settings.model_url)}"
             text = "Set as model_url in config/launcher.json."
+        elif key == LMSTUDIO:
+            title = "LM Studio"
+            text = "The model you load in LM Studio, with its local server on. Nothing to download."
         else:
             title, text, _ = self.L.MODEL_INFO[key]
         frame = tk.Frame(
@@ -607,6 +616,9 @@ class App:
 
     def _refresh_cards(self, recommended: str = "") -> None:
         for key, card in self.cards.items():
+            if key == LMSTUDIO:
+                card["meta"].configure(text="runs in LM Studio")
+                continue
             have = self._model_file_of(key).is_file()
             size = self.sizes.get(self._model_url_of(key))
             parts = []
@@ -673,7 +685,9 @@ class App:
             self.gpu_label.configure(text=f"Graphics card: {gpu.name}{memory}. {why}")
         self._refresh_cards(recommended if gpu is not None else "")
         first_run = not self._installed()
-        if gpu is not None and first_run and not self.model_touched and recommended in self.cards:
+        chosen_lmstudio = self.settings.model_server == "lmstudio"  # kept: no download needed
+        untouched = not self.model_touched and not chosen_lmstudio
+        if gpu is not None and first_run and untouched and recommended in self.cards:
             self.select_model(recommended)
 
     def on_size(self, url: str, size: int | None) -> None:
@@ -692,8 +706,8 @@ class App:
         need = 0.0
         if not self._installed():
             need += 1.6 * gb
-        if self.settings.use_model:
-            key = self.model_var.get()
+        key = self.model_var.get()
+        if self.settings.use_model and key != LMSTUDIO:
             if not self._installed():
                 need += 0.2 * gb
             if key and not self._model_file_of(key).is_file():
@@ -766,7 +780,10 @@ class App:
             "viewer": self.viewer_var.get(),
         }
         drop: tuple[str, ...] = ()
-        if settings.use_model and key != "custom":
+        if settings.use_model:
+            settings.model_server = "lmstudio" if key == LMSTUDIO else "llamacpp"
+            choices["model_server"] = settings.model_server
+        if settings.use_model and key not in ("custom", LMSTUDIO):
             settings.model_url = L.MODEL_PRESETS[key]
             choices["model"] = key
             drop = ("model_url",)
@@ -901,7 +918,7 @@ class App:
     def needs_setup_page(self) -> bool:
         if not self._installed():
             return True
-        return bool(self.settings.use_model and not self.settings.model_file.is_file())
+        return bool(self.settings.runs_llama and not self.settings.model_file.is_file())
 
     def begin(self) -> None:
         """Install what is missing and start Starlight, in a worker thread."""
@@ -1051,7 +1068,9 @@ class App:
         model_name = self.settings.model_file.stem if self.settings.use_model else ""
         elapsed = L.format_duration(status.seconds)
         if status.model == "ready":
-            self._set_row("Model", c.ok, f"Ready: {model_name}")
+            self._set_row("Model", c.ok, f"Ready: {status.model_detail or model_name}")
+        elif status.model == "waiting":  # LM Studio: not started, or no model loaded in it
+            self._set_row("Model", c.warn, status.model_detail)
         elif status.model == "off":
             self._set_row("Model", c.dim, "The built-in test model (it only repeats what you say)")
         elif status.model == "restarting":

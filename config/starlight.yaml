@@ -38,6 +38,16 @@ model:
   stream: true            # answers appear while they are generated
   warmup: true            # load the model into VRAM at start-up
 
+# LM Studio (it loads and runs the model; turn on its local server in the Developer tab).
+# Starlight.exe --lmstudio writes this for you:
+#
+# model:
+#   provider: lmstudio
+#   options:
+#     base_url: http://127.0.0.1:1234/v1
+#     model: auto        # the language model loaded in LM Studio, or its exact name
+#   context_window: 32768  # load the model in LM Studio with at least this context length
+#
 # Ollama (simplest):
 #
 # model:

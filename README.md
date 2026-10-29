@@ -229,6 +229,24 @@ download link of the `.gguf` file and start `Starlight.exe --model-url <link>`. 
 `"model_url": "<link>"` into `config\launcher.json` (a link wins over a `model` name).
 Models you no longer use stay in `models\`; delete their `.gguf` files to free the space.
 
+#### Using LM Studio instead
+
+If you already run models in [LM Studio](https://lmstudio.ai), Starlight can use the
+model loaded there. Then nothing is downloaded for the model and Starlight does not start
+its own model server.
+
+1. In LM Studio, load a model with tool calling (Qwen2.5 Instruct, for example). Set its
+   context length to at least 32768, or set `"context"` in `config\launcher.json` to the
+   length you load it with.
+2. Turn on LM Studio's local server (the Developer tab). It listens on port 1234.
+3. Choose **LM Studio** on the setup page, or start `Starlight.exe --lmstudio`.
+
+The choice is saved in `config\launcher.json` as `"model_server": "lmstudio"`.
+`"lmstudio_url"` changes the address (default `http://127.0.0.1:1234`), and
+`"lmstudio_model"` names a model to use instead of whichever is loaded. The status window
+shows whether LM Studio answers and which model it has loaded. Only one program should
+hold the model in video memory: with LM Studio, Starlight's own model server stays off.
+
 ### Other ways to install
 
 <details>

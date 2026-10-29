@@ -105,6 +105,10 @@ class LauncherError(Exception):
 # -- settings --------------------------------------------------------------------------
 
 
+LMSTUDIO_URL = "http://127.0.0.1:1234"  # LM Studio's local server (its Developer tab)
+MODEL_SERVERS = ("llamacpp", "lmstudio")
+
+
 @dataclass
 class Settings:
     root: Path
@@ -113,6 +117,11 @@ class Settings:
     variant: str = "vulkan"  # llama.cpp build: vulkan (any GPU) or cpu
     llama_release: str = "latest"  # or a tag such as "b6500"
     port: int = 8080
+    # "llamacpp": Starlight downloads llama.cpp and the model and runs them. "lmstudio": LM
+    # Studio runs the model (its local server); nothing is downloaded for it.
+    model_server: str = "llamacpp"
+    lmstudio_url: str = LMSTUDIO_URL
+    lmstudio_model: str = ""  # empty: whichever model LM Studio has loaded
     viewer: bool = True
     web: bool = True  # open the browser chat; False: the terminal chat
     both: bool = False  # open the browser chat AND a terminal connected to the same backend
@@ -137,6 +146,15 @@ class Settings:
     @property
     def model_file(self) -> Path:
         return self.models / _file_name(self.model_url)
+
+    @property
+    def uses_lmstudio(self) -> bool:
+        return self.use_model and self.model_server == "lmstudio"
+
+    @property
+    def runs_llama(self) -> bool:
+        """Starlight downloads llama.cpp and the model, and runs the model server itself."""
+        return self.use_model and self.model_server != "lmstudio"
 
 
 def _file_name(url: str) -> str:
@@ -188,6 +206,9 @@ def load_settings(args: argparse.Namespace) -> Settings:
                     "variant",
                     "llama_release",
                     "port",
+                    "model_server",
+                    "lmstudio_url",
+                    "lmstudio_model",
                     "viewer",
                     "web",
                     "both",
@@ -212,6 +233,14 @@ def load_settings(args: argparse.Namespace) -> Settings:
     if args.both:
         settings.both = True
     settings.use_model = not args.no_model
+    if getattr(args, "lmstudio", False):
+        settings.model_server = "lmstudio"
+    if settings.model_server not in MODEL_SERVERS:
+        raise LauncherError(
+            f"model_server in config/launcher.json is {settings.model_server!r}; "
+            "it can be llamacpp or lmstudio"
+        )
+    settings.lmstudio_url = str(settings.lmstudio_url).rstrip("/").removesuffix("/v1")
     settings.assume_yes = args.yes
     settings.update = args.update
     if args.tesseract:
@@ -925,8 +954,20 @@ def remove_old_draft(settings: Settings, ui: Ui) -> None:
 def write_launcher_config(settings: Settings, server: Path | None, model: Path | None) -> Path:
     """config/starlight.launcher.yaml: the model server for Starlight. JSON is valid YAML,
     and your own config/starlight.local.yaml still overrides it."""
-    if settings.use_model and server is not None and model is not None:
-        data: dict[str, Any] = {
+    data: dict[str, Any]
+    if settings.uses_lmstudio:
+        data = {
+            "model": {
+                "provider": "lmstudio",
+                "options": {
+                    "base_url": f"{settings.lmstudio_url}/v1",
+                    "model": settings.lmstudio_model or "auto",
+                },
+                "context_window": settings.context,
+            }
+        }
+    elif settings.use_model and server is not None and model is not None:
+        data = {
             "model": {
                 "provider": "llamacpp",
                 "options": {
@@ -1248,17 +1289,19 @@ def setup(settings: Settings, ui: Ui) -> Installed:
         snapshot_before_update(settings, ui)
     first_run = not (settings.tools / "uv" / exe("uv")).is_file()
     remote = None
-    if settings.use_model and not settings.model_file.is_file():
+    if settings.runs_llama and not settings.model_file.is_file():
         remote = probe(settings.model_url)
     if first_run or (remote is not None):
         model_size = (remote.size or 0) if remote else 0
-        need = (1.6 * GB if first_run else 0) + (0.2 * GB if settings.use_model else 0) + model_size
+        need = (
+            (1.6 * GB if first_run else 0) + (0.2 * GB if settings.runs_llama else 0) + model_size
+        )
         free = shutil.disk_usage(settings.root).free
         ui.say("Starlight will download and set up, inside " + str(settings.root) + ":")
         if first_run:
             ui.say("   - uv, Python 3.12 and Starlight's packages      ~1.3 GB")
             ui.say("   - the Chromium browser for web pages and logins ~0.3 GB")
-        if settings.use_model:
+        if settings.runs_llama:
             ui.say(f"   - the llama.cpp model server ({settings.variant})         ~0.2 GB")
         if remote is not None:
             ui.say(f"   - the model {settings.model_file.name:<34} {model_size / GB:.1f} GB")
@@ -1281,7 +1324,7 @@ def setup(settings: Settings, ui: Ui) -> Installed:
         )
         marker.write_text("ok\n", encoding="utf-8")
     installed = Installed(uv)
-    if settings.use_model:
+    if settings.runs_llama:
         installed.server = ensure_llama(settings, ui)
         installed.model = ensure_model(settings, ui, remote)
     remove_old_draft(settings, ui)
@@ -1481,7 +1524,7 @@ def viewer_url() -> str:
 class Status:
     """What the status window shows."""
 
-    model: str  # "off", "loading", "ready", "restarting" or "down"
+    model: str  # "off", "loading", "ready", "restarting", "down" or "waiting" (LM Studio)
     model_detail: str = ""
     chat: bool = False
     viewer: bool | None = None  # None: not used
@@ -1521,6 +1564,27 @@ def health_status(port: int) -> int | None:
         return None
 
 
+LMSTUDIO_HINT = (
+    "LM Studio does not answer: start it, load a model and turn on its local server (Developer tab)"
+)
+
+
+def lmstudio_model(url: str) -> tuple[bool, str]:
+    """Whether LM Studio's local server answers at ``url``, and the language model it has
+    loaded ("" when none is loaded, or when its own API is not there to say)."""
+    native = fetch_json(f"{url}/api/v0/models")
+    if native is not None:
+        for entry in native.get("data") or []:
+            if (
+                isinstance(entry, dict)
+                and entry.get("state") == "loaded"
+                and entry.get("type") in ("llm", "vlm")
+            ):
+                return True, str(entry.get("id") or "")
+        return True, ""
+    return fetch_json(f"{url}/v1/models") is not None, ""
+
+
 class Services:
     """The running Starlight: the model server (watched, restarted if it dies), the web
     chat and the statistics viewer. ``start`` returns at once; ``poll`` says how it is
@@ -1538,7 +1602,7 @@ class Services:
     def start(self) -> None:
         settings, uv = self.settings, self.installed.uv
         self.started = time.monotonic()
-        if settings.use_model and not port_in_use(settings.port):  # else: a server runs already
+        if settings.runs_llama and not port_in_use(settings.port):  # else: a server runs already
             serve = starlight(uv, "model", "serve")
             log = self.logs / "llama-server.log"
             process = self.group.start(serve, log, settings.root)
@@ -1568,6 +1632,14 @@ class Services:
         elapsed = time.monotonic() - self.started
         if not settings.use_model:
             model, detail = "off", "the built-in test model"
+        elif settings.uses_lmstudio:
+            answers, loaded = lmstudio_model(settings.lmstudio_url)
+            if loaded:
+                model, detail = "ready", f"{loaded} (LM Studio)"
+            elif answers:
+                model, detail = "waiting", "LM Studio answers but has no model loaded: load one"
+            else:
+                model, detail = "waiting", LMSTUDIO_HINT
         else:
             code = health_status(settings.port)
             if code == 200:
@@ -1619,7 +1691,16 @@ def start(settings: Settings, ui: Ui, installed: Installed, ask: str | None) -> 
     logs = settings.root / "logs"
     watchdog: ModelServerWatchdog | None = None
     try:
-        if settings.use_model:
+        if settings.uses_lmstudio:
+            ui.step("Checking LM Studio")
+            answers, loaded = lmstudio_model(settings.lmstudio_url)
+            if loaded:
+                ui.say(f"   LM Studio has {loaded} loaded")
+            elif answers:
+                ui.say("   LM Studio answers but has no model loaded: load one in LM Studio")
+            else:
+                ui.say("   " + LMSTUDIO_HINT)
+        if settings.runs_llama:
             ui.step("Starting the model server on the GPU")
             log = logs / "llama-server.log"
             if port_in_use(settings.port):
@@ -1684,6 +1765,11 @@ def build_parser() -> argparse.ArgumentParser:
         "--rollback",
         action="store_true",
         help="go back to the uv and llama.cpp from before the last --update",
+    )
+    parser.add_argument(
+        "--lmstudio",
+        action="store_true",
+        help="use the model loaded in LM Studio (its local server) instead of downloading one",
     )
     parser.add_argument(
         "--no-model",

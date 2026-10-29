@@ -149,6 +149,7 @@ def check_model(
         "ollama": "http://127.0.0.1:11434",
         "llamacpp": "http://127.0.0.1:8080/v1",
         "openai_compat": "http://127.0.0.1:8080/v1",
+        "lmstudio": "http://127.0.0.1:1234/v1",
     }
     base = str(options.get("base_url") or default.get(provider, ""))
     base = base.rstrip("/").removesuffix("/v1")
@@ -165,13 +166,15 @@ def check_model(
     elif status == 503:
         results.append(warn("model server", "is up but still loading the model", "wait a minute"))
     else:
-        problem = _server_log_problem(paths)
+        problem = _server_log_problem(paths) if provider == "llamacpp" else ""
         detail = f"does not answer at {base} ({reason or 'HTTP ' + str(status)})"
         results.append(
             fail(
                 "model server",
                 detail + (f"; its log says: {problem}" if problem else ""),
-                "start Starlight.exe (it starts the server), or run `starlight model serve`",
+                "start LM Studio, load a model and turn on its local server (Developer tab)"
+                if provider == "lmstudio"
+                else "start Starlight.exe (it starts the server), or run `starlight model serve`",
             )
         )
     return results

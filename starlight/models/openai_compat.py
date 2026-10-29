@@ -46,6 +46,7 @@ class OpenAICompatProvider:
         name: str = "llamacpp",
         transport: httpx.AsyncBaseTransport | None = None,
         stop: list[str] | None = None,
+        cache_prompt: bool = True,
     ) -> None:
         self.name = name
         self.model = model
@@ -59,8 +60,9 @@ class OpenAICompatProvider:
         # End the reply at the end-of-turn marker even when the model file does not mark it
         # as a stop (the model would otherwise write the user's next message itself).
         self.stop = list(TURN_MARKERS) if stop is None else stop
-        # cache_prompt: llama-server reuses the KV cache for the shared prompt prefix.
-        self.extra = {"cache_prompt": True, **(extra or {})}
+        # cache_prompt: llama-server reuses the KV cache for the shared prompt prefix (other
+        # servers, such as LM Studio, do not know it: the lmstudio provider leaves it out).
+        self.extra = {**({"cache_prompt": True} if cache_prompt else {}), **(extra or {})}
         headers = {"Authorization": f"Bearer {api_key}"} if api_key else {}
         self._client = httpx.AsyncClient(
             timeout=httpx.Timeout(timeout, connect=10.0), headers=headers, transport=transport

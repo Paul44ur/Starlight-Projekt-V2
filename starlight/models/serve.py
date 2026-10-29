@@ -75,6 +75,11 @@ def serve_command(config: ModelConfig) -> tuple[list[str], dict[str, str]]:
         return llama_server_command(config), {}
     if provider == "ollama":
         return ollama_command(config)
+    if provider == "lmstudio":
+        raise ServeError(
+            "LM Studio runs the model itself: start LM Studio, load a model and turn on its "
+            "local server (Developer tab)"
+        )
     raise ServeError(f"`model serve` supports llamacpp and ollama, not '{provider}'")
 
 

@@ -2,7 +2,8 @@
 
 * ``ollama``         Ollama's native API (keep-alive, GPU layers, VRAM report)
 * ``llamacpp``       llama.cpp's ``llama-server`` (OpenAI-compatible API)
-* ``openai_compat``  any other local OpenAI-compatible server (LM Studio, vLLM ...)
+* ``lmstudio``       LM Studio's local server (it loads and runs the model itself)
+* ``openai_compat``  any other local OpenAI-compatible server (vLLM ...)
 * ``router``         a small fast model for simple requests, a large one for reasoning
 """
 
@@ -11,6 +12,7 @@ from __future__ import annotations
 from typing import Any
 
 from starlight.core.model import ModelProvider, register_provider
+from starlight.models.lmstudio import LMStudioProvider
 from starlight.models.ollama import OllamaProvider
 from starlight.models.openai_compat import OpenAICompatProvider
 from starlight.models.router import RouterProvider
@@ -26,7 +28,15 @@ def _llamacpp(options: dict[str, Any]) -> ModelProvider:
     return OpenAICompatProvider(**options)
 
 
+def _lmstudio(options: dict[str, Any]) -> ModelProvider:
+    options = dict(options)
+    # LM Studio takes the same sampling settings (top_k and repeat_penalty included).
+    options["extra"] = {**LLAMACPP_SAMPLING, **(options.get("extra") or {})}
+    return LMStudioProvider(**options)
+
+
 register_provider("ollama", lambda options: OllamaProvider(**options), max_tokens=True)
+register_provider("lmstudio", _lmstudio, max_tokens=True)
 register_provider("llamacpp", _llamacpp, max_tokens=True)
 register_provider(
     "openai_compat",
@@ -35,4 +45,4 @@ register_provider(
 )
 register_provider("router", RouterProvider.from_options)
 
-__all__ = ["OllamaProvider", "OpenAICompatProvider", "RouterProvider"]
+__all__ = ["LMStudioProvider", "OllamaProvider", "OpenAICompatProvider", "RouterProvider"]
