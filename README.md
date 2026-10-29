@@ -186,6 +186,7 @@ Run `Starlight.exe --help` in a terminal to see every option. The most useful on
 | Option | What it does |
 | --- | --- |
 | `--model qwen7b` | Use a ready-made model choice instead of the default (see [A different model](#a-different-model)). |
+| `--no-think` | Models that think before they answer (Qwen3, gpt-oss) answer at once: quicker, a little less careful. |
 | `--model-url <link>` | Use another model (a direct download link to a `.gguf` file). |
 | `--context 16384` | A smaller context window: uses less video memory. |
 | `--variant cpu` | Run without a graphics card (slow). |
@@ -264,7 +265,11 @@ not tested by the original makers:
 
 The video memory includes the 32k-token context; the sizes are approximate. The models that
 think or reason first (Qwen3, Qwen3.5, Qwen3.8, gpt-oss): llama.cpp keeps that thinking out
-of the answer, but you wait for it, and it is not shown.
+of the answer, but you wait for it, and it is not shown. (Should a server hand it over inside
+the answer, between `<think>` and `</think>`, Starlight leaves it out itself.) For quicker
+answers, untick *Let the model think before it answers* in the setup window, or start
+`Starlight.exe --no-think` (`"think": false` in `config\launcher.json`): the Qwen models then
+answer at once, and gpt-oss thinks as little as it can. With LM Studio, set this in LM Studio.
 
 Any other GGUF model with tool calling works too, such as Llama 3.1 Instruct. As a rule
 of thumb:

@@ -26,6 +26,7 @@ from starlight.models.output import (
     StreamFilter,
     cut_at_turn_end,
     recover_tool_calls,
+    strip_thinking,
 )
 
 
@@ -195,7 +196,7 @@ class OpenAICompatProvider:
         tool_calls: list[ToolCall] = [
             tool_call(c["name"], c["arguments"], c["id"] or None) for _, c in sorted(calls.items())
         ]
-        content = shown.text
+        content = strip_thinking(shown.text)  # (a block the filter could not hold back)
         if not tool_calls and known:
             recovered, before = recover_tool_calls(content, known)
             if recovered:

@@ -454,6 +454,13 @@ def test_the_model_list_folds_tags_flags_and_frees_space(
         app.select_model("qwen14b", touched=True)
         assert not app.setup_go.instate(["disabled"])
 
+        # the thinking option shows only for the models that think first
+        app.select_model("qwen3-14b", touched=True)
+        assert app.think_check.winfo_manager()
+        app.think_var.set(False)
+        app.select_model("qwen14b", touched=True)
+        assert not app.think_check.winfo_manager()
+
         # a downloaded model that is not chosen can be removed to free its space
         assert badges("qwen7b") == ["Downloaded", "Remove"]
         monkeypatch.setattr(gui.messagebox, "askyesno", lambda *a, **k: False)

@@ -13,6 +13,13 @@ Problems seen with real GGUF files (merged or fine-tuned "uncensored" models in 
 marker on, nothing after a passage starts repeating, and nothing from where a tool call
 written as text begins (until the end of the reply shows whether it was one).
 ``recover_tool_calls`` turns such text into real calls when it names a known tool.
+
+Models that think before they answer (Qwen3, gpt-oss ...) write their thinking between
+<think> and </think>. llama-server and LM Studio usually hand it over apart from the answer
+(``reasoning_content``, which Starlight does not show); when one does not, the thinking is
+kept out of the reply here: a reply that begins with <think> shows nothing until </think>,
+and ``strip_thinking`` removes what is left (a template that opens the block in the prompt
+leaves only the closing tag in the reply).
 """
 
 from __future__ import annotations
@@ -55,6 +62,7 @@ CALL_ENDS = ("}", "```", "</tool_call>")  # what can end a call: look again at o
 CALL_STARTS = ("```json", "```tool_call", "```\n{", "<tool_call>", '{"name"')
 
 _MARKERS = TURN_MARKERS + CALL_STARTS
+THINK_OPEN, THINK_CLOSE = "<think>", "</think>"
 _BLOCK = re.compile(
     r"<tool_call>\s*(?P<tag>\{.*?\})\s*</tool_call>"
     r"|```(?:json|tool_call)?\s*(?P<fence>\{.*?\})\s*```",
@@ -63,9 +71,23 @@ _BLOCK = re.compile(
 _DECODER = json.JSONDecoder()
 
 
+def strip_thinking(text: str) -> str:
+    """The reply without the model's thinking, which comes first: a <think> block at the
+    start (an unfinished one to the end), or everything before a closing tag that has no
+    opening one. An answer that only mentions the tags later on keeps them."""
+    if text.lstrip().startswith(THINK_OPEN):
+        close = text.find(THINK_CLOSE)
+        return "" if close < 0 else text[close + len(THINK_CLOSE) :].strip()
+    close = text.find(THINK_CLOSE)
+    if close >= 0 and THINK_OPEN not in text[:close]:
+        return text[close + len(THINK_CLOSE) :].strip()
+    return text
+
+
 def cut_at_turn_end(text: str) -> str:
     """The reply up to the first end-of-turn marker, and without a passage repeated over and
-    over; the rest was never meant to be said."""
+    over; the rest was never meant to be said. The model's thinking is left out."""
+    text = strip_thinking(text)
     cut = _turn_end(text)
     if cut >= 0:
         text = text[:cut].rstrip()
@@ -165,9 +187,40 @@ class StreamFilter:
         self.hold_from: int | None = None  # where a tool call written as text may start
         self._checked = 0  # length of the text when it was last checked for a loop
         self._scanned = 0  # length of the text when it was last scanned for a finished call
+        self._thinking: bool | None = None  # in a <think> block; None: not known yet
+        self._think = ""  # what came while that is open: held, never shown
+        self.thought = 0  # characters of thinking left out
+
+    def _skip_thinking(self, piece: str) -> str:
+        """What of the piece is the reply: nothing while the model thinks (see the module)."""
+        if self._thinking is False:
+            return piece
+        self._think += piece
+        if self._thinking is None:
+            head = self._think.lstrip()
+            if THINK_OPEN.startswith(head):
+                return ""  # still nothing, or the beginning of "<think>"
+            if not head.startswith(THINK_OPEN):
+                self._thinking = False  # an ordinary reply
+                out, self._think = self._think, ""
+                return out
+            self._thinking = True
+        end = self._think.find(THINK_CLOSE)
+        if end < 0:
+            keep = len(THINK_CLOSE) - 1  # enough to find a closing tag split across pieces
+            self.thought += max(len(self._think) - keep, 0)
+            self._think = self._think[-keep:]
+            return ""
+        self.thought += end
+        self._thinking = False
+        rest, self._think = self._think[end + len(THINK_CLOSE) :].lstrip(), ""
+        return rest
 
     def feed(self, piece: str) -> str:
         if self.ended:
+            return ""
+        piece = self._skip_thinking(piece)
+        if not piece:
             return ""
         self.text += piece.replace("�", "")
         cut = _turn_end(self.text)

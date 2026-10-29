@@ -290,3 +290,39 @@ def test_a_long_normal_answer_streams_quickly() -> None:
     for i in range(0, len(text), 4):
         stream.feed(text[i : i + 4])
     assert not stream.ended and time.perf_counter() - started < 3
+
+
+# -- models that think first -----------------------------------------------------------------
+
+
+async def test_thinking_written_into_the_reply_is_never_shown() -> None:
+    shown: list[str] = []
+    p = provider("<thi", "nk>\nThe user greets me. I should", " answer briefly.</th", "ink>\n\n",
+                 "Hello", " Paul!")  # fmt: skip
+    reply = await p.chat([Message("user", "hi")], [], shown.append)
+    assert reply.content == "Hello Paul!" and "".join(shown) == "Hello Paul!"
+
+
+async def test_a_tool_call_after_thinking_still_runs() -> None:
+    p = provider("<think>The weather tool fits.</think>", GREET_BLOCK)
+    reply = await p.chat([Message("user", "greet Paul")], TOOLS, lambda _t: None)
+    assert [c.name for c in reply.tool_calls] == ["hello.greet"] and reply.content == ""
+
+
+def test_thinking_is_cut_from_whole_replies() -> None:
+    # the template opened the block in the prompt: only its end is in the reply
+    assert cut_at_turn_end("Let me think about it.\n</think>\n\nIt is 42.") == "It is 42."
+    assert cut_at_turn_end("<think>long\nthought</think>Yes.") == "Yes."
+    assert cut_at_turn_end("<think>cut off while thinking") == ""
+    # a reply that only talks about the tags keeps them once it has begun
+    text = "Wrap it in <think> tags."
+    filtered = StreamFilter()
+    assert filtered.feed(text) + filtered.held() == text
+    assert cut_at_turn_end(text) == text
+
+
+def test_a_reply_starting_with_a_tag_like_text_is_not_held() -> None:
+    filtered = StreamFilter()
+    assert filtered.feed("<") == ""  # could become <think>
+    assert filtered.feed("b>bold</b> text") == "<b>bold</b> text"
+    assert filtered.thought == 0

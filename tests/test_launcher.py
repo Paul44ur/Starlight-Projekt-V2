@@ -297,6 +297,29 @@ def test_launcher_config_is_loaded_by_starlight_and_yours_wins(tmp_path: Path) -
     assert load_config(Paths(tmp_path)).model.provider == "echo"
 
 
+def test_thinking_can_be_turned_off_for_the_models_that_think_first(tmp_path: Path) -> None:
+    from starlight.core.model import create_provider
+
+    shutil.copytree(REPO / "config", tmp_path / "config")
+    (tmp_path / "pyproject.toml").write_text('[project]\nname = "starlight"\n')
+    server, model = tmp_path / "llama-server.exe", tmp_path / "Qwen3-14B.Q4_K_M.gguf"
+    L.write_launcher_config(L.Settings(root=tmp_path), server, model)
+    provider = create_provider(load_config(Paths(tmp_path)).model)
+    assert "chat_template_kwargs" not in provider.extra  # thinking is on by default
+
+    (tmp_path / "config" / "launcher.json").write_text('{"think": false}')
+    settings = L.load_settings(L.build_parser().parse_args(["--root", str(tmp_path)]))
+    assert settings.think is False
+    L.write_launcher_config(settings, server, model)
+    provider = create_provider(load_config(Paths(tmp_path)).model)
+    kwargs = provider.extra["chat_template_kwargs"]
+    assert kwargs["enable_thinking"] is False and kwargs["reasoning_effort"] == "low"
+    assert provider.extra["top_k"] == 20  # the sampling settings stay
+    flags = ["--root", str(tmp_path), "--no-think"]
+    (tmp_path / "config" / "launcher.json").write_text("{}")
+    assert L.load_settings(L.build_parser().parse_args(flags)).think is False
+
+
 def test_the_draft_model_is_gone_and_old_configs_still_load(tmp_path: Path) -> None:
     """The draft model (speculative decoding) was removed: no flags for llama-server, the
     old models/draft folder is deleted, and a config an older Starlight.exe wrote (with

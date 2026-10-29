@@ -453,6 +453,7 @@ class Settings:
     update: bool = False
     tesseract: bool | None = None  # None: ask (Windows)
     voice: bool = False  # install speech-to-text and text-to-speech (about 0.6 GB)
+    think: bool = True  # models that can think before they answer do so (see NO_THINKING)
     whisper_url: str = WHISPER_URL
     whisper_model_url: str = WHISPER_MODEL_URL
     piper_url: str = PIPER_URL
@@ -537,6 +538,7 @@ def load_settings(args: argparse.Namespace) -> Settings:
                     "both",
                     "tesseract",
                     "voice",
+                    "think",
                     "whisper_url",
                     "whisper_model_url",
                     "piper_url",
@@ -551,6 +553,8 @@ def load_settings(args: argparse.Namespace) -> Settings:
         if value is not None:
             setattr(settings, key, value)
     settings.viewer = settings.viewer and not args.no_viewer
+    if getattr(args, "no_think", False):
+        settings.think = False
     if args.terminal:
         settings.web = False
     if args.both:
@@ -741,6 +745,11 @@ class _NoRedirect(urllib.request.HTTPRedirectHandler):
     def redirect_request(self, *args: Any, **kwargs: Any) -> None:
         return None
 
+
+# Sent with every request when thinking is turned off (settings.think): llama-server hands
+# these to the model's chat template. Qwen3 and its relatives answer without a <think> part;
+# gpt-oss cannot skip it, so it thinks as little as it can. Other templates ignore them.
+NO_THINKING = {"chat_template_kwargs": {"enable_thinking": False, "reasoning_effort": "low"}}
 
 # What a download server answers for a file that is not there. Hugging Face answers 401 for a
 # repository that does not exist (or is private), 404 for a missing file in one that does.
@@ -1296,6 +1305,7 @@ def write_launcher_config(settings: Settings, server: Path | None, model: Path |
                 "options": {
                     "base_url": f"http://127.0.0.1:{settings.port}/v1",
                     "model": model.stem,
+                    **({} if settings.think else {"extra": NO_THINKING}),
                 },
                 "context_window": settings.context,
                 "server": {
@@ -2257,6 +2267,12 @@ def build_parser() -> argparse.ArgumentParser:
         help="use Starlight's built-in test model; download no model",
     )
     parser.add_argument("--no-viewer", action="store_true", help="do not start the viewer")
+    parser.add_argument(
+        "--no-think",
+        action="store_true",
+        help="models that think before they answer (Qwen3, gpt-oss) answer at once: "
+        "quicker, a little less careful with hard questions",
+    )
     parser.add_argument(
         "--terminal", action="store_true", help="chat in this window instead of the browser"
     )

@@ -598,6 +598,7 @@ class App:
         self.voice_var = tk.BooleanVar(value=bool(self.settings.voice))
         self.ocr_var = tk.BooleanVar(value=bool(self.settings.tesseract))
         self.viewer_var = tk.BooleanVar(value=bool(self.settings.viewer))
+        self.think_var = tk.BooleanVar(value=bool(self.settings.think))
         rows = [
             (
                 self.gpu_var,
@@ -614,6 +615,12 @@ class App:
                 )
             )
         rows.append((self.viewer_var, "Statistics page with charts about what Starlight is doing"))
+        rows.append(
+            (
+                self.think_var,
+                "Let the model think before it answers (better at hard questions, slower)",
+            )
+        )
         for index, (variable, text) in enumerate(rows, start=1):
             check = ttk.Checkbutton(
                 options, text=text, variable=variable, command=self._refresh_summary, cursor="hand2"
@@ -621,6 +628,8 @@ class App:
             check.grid(row=index, column=0, sticky="w")
             if variable is self.gpu_var:
                 self.gpu_check = check  # off with LM Studio: it decides where the model runs
+            if variable is self.think_var:
+                self.think_check = check  # only for the models that think first
         self.has_ocr_option = any(variable is self.ocr_var for variable, _ in rows)
 
         self.summary = self._label(page, "", "Dim.TLabel", wrap=True)
@@ -823,6 +832,10 @@ class App:
             self.model_touched = True
         self.model_var.set(key)
         self.gpu_check.state(["disabled"] if key == LMSTUDIO else ["!disabled"])
+        if "thinks first" in self.L.MODEL_TAGS.get(key, ()):
+            self.think_check.grid()
+        else:
+            self.think_check.grid_remove()  # (LM Studio: set it in LM Studio)
         for card_key, card in self.cards.items():
             chosen = card_key == key
             card["frame"].configure(highlightbackground=self.c.accent if chosen else self.c.border)
@@ -1083,6 +1096,7 @@ class App:
             "variant": "vulkan" if self.gpu_var.get() else "cpu",
             "voice": self.voice_var.get(),
             "viewer": self.viewer_var.get(),
+            "think": self.think_var.get(),
         }
         drop: tuple[str, ...] = ()
         if settings.use_model:
@@ -1095,6 +1109,7 @@ class App:
         settings.variant = choices["variant"]
         settings.voice = choices["voice"]
         settings.viewer = choices["viewer"]
+        settings.think = choices["think"]
         if self.has_ocr_option:
             settings.tesseract = self.ocr_var.get()
             choices["tesseract"] = settings.tesseract
