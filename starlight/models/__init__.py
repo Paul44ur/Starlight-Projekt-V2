@@ -36,7 +36,7 @@ def _lmstudio(options: dict[str, Any]) -> ModelProvider:
 
 
 register_provider("ollama", lambda options: OllamaProvider(**options), max_tokens=True)
-register_provider("lmstudio", _lmstudio, max_tokens=True)
+register_provider("lmstudio", _lmstudio, max_tokens=True, context=True)
 register_provider("llamacpp", _llamacpp, max_tokens=True)
 register_provider(
     "openai_compat",

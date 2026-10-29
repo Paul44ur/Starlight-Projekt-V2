@@ -33,6 +33,7 @@ import tempfile
 import threading
 import time
 import urllib.error
+import urllib.parse
 import urllib.request
 import zipfile
 from dataclasses import dataclass, field
@@ -1321,6 +1322,9 @@ def setup(settings: Settings, ui: Ui) -> Installed:
     remove_old_draft(settings, ui)
     maybe_tesseract(settings, ui)
     ensure_voice(settings, ui)
+    if settings.uses_lmstudio:
+        ui.step("Getting LM Studio ready")
+        ensure_lmstudio(settings, ui)
     write_launcher_config(settings, installed.server, installed.model)
     return installed
 
@@ -1567,25 +1571,147 @@ class LMStudioState:
     answers: bool = False
     loaded: str = ""  # the loaded language model; "" when none (or its API does not say)
     context: int = 0  # the context length it is loaded with; 0 when LM Studio does not say
+    tools: bool | None = None  # the loaded model is trained for tool use; None: not said
+    available: tuple[str, ...] = ()  # the language models it could load (downloaded)
+
+
+LANGUAGE_MODELS = ("llm", "vlm")  # model types that chat ("vlm": vision models in the v0 API)
+
+
+def _number(value: Any) -> int:
+    return value if isinstance(value, int) and not isinstance(value, bool) else 0
+
+
+def _lmstudio_v1(data: dict[str, Any]) -> LMStudioState | None:
+    """GET /api/v1/models: {"models": [{"key", "type", "capabilities",
+    "loaded_instances": [{"id", "config": {"context_length"}}]}]}."""
+    models = data.get("models")
+    if not isinstance(models, list):
+        return None
+    available: list[str] = []
+    first: LMStudioState | None = None
+    for model in models:
+        if not isinstance(model, dict) or model.get("type") not in LANGUAGE_MODELS:
+            continue
+        key = str(model.get("key") or "")
+        available.append(key)
+        capabilities = model.get("capabilities")
+        tools = capabilities.get("trained_for_tool_use") if isinstance(capabilities, dict) else None
+        for instance in model.get("loaded_instances") or []:
+            if first is None and isinstance(instance, dict):
+                config = instance.get("config")
+                context = _number(config.get("context_length")) if isinstance(config, dict) else 0
+                kind = tools if isinstance(tools, bool) else None
+                first = LMStudioState(True, str(instance.get("id") or key), context, kind)
+    if first is None:
+        return LMStudioState(True, available=tuple(available))
+    return LMStudioState(True, first.loaded, first.context, first.tools, tuple(available))
+
+
+def _lmstudio_v0(data: dict[str, Any]) -> LMStudioState | None:
+    """GET /api/v0/models (older LM Studio): {"data": [{"id", "type", "state",
+    "loaded_context_length"}]}."""
+    entries = data.get("data")
+    if not isinstance(entries, list):
+        return None
+    available: list[str] = []
+    loaded, context = "", 0
+    for entry in entries:
+        if not isinstance(entry, dict) or entry.get("type") not in LANGUAGE_MODELS:
+            continue
+        name = str(entry.get("id") or "")
+        available.append(name)
+        if not loaded and entry.get("state") == "loaded":
+            loaded, context = name, _number(entry.get("loaded_context_length"))
+    return LMStudioState(True, loaded, context, None, tuple(available))
 
 
 def lmstudio_state(url: str) -> LMStudioState:
-    """Ask LM Studio at ``url``: its own API says which model is loaded; without it, an
-    answer from the OpenAI model list only tells that it runs."""
-    native = fetch_json(f"{url}/api/v0/models")
-    if native is not None:
-        for entry in native.get("data") or []:
-            if (
-                isinstance(entry, dict)
-                and entry.get("state") == "loaded"
-                and entry.get("type") in ("llm", "vlm")
-            ):
-                context = entry.get("loaded_context_length")
-                return LMStudioState(
-                    True, str(entry.get("id") or ""), context if isinstance(context, int) else 0
-                )
-        return LMStudioState(True)
+    """Ask LM Studio at ``url``: its REST API (v1, else the older v0) says which model is
+    loaded; without either, an answer from the OpenAI model list only says that it runs."""
+    for path, parse in (("/api/v1/models", _lmstudio_v1), ("/api/v0/models", _lmstudio_v0)):
+        data = fetch_json(url + path)
+        state = parse(data) if data is not None else None
+        if state is not None:
+            return state
     return LMStudioState(fetch_json(f"{url}/v1/models") is not None)
+
+
+def find_lms() -> Path | None:
+    """LM Studio's command-line tool, which it installs in ~/.lmstudio/bin."""
+    found = shutil.which("lms")
+    if found:
+        return Path(found)
+    home = Path.home() / ".lmstudio" / "bin" / exe("lms")
+    return home if home.is_file() else None
+
+
+def load_in_lmstudio(url: str, model: str, context: int, timeout: float = 600) -> str:
+    """Load a model in LM Studio with this context length. "" on success, else the reason."""
+    body = json.dumps({"model": model, "context_length": context}).encode("utf-8")
+    request = urllib.request.Request(
+        f"{url}/api/v1/models/load",
+        data=body,
+        method="POST",
+        headers={"Content-Type": "application/json", "User-Agent": USER_AGENT},
+    )
+    try:
+        with _local_open(request, timeout):
+            return ""
+    except urllib.error.HTTPError as exc:
+        detail = exc.read().decode("utf-8", errors="replace")[:300]
+        return f"HTTP {exc.code}: {detail}".strip()
+    except (OSError, http.client.HTTPException) as exc:
+        return str(exc)
+
+
+def ensure_lmstudio(settings: Settings, ui: Ui, wait: float = 30) -> LMStudioState:
+    """Get LM Studio ready for Starlight, as far as it can be done from here: start its
+    server with `lms` when it does not answer, and load the model when none is loaded and
+    it is clear which (lmstudio_model, or the only one LM Studio has), with Starlight's
+    context length. What is left is said, and Starlight starts anyway."""
+    url = settings.lmstudio_url
+    state = lmstudio_state(url)
+    address = urllib.parse.urlsplit(url)
+    on_this_pc = address.hostname in ("127.0.0.1", "localhost", "::1")
+    lms = find_lms() if on_this_pc else None  # LM Studio on another PC: started there
+    if not state.answers and lms is not None:
+        ui.say("   LM Studio's server is off: starting it (lms server start)")
+        command = [str(lms), "server", "start"]
+        if address.port and address.port != 1234:
+            command += ["--port", str(address.port)]
+        with contextlib.suppress(OSError, subprocess.SubprocessError):
+            subprocess.run(
+                command, capture_output=True, timeout=60, check=False,
+                creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+            )  # fmt: skip
+        deadline = time.monotonic() + wait
+        while not state.answers and time.monotonic() < deadline:
+            time.sleep(1)
+            state = lmstudio_state(url)
+    if not state.answers:
+        ui.say("   " + LMSTUDIO_HINT)
+        return state
+    if not state.loaded:
+        candidates = state.available
+        key = settings.lmstudio_model or (candidates[0] if len(candidates) == 1 else "")
+        if not key:
+            names = ", ".join(candidates[:5]) or "none downloaded"
+            ui.say(f"   LM Studio has no model loaded ({names}): load one in LM Studio")
+            return state
+        ui.say(f"   loading {key} in LM Studio with {settings.context} tokens of context ...")
+        problem = load_in_lmstudio(url, key, settings.context)
+        if problem:
+            ui.say(f"   LM Studio could not load it: {problem}")
+        state = lmstudio_state(url)
+    if state.loaded:
+        context = f" (context {state.context})" if state.context else ""
+        ui.say(f"   LM Studio has {state.loaded} loaded{context}")
+        if state.tools is False:
+            ui.say(
+                "   note: this model is not trained for tool use; Starlight's tools may not work"
+            )
+    return state
 
 
 SHORT_CONTEXT = 16384  # below this, less room is kept for the answer (reserve_tokens)
@@ -1661,7 +1787,8 @@ class Services:
         elif settings.uses_lmstudio:
             lms = lmstudio_state(settings.lmstudio_url)
             if lms.loaded:
-                model, detail = "ready", f"{lms.loaded} (LM Studio)"
+                note = "; not trained for tool use" if lms.tools is False else ""
+                model, detail = "ready", f"{lms.loaded} (LM Studio{note})"
             elif lms.answers:
                 model, detail = "waiting", "LM Studio answers but has no model loaded: load one"
             else:
@@ -1717,16 +1844,6 @@ def start(settings: Settings, ui: Ui, installed: Installed, ask: str | None) -> 
     logs = settings.root / "logs"
     watchdog: ModelServerWatchdog | None = None
     try:
-        if settings.uses_lmstudio:
-            ui.step("Checking LM Studio")
-            lms = lmstudio_state(settings.lmstudio_url)
-            if lms.loaded:
-                context = f" (context {lms.context})" if lms.context else ""
-                ui.say(f"   LM Studio has {lms.loaded} loaded{context}")
-            elif lms.answers:
-                ui.say("   LM Studio answers but has no model loaded: load one in LM Studio")
-            else:
-                ui.say("   " + LMSTUDIO_HINT)
         if settings.runs_llama:
             ui.step("Starting the model server on the GPU")
             log = logs / "llama-server.log"

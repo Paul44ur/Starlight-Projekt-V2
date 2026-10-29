@@ -5,6 +5,7 @@ LM Studio itself is faked: its OpenAI API and its own /api/v0/models."""
 
 from __future__ import annotations
 
+import asyncio
 import json
 from pathlib import Path
 from typing import Any
@@ -65,10 +66,15 @@ async def test_the_loaded_model_is_used_and_requests_fit_lm_studio() -> None:
     assert body["top_k"] == 20 and body["max_tokens"]  # sampling and the answer cap still sent
 
 
-async def test_no_loaded_model_is_a_clear_error() -> None:
-    native = {"data": [{"id": "qwen", "type": "llm", "state": "not-loaded"}]}
-    provider = LMStudioProvider(transport=lm_studio(native, ["qwen"], []))
-    with pytest.raises(LMStudioError, match="no language model loaded: load one"):
+async def test_no_loaded_model_and_several_to_choose_from_is_a_clear_error() -> None:
+    native = {
+        "data": [
+            {"id": "qwen", "type": "llm", "state": "not-loaded"},
+            {"id": "llama", "type": "llm", "state": "not-loaded"},
+        ]
+    }
+    provider = LMStudioProvider(transport=lm_studio(native, ["qwen", "llama"], []))
+    with pytest.raises(LMStudioError, match=r"no language model loaded \(it has qwen, llama\)"):
         await provider.warmup()
 
 
@@ -159,6 +165,7 @@ def test_setup_downloads_no_model_and_writes_the_lm_studio_config(
     monkeypatch.setattr(L, "run_checked", lambda *args, **kwargs: None)
     monkeypatch.setattr(L, "maybe_tesseract", lambda settings, ui: None)
     monkeypatch.setattr(L, "fetch_json", lambda *args, **kwargs: None)  # LM Studio is not running
+    monkeypatch.setattr(L, "find_lms", lambda: None)  # and its `lms` tool is not installed
     installed = L.setup(settings, L.Ui(assume_yes=True))
     assert installed.server is None and installed.model is None
     written = (root / "config" / "starlight.launcher.yaml").read_text(encoding="utf-8")
@@ -299,3 +306,162 @@ def test_lm_studio_can_hold_the_embedding_model_too() -> None:
     assert isinstance(embedder, OpenAICompatEmbedder)
     assert embedder.model == LMSTUDIO_EMBEDDER
     assert embedder.base_url == "http://127.0.0.1:1234/v1"
+
+
+# -- the third round: LM Studio's v1 API, loading a model, starting its server --------------
+
+
+def v1_models(loaded: dict[str, int] | None = None, tools: bool = True) -> dict[str, Any]:
+    """/api/v1/models with qwen and llama downloaded; ``loaded``: instance id -> context."""
+    models: list[dict[str, Any]] = []
+    for key in ("qwen2.5-14b-instruct", "llama-3.1-8b-instruct"):
+        instances = [
+            {"id": instance, "config": {"context_length": context}}
+            for instance, context in (loaded or {}).items()
+            if instance.split(":")[0] == key
+        ]
+        models.append(
+            {
+                "key": key,
+                "type": "llm",
+                "capabilities": {"trained_for_tool_use": tools, "vision": False},
+                "loaded_instances": instances,
+            }
+        )
+    models.append({"key": "text-embedding-nomic", "type": "embedding", "loaded_instances": []})
+    return {"models": models}
+
+
+def lm_studio_v1(models: dict[str, Any], log: list[tuple[str, Any]]) -> httpx.MockTransport:
+    """A current LM Studio (v1 API) that can also load a model."""
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        path = request.url.path
+        body = json.loads(request.content) if request.content else None
+        log.append((path, body))
+        if path == "/api/v1/models":
+            return httpx.Response(200, json=models)
+        if path == "/api/v1/models/load":
+            return httpx.Response(200, json={"instance_id": body["model"], "status": "loaded"})
+        if path == "/v1/chat/completions":
+            return httpx.Response(200, json={"choices": [{"message": {"content": "hi"}}]})
+        return httpx.Response(404)
+
+    return httpx.MockTransport(handler)
+
+
+async def test_the_v1_api_names_the_loaded_instance() -> None:
+    log: list[tuple[str, Any]] = []
+    models = v1_models({"llama-3.1-8b-instruct:2": 32768})
+    provider = LMStudioProvider(transport=lm_studio_v1(models, log))
+    await provider.chat([Message("user", "hi")], [])
+    assert log[-1][1]["model"] == "llama-3.1-8b-instruct:2"  # the instance, not just the key
+    named = LMStudioProvider(model="llama-3.1-8b-instruct", transport=lm_studio_v1(models, log))
+    await named.chat([Message("user", "hi")], [])
+    assert log[-1][1]["model"] == "llama-3.1-8b-instruct:2"  # a named model's loaded instance
+
+
+async def test_a_named_model_is_loaded_with_starlight_s_context() -> None:
+    log: list[tuple[str, Any]] = []
+    config = ModelConfig(
+        provider="lmstudio",
+        context_window=24576,
+        options={"model": "qwen2.5-14b-instruct", "transport": lm_studio_v1(v1_models(), log)},
+    )
+    provider = create_provider(config)  # passes model.context_window to the provider
+    await provider.chat([Message("user", "hi")], [])
+    loads = [body for path, body in log if path == "/api/v1/models/load"]
+    assert loads == [{"model": "qwen2.5-14b-instruct", "context_length": 24576}]
+
+
+async def test_the_only_model_is_loaded_once_even_for_two_requests_at_once() -> None:
+    log: list[tuple[str, Any]] = []
+    models = {"models": v1_models()["models"][:1]}  # only qwen downloaded, nothing loaded
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/api/v1/models/load":
+            instances = models["models"][0]["loaded_instances"]
+            instances.append({"id": "qwen2.5-14b-instruct", "config": {"context_length": 8192}})
+        return lm_studio_v1(models, log).handle_request(request)
+
+    provider = LMStudioProvider(context_window=8192, transport=httpx.MockTransport(handler))
+    await asyncio.gather(*(provider.chat([Message("user", "hi")], []) for _ in range(2)))
+    assert [path for path, _ in log].count("/api/v1/models/load") == 1
+
+
+def test_the_doctor_reads_the_v1_api_and_knows_what_starlight_will_load() -> None:
+    def config(model: str = "auto") -> StarlightConfig:
+        return StarlightConfig.model_validate(
+            {"model": {"provider": "lmstudio", "options": {"model": model}}}
+        )
+
+    base = "http://127.0.0.1:1234"
+    v1 = f"{base}/api/v1/models"
+
+    def answering(models: dict[str, Any]) -> Any:
+        return lambda url: models if url == v1 else None
+
+    check = check_lmstudio(config(), base, answering(v1_models({"qwen2.5-14b-instruct": 4096})))
+    assert check.status == "warn" and "4096 tokens of context" in check.detail
+    check = check_lmstudio(
+        config(), base, answering(v1_models({"qwen2.5-14b-instruct": 32768}, tools=False))
+    )
+    assert check.status == "warn" and "not trained for tool use" in check.detail
+    check = check_lmstudio(config("llama-3.1-8b-instruct"), base, answering(v1_models()))
+    assert check.status == "ok" and "Starlight loads llama-3.1-8b-instruct" in check.detail
+    check = check_lmstudio(config(), base, answering(v1_models()))  # two, none loaded
+    assert check.status == "fail" and "qwen2.5-14b-instruct, llama-3.1-8b-instruct" in check.detail
+
+
+def test_the_launcher_reads_the_v1_api(monkeypatch: pytest.MonkeyPatch) -> None:
+    models = v1_models({"qwen2.5-14b-instruct": 16384}, tools=False)
+    monkeypatch.setattr(
+        L, "fetch_json", lambda url, *a, **k: models if url.endswith("/api/v1/models") else None
+    )
+    state = L.lmstudio_state("http://127.0.0.1:1234")
+    assert (state.loaded, state.context, state.tools) == ("qwen2.5-14b-instruct", 16384, False)
+    assert state.available == ("qwen2.5-14b-instruct", "llama-3.1-8b-instruct")
+
+
+def test_the_launcher_starts_lm_studio_s_server_and_loads_the_model(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    root = starlight_root(tmp_path, {"model_server": "lmstudio", "context": 32768})
+    settings = settings_for(root, monkeypatch)
+    running: dict[str, Any] = {"server": False, "models": {"models": v1_models()["models"][:1]}}
+    started: list[list[str]] = []
+    loaded: list[tuple[str, str, int]] = []
+
+    def fetch(url: str, *args: Any, **kwargs: Any) -> Any:
+        if not running["server"]:
+            return None
+        return running["models"] if url.endswith("/api/v1/models") else None
+
+    def run(command: list[str], **kwargs: Any) -> Any:
+        started.append(command)
+        running["server"] = True
+
+    def load(url: str, model: str, context: int, timeout: float = 600) -> str:
+        loaded.append((url, model, context))
+        running["models"]["models"][0]["loaded_instances"] = [
+            {"id": model, "config": {"context_length": context}}
+        ]
+        return ""
+
+    lms = tmp_path / "lms"
+    monkeypatch.setattr(L, "fetch_json", fetch)
+    monkeypatch.setattr(L, "find_lms", lambda: lms)
+    monkeypatch.setattr(L.subprocess, "run", run)
+    monkeypatch.setattr(L, "load_in_lmstudio", load)
+    monkeypatch.setattr(L.time, "sleep", lambda seconds: None)
+    state = L.ensure_lmstudio(settings, L.Ui(assume_yes=True))
+    assert started == [[str(lms), "server", "start"]]
+    assert loaded == [("http://127.0.0.1:1234", "qwen2.5-14b-instruct", 32768)]
+    assert (state.loaded, state.context) == ("qwen2.5-14b-instruct", 32768)
+
+    # LM Studio on another PC is never started from here
+    started.clear()
+    running["server"] = False
+    settings.lmstudio_url = "http://192.168.1.5:1234"
+    assert not L.ensure_lmstudio(settings, L.Ui(assume_yes=True), wait=0).answers
+    assert started == []

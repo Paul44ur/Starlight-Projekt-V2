@@ -143,34 +143,44 @@ def _get_json(url: str, timeout: float = 3.0) -> Any:
 
 
 def check_lmstudio(config: StarlightConfig, base: str, get_json: Callable[[str], Any]) -> Check:
-    """Which language model LM Studio has loaded, and whether its context is long enough
-    for what Starlight sends (model.context_window), when LM Studio says so."""
-    native = get_json(f"{base}/api/v0/models")
-    if not isinstance(native, dict):
-        return ok("LM Studio model", "its server answers (it does not say which model is loaded)")
-    loaded = [
-        m
-        for m in native.get("data") or []
-        if isinstance(m, dict) and m.get("state") == "loaded" and m.get("type") in ("llm", "vlm")
-    ]
-    if not loaded:
+    """Which language model LM Studio has loaded (or will load for Starlight), whether it is
+    trained for tool use, and whether its context is as long as Starlight plans with."""
+    from starlight.models.lmstudio import AUTO, describe, parse_v0, parse_v1
+
+    found = parse_v1(get_json(f"{base}/api/v1/models")) or parse_v0(
+        get_json(f"{base}/api/v0/models")
+    )
+    name = "LM Studio model"
+    if found is None:
+        return ok(name, "its server answers (it does not say which model is loaded)")
+    wanted = str(config.model.options.get("model") or "auto")
+    if not found.loaded:
+        will_load = wanted in found.available if wanted not in AUTO else len(found.available) == 1
+        if will_load:
+            key = wanted if wanted not in AUTO else found.available[0]
+            return ok(name, f"none loaded yet; Starlight loads {key} when it is first asked")
         return fail(
-            "LM Studio model",
-            "no language model is loaded",
-            "load one in LM Studio's chat or Developer tab",
+            name,
+            "no language model is loaded" + describe(found.available),
+            "load one in LM Studio, or set model.options.model to its name",
         )
-    model = loaded[0]
-    length = int(model.get("loaded_context_length") or 0)
-    wanted = config.model.context_window
-    if length and length < wanted:
+    model = found.loaded[0]
+    plans = config.model.context_window
+    if model.context and model.context < plans:
         return warn(
-            "LM Studio model",
-            f"{model.get('id')} is loaded with {length} tokens of context; Starlight plans "
-            f"with {wanted}",
-            f"load it with a context length of at least {wanted} in LM Studio, or set "
+            name,
+            f"{model.id} is loaded with {model.context} tokens of context; Starlight plans "
+            f"with {plans}",
+            f"load it with a context length of at least {plans} in LM Studio, or set "
             "model.context_window lower",
         )
-    return ok("LM Studio model", f"{model.get('id')} is loaded")
+    if model.tools is False:
+        return warn(
+            name,
+            f"{model.id} is not trained for tool use: it may not use Starlight's tools well",
+            "load a model with tool use, such as Qwen2.5 Instruct",
+        )
+    return ok(name, f"{model.id} is loaded")
 
 
 def check_model(

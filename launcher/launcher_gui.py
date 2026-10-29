@@ -652,6 +652,8 @@ class App:
             text = f"found: {state.loaded}"
             pill_fg = "#06240f" if self.c is DARK else "#ffffff"
             self._pill(card["badges"], "Running", self.c.ok, pill_fg)
+        elif state.answers and len(state.available) == 1:
+            text = f"found: {state.available[0]} is loaded when Starlight starts"
         elif state.answers:
             text = "found, but no model is loaded in it"
         else:

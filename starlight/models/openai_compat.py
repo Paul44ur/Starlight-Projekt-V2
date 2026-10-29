@@ -101,7 +101,7 @@ class OpenAICompatProvider:
         known = {t["name"] for t in tools}
         if not stream:
             response = await self._client.post(url, json=body)
-            await _check(response)
+            await check_response(response)
             result = self._parse(response.json())
             result.content = cut_at_turn_end(result.content)
             if not result.tool_calls and known:
@@ -140,7 +140,7 @@ class OpenAICompatProvider:
         first_at = 0.0  # when it arrived: what came after is the writing speed
         stalled = False
         async with self._client.stream("POST", url, json=body) as response:
-            await _check(response)
+            await check_response(response)
             lines = response.aiter_lines().__aiter__()
             while True:
                 try:
@@ -230,7 +230,7 @@ def _error_text(response: httpx.Response) -> str:
     return str(error or "").strip()[:300]
 
 
-async def _check(response: httpx.Response) -> None:
+async def check_response(response: httpx.Response) -> None:
     """Like raise_for_status, with the server's reason in the message (say, LM Studio's
     "no model loaded" or a prompt longer than the loaded context)."""
     if response.is_success:

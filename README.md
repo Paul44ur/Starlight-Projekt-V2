@@ -235,11 +235,19 @@ If you already run models in [LM Studio](https://lmstudio.ai), Starlight can use
 model loaded there. Then nothing is downloaded for the model and Starlight does not start
 its own model server.
 
-1. In LM Studio, load a model with tool calling (Qwen2.5 Instruct, for example), with a
-   context length of 16384 or more (32768 is best).
-2. Turn on LM Studio's local server (the Developer tab). It listens on port 1234.
-3. Choose **LM Studio** on the setup page, or start `Starlight.exe --lmstudio`. The setup
+1. In LM Studio, download a model with tool calling (Qwen2.5 Instruct, for example).
+2. Choose **LM Studio** on the setup page, or start `Starlight.exe --lmstudio`. The setup
    page shows whether LM Studio is running and which model it has loaded.
+
+That is usually all. When Starlight starts it gets LM Studio ready:
+
+- **Its server.** If LM Studio's local server is off and LM Studio's `lms` tool is
+  installed (LM Studio sets it up), Starlight starts the server. Otherwise turn it on in
+  LM Studio's Developer tab (port 1234).
+- **The model.** If no model is loaded, Starlight loads the one you named
+  (`"lmstudio_model"`), or the only one LM Studio has, with 32768 tokens of context
+  (`"context"` in `config\launcher.json`). With several models and none named, load one
+  yourself: Starlight then uses whichever is loaded.
 
 The choice is saved in `config\launcher.json` as `"model_server": "lmstudio"`.
 `"lmstudio_url"` changes the address (default `http://127.0.0.1:1234`), and
@@ -255,8 +263,10 @@ What Starlight does for you:
   than LM Studio has loaded (when LM Studio reports it), so prompts are not refused.
 - **Problems are named.** If LM Studio refuses a request, its own reason is shown (for
   example, no model loaded). The status window, and **Check everything** (`starlight
-  doctor`), say whether LM Studio answers, which model is loaded and whether its context is
-  long enough.
+  doctor`), say whether LM Studio answers, which model is loaded, whether its context is
+  long enough, and whether the model is trained for tool use (Starlight's tools need it).
+- **Old and new LM Studio.** Starlight reads LM Studio's current REST API, and the older
+  one of versions before it.
 - **Memories can use it too.** For memory search by meaning, load LM Studio's
   `nomic-embed-text` embedding model and set `memory: embedder: provider: lmstudio` in
   `config\starlight.local.yaml`.

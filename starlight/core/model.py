@@ -94,17 +94,23 @@ type ProviderFactory = Callable[[dict[str, Any]], ModelProvider]
 
 _PROVIDERS: dict[str, ProviderFactory] = {"echo": lambda options: EchoProvider()}
 _TAKES_MAX_TOKENS: set[str] = set()
+_TAKES_CONTEXT: set[str] = set()
 
 
-def register_provider(name: str, factory: ProviderFactory, *, max_tokens: bool = False) -> None:
+def register_provider(
+    name: str, factory: ProviderFactory, *, max_tokens: bool = False, context: bool = False
+) -> None:
     """Make a provider available as ``model.provider: <name>``. ``max_tokens=True``: its
     factory takes a ``max_tokens`` option, which then defaults to the config's
-    ``reserve_tokens``, so a model that never stops cannot run on until the context is full."""
+    ``reserve_tokens``, so a model that never stops cannot run on until the context is full.
+    ``context=True``: it takes ``context_window`` (the config's), e.g. to load its model with
+    that much context."""
     _PROVIDERS[name] = factory
-    if max_tokens:
-        _TAKES_MAX_TOKENS.add(name)
-    else:
-        _TAKES_MAX_TOKENS.discard(name)
+    for flag, names in ((max_tokens, _TAKES_MAX_TOKENS), (context, _TAKES_CONTEXT)):
+        if flag:
+            names.add(name)
+        else:
+            names.discard(name)
 
 
 def create_provider(config: ModelConfig) -> ModelProvider:
@@ -118,4 +124,6 @@ def create_provider(config: ModelConfig) -> ModelProvider:
     options = dict(config.options)
     if config.provider in _TAKES_MAX_TOKENS:
         options.setdefault("max_tokens", config.reserve_tokens)
+    if config.provider in _TAKES_CONTEXT:
+        options.setdefault("context_window", config.context_window)
     return factory(options)
