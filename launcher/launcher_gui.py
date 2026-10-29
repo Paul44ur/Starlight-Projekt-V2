@@ -460,10 +460,17 @@ class App:
         "qwen3-14b": 9.0,
         "ministral14b": 8.2,
         "mistral-nemo": 7.5,
+        "gemma4-12b": 7.5,
         "qwen14b-coder": 9.0,
+        "qwen3.5-9b": 5.7,
         "qwen7b": 4.7,
         "qwen3-8b": 5.0,
         "gemma4-e4b": 5.0,
+        "qwen3-14b-abliterated": 9.0,
+        "josiefied-qwen3-14b": 9.0,
+        "hermes4-14b": 9.0,
+        "qwen3-8b-abliterated": 5.0,
+        "dolphin3-8b": 4.9,
     }
 
     def _build_setup(self) -> None:
@@ -485,8 +492,21 @@ class App:
         if self.settings.model_url not in self.L.MODEL_PRESETS.values():
             keys.append("custom")
         keys.append(LMSTUDIO)
-        for index, key in enumerate(keys, start=1):
-            self._make_card(models, key, index)
+        # Other people's changes of a model, and models from elsewhere, each under a heading.
+        headings = {
+            self.L.MODIFIED[0]: "CHANGED BY OTHERS: ABLITERATED AND FINE-TUNED",
+            keys[len(self.L.MODEL_PRESETS)]: "YOUR OWN MODEL",
+        }
+        self.card_headings: list[ttk.Label] = []
+        row = 1
+        for key in keys:
+            if key in headings:
+                heading = self._label(models, headings[key], "Section.TLabel")
+                heading.grid(row=row, column=0, sticky="w", pady=(self.px(10), self.px(4)))
+                self.card_headings.append(heading)
+                row += 1
+            self._make_card(models, key, row)
+            row += 1
         self.model_var.set(self._current_model_key())
         self.test_model_note = self._label(
             models,
@@ -499,7 +519,7 @@ class App:
         self.gpu_label = self._label(
             models, "Graphics card: looking ...", "Small.TLabel", wraplength=self.px(740)
         )
-        self.gpu_label.grid(row=len(keys) + 1, column=0, sticky="w", pady=(self.px(6), 0))
+        self.gpu_label.grid(row=row, column=0, sticky="w", pady=(self.px(6), 0))
 
         options = ttk.Frame(page)
         options.grid(row=3, column=0, sticky="ew", pady=(self.px(16), 0))
@@ -789,11 +809,12 @@ class App:
             self.setup_cancel.grid_remove()
             self.setup_quit.grid()
         use_model = self.settings.use_model
-        for card in self.cards.values():
+        frames = [card["frame"] for card in self.cards.values()]
+        for widget in [*frames, *self.card_headings]:
             if use_model:
-                card["frame"].grid()
+                widget.grid()
             else:
-                card["frame"].grid_remove()
+                widget.grid_remove()
         if use_model:
             self.test_model_note.grid_remove()
             self.gpu_label.grid()

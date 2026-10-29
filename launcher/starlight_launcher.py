@@ -75,10 +75,18 @@ MODEL_PRESETS = {
         "https://huggingface.co/bartowski/Mistral-Nemo-Instruct-2407-GGUF/resolve/main/"
         "Mistral-Nemo-Instruct-2407-Q4_K_M.gguf"
     ),
+    # Google's Gemma 4 at 12B: a good writer, knows 140 languages.
+    "gemma4-12b": (
+        "https://huggingface.co/unsloth/gemma-4-12b-it-GGUF/resolve/main/gemma-4-12b-it-Q4_K_M.gguf"
+    ),
     # Tuned for code: writes and fixes programs better, everyday chat less well.
     "qwen14b-coder": (
         "https://huggingface.co/bartowski/Qwen2.5-Coder-14B-Instruct-GGUF/resolve/main/"
         "Qwen2.5-Coder-14B-Instruct-Q4_K_M.gguf"
+    ),
+    # The newest Qwen that fits 8 GB cards; thinks before it answers.
+    "qwen3.5-9b": (
+        "https://huggingface.co/unsloth/Qwen3.5-9B-GGUF/resolve/main/Qwen3.5-9B-Q4_K_M.gguf"
     ),
     # Half the video memory (~5 GB) and about twice as fast, for smaller graphics cards.
     "qwen7b": (
@@ -93,7 +101,38 @@ MODEL_PRESETS = {
         "https://huggingface.co/ggml-org/gemma-4-E4B-it-GGUF/resolve/main/"
         "gemma-4-E4B-it-Q4_K_M.gguf"
     ),
+    # Changed by others (see MODIFIED): "abliterated" models have the direction in the
+    # network that makes them refuse removed; the others are fine-tuned on new data.
+    "qwen3-14b-abliterated": (
+        "https://huggingface.co/bartowski/mlabonne_Qwen3-14B-abliterated-GGUF/resolve/main/"
+        "mlabonne_Qwen3-14B-abliterated-Q4_K_M.gguf"
+    ),
+    "josiefied-qwen3-14b": (
+        "https://huggingface.co/bartowski/Goekdeniz-Guelmez_Josiefied-Qwen3-14B-abliterated-v3-GGUF/"
+        "resolve/main/Goekdeniz-Guelmez_Josiefied-Qwen3-14B-abliterated-v3-Q4_K_M.gguf"
+    ),
+    "hermes4-14b": (
+        "https://huggingface.co/bartowski/NousResearch_Hermes-4-14B-GGUF/resolve/main/"
+        "NousResearch_Hermes-4-14B-Q4_K_M.gguf"
+    ),
+    "qwen3-8b-abliterated": (
+        "https://huggingface.co/bartowski/mlabonne_Qwen3-8B-abliterated-GGUF/resolve/main/"
+        "mlabonne_Qwen3-8B-abliterated-Q4_K_M.gguf"
+    ),
+    "dolphin3-8b": (
+        "https://huggingface.co/bartowski/Dolphin3.0-Llama3.1-8B-GGUF/resolve/main/"
+        "Dolphin3.0-Llama3.1-8B-Q4_K_M.gguf"
+    ),
 }
+# Presets that are other people's changes of a model (the setup window lists them apart).
+# The default, qwen14b-uncensored, is one too, but it stays at the top as the default.
+MODIFIED = (
+    "qwen3-14b-abliterated",
+    "josiefied-qwen3-14b",
+    "hermes4-14b",
+    "qwen3-8b-abliterated",
+    "dolphin3-8b",
+)
 # What the setup window tells about each preset: (title, description, video memory in GB).
 MODEL_INFO = {
     "qwen14b-uncensored": (
@@ -121,10 +160,20 @@ MODEL_INFO = {
         "A little smaller and quicker than the 14B models; good in many languages.",
         10.0,
     ),
+    "gemma4-12b": (
+        "Gemma 4 12B",
+        "Google's mid-size model: writes well, knows 140 languages.",
+        10.0,
+    ),
     "qwen14b-coder": (
         "Qwen2.5 Coder 14B",
         "Tuned for writing and fixing code; less good at everyday conversation.",
         10.0,
+    ),
+    "qwen3.5-9b": (
+        "Qwen3.5 9B",
+        "The newest Qwen for 8 GB cards; thinks before it answers.",
+        7.0,
     ),
     "qwen7b": (
         "Qwen2.5 7B",
@@ -140,6 +189,31 @@ MODEL_INFO = {
         "Gemma 4 E4B",
         "Google's small, quick model for 6 to 8 GB cards; knows 140 languages.",
         6.0,
+    ),
+    "qwen3-14b-abliterated": (
+        "Qwen3 14B, abliterated",
+        "Qwen3 14B with its refusals removed (by mlabonne); thinks before it answers.",
+        10.0,
+    ),
+    "josiefied-qwen3-14b": (
+        "Josiefied Qwen3 14B",
+        "Abliterated, then fine-tuned to stay good at tools and following instructions.",
+        10.0,
+    ),
+    "hermes4-14b": (
+        "Hermes 4 14B",
+        "Nous Research's retraining of Qwen3 14B: follows you, not a fixed persona.",
+        10.0,
+    ),
+    "qwen3-8b-abliterated": (
+        "Qwen3 8B, abliterated",
+        "The 8B with its refusals removed, for 8 GB cards; thinks before it answers.",
+        7.0,
+    ),
+    "dolphin3-8b": (
+        "Dolphin 3.0 8B",
+        "An uncensored retraining of Llama 3.1 8B for chat, code and tools.",
+        7.0,
     ),
 }
 # Voice (optional, --voice): speech-to-text with whisper.cpp and text-to-speech with Piper,

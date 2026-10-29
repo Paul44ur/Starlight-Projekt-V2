@@ -98,6 +98,8 @@ def test_every_preset_has_a_download_size_and_its_own_file() -> None:
     assert len(set(files)) == len(files)  # no two presets would share models/<file>
     for url in L.MODEL_PRESETS.values():
         assert url.startswith("https://huggingface.co/") and "/resolve/main/" in url
+    # the changed models come last, under their own heading in the setup window
+    assert list(L.MODEL_PRESETS)[-len(L.MODIFIED) :] == list(L.MODIFIED)
 
 
 # -- remembered choices ----------------------------------------------------------------------------

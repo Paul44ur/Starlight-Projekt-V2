@@ -206,7 +206,7 @@ To use options every time, put them into `config\launcher.json`, for example:
 
 #### A different model
 
-Nine models are ready to pick in the setup window, with `--model <name>`, or with
+Sixteen models are ready to pick in the setup window, with `--model <name>`, or with
 `"model": "<name>"` in `config\launcher.json`. Each is downloaded the first time it is used:
 
 | Name | Model | Download | Video memory |
@@ -216,13 +216,27 @@ Nine models are ready to pick in the setup window, with `--model <name>`, or wit
 | `qwen3-14b` | Qwen3-14B: thinks before it answers, better at hard problems, slower to reply | 9 GB | about 10 GB |
 | `ministral14b` | Ministral 3 14B Instruct (Mistral, 2025): made for tool use, strong in German and French | 8.2 GB | about 11 GB |
 | `mistral-nemo` | Mistral Nemo 12B Instruct: a little smaller and quicker, good in many languages | 7.5 GB | about 10 GB |
+| `gemma4-12b` | Gemma 4 12B (Google): writes well, knows 140 languages | 7.5 GB | about 10 GB |
 | `qwen14b-coder` | Qwen2.5-Coder-14B Instruct: best for writing and fixing code | 9 GB | about 10 GB |
+| `qwen3.5-9b` | Qwen3.5-9B: the newest Qwen for 8 GB cards, thinks before it answers | 5.7 GB | about 7 GB |
 | `qwen7b` | Qwen2.5-7B Instruct: about twice as fast, a little less capable | 4.7 GB | about 5 GB |
 | `qwen3-8b` | Qwen3-8B: the newer Qwen for 8 GB cards, thinks before it answers | 5 GB | about 7 GB |
 | `gemma4-e4b` | Gemma 4 E4B (Google): small and quick, for 6 to 8 GB cards | 5 GB | about 6 GB |
 
-The video memory includes the 32k-token context. The Qwen3 models think first: llama.cpp
-keeps that thinking out of the answer, but you wait for it, and it is not shown.
+Versions changed by others. *Abliterated* models have the part of the network that makes
+them refuse removed; the others are retrained on new data. They refuse less, and they are
+not tested by the original makers:
+
+| Name | Model | Download | Video memory |
+| --- | --- | --- | --- |
+| `qwen3-14b-abliterated` | Qwen3-14B abliterated by mlabonne; thinks before it answers | 9 GB | about 10 GB |
+| `josiefied-qwen3-14b` | Josiefied Qwen3-14B v3: abliterated, then fine-tuned to keep tool use | 9 GB | about 10 GB |
+| `hermes4-14b` | Hermes 4 14B (Nous Research): Qwen3-14B retrained to follow you | 9 GB | about 10 GB |
+| `qwen3-8b-abliterated` | Qwen3-8B abliterated by mlabonne, for 8 GB cards | 5 GB | about 7 GB |
+| `dolphin3-8b` | Dolphin 3.0 (Llama 3.1 8B): uncensored retraining for chat, code and tools | 4.9 GB | about 7 GB |
+
+The video memory includes the 32k-token context. The Qwen3 and Qwen3.5 models think first:
+llama.cpp keeps that thinking out of the answer, but you wait for it, and it is not shown.
 
 Any other GGUF model with tool calling works too, such as Llama 3.1 Instruct. As a rule
 of thumb:
