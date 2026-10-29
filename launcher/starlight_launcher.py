@@ -60,10 +60,38 @@ MODEL_PRESETS = {
         "https://huggingface.co/bartowski/Qwen2.5-14B-Instruct-GGUF/resolve/main/"
         "Qwen2.5-14B-Instruct-Q4_K_M.gguf"
     ),
+    # The next Qwen generation: thinks before it answers (llama-server keeps the thinking
+    # out of the reply), so it is better at hard problems and slower.
+    "qwen3-14b": (
+        "https://huggingface.co/MaziyarPanahi/Qwen3-14B-GGUF/resolve/main/Qwen3-14B.Q4_K_M.gguf"
+    ),
+    # Mistral's 14B of December 2025, made for tool use; strong in German and French.
+    "ministral14b": (
+        "https://huggingface.co/unsloth/Ministral-3-14B-Instruct-2512-GGUF/resolve/main/"
+        "Ministral-3-14B-Instruct-2512-Q4_K_M.gguf"
+    ),
+    # Mistral and NVIDIA's 12B: a little smaller and quicker, good in many languages.
+    "mistral-nemo": (
+        "https://huggingface.co/bartowski/Mistral-Nemo-Instruct-2407-GGUF/resolve/main/"
+        "Mistral-Nemo-Instruct-2407-Q4_K_M.gguf"
+    ),
+    # Tuned for code: writes and fixes programs better, everyday chat less well.
+    "qwen14b-coder": (
+        "https://huggingface.co/bartowski/Qwen2.5-Coder-14B-Instruct-GGUF/resolve/main/"
+        "Qwen2.5-Coder-14B-Instruct-Q4_K_M.gguf"
+    ),
     # Half the video memory (~5 GB) and about twice as fast, for smaller graphics cards.
     "qwen7b": (
         "https://huggingface.co/bartowski/Qwen2.5-7B-Instruct-GGUF/resolve/main/"
         "Qwen2.5-7B-Instruct-Q4_K_M.gguf"
+    ),
+    "qwen3-8b": (
+        "https://huggingface.co/MaziyarPanahi/Qwen3-8B-GGUF/resolve/main/Qwen3-8B.Q4_K_M.gguf"
+    ),
+    # Google's small model (8B weights, 4B of them used per token), for 6-8 GB cards.
+    "gemma4-e4b": (
+        "https://huggingface.co/ggml-org/gemma-4-E4B-it-GGUF/resolve/main/"
+        "gemma-4-E4B-it-Q4_K_M.gguf"
     ),
 }
 # What the setup window tells about each preset: (title, description, video memory in GB).
@@ -78,10 +106,40 @@ MODEL_INFO = {
         "The same size with its safety training: more careful, cleaner endings.",
         10.0,
     ),
+    "qwen3-14b": (
+        "Qwen3 14B",
+        "Newer; thinks before it answers: better at hard problems, slower to reply.",
+        10.0,
+    ),
+    "ministral14b": (
+        "Ministral 3 14B",
+        "Mistral's newest 14B, made for using tools; strong in German and French.",
+        11.0,
+    ),
+    "mistral-nemo": (
+        "Mistral Nemo 12B",
+        "A little smaller and quicker than the 14B models; good in many languages.",
+        10.0,
+    ),
+    "qwen14b-coder": (
+        "Qwen2.5 Coder 14B",
+        "Tuned for writing and fixing code; less good at everyday conversation.",
+        10.0,
+    ),
     "qwen7b": (
         "Qwen2.5 7B",
         "About twice as fast and half the video memory; a little less capable.",
         5.0,
+    ),
+    "qwen3-8b": (
+        "Qwen3 8B",
+        "The newer Qwen for 8 GB cards; thinks before it answers, so slower to reply.",
+        7.0,
+    ),
+    "gemma4-e4b": (
+        "Gemma 4 E4B",
+        "Google's small, quick model for 6 to 8 GB cards; knows 140 languages.",
+        6.0,
     ),
 }
 # Voice (optional, --voice): speech-to-text with whisper.cpp and text-to-speech with Piper,

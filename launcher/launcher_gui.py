@@ -457,7 +457,13 @@ class App:
     APPROX_GB: ClassVar[dict[str, float]] = {
         "qwen14b-uncensored": 9.0,
         "qwen14b": 9.0,
+        "qwen3-14b": 9.0,
+        "ministral14b": 8.2,
+        "mistral-nemo": 7.5,
+        "qwen14b-coder": 9.0,
         "qwen7b": 4.7,
+        "qwen3-8b": 5.0,
+        "gemma4-e4b": 5.0,
     }
 
     def _build_setup(self) -> None:

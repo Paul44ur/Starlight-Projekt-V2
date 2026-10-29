@@ -89,6 +89,17 @@ def test_every_preset_is_described_in_the_window() -> None:
         assert title and text and memory > 0
 
 
+def test_every_preset_has_a_download_size_and_its_own_file() -> None:
+    from tests.test_cleanup_launcher import load_gui  # (it imports this module)
+
+    gui = load_gui()
+    assert set(gui.App.APPROX_GB) == set(L.MODEL_PRESETS)
+    files = [L._file_name(url) for url in L.MODEL_PRESETS.values()]
+    assert len(set(files)) == len(files)  # no two presets would share models/<file>
+    for url in L.MODEL_PRESETS.values():
+        assert url.startswith("https://huggingface.co/") and "/resolve/main/" in url
+
+
 # -- remembered choices ----------------------------------------------------------------------------
 
 

@@ -206,14 +206,23 @@ To use options every time, put them into `config\launcher.json`, for example:
 
 #### A different model
 
-Three models are ready to pick with `--model <name>`, or `"model": "<name>"` in
-`config\launcher.json`. Each is downloaded the first time it is used:
+Nine models are ready to pick in the setup window, with `--model <name>`, or with
+`"model": "<name>"` in `config\launcher.json`. Each is downloaded the first time it is used:
 
-| Name | Model | Video memory |
-| --- | --- | --- |
-| `qwen14b-uncensored` | Qwen2.5-14B Instruct, uncensored (the default) | about 10 GB |
-| `qwen14b` | Qwen2.5-14B Instruct, the original: more careful, cleaner turn endings | about 10 GB |
-| `qwen7b` | Qwen2.5-7B Instruct: about twice as fast, a little less capable | about 5 GB |
+| Name | Model | Download | Video memory |
+| --- | --- | --- | --- |
+| `qwen14b-uncensored` | Qwen2.5-14B Instruct, uncensored (the default) | 9 GB | about 10 GB |
+| `qwen14b` | Qwen2.5-14B Instruct, the original: more careful, cleaner turn endings | 9 GB | about 10 GB |
+| `qwen3-14b` | Qwen3-14B: thinks before it answers, better at hard problems, slower to reply | 9 GB | about 10 GB |
+| `ministral14b` | Ministral 3 14B Instruct (Mistral, 2025): made for tool use, strong in German and French | 8.2 GB | about 11 GB |
+| `mistral-nemo` | Mistral Nemo 12B Instruct: a little smaller and quicker, good in many languages | 7.5 GB | about 10 GB |
+| `qwen14b-coder` | Qwen2.5-Coder-14B Instruct: best for writing and fixing code | 9 GB | about 10 GB |
+| `qwen7b` | Qwen2.5-7B Instruct: about twice as fast, a little less capable | 4.7 GB | about 5 GB |
+| `qwen3-8b` | Qwen3-8B: the newer Qwen for 8 GB cards, thinks before it answers | 5 GB | about 7 GB |
+| `gemma4-e4b` | Gemma 4 E4B (Google): small and quick, for 6 to 8 GB cards | 5 GB | about 6 GB |
+
+The video memory includes the 32k-token context. The Qwen3 models think first: llama.cpp
+keeps that thinking out of the answer, but you wait for it, and it is not shown.
 
 Any other GGUF model with tool calling works too, such as Llama 3.1 Instruct. As a rule
 of thumb:
