@@ -8,9 +8,11 @@ temporary file into each data folder to see that it can).
 from __future__ import annotations
 
 import contextlib
+import json
 import socket
 import sys
 import urllib.error
+import urllib.parse
 import urllib.request
 import uuid
 from collections.abc import Callable
@@ -109,9 +111,21 @@ def _model_base(config: StarlightConfig) -> tuple[str, dict[str, Any]]:
     return provider, options
 
 
+LOOPBACK = ("127.0.0.1", "localhost", "::1")
+
+
+def _open(url: str, timeout: float) -> Any:
+    """Open a URL; one on this PC never through a system proxy (it cannot reach 127.0.0.1,
+    and urllib would send the request to it all the same)."""
+    if (urllib.parse.urlsplit(url).hostname or "") in LOOPBACK:
+        opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+        return opener.open(url, timeout=timeout)
+    return urllib.request.urlopen(url, timeout=timeout)
+
+
 def _get(url: str, timeout: float = 3.0) -> tuple[int | None, str]:
     try:
-        with urllib.request.urlopen(url, timeout=timeout) as response:
+        with _open(url, timeout) as response:
             return response.status, ""
     except urllib.error.HTTPError as exc:
         return exc.code, str(exc)
@@ -119,8 +133,51 @@ def _get(url: str, timeout: float = 3.0) -> tuple[int | None, str]:
         return None, str(getattr(exc, "reason", exc))
 
 
+def _get_json(url: str, timeout: float = 3.0) -> Any:
+    """A JSON answer, or None when there is none."""
+    try:
+        with _open(url, timeout) as response:
+            return json.loads(response.read().decode("utf-8", errors="replace"))
+    except (OSError, ValueError):
+        return None
+
+
+def check_lmstudio(config: StarlightConfig, base: str, get_json: Callable[[str], Any]) -> Check:
+    """Which language model LM Studio has loaded, and whether its context is long enough
+    for what Starlight sends (model.context_window), when LM Studio says so."""
+    native = get_json(f"{base}/api/v0/models")
+    if not isinstance(native, dict):
+        return ok("LM Studio model", "its server answers (it does not say which model is loaded)")
+    loaded = [
+        m
+        for m in native.get("data") or []
+        if isinstance(m, dict) and m.get("state") == "loaded" and m.get("type") in ("llm", "vlm")
+    ]
+    if not loaded:
+        return fail(
+            "LM Studio model",
+            "no language model is loaded",
+            "load one in LM Studio's chat or Developer tab",
+        )
+    model = loaded[0]
+    length = int(model.get("loaded_context_length") or 0)
+    wanted = config.model.context_window
+    if length and length < wanted:
+        return warn(
+            "LM Studio model",
+            f"{model.get('id')} is loaded with {length} tokens of context; Starlight plans "
+            f"with {wanted}",
+            f"load it with a context length of at least {wanted} in LM Studio, or set "
+            "model.context_window lower",
+        )
+    return ok("LM Studio model", f"{model.get('id')} is loaded")
+
+
 def check_model(
-    config: StarlightConfig, paths: Paths, get: Callable[[str], tuple[int | None, str]] = _get
+    config: StarlightConfig,
+    paths: Paths,
+    get: Callable[[str], tuple[int | None, str]] = _get,
+    get_json: Callable[[str], Any] = _get_json,
 ) -> list[Check]:
     provider, options = _model_base(config)
     if provider in ("", "echo"):
@@ -163,6 +220,8 @@ def check_model(
     answers = path == "/v1/models" and status is not None and status < 500
     if status == 200 or answers:
         results.append(ok("model server", f"answers at {base}"))
+        if provider == "lmstudio":
+            results.append(check_lmstudio(config, base, get_json))
     elif status == 503:
         results.append(warn("model server", "is up but still loading the model", "wait a minute"))
     else:

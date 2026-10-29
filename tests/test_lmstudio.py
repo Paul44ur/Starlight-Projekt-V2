@@ -12,9 +12,10 @@ from typing import Any
 import httpx
 import pytest
 
-from starlight.core.config import ModelConfig, StarlightConfig
+from starlight.core.config import EmbedderConfig, ModelConfig, StarlightConfig
 from starlight.core.model import Message, create_provider
-from starlight.doctor import check_model
+from starlight.doctor import check_lmstudio, check_model
+from starlight.memory.embed import LMSTUDIO_EMBEDDER, OpenAICompatEmbedder, create_embedder
 from starlight.models.lmstudio import STOP, LMStudioError, LMStudioProvider
 from starlight.models.serve import ServeError, serve_command
 from tests.test_cleanup_launcher import load_gui
@@ -157,6 +158,7 @@ def test_setup_downloads_no_model_and_writes_the_lm_studio_config(
     monkeypatch.setattr(L, "ensure_uv", lambda settings, ui: uv)
     monkeypatch.setattr(L, "run_checked", lambda *args, **kwargs: None)
     monkeypatch.setattr(L, "maybe_tesseract", lambda settings, ui: None)
+    monkeypatch.setattr(L, "fetch_json", lambda *args, **kwargs: None)  # LM Studio is not running
     installed = L.setup(settings, L.Ui(assume_yes=True))
     assert installed.server is None and installed.model is None
     written = (root / "config" / "starlight.launcher.yaml").read_text(encoding="utf-8")
@@ -201,14 +203,99 @@ def test_the_setup_page_offers_lm_studio_and_saves_the_choice(
         monkeypatch.setattr(app, "begin", lambda: None)  # no installing in a test
         app.open_setup(False)
         assert gui.LMSTUDIO in app.cards
+        app.on_lmstudio_found(L.LMStudioState(True, "qwen2.5-14b-instruct", 32768))
+        assert app.cards[gui.LMSTUDIO]["meta"].cget("text") == "found: qwen2.5-14b-instruct"
+        app.on_lmstudio_found(L.LMStudioState(False))
+        assert "not running" in app.cards[gui.LMSTUDIO]["meta"].cget("text")
         app.select_model(gui.LMSTUDIO, touched=True)
+        assert app.gpu_check.instate(["disabled"])  # LM Studio decides where the model runs
         assert "9" not in app.summary.cget("text").split("GB")[0]  # no model download counted
         app.on_setup_go()
         saved = json.loads((root / "config" / "launcher.json").read_text(encoding="utf-8"))
         assert saved["model_server"] == "lmstudio" and app.settings.uses_lmstudio
         app.select_model("qwen7b", touched=True)
+        assert not app.gpu_check.instate(["disabled"])
         app.on_setup_go()
         saved = json.loads((root / "config" / "launcher.json").read_text(encoding="utf-8"))
         assert saved["model_server"] == "llamacpp" and saved["model"] == "qwen7b"
     finally:
         app.root.destroy()
+
+
+# -- the second round: errors, speed, context, embeddings -----------------------------------
+
+
+async def test_lm_studio_s_own_error_reaches_the_user() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/api/v0/models":
+            return httpx.Response(200, json=LOADED)
+        error = {"error": {"message": "the prompt is longer than the loaded context (4096)"}}
+        return httpx.Response(400, json=error)
+
+    provider = LMStudioProvider(transport=httpx.MockTransport(handler))
+    for on_token in (None, lambda text: None):  # without and with streaming
+        with pytest.raises(httpx.HTTPStatusError, match="HTTP 400: the prompt is longer"):
+            await provider.chat([Message("user", "hi")], [], on_token)
+
+
+async def test_the_writing_speed_is_measured_when_the_server_gives_none() -> None:
+    chunks = [
+        {"choices": [{"delta": {"content": "Hel"}}]},
+        {"choices": [{"delta": {"content": "lo"}, "finish_reason": "stop"}]},
+        {"choices": [], "usage": {"prompt_tokens": 5, "completion_tokens": 2}},
+    ]
+    stream = "".join(f"data: {json.dumps(c)}\n\n" for c in chunks) + "data: [DONE]\n\n"
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/api/v0/models":
+            return httpx.Response(200, json=LOADED)
+        return httpx.Response(200, text=stream, headers={"content-type": "text/event-stream"})
+
+    seen: list[str] = []
+    provider = LMStudioProvider(transport=httpx.MockTransport(handler))
+    answer = await provider.chat([Message("user", "hi")], [], seen.append)
+    assert answer.content == "Hello" and "".join(seen) == "Hello"
+    assert answer.usage["completion_tokens"] == 2 and answer.usage["tokens_per_second"] > 0
+
+
+def test_the_doctor_says_which_model_is_loaded_and_if_its_context_is_enough() -> None:
+    config = StarlightConfig.model_validate(
+        {"model": {"provider": "lmstudio", "context_window": 32768}}
+    )
+    base = "http://127.0.0.1:1234"
+
+    def loaded(length: int) -> dict[str, Any]:
+        model = {"id": "qwen", "type": "llm", "state": "loaded", "loaded_context_length": length}
+        return {"data": [model]}
+
+    good = check_lmstudio(config, base, lambda url: loaded(32768))
+    assert (good.status, good.detail) == ("ok", "qwen is loaded")
+    short = check_lmstudio(config, base, lambda url: loaded(4096))
+    assert short.status == "warn" and "4096" in short.detail and "32768" in short.hint
+    none = check_lmstudio(config, base, lambda url: {"data": []})
+    assert none.status == "fail" and "load one" in none.hint
+    unknown = check_lmstudio(config, base, lambda url: None)
+    assert unknown.status == "ok"  # an older LM Studio without its own API: it answers
+
+
+def test_the_launcher_plans_with_the_context_lm_studio_has_loaded(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    settings = settings_for(starlight_root(tmp_path), monkeypatch, "--lmstudio")
+    native: dict[str, Any] = {}
+    monkeypatch.setattr(L, "fetch_json", lambda url, *args, **kwargs: native.get(url))
+    model = L.lmstudio_model_config(settings)
+    assert model["context_window"] == 32768 and "reserve_tokens" not in model  # not running
+    entry = {"id": "qwen", "type": "llm", "state": "loaded", "loaded_context_length": 8192}
+    native["http://127.0.0.1:1234/api/v0/models"] = {"data": [entry]}
+    model = L.lmstudio_model_config(settings)
+    assert model["context_window"] == 8192 and model["reserve_tokens"] == 2048
+    entry["loaded_context_length"] = 131072
+    assert L.lmstudio_model_config(settings)["context_window"] == 32768  # never more than asked
+
+
+def test_lm_studio_can_hold_the_embedding_model_too() -> None:
+    embedder = create_embedder(EmbedderConfig(provider="lmstudio"))
+    assert isinstance(embedder, OpenAICompatEmbedder)
+    assert embedder.model == LMSTUDIO_EMBEDDER
+    assert embedder.base_url == "http://127.0.0.1:1234/v1"

@@ -94,6 +94,7 @@ memory:
     provider: hash        # built in, matches shared words. On the GPU via Ollama:
     # provider: ollama    #   ollama pull nomic-embed-text   (finds meaning, not just words)
     # model: nomic-embed-text
+    # provider: lmstudio  # or LM Studio's own embedding model (its local server must be on)
   top_k: 5                # memories added to each prompt
   min_score: 0.2
   merge_threshold: 0.92   # this similar to an existing memory = update it, not a new file

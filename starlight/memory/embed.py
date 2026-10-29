@@ -4,6 +4,7 @@
   so it finds memories that share words. Good for tests and as a fallback.
 * ``ollama``: e.g. ``nomic-embed-text`` or ``bge-m3`` on the GPU via Ollama.
 * ``openai_compat``: llama-server started with ``--embedding``, or another local server.
+* ``lmstudio``: an embedding model in LM Studio (``nomic-embed-text`` ships with it).
 """
 
 from __future__ import annotations
@@ -117,6 +118,10 @@ class OpenAICompatEmbedder:
         return [normalize(np.array(d["embedding"])) for d in data]
 
 
+# The embedding model LM Studio ships with.
+LMSTUDIO_EMBEDDER = "text-embedding-nomic-embed-text-v1.5"
+
+
 def create_embedder(config: EmbedderConfig) -> Embedder:
     if config.provider == "hash":
         return HashEmbedder(config.dimensions)
@@ -128,4 +133,10 @@ def create_embedder(config: EmbedderConfig) -> Embedder:
         return OpenAICompatEmbedder(
             config.model or "local", config.base_url or "http://127.0.0.1:8081/v1"
         )
-    raise ValueError(f"unknown embedder '{config.provider}' (hash, ollama, openai_compat)")
+    if config.provider == "lmstudio":  # an embedding model in LM Studio (loaded on first use)
+        return OpenAICompatEmbedder(
+            config.model or LMSTUDIO_EMBEDDER, config.base_url or "http://127.0.0.1:1234/v1"
+        )
+    raise ValueError(
+        f"unknown embedder '{config.provider}' (hash, ollama, openai_compat, lmstudio)"
+    )

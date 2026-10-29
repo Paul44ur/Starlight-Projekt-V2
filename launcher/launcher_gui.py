@@ -230,6 +230,7 @@ class App:
         self.exited = False
         self.in_settings = False
         self.sizes: dict[str, int | None] = {}  # download size per model link; None: unknown
+        self.lmstudio: Any = None  # what LM Studio said (launcher.LMStudioState); None: not asked
         self.gpu: Any = None
         self.fatal = ""
         try:
@@ -382,9 +383,10 @@ class App:
                   foreground=[("disabled", c.dim)])  # fmt: skip
         style.configure("TCheckbutton", background=c.bg, foreground=c.text, indicatorcolor=c.panel2,
                         indicatorbackground=c.panel2, padding=(0, self.px(3)))  # fmt: skip
-        style.map("TCheckbutton", indicatorbackground=[("selected", c.accent)],
-                  indicatorforeground=[("selected", c.on_accent)],
-                  background=[("active", c.bg)])  # fmt: skip
+        style.map("TCheckbutton",
+                  indicatorbackground=[("disabled", c.panel2), ("selected", c.accent)],
+                  indicatorforeground=[("disabled", c.dim), ("selected", c.on_accent)],
+                  foreground=[("disabled", c.dim)], background=[("active", c.bg)])  # fmt: skip
         style.configure("Horizontal.TProgressbar", background=c.accent, troughcolor=c.panel2,
                         bordercolor=c.panel2, lightcolor=c.accent, darkcolor=c.accent,
                         thickness=self.px(10))  # fmt: skip
@@ -522,6 +524,8 @@ class App:
                 options, text=text, variable=variable, command=self._refresh_summary, cursor="hand2"
             )
             check.grid(row=index, column=0, sticky="w")
+            if variable is self.gpu_var:
+                self.gpu_check = check  # off with LM Studio: it decides where the model runs
         self.has_ocr_option = any(variable is self.ocr_var for variable, _ in rows)
 
         self.summary = self._label(page, "", "Dim.TLabel", wraplength=self.px(740), justify="left")
@@ -604,6 +608,7 @@ class App:
         if touched:
             self.model_touched = True
         self.model_var.set(key)
+        self.gpu_check.state(["disabled"] if key == LMSTUDIO else ["!disabled"])
         for card_key, card in self.cards.items():
             chosen = card_key == key
             card["frame"].configure(highlightbackground=self.c.accent if chosen else self.c.border)
@@ -617,7 +622,7 @@ class App:
     def _refresh_cards(self, recommended: str = "") -> None:
         for key, card in self.cards.items():
             if key == LMSTUDIO:
-                card["meta"].configure(text="runs in LM Studio")
+                self._refresh_lmstudio_card(card)
                 continue
             have = self._model_file_of(key).is_file()
             size = self.sizes.get(self._model_url_of(key))
@@ -635,6 +640,23 @@ class App:
             if have:
                 dark_text = "#06240f" if self.c is DARK else "#ffffff"
                 self._pill(card["badges"], "Downloaded", self.c.ok, dark_text)
+
+    def _refresh_lmstudio_card(self, card: dict[str, Any]) -> None:
+        """What LM Studio said when the page opened: running, and with which model."""
+        state = self.lmstudio
+        for child in card["badges"].winfo_children():
+            child.destroy()
+        if state is None:
+            text = "runs in LM Studio"
+        elif state.loaded:
+            text = f"found: {state.loaded}"
+            pill_fg = "#06240f" if self.c is DARK else "#ffffff"
+            self._pill(card["badges"], "Running", self.c.ok, pill_fg)
+        elif state.answers:
+            text = "found, but no model is loaded in it"
+        else:
+            text = "not running now (start its local server)"
+        card["meta"].configure(text=text)
 
     def _draw_mark(self, canvas: tk.Canvas, kind: str, colour: str) -> None:
         """A small round mark drawn on a canvas (fonts differ in which symbols they have):
@@ -664,6 +686,7 @@ class App:
         already showing."""
 
         def look() -> None:
+            self.events.put(("lmstudio_found", self.L.lmstudio_state(self.settings.lmstudio_url)))
             self.events.put(("gpu", self.L.detect_gpu()))
             for key in self.L.MODEL_PRESETS:
                 url = self.L.MODEL_PRESETS[key]
@@ -674,6 +697,11 @@ class App:
                         self.events.put(("size", url, None))
 
         threading.Thread(target=look, name="lookups", daemon=True).start()
+
+    def on_lmstudio_found(self, state: Any) -> None:
+        self.lmstudio = state
+        recommended, _ = self.L.recommend_model(self.gpu)
+        self._refresh_cards(recommended if self.gpu is not None else "")
 
     def on_gpu(self, gpu: Any) -> None:
         self.gpu = gpu
@@ -1158,7 +1186,10 @@ class App:
             return
 
         def restart() -> None:
-            if not self.services.restart_model():
+            if self.settings.uses_lmstudio:
+                note = "LM Studio runs the model: reload it there, or restart LM Studio."
+                self.events.put(("note", note))
+            elif not self.services.restart_model():
                 self.events.put(
                     (
                         "note",

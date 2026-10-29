@@ -956,16 +956,7 @@ def write_launcher_config(settings: Settings, server: Path | None, model: Path |
     and your own config/starlight.local.yaml still overrides it."""
     data: dict[str, Any]
     if settings.uses_lmstudio:
-        data = {
-            "model": {
-                "provider": "lmstudio",
-                "options": {
-                    "base_url": f"{settings.lmstudio_url}/v1",
-                    "model": settings.lmstudio_model or "auto",
-                },
-                "context_window": settings.context,
-            }
-        }
+        data = {"model": lmstudio_model_config(settings)}
     elif settings.use_model and server is not None and model is not None:
         data = {
             "model": {
@@ -1569,9 +1560,18 @@ LMSTUDIO_HINT = (
 )
 
 
-def lmstudio_model(url: str) -> tuple[bool, str]:
-    """Whether LM Studio's local server answers at ``url``, and the language model it has
-    loaded ("" when none is loaded, or when its own API is not there to say)."""
+@dataclass(frozen=True)
+class LMStudioState:
+    """What LM Studio's local server says about itself."""
+
+    answers: bool = False
+    loaded: str = ""  # the loaded language model; "" when none (or its API does not say)
+    context: int = 0  # the context length it is loaded with; 0 when LM Studio does not say
+
+
+def lmstudio_state(url: str) -> LMStudioState:
+    """Ask LM Studio at ``url``: its own API says which model is loaded; without it, an
+    answer from the OpenAI model list only tells that it runs."""
     native = fetch_json(f"{url}/api/v0/models")
     if native is not None:
         for entry in native.get("data") or []:
@@ -1580,9 +1580,35 @@ def lmstudio_model(url: str) -> tuple[bool, str]:
                 and entry.get("state") == "loaded"
                 and entry.get("type") in ("llm", "vlm")
             ):
-                return True, str(entry.get("id") or "")
-        return True, ""
-    return fetch_json(f"{url}/v1/models") is not None, ""
+                context = entry.get("loaded_context_length")
+                return LMStudioState(
+                    True, str(entry.get("id") or ""), context if isinstance(context, int) else 0
+                )
+        return LMStudioState(True)
+    return LMStudioState(fetch_json(f"{url}/v1/models") is not None)
+
+
+SHORT_CONTEXT = 16384  # below this, less room is kept for the answer (reserve_tokens)
+
+
+def lmstudio_model_config(settings: Settings) -> dict[str, Any]:
+    """The model section for LM Studio. Starlight plans its prompts with context_window, so
+    it is never more than LM Studio has loaded: a longer prompt would be refused."""
+    context = settings.context
+    loaded = lmstudio_state(settings.lmstudio_url).context
+    if loaded:
+        context = min(context, loaded)
+    model: dict[str, Any] = {
+        "provider": "lmstudio",
+        "options": {
+            "base_url": f"{settings.lmstudio_url}/v1",
+            "model": settings.lmstudio_model or "auto",
+        },
+        "context_window": context,
+    }
+    if context < SHORT_CONTEXT:  # the default 4096 would leave too little for the prompt
+        model["reserve_tokens"] = max(256, context // 4)
+    return model
 
 
 class Services:
@@ -1633,10 +1659,10 @@ class Services:
         if not settings.use_model:
             model, detail = "off", "the built-in test model"
         elif settings.uses_lmstudio:
-            answers, loaded = lmstudio_model(settings.lmstudio_url)
-            if loaded:
-                model, detail = "ready", f"{loaded} (LM Studio)"
-            elif answers:
+            lms = lmstudio_state(settings.lmstudio_url)
+            if lms.loaded:
+                model, detail = "ready", f"{lms.loaded} (LM Studio)"
+            elif lms.answers:
                 model, detail = "waiting", "LM Studio answers but has no model loaded: load one"
             else:
                 model, detail = "waiting", LMSTUDIO_HINT
@@ -1693,10 +1719,11 @@ def start(settings: Settings, ui: Ui, installed: Installed, ask: str | None) -> 
     try:
         if settings.uses_lmstudio:
             ui.step("Checking LM Studio")
-            answers, loaded = lmstudio_model(settings.lmstudio_url)
-            if loaded:
-                ui.say(f"   LM Studio has {loaded} loaded")
-            elif answers:
+            lms = lmstudio_state(settings.lmstudio_url)
+            if lms.loaded:
+                context = f" (context {lms.context})" if lms.context else ""
+                ui.say(f"   LM Studio has {lms.loaded} loaded{context}")
+            elif lms.answers:
                 ui.say("   LM Studio answers but has no model loaded: load one in LM Studio")
             else:
                 ui.say("   " + LMSTUDIO_HINT)

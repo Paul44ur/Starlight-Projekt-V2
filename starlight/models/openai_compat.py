@@ -101,7 +101,7 @@ class OpenAICompatProvider:
         known = {t["name"] for t in tools}
         if not stream:
             response = await self._client.post(url, json=body)
-            response.raise_for_status()
+            await _check(response)
             result = self._parse(response.json())
             result.content = cut_at_turn_end(result.content)
             if not result.tool_calls and known:
@@ -137,9 +137,10 @@ class OpenAICompatProvider:
         calls: dict[int, dict[str, str]] = {}
         usage: dict[str, Any] = {}
         began = False  # the first piece of the answer arrived (before that: prompt reading)
+        first_at = 0.0  # when it arrived: what came after is the writing speed
         stalled = False
         async with self._client.stream("POST", url, json=body) as response:
-            response.raise_for_status()
+            await _check(response)
             lines = response.aiter_lines().__aiter__()
             while True:
                 try:
@@ -154,6 +155,8 @@ class OpenAICompatProvider:
                     break
                 if not line.startswith("data:"):
                     continue
+                if not began:
+                    first_at = time.perf_counter()
                 began = True
                 payload = line[5:].strip()
                 if payload == "[DONE]":
@@ -184,6 +187,11 @@ class OpenAICompatProvider:
         if stalled:
             usage["finish_reason"] = "stalled"
             calls = {}  # a half-written call must not run
+        writing = time.perf_counter() - first_at
+        if "tokens_per_second" not in usage and usage.get("completion_tokens") and writing > 0:
+            # Only llama-server reports its speed (timings); for others (LM Studio, vLLM)
+            # it is the tokens written over the time from the first piece to the last.
+            usage["tokens_per_second"] = round(usage["completion_tokens"] / writing, 2)
         tool_calls: list[ToolCall] = [
             tool_call(c["name"], c["arguments"], c["id"] or None) for _, c in sorted(calls.items())
         ]
@@ -207,6 +215,32 @@ class OpenAICompatProvider:
 
     async def aclose(self) -> None:
         await self._client.aclose()
+
+
+def _error_text(response: httpx.Response) -> str:
+    """The server's own reason for a failed request, short ("" when it gave none). The
+    OpenAI format is {"error": {"message": ...}}; some servers send {"error": "..."}."""
+    try:
+        data = response.json()
+    except ValueError:
+        return response.text.strip()[:300]
+    error = data.get("error") if isinstance(data, dict) else None
+    if isinstance(error, dict):
+        error = error.get("message")
+    return str(error or "").strip()[:300]
+
+
+async def _check(response: httpx.Response) -> None:
+    """Like raise_for_status, with the server's reason in the message (say, LM Studio's
+    "no model loaded" or a prompt longer than the loaded context)."""
+    if response.is_success:
+        return
+    await response.aread()
+    reason = _error_text(response)
+    message = f"the model server answered HTTP {response.status_code}"
+    raise httpx.HTTPStatusError(
+        message + (f": {reason}" if reason else ""), request=response.request, response=response
+    )
 
 
 def _usage(data: dict[str, Any]) -> dict[str, Any]:

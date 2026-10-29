@@ -87,7 +87,7 @@ class ModelConfig(_Strict):
 
 
 class EmbedderConfig(_Strict):
-    provider: str = "hash"  # hash (built-in, no model), ollama or openai_compat
+    provider: str = "hash"  # hash (built-in, no model), ollama, openai_compat or lmstudio
     model: str = ""
     base_url: str = ""
     dimensions: int = Field(default=512, ge=16)
