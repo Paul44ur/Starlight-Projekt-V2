@@ -147,6 +147,15 @@ def system_uses_light_theme() -> bool:
         return False
 
 
+def shorten(text: str, limit: int = 40) -> str:
+    """A name cut to ``limit`` characters with an ellipsis in the middle (the start and the
+    end of a model name say the most: maker, size, quantization)."""
+    if len(text) <= limit:
+        return text
+    keep = limit - 1
+    return text[: keep - keep // 2] + "…" + text[-(keep // 2) :]
+
+
 def open_folder(path: Path) -> None:
     """Show a folder in the file manager."""
     with contextlib.suppress(OSError):
@@ -296,6 +305,12 @@ class App:
         self.scrollbar.grid(row=0, column=1, sticky="ns")
         self.scrollbar.grid_remove()
         self._scrollable = False
+        self.wrapping: list[ttk.Label] = []  # labels that wrap at the page width
+        self._wrapped_at = 0  # the page width they were wrapped at
+        self._cards_pending = False  # a layout of the model cards is waiting (_layout_cards)
+        self.cards: dict[str, dict[str, Any]] = {}
+        self.status_rows: dict[str, tuple[tk.Canvas, int, tk.Label]] = {}  # the status page's
+        self.status_title_width = 0
         self.body = ttk.Frame(
             self.scroller, padding=(self.px(28), self.px(18), self.px(28), self.px(18))
         )
@@ -316,6 +331,13 @@ class App:
         self.scroller.configure(
             scrollregion=(0, 0, self.scroller.winfo_width(), max(window_height, content))
         )
+        width = self._page_width()
+        if width != self._wrapped_at:  # the window got wider or narrower: rewrap the text
+            self._wrapped_at = width
+            for label in self.wrapping:
+                label.configure(wraplength=width)
+            self._layout_cards_soon()
+            self._wrap_status(width)
         scrollable = content > window_height
         if scrollable != self._scrollable:
             self._scrollable = scrollable
@@ -443,9 +465,26 @@ class App:
         return frame
 
     def _label(
-        self, parent: tk.Misc, text: str = "", style: str = "TLabel", **kwargs: Any
+        self,
+        parent: tk.Misc,
+        text: str = "",
+        style: str = "TLabel",
+        wrap: bool = False,
+        **kwargs: Any,
     ) -> ttk.Label:
-        return ttk.Label(parent, text=text, style=style, **kwargs)
+        """A label; ``wrap``: its lines wrap at the width of the page (see _fit_body)."""
+        if wrap:
+            kwargs.setdefault("wraplength", self._page_width())
+            kwargs.setdefault("justify", "left")
+        label = ttk.Label(parent, text=text, style=style, **kwargs)
+        if wrap:
+            self.wrapping.append(label)
+        return label
+
+    def _page_width(self) -> int:
+        """How wide the text of a page may be: the window less the page's margins."""
+        width = self.scroller.winfo_width() if self.scroller.winfo_ismapped() else 0
+        return max(width or self.root.winfo_width(), self.px(400)) - 2 * self.px(28) - 4
 
     def _button(
         self, parent: tk.Misc, text: str, command: Any, style: str = "TButton"
@@ -500,7 +539,6 @@ class App:
         models.columnconfigure(0, weight=1)
         section = self._label(models, "MODEL", "Section.TLabel")
         section.grid(row=0, column=0, sticky="w", pady=(0, self.px(6)))
-        self.cards: dict[str, dict[str, Any]] = {}
         self.model_var = tk.StringVar(value="")
         keys = list(self.L.MODEL_PRESETS)
         if self.settings.model_url not in self.L.MODEL_PRESETS.values():
@@ -528,11 +566,10 @@ class App:
             "Starlight's built-in test model is used (started with --no-model). It only "
             "repeats what you say, so nothing is downloaded.",
             "Dim.TLabel",
-            wraplength=self.px(740),
-            justify="left",
+            wrap=True,
         )
         self.gpu_label = self._label(
-            models, "Graphics card: looking ...", "Small.TLabel", wraplength=self.px(740)
+            models, "Graphics card: looking ...", "Small.TLabel", wrap=True
         )
         self.gpu_label.grid(row=row, column=0, sticky="w", pady=(self.px(6), 0))
 
@@ -569,7 +606,7 @@ class App:
                 self.gpu_check = check  # off with LM Studio: it decides where the model runs
         self.has_ocr_option = any(variable is self.ocr_var for variable, _ in rows)
 
-        self.summary = self._label(page, "", "Dim.TLabel", wraplength=self.px(740), justify="left")
+        self.summary = self._label(page, "", "Dim.TLabel", wrap=True)
         self.summary.grid(row=4, column=0, sticky="w", pady=(self.px(16), 0))
         page.rowconfigure(5, weight=1)
         buttons = ttk.Frame(page)
@@ -611,7 +648,7 @@ class App:
     def _make_card(self, parent: ttk.Frame, key: str, row: int) -> None:
         c = self.c
         if key == "custom":
-            title = f"Your own model: {self.L._file_name(self.settings.model_url)}"
+            title = f"Your own model: {shorten(self.L._file_name(self.settings.model_url))}"
             text = "Set as model_url in config/launcher.json."
         elif key == LMSTUDIO:
             title = "LM Studio"
@@ -629,7 +666,8 @@ class App:
         mark.grid(row=0, column=0, rowspan=2, padx=(self.px(12), self.px(8)), pady=self.px(8))
         name = tk.Label(frame, text=title, font=self.f_bold, bg=c.panel, fg=c.text, anchor="w")
         name.grid(row=0, column=1, sticky="w", pady=(self.px(8), 0))
-        desc = tk.Label(frame, text=text, font=self.f_small, bg=c.panel, fg=c.dim, anchor="w")
+        desc = tk.Label(frame, text=text, font=self.f_small, bg=c.panel, fg=c.dim, anchor="w",
+                        justify="left")  # fmt: skip
         desc.grid(row=1, column=1, sticky="w", pady=(0, self.px(8)))
         side = tk.Frame(frame, bg=c.panel)
         side.grid(row=0, column=2, rowspan=2, sticky="e", padx=self.px(12))
@@ -643,7 +681,45 @@ class App:
 
         for widget in (frame, mark, name, desc, side, meta, badges):
             widget.bind("<Button-1>", choose)
-        self.cards[key] = {"frame": frame, "mark": mark, "meta": meta, "badges": badges}
+        card = {"frame": frame, "mark": mark, "meta": meta, "badges": badges, "name": name,
+                "desc": desc, "side": side}  # fmt: skip
+        self.cards[key] = card
+        frame.bind("<Configure>", self._layout_cards_soon, add="+")
+
+    def _layout_cards_soon(self, _event: object = None) -> None:
+        """Lay the cards out again once the window is idle (after the badges were drawn);
+        many requests at once are one layout."""
+        if not self._cards_pending:
+            self._cards_pending = True
+            self.root.after_idle(self._layout_cards)
+
+    def _layout_cards(self) -> None:
+        """Every card looks the same, whatever it shows: the right-hand column (video memory,
+        badges) is as wide on all of them, titles and descriptions wrap where it begins
+        rather than being cut off on a narrow window, and all cards are as tall as the
+        tallest, so badges coming and going never move the list."""
+        self._cards_pending = False
+        cards = list(self.cards.values())
+        if not cards:
+            return
+        self.root.update_idletasks()  # the sizes of new badges and texts
+        side = max(card["side"].winfo_reqwidth() for card in cards)
+        shown = [card["frame"] for card in cards if card["frame"].winfo_ismapped()]
+        width = shown[0].winfo_width() if shown else self._page_width()
+        # the round mark (22 + 12 + 8), the right column with its margins, the border, and
+        # the labels' own padding
+        wrap = max(width - self.px(42) - side - self.px(24) - 4 - self.px(8), self.px(160))
+        for card in cards:
+            card["frame"].columnconfigure(2, minsize=side + self.px(24))
+            for label in (card["name"], card["desc"]):
+                if int(str(label.cget("wraplength"))) != wrap:
+                    label.configure(wraplength=wrap)
+        self.root.update_idletasks()
+        title = max(card["name"].winfo_reqheight() for card in cards)
+        text = max(card["desc"].winfo_reqheight() for card in cards)
+        for card in cards:
+            card["frame"].rowconfigure(0, minsize=title + self.px(8))
+            card["frame"].rowconfigure(1, minsize=text + self.px(8))
 
     def select_model(self, key: str, touched: bool = False) -> None:
         if touched:
@@ -684,6 +760,7 @@ class App:
             if have:
                 dark_text = "#06240f" if self.c is DARK else "#ffffff"
                 self._pill(card["badges"], "Downloaded", self.c.ok, dark_text)
+        self._layout_cards_soon()
 
     def _too_big(self, memory: float) -> bool:
         """Whether a model needing this much video memory (GB) does not fit the card found
@@ -699,16 +776,17 @@ class App:
         if state is None:
             text = "runs in LM Studio"
         elif state.loaded:
-            text = f"found: {state.loaded}"
+            text = f"found: {shorten(state.loaded)}"
             pill_fg = "#06240f" if self.c is DARK else "#ffffff"
             self._pill(card["badges"], "Running", self.c.ok, pill_fg)
         elif state.answers and len(state.available) == 1:
-            text = f"found: {state.available[0]} is loaded when Starlight starts"
+            text = f"found: {shorten(state.available[0])} is loaded when Starlight starts"
         elif state.answers:
             text = "found, but no model is loaded in it"
         else:
             text = "not running now (start its local server)"
         card["meta"].configure(text=text)
+        self._layout_cards_soon()
 
     def _draw_mark(self, canvas: tk.Canvas, kind: str, colour: str) -> None:
         """A small round mark drawn on a canvas (fonts differ in which symbols they have):
@@ -892,7 +970,7 @@ class App:
         c = self.c
         page = self._new_page("progress")
         page.rowconfigure(4, weight=1)
-        self.p_title = self._label(page, "", "Big.TLabel", wraplength=self.px(740), justify="left")
+        self.p_title = self._label(page, "", "Big.TLabel", wrap=True)
         self.p_title.grid(row=0, column=0, sticky="w")
         self.p_sub = self._label(page, "", "Dim.TLabel")
         self.p_sub.grid(row=1, column=0, sticky="w", pady=(self.px(2), self.px(10)))
@@ -1085,29 +1163,31 @@ class App:
         page = self._new_page("running")
         self.r_title = self._label(page, "", "Big.TLabel")
         self.r_title.grid(row=0, column=0, sticky="w")
-        self.r_sub = self._label(page, "", "Dim.TLabel", wraplength=self.px(740), justify="left")
+        self.r_sub = self._label(page, "", "Dim.TLabel", wrap=True)
         self.r_sub.grid(row=1, column=0, sticky="w", pady=(self.px(2), self.px(14)))
 
         card = tk.Frame(page, bg=c.panel, highlightthickness=1, highlightbackground=c.border)
         card.grid(row=2, column=0, sticky="ew")
         card.columnconfigure(2, weight=1)
-        self.status_rows: dict[str, tuple[tk.Canvas, int, tk.Label]] = {}
         for index, name in enumerate(("Model", "Chat", "Statistics", "Kill switch")):
             pad = (
                 self.px(12) if index == 0 else self.px(4),
                 self.px(12) if index == 3 else self.px(4),
             )
-            tk.Label(
+            title = tk.Label(
                 card, text=name, font=self.f_bold, bg=c.panel, fg=c.text, anchor="w", width=11
-            ).grid(row=index, column=0, sticky="w", padx=(self.px(16), 0), pady=pad)
+            )
+            title.grid(row=index, column=0, sticky="w", padx=(self.px(16), 0), pady=pad)
             dot = tk.Canvas(
                 card, width=self.px(12), height=self.px(12), bg=c.panel, highlightthickness=0
             )
             oval = dot.create_oval(1, 1, self.px(11), self.px(11), fill=c.dim, outline="")
             dot.grid(row=index, column=1, padx=self.px(8), pady=pad)
-            text = tk.Label(card, text="", font=self.f, bg=c.panel, fg=c.text, anchor="w")
+            text = tk.Label(card, text="", font=self.f, bg=c.panel, fg=c.text, anchor="w",
+                            justify="left")  # fmt: skip
             text.grid(row=index, column=2, sticky="w", pady=pad)
             self.status_rows[name] = (dot, oval, text)
+        self.status_title_width = title.winfo_reqwidth()
 
         buttons = ttk.Frame(page)
         buttons.grid(row=3, column=0, sticky="ew", pady=(self.px(18), 0))
@@ -1137,6 +1217,14 @@ class App:
             row=0, column=1, padx=(0, self.px(8))
         )
         self._button(footer, "Quit Starlight", self.quit_app).grid(row=0, column=2)
+
+    def _wrap_status(self, page_width: int) -> None:
+        """The status texts (a long model name, LM Studio's advice) wrap inside their box."""
+        # the name column with its margin, the dot with its margins, a right margin, border
+        used = self.status_title_width + self.px(16) + self.px(12) + 2 * self.px(8)
+        wrap = max(page_width - used - self.px(16) - 2, self.px(160))
+        for _dot, _oval, label in self.status_rows.values():
+            label.configure(wraplength=wrap)
 
     def _set_row(self, name: str, color: str, text: str) -> None:
         dot, oval, label = self.status_rows[name]
@@ -1284,7 +1372,9 @@ class App:
         window = tk.Toplevel(self.root)
         window.title("Starlight check")
         window.configure(bg=c.bg)
-        window.geometry(f"{self.px(760)}x{self.px(420)}")
+        width = min(self.px(760), self.root.winfo_screenwidth() - 40)
+        height = min(self.px(420), self.root.winfo_screenheight() - 100)
+        window.geometry(f"{width}x{height}")
         box = tk.Text(
             window,
             wrap="none",
@@ -1315,7 +1405,7 @@ class App:
         page.rowconfigure(2, weight=1)
         title = self._label(page, "Starlight could not start", "Big.TLabel")
         title.grid(row=0, column=0, sticky="w")
-        self.err_message = self._label(page, "", "TLabel", wraplength=self.px(740), justify="left")
+        self.err_message = self._label(page, "", "TLabel", wrap=True)
         self.err_message.grid(row=1, column=0, sticky="w", pady=(self.px(8), self.px(10)))
         self.err_text = tk.Text(
             page, height=12, wrap="word", bg=c.panel, fg=c.dim, font=self.f_mono, relief="flat",

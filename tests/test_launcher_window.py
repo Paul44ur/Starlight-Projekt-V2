@@ -338,3 +338,57 @@ def test_the_window_builds_all_its_pages() -> None:
     )
     assert result.returncode == 0, result.stderr
     assert "gui ok" in result.stdout
+
+
+@pytest.mark.skipif(not has_display(), reason="needs tkinter and a display")
+def test_the_model_cards_keep_one_size_and_never_cut_text(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from tests.test_cleanup_launcher import load_gui
+    from tests.test_lmstudio import starlight_root  # (they import this module)
+
+    gui = load_gui()
+    monkeypatch.setattr(gui.App, "_start_background_lookups", lambda self: None)  # no network
+    root = starlight_root(tmp_path)
+    monkeypatch.setenv("UV_CACHE_DIR", str(root / ".uv-cache"))
+    app = gui.App(L, L.build_parser().parse_args(["--root", str(root)]))
+    try:
+        app.root.deiconify()
+        app.open_setup(False)
+
+        def settle() -> None:
+            for _ in range(8):
+                app.root.update()
+                time.sleep(0.03)
+
+        def check() -> int:
+            settle()
+            cards = list(app.cards.values())
+            heights = {card["frame"].winfo_height() for card in cards}
+            assert len(heights) == 1  # badges or a long name never make one card taller
+            for card in cards:
+                for label in (card["name"], card["desc"], card["meta"]):
+                    assert label.winfo_reqwidth() <= label.winfo_width() + 1, label.cget("text")
+            edges = {card["side"].winfo_x() + card["side"].winfo_width() for card in cards}
+            assert len(edges) == 1  # the right-hand column lines up
+            texts = {card["desc"].winfo_x() for card in cards}
+            assert len(texts) == 1  # and so do the descriptions
+            return heights.pop()
+
+        assert check() > 0
+        app.on_gpu(L.Gpu("AMD Radeon RX 9060 XT", 16 * L.GB))  # badges appear
+        for url in L.MODEL_PRESETS.values():
+            app.on_size(url, 9_000_000_000)
+        app.on_lmstudio_found(L.LMStudioState(True, "a-very-long-model-name-" * 4, 32768))
+        wide = check()
+        width, height = app.root.minsize()
+        app.root.geometry(f"{width}x{height}")  # the narrowest window: text wraps, not cut
+        assert check() >= wide
+        for label in app.wrapping:
+            if label.winfo_ismapped():
+                assert label.winfo_reqwidth() <= app.scroller.winfo_width()
+        app.root.geometry(f"{width + 400}x{height}")
+        assert check() == wide  # and back on one line when there is room again
+        assert "…" in app.cards[gui.LMSTUDIO]["meta"].cget("text")  # long names are shortened
+    finally:
+        app.root.destroy()
