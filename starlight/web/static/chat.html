@@ -35,6 +35,11 @@
               letter-spacing: .04em; }
   .msg .tools { display: flex; gap: 4px; margin-top: 6px; }
   .msg .att { font-size: 12px; color: var(--dim); margin-top: 4px; }
+  /* Before the first word: the model reads the prompt, or thinks (Qwen3, gpt-oss ...). */
+  .msg .body.waiting:empty::before { content: attr(data-wait); color: var(--dim);
+    animation: waiting 1.4s ease-in-out infinite; }
+  @keyframes waiting { 50% { opacity: .35; } }
+  @media (prefers-reduced-motion: reduce) { .msg .body.waiting:empty::before { animation: none; } }
   .confirm { align-self: flex-start; max-width: min(780px, 100%); border: 1px solid var(--warn); border-radius: 12px;
              padding: 12px 14px; background: var(--panel); }
   .confirm .q { white-space: pre-wrap; margin-bottom: 10px; }
@@ -192,12 +197,27 @@ function connect() {
     // socket: forget them here too, or Regenerate would wait for an answer that never ends.
     if (current || answering) addSys("Connection lost: the answer was interrupted.");
     if (regenPending) resync = true;
+    doneWaiting(current);
     current = null; answering = null; regenPending = false;
     log.querySelectorAll(".confirm").forEach(card => card.remove());
     setTimeout(connect, 1500);
   };
   ws.onmessage = (ev) => handle(JSON.parse(ev.data));
 }
+
+// Until the first word arrives the answer shows that Starlight is at work, and after a few
+// seconds for how long (a model that thinks first can take a minute).
+function waitFor(body) {
+  const started = Date.now();
+  body.classList.add("waiting");
+  body.dataset.wait = "…";
+  const timer = setInterval(() => {
+    if (!body.isConnected || !body.classList.contains("waiting")) { clearInterval(timer); return; }
+    const seconds = Math.round((Date.now() - started) / 1000);
+    if (seconds >= 3) body.dataset.wait = `Working on it … ${seconds} s`;
+  }, 1000);
+}
+function doneWaiting(body) { if (body) body.classList.remove("waiting"); }
 
 // The conversation an answer is coming for: if you open another one meanwhile, its words
 // are not shown there (open the first one again to see the answer).
@@ -207,17 +227,20 @@ function handle(m) {
     if (!conversation) conversation = m.conversation;
     answering = m.conversation || conversation;
     current = addMsg("bot", "");
+    waitFor(current);
     if (regenPending) current.parentElement.dataset.regen = "1";
   }
   else if (m.type === "token") {
     if (elsewhere(m)) return;
-    if (!current) current = addMsg("bot", ""); const s = atBottom(); current.textContent += m.text; if (s) scroll();
+    if (!current) current = addMsg("bot", ""); doneWaiting(current);
+    const s = atBottom(); current.textContent += m.text; if (s) scroll();
   }
   else if (m.type === "answer" && elsewhere(m)) { answering = null; regenPending = false; current = null; loadList(); }
   else if (m.type === "answer") {
     // The final answer replaces what streamed in: it is the cleaned one (a reply cut
     // where the model started repeating itself may have streamed a little too far).
     if (m.text || !current) (current || (current = addMsg("bot", ""))).textContent = m.text;
+    doneWaiting(current);
     addStats(current, m.stats);
     if (!m.stopped && !m.failed) current.parentElement.dataset.kept = "1";
     else if (regenPending) current.parentElement.dataset.regen = "1";  // the old answer stays
@@ -232,10 +255,12 @@ function handle(m) {
     if (conversation) open(conversation);
   }
   else if (m.type === "stopped") {
+    doneWaiting(current);
     if (!elsewhere(m)) addSys("[stopped]");
     current = null; answering = null; regenPending = false;
   }
   else if (m.type === "error") {
+    doneWaiting(current);
     if (!elsewhere(m)) {
       const b = addMsg("bot", "⚠ " + m.text); b.style.color = "var(--bad)";
       if (regenPending) b.parentElement.dataset.regen = "1";
