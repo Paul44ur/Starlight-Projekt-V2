@@ -208,7 +208,11 @@ To use options every time, put them into `config\launcher.json`, for example:
 
 Thirty models are ready to pick in the setup window, with `--model <name>`, or with
 `"model": "<name>"` in `config\launcher.json`. Each is downloaded the first time it is used.
-The setup window recommends one for your graphics card and marks those too big for it.
+The setup window recommends one for your graphics card and folds away those too big for it
+("Also show ..." brings them back). Tags next to each name tell them apart: *thinks first*,
+*quick*, *code*, *tools*, *languages*, *uncensored*. Up and Down move between models. A model
+whose download link no longer works is flagged before you pick it, and a downloaded model you
+are not using has a *Remove* link to free its space.
 
 For graphics cards with up to 16 GB:
 

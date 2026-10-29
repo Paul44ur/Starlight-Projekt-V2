@@ -204,6 +204,42 @@ MODIFIED = (
     "qwen3.8-27b-abliterated",
     "qwen3-30b-a3b-abliterated",
 )
+# Short tags the setup window shows next to a model's name, to tell the 30 apart at a glance:
+# "thinks first" it reasons before it answers (better at hard questions, a slower reply);
+# "quick" few weights work per word, or it is small; "code" tuned for programming; "tools"
+# made for calling tools; "languages" strong beyond English (German, French ...);
+# "uncensored" refuses (almost) nothing.
+MODEL_TAGS: dict[str, tuple[str, ...]] = {
+    "qwen14b-uncensored": ("uncensored",),
+    "qwen3-14b": ("thinks first",),
+    "ministral14b": ("tools", "languages"),
+    "gpt-oss-20b": ("quick", "thinks first"),
+    "mistral-nemo": ("quick", "languages"),
+    "gemma4-12b": ("languages",),
+    "qwen14b-coder": ("code",),
+    "qwen3.5-9b": ("thinks first",),
+    "qwen7b": ("quick",),
+    "qwen3-8b": ("thinks first",),
+    "gemma4-e4b": ("quick", "languages"),
+    "mistral-small-24b": ("tools", "languages"),
+    "gemma4-26b": ("quick", "languages"),
+    "qwen3.8-27b": ("thinks first", "code"),
+    "qwen3-30b-a3b": ("quick",),
+    "qwen3-coder-30b": ("quick", "code"),
+    "granite4-small": ("tools",),
+    "gemma4-31b": ("languages",),
+    "qwen3.5-35b-a3b": ("quick", "thinks first"),
+    "qwen3-32b": ("thinks first",),
+    "qwen3-14b-abliterated": ("uncensored", "thinks first"),
+    "josiefied-qwen3-14b": ("uncensored", "tools"),
+    "hermes4-14b": ("uncensored",),
+    "qwen3-8b-abliterated": ("uncensored", "thinks first"),
+    "dolphin3-8b": ("uncensored", "quick"),
+    "gpt-oss-20b-abliterated": ("uncensored", "thinks first"),
+    "dolphin-mistral-24b": ("uncensored", "languages"),
+    "qwen3.8-27b-abliterated": ("uncensored", "thinks first"),
+    "qwen3-30b-a3b-abliterated": ("uncensored", "quick"),
+}
 # What the setup window tells about each preset: (title, description, video memory in GB).
 MODEL_INFO = {
     "qwen14b-uncensored": (
@@ -374,6 +410,19 @@ MB = 1024**2
 
 class LauncherError(Exception):
     """A problem the user can act on; shown without a traceback."""
+
+
+class MissingDownload(LauncherError):
+    """The server answers, but the file is not there (moved, renamed or taken down)."""
+
+    def __init__(self, url: str, code: int) -> None:
+        super().__init__(
+            f"the download link does not work (HTTP {code}): {url}. The file was moved or "
+            "taken down: pick another model (Settings in the window, or --model <name>), or "
+            "set model_url in config/launcher.json"
+        )
+        self.url = url
+        self.code = code
 
 
 # -- settings --------------------------------------------------------------------------
@@ -693,6 +742,11 @@ class _NoRedirect(urllib.request.HTTPRedirectHandler):
         return None
 
 
+# What a download server answers for a file that is not there. Hugging Face answers 401 for a
+# repository that does not exist (or is private), 404 for a missing file in one that does.
+GONE = (401, 404, 410)
+
+
 @dataclass
 class RemoteFile:
     size: int | None
@@ -708,6 +762,8 @@ def probe(url: str) -> RemoteFile:
         with opener.open(request, timeout=30) as response:
             headers = response.headers
     except urllib.error.HTTPError as exc:
+        if exc.code in GONE:
+            raise MissingDownload(url, exc.code) from exc
         if exc.code not in (301, 302, 303, 307, 308):
             raise LauncherError(f"{url}: HTTP {exc.code}") from exc
         headers = exc.headers
@@ -789,6 +845,8 @@ def download(
         except urllib.error.HTTPError as exc:
             if exc.code == 416 and have:  # already complete
                 break
+            if exc.code in GONE:
+                raise MissingDownload(url, exc.code) from exc
             if exc.code in (401, 403, 404) or attempt == attempts:
                 raise LauncherError(f"download failed: {url} (HTTP {exc.code})") from exc
         except (

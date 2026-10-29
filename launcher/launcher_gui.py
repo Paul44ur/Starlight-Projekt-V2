@@ -24,6 +24,7 @@ import traceback
 import urllib.error
 import webbrowser
 from dataclasses import dataclass
+from functools import partial
 from pathlib import Path
 from tkinter import font as tkfont
 from tkinter import messagebox, ttk
@@ -239,6 +240,7 @@ class App:
         self.exited = False
         self.in_settings = False
         self.sizes: dict[str, int | None] = {}  # download size per model link; None: unknown
+        self.missing: set[str] = set()  # model links that answered "not found"
         self.lmstudio: Any = None  # what LM Studio said (launcher.LMStudioState); None: not asked
         self.gpu: Any = None
         self.fatal = ""
@@ -258,6 +260,8 @@ class App:
         self.body.columnconfigure(0, weight=1)
         self.body.rowconfigure(0, weight=1)
         self._build_setup()
+        self.root.bind("<Up>", lambda _event: self._move_selection(-1))
+        self.root.bind("<Down>", lambda _event: self._move_selection(1))
         self._build_progress()
         self._build_running()
         self._build_error()
@@ -371,6 +375,7 @@ class App:
         self.f = tkfont.Font(family=family, size=10)
         self.f_bold = tkfont.Font(family=family, size=10, weight="bold")
         self.f_small = tkfont.Font(family=family, size=9)
+        self.f_link = tkfont.Font(family=family, size=9, underline=True)
         self.f_big = tkfont.Font(family=family, size=18, weight="bold")
         self.f_head = tkfont.Font(family=family, size=12, weight="bold")
         self.f_mono = tkfont.Font(
@@ -551,14 +556,18 @@ class App:
             keys[len(self.L.MODEL_PRESETS)]: "YOUR OWN MODEL",
         }
         self.card_headings: list[ttk.Label] = []
+        # (its heading, its cards): a heading shows only while one of its cards does
+        self.sections: list[tuple[ttk.Label | None, list[str]]] = [(None, [])]
         row = 1
         for key in keys:
             if key in headings:
                 heading = self._label(models, headings[key], "Section.TLabel")
                 heading.grid(row=row, column=0, sticky="w", pady=(self.px(10), self.px(4)))
                 self.card_headings.append(heading)
+                self.sections.append((heading, []))
                 row += 1
             self._make_card(models, key, row)
+            self.sections[-1][1].append(key)
             row += 1
         self.model_var.set(self._current_model_key())
         self.test_model_note = self._label(
@@ -572,6 +581,14 @@ class App:
             models, "Graphics card: looking ...", "Small.TLabel", wrap=True
         )
         self.gpu_label.grid(row=row, column=0, sticky="w", pady=(self.px(6), 0))
+        # Models too big for the graphics card found are folded away (they would run partly on
+        # the processor, many times slower); this shows them again.
+        self.show_big_var = tk.BooleanVar(value=False)
+        self.show_big_check = ttk.Checkbutton(
+            models, variable=self.show_big_var, command=self._apply_visibility, cursor="hand2"
+        )
+        self.show_big_check.grid(row=row + 1, column=0, sticky="w")
+        self.show_big_check.grid_remove()
 
         options = ttk.Frame(page)
         options.grid(row=3, column=0, sticky="ew", pady=(self.px(16), 0))
@@ -664,8 +681,19 @@ class App:
                          highlightthickness=0)  # fmt: skip
         self._draw_mark(mark, "empty", c.dim)
         mark.grid(row=0, column=0, rowspan=2, padx=(self.px(12), self.px(8)), pady=self.px(8))
-        name = tk.Label(frame, text=title, font=self.f_bold, bg=c.panel, fg=c.text, anchor="w")
-        name.grid(row=0, column=1, sticky="w", pady=(self.px(8), 0))
+        head = tk.Frame(frame, bg=c.panel)
+        head.grid(row=0, column=1, sticky="w", pady=(self.px(8), 0))
+        name = tk.Label(head, text=title, font=self.f_bold, bg=c.panel, fg=c.text, anchor="w",
+                        justify="left")  # fmt: skip
+        name.pack(side="left")
+        tags = tk.Frame(head, bg=c.panel)
+        tags.pack(side="left", padx=(self.px(8), 0))
+        tag_labels = [
+            tk.Label(tags, text=tag, font=self.f_small, bg=c.panel2, fg=c.dim, padx=self.px(5))
+            for tag in self.L.MODEL_TAGS.get(key, ())
+        ]
+        for tag_label in tag_labels:
+            tag_label.pack(side="left", padx=(0, self.px(4)))
         desc = tk.Label(frame, text=text, font=self.f_small, bg=c.panel, fg=c.dim, anchor="w",
                         justify="left")  # fmt: skip
         desc.grid(row=1, column=1, sticky="w", pady=(0, self.px(8)))
@@ -679,12 +707,79 @@ class App:
         def choose(_event: Any, chosen: str = key) -> None:
             self.select_model(chosen, touched=True)
 
-        for widget in (frame, mark, name, desc, side, meta, badges):
+        for widget in (frame, mark, head, name, tags, *tag_labels, desc, side, meta, badges):
             widget.bind("<Button-1>", choose)
         card = {"frame": frame, "mark": mark, "meta": meta, "badges": badges, "name": name,
-                "desc": desc, "side": side}  # fmt: skip
+                "desc": desc, "side": side, "head": head, "tags": tags}  # fmt: skip
         self.cards[key] = card
         frame.bind("<Configure>", self._layout_cards_soon, add="+")
+
+    def _hidden_as_too_big(self, key: str) -> bool:
+        """Folded away: too big for the graphics card, unless asked for or already chosen."""
+        if key in ("custom", LMSTUDIO) or self.show_big_var.get():
+            return False
+        if key in (self.model_var.get(), self._current_model_key()):
+            return False
+        return self._too_big(self.L.MODEL_INFO[key][2])
+
+    def _apply_visibility(self) -> None:
+        """Which cards and headings show: none with the test model, the ones that fit the
+        graphics card (or all, see show_big_var), and a heading only above shown cards."""
+        use_model = self.settings.use_model
+        for heading, keys in self.sections:
+            shown = [k for k in keys if use_model and not self._hidden_as_too_big(k)]
+            for key in keys:
+                if key in shown:
+                    self.cards[key]["frame"].grid()
+                else:
+                    self.cards[key]["frame"].grid_remove()
+            if heading is not None:
+                if shown:
+                    heading.grid()
+                else:
+                    heading.grid_remove()
+        big = [k for k in self.L.MODEL_PRESETS if self._too_big(self.L.MODEL_INFO[k][2])]
+        if use_model and big:
+            self.show_big_check.configure(
+                text=f"Also show the {len(big)} models too big for this graphics card"
+            )
+            self.show_big_check.grid()
+        else:
+            self.show_big_check.grid_remove()
+        self._layout_cards_soon()
+
+    def _shown_keys(self) -> list[str]:
+        return [k for k, card in self.cards.items() if card["frame"].winfo_manager() == "grid"]
+
+    def _move_selection(self, step: int) -> str | None:
+        """Up and Down choose the model above or below (on the setup page)."""
+        if self.page != "setup" or not self.settings.use_model:
+            return None
+        keys = self._shown_keys()
+        if not keys:
+            return None
+        current = self.model_var.get()
+        index = keys.index(current) + step if current in keys else 0
+        key = keys[max(0, min(index, len(keys) - 1))]
+        self.select_model(key, touched=True)
+        self._scroll_into_view(self.cards[key]["frame"])
+        return "break"
+
+    def _scroll_into_view(self, widget: tk.Misc) -> None:
+        """Scroll the page so that this widget shows (when the page is taller than the window)."""
+        if not self._scrollable:
+            return
+        self.root.update_idletasks()
+        total = max(self.body.winfo_height(), 1)
+        top = widget.winfo_rooty() - self.body.winfo_rooty()
+        bottom = top + widget.winfo_height()
+        first, last = self.scroller.yview()
+        margin = self.px(12)
+        if top < first * total:
+            self.scroller.yview_moveto(max(top - margin, 0) / total)
+        elif bottom > last * total:
+            view = (last - first) * total
+            self.scroller.yview_moveto(max(bottom + margin - view, 0) / total)
 
     def _layout_cards_soon(self, _event: object = None) -> None:
         """Lay the cards out again once the window is idle (after the badges were drawn);
@@ -711,15 +806,17 @@ class App:
         wrap = max(width - self.px(42) - side - self.px(24) - 4 - self.px(8), self.px(160))
         for card in cards:
             card["frame"].columnconfigure(2, minsize=side + self.px(24))
-            for label in (card["name"], card["desc"]):
-                if int(str(label.cget("wraplength"))) != wrap:
-                    label.configure(wraplength=wrap)
+            beside_tags = max(wrap - card["tags"].winfo_reqwidth() - self.px(8), self.px(120))
+            for label, limit in ((card["name"], beside_tags), (card["desc"], wrap)):
+                if int(str(label.cget("wraplength"))) != limit:
+                    label.configure(wraplength=limit)
         self.root.update_idletasks()
-        title = max(card["name"].winfo_reqheight() for card in cards)
+        title = max(card["head"].winfo_reqheight() for card in cards)
         text = max(card["desc"].winfo_reqheight() for card in cards)
         for card in cards:
             card["frame"].rowconfigure(0, minsize=title + self.px(8))
             card["frame"].rowconfigure(1, minsize=text + self.px(8))
+        self.root.after_idle(self._fit_body)  # the page got shorter or taller: scroll range
 
     def select_model(self, key: str, touched: bool = False) -> None:
         if touched:
@@ -734,6 +831,9 @@ class App:
                 "radio" if chosen else "empty",
                 self.c.accent if chosen else self.c.dim,
             )
+        if self.cards:
+            recommended, _ = self.L.recommend_model(self.gpu)
+            self._refresh_cards(recommended if self.gpu is not None else "")
         self._refresh_summary()
 
     def _refresh_cards(self, recommended: str = "") -> None:
@@ -751,7 +851,9 @@ class App:
             card["meta"].configure(text=" - ".join(parts))
             for child in card["badges"].winfo_children():
                 child.destroy()
-            if key == recommended:
+            if not have and self._model_url_of(key) in self.missing:
+                self._pill(card["badges"], "Download link not found", self.c.bad, "#ffffff")
+            elif key == recommended:
                 pill_text = self.c.on_accent
                 self._pill(card["badges"], "Recommended for your PC", self.c.accent, pill_text)
             elif key != "custom" and self._too_big(self.L.MODEL_INFO[key][2]):
@@ -760,7 +862,41 @@ class App:
             if have:
                 dark_text = "#06240f" if self.c is DARK else "#ffffff"
                 self._pill(card["badges"], "Downloaded", self.c.ok, dark_text)
+                if key not in ("custom", self._current_model_key(), self.model_var.get()):
+                    remove = tk.Label(card["badges"], text="Remove", font=self.f_link,
+                                      bg=self.c.panel, fg=self.c.dim, cursor="hand2")  # fmt: skip
+                    remove.pack(side="left", padx=(self.px(8), 0))
+                    remove.bind("<Button-1>", partial(self._remove_clicked, key))
         self._layout_cards_soon()
+
+    def _remove_clicked(self, key: str, _event: object) -> None:
+        self.remove_model(key)
+
+    def remove_model(self, key: str) -> None:
+        """Delete a downloaded model that is not in use, to free its space (it can be
+        downloaded again by choosing it)."""
+        if key in (self.model_var.get(), self._current_model_key()):
+            return  # chosen or in use (the link is only offered for other models)
+        path = self._model_file_of(key)
+        try:
+            size = path.stat().st_size
+        except OSError:
+            return
+        title = self.L.MODEL_INFO[key][0]
+        question = (
+            f"Delete {title} ({self.L.format_size(size)}) from the models folder?\n\n"
+            "It is downloaded again if you choose it later."
+        )
+        if not messagebox.askyesno("Starlight", question, default="no"):
+            return
+        try:
+            path.unlink()
+        except OSError as exc:
+            messagebox.showinfo("Starlight", f"{path.name} could not be deleted: {exc}")
+            return
+        recommended, _ = self.L.recommend_model(self.gpu)
+        self._refresh_cards(recommended if self.gpu is not None else "")
+        self._refresh_summary()
 
     def _too_big(self, memory: float) -> bool:
         """Whether a model needing this much video memory (GB) does not fit the card found
@@ -823,6 +959,8 @@ class App:
                 if not self._model_file_of(key).is_file():
                     try:
                         self.events.put(("size", url, self.L.probe(url).size))
+                    except self.L.MissingDownload:
+                        self.events.put(("missing", url))
                     except (urllib.error.URLError, OSError, ValueError, self.L.LauncherError):
                         self.events.put(("size", url, None))
 
@@ -842,6 +980,7 @@ class App:
             memory = f" ({gpu.vram / self.L.GB:.0f} GB video memory)" if gpu.vram else ""
             self.gpu_label.configure(text=f"Graphics card: {gpu.name}{memory}. {why}")
         self._refresh_cards(recommended if gpu is not None else "")
+        self._apply_visibility()
         first_run = not self._installed()
         chosen_lmstudio = self.settings.model_server == "lmstudio"  # kept: no download needed
         untouched = not self.model_touched and not chosen_lmstudio
@@ -854,6 +993,13 @@ class App:
         self._refresh_cards(recommended if self.gpu is not None else "")
         self._refresh_summary()
 
+    def on_missing(self, url: str) -> None:
+        """A model's download link does not work (the file was moved or taken down)."""
+        self.missing.add(url)
+        recommended, _ = self.L.recommend_model(self.gpu)
+        self._refresh_cards(recommended if self.gpu is not None else "")
+        self._refresh_summary()
+
     def _installed(self) -> bool:
         return bool((self.settings.tools / "uv" / self.L.exe("uv")).is_file())
 
@@ -862,6 +1008,7 @@ class App:
 
         gb = self.L.GB
         need = 0.0
+        gone = False  # the chosen model's download link does not work
         if not self._installed():
             need += 1.6 * gb
         key = self.model_var.get()
@@ -871,6 +1018,7 @@ class App:
             if key and not self._model_file_of(key).is_file():
                 known = self.sizes.get(self._model_url_of(key))
                 need += known if known else self.APPROX_GB.get(key, 9.0) * gb
+                gone = self._model_url_of(key) in self.missing
         if self.voice_var.get():
             need += 0.6 * gb
         try:
@@ -887,8 +1035,11 @@ class App:
             )
         if not enough:
             text += " That is not enough: free some space first."
-        self.summary.configure(text=text, foreground=self.c.dim if enough else self.c.bad)
-        self.setup_go.state(["!disabled"] if enough else ["disabled"])
+        if gone:
+            text = "This model's download link does not work right now: pick another model."
+        ok = enough and not gone
+        self.summary.configure(text=text, foreground=self.c.dim if ok else self.c.bad)
+        self.setup_go.state(["!disabled"] if ok else ["disabled"])
 
     def open_setup(self, settings_mode: bool) -> None:
         """Show the setup page: as the first-run welcome, or as Settings while running."""
@@ -911,12 +1062,7 @@ class App:
             self.setup_cancel.grid_remove()
             self.setup_quit.grid()
         use_model = self.settings.use_model
-        frames = [card["frame"] for card in self.cards.values()]
-        for widget in [*frames, *self.card_headings]:
-            if use_model:
-                widget.grid()
-            else:
-                widget.grid_remove()
+        self._apply_visibility()
         if use_model:
             self.test_model_note.grid_remove()
             self.gpu_label.grid()

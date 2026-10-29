@@ -363,7 +363,7 @@ def test_the_model_cards_keep_one_size_and_never_cut_text(
 
         def check() -> int:
             settle()
-            cards = list(app.cards.values())
+            cards = [card for card in app.cards.values() if card["frame"].winfo_manager()]
             heights = {card["frame"].winfo_height() for card in cards}
             assert len(heights) == 1  # badges or a long name never make one card taller
             for card in cards:
@@ -390,5 +390,82 @@ def test_the_model_cards_keep_one_size_and_never_cut_text(
         app.root.geometry(f"{width + 400}x{height}")
         assert check() == wide  # and back on one line when there is room again
         assert "…" in app.cards[gui.LMSTUDIO]["meta"].cget("text")  # long names are shortened
+    finally:
+        app.root.destroy()
+
+
+@pytest.mark.skipif(not has_display(), reason="needs tkinter and a display")
+def test_the_model_list_folds_tags_flags_and_frees_space(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from tests.test_cleanup_launcher import load_gui
+    from tests.test_lmstudio import starlight_root  # (they import this module)
+
+    gui = load_gui()
+    monkeypatch.setattr(gui.App, "_start_background_lookups", lambda self: None)  # no network
+    root = starlight_root(tmp_path)
+    monkeypatch.setenv("UV_CACHE_DIR", str(root / ".uv-cache"))
+    app = gui.App(L, L.build_parser().parse_args(["--root", str(root)]))
+    downloaded = app._model_file_of("qwen7b")
+    downloaded.parent.mkdir(parents=True, exist_ok=True)
+    downloaded.write_bytes(b"gguf")
+    try:
+        app.open_setup(False)
+
+        def shown(key: str) -> bool:
+            return bool(app.cards[key]["frame"].winfo_manager())
+
+        def badges(key: str) -> list[str]:
+            return [w.cget("text") for w in app.cards[key]["badges"].winfo_children()]
+
+        # tags tell the models apart
+        tags = [w.cget("text") for w in app.cards["qwen3-coder-30b"]["tags"].winfo_children()]
+        assert tags == ["quick", "code"]
+        # without a known graphics card every model shows; with one, the too-big ones fold
+        assert shown("qwen3-32b") and not app.show_big_check.winfo_manager()
+        app.on_gpu(L.Gpu("AMD Radeon RX 9060 XT", 16 * L.GB))
+        assert not shown("qwen3-32b") and not shown("dolphin-mistral-24b")
+        assert shown("qwen14b-uncensored") and shown("gpt-oss-20b")  # 14 GB fits 16 GB
+        large_heading = app.sections[1][0]
+        assert large_heading is not None and not large_heading.winfo_manager()
+        assert "12 models too big" in app.show_big_check.cget("text")
+        app.show_big_var.set(True)
+        app._apply_visibility()
+        assert shown("qwen3-32b") and large_heading.winfo_manager()
+        assert "Too big for your graphics card" in badges("qwen3-32b")
+        app.show_big_var.set(False)
+        app._apply_visibility()
+
+        # Up and Down choose the model above or below among the shown ones
+        app.select_model("qwen14b-uncensored", touched=True)
+        assert app._move_selection(1) == "break" and app.model_var.get() == "qwen14b"
+        app._move_selection(-1)
+        app._move_selection(-1)  # the first stays chosen
+        assert app.model_var.get() == "qwen14b-uncensored"
+        keys = app._shown_keys()
+        assert "qwen3-32b" not in keys and keys[-1] == gui.LMSTUDIO
+
+        # a link that answers "not found" is flagged and cannot be installed
+        app.on_missing(L.MODEL_PRESETS["mistral-nemo"])
+        assert "Download link not found" in badges("mistral-nemo")
+        app.select_model("mistral-nemo", touched=True)
+        assert "download link does not work" in app.summary.cget("text")
+        assert app.setup_go.instate(["disabled"])
+        app.select_model("qwen14b", touched=True)
+        assert not app.setup_go.instate(["disabled"])
+
+        # a downloaded model that is not chosen can be removed to free its space
+        assert badges("qwen7b") == ["Downloaded", "Remove"]
+        monkeypatch.setattr(gui.messagebox, "askyesno", lambda *a, **k: False)
+        app.remove_model("qwen7b")
+        assert downloaded.exists()  # "No" keeps it
+        monkeypatch.setattr(gui.messagebox, "askyesno", lambda *a, **k: True)
+        app.select_model("qwen7b", touched=True)
+        assert "Remove" not in badges("qwen7b")  # not the chosen one
+        app.remove_model("qwen7b")
+        assert downloaded.exists()
+        app.select_model("qwen14b", touched=True)
+        app.remove_model("qwen7b")
+        assert not downloaded.exists() and "Downloaded" not in badges("qwen7b")
     finally:
         app.root.destroy()

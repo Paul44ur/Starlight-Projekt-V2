@@ -160,6 +160,21 @@ def test_probe_reads_hugging_face_size_and_checksum(server: str) -> None:
     assert L.probe(f"{server}/plain").size == 5
 
 
+def test_a_model_link_that_no_longer_works_says_what_to_do(server: str, tmp_path: Path) -> None:
+    with pytest.raises(L.MissingDownload, match=r"does not work \(HTTP 404\).*another model"):
+        L.probe(f"{server}/moved.gguf")
+    with pytest.raises(L.MissingDownload):
+        L.download(f"{server}/moved.gguf", tmp_path / "moved.gguf", QuietUi())
+    assert not (tmp_path / "moved.gguf").exists()
+
+
+def test_every_preset_has_known_tags() -> None:
+    known = {"thinks first", "quick", "code", "tools", "languages", "uncensored"}
+    assert set(L.MODEL_TAGS) <= set(L.MODEL_PRESETS)
+    assert all(set(tags) <= known and tags for tags in L.MODEL_TAGS.values())
+    assert all("uncensored" in L.MODEL_TAGS[key] for key in L.MODIFIED)
+
+
 def test_pick_llama_asset() -> None:
     release = {
         "assets": [
