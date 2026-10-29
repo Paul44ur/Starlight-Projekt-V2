@@ -206,8 +206,11 @@ To use options every time, put them into `config\launcher.json`, for example:
 
 #### A different model
 
-Sixteen models are ready to pick in the setup window, with `--model <name>`, or with
-`"model": "<name>"` in `config\launcher.json`. Each is downloaded the first time it is used:
+Thirty models are ready to pick in the setup window, with `--model <name>`, or with
+`"model": "<name>"` in `config\launcher.json`. Each is downloaded the first time it is used.
+The setup window recommends one for your graphics card and marks those too big for it.
+
+For graphics cards with up to 16 GB:
 
 | Name | Model | Download | Video memory |
 | --- | --- | --- | --- |
@@ -215,6 +218,7 @@ Sixteen models are ready to pick in the setup window, with `--model <name>`, or 
 | `qwen14b` | Qwen2.5-14B Instruct, the original: more careful, cleaner turn endings | 9 GB | about 10 GB |
 | `qwen3-14b` | Qwen3-14B: thinks before it answers, better at hard problems, slower to reply | 9 GB | about 10 GB |
 | `ministral14b` | Ministral 3 14B Instruct (Mistral, 2025): made for tool use, strong in German and French | 8.2 GB | about 11 GB |
+| `gpt-oss-20b` | gpt-oss 20B (OpenAI's open model): quick, only 3.6B of 21B work per word; reasons first | 12.1 GB | about 14 GB |
 | `mistral-nemo` | Mistral Nemo 12B Instruct: a little smaller and quicker, good in many languages | 7.5 GB | about 10 GB |
 | `gemma4-12b` | Gemma 4 12B (Google): writes well, knows 140 languages | 7.5 GB | about 10 GB |
 | `qwen14b-coder` | Qwen2.5-Coder-14B Instruct: best for writing and fixing code | 9 GB | about 10 GB |
@@ -222,6 +226,21 @@ Sixteen models are ready to pick in the setup window, with `--model <name>`, or 
 | `qwen7b` | Qwen2.5-7B Instruct: about twice as fast, a little less capable | 4.7 GB | about 5 GB |
 | `qwen3-8b` | Qwen3-8B: the newer Qwen for 8 GB cards, thinks before it answers | 5 GB | about 7 GB |
 | `gemma4-e4b` | Gemma 4 E4B (Google): small and quick, for 6 to 8 GB cards | 5 GB | about 6 GB |
+
+For graphics cards with 24 to 32 GB ("A3B": only 3B of the weights work on each word, so
+these answer about as quickly as a much smaller model):
+
+| Name | Model | Download | Video memory |
+| --- | --- | --- | --- |
+| `mistral-small-24b` | Mistral Small 3.2 24B: sure with tools, strong in German and French | 14.3 GB | about 18 GB |
+| `gemma4-26b` | Gemma 4 26B A4B (Google): quick mixture of experts, 140 languages | 16.8 GB | about 19 GB |
+| `qwen3.8-27b` | Qwen3.8 27B: the strongest that fits 24 GB (recommended there); thinks first | 16.5 GB | about 20 GB |
+| `qwen3-30b-a3b` | Qwen3 30B A3B Instruct 2507: very quick, answers without thinking first | 18.6 GB | about 21 GB |
+| `qwen3-coder-30b` | Qwen3 Coder 30B A3B: the quick 30B for code and tasks with tools | 18.6 GB | about 21 GB |
+| `granite4-small` | Granite 4.0 H Small (IBM, 32B, 9B per word): made for tools and long documents | 19.5 GB | about 21 GB |
+| `gemma4-31b` | Gemma 4 31B (Google): the best writer here | 18.3 GB | about 22 GB |
+| `qwen3.5-35b-a3b` | Qwen3.5 35B A3B: the newer quick mixture of experts; thinks first | 21.5 GB | about 24 GB |
+| `qwen3-32b` | Qwen3 32B: all 32B work on every word, thorough and slower; thinks first | 19.8 GB | about 25 GB |
 
 Versions changed by others. *Abliterated* models have the part of the network that makes
 them refuse removed; the others are retrained on new data. They refuse less, and they are
@@ -234,16 +253,22 @@ not tested by the original makers:
 | `hermes4-14b` | Hermes 4 14B (Nous Research): Qwen3-14B retrained to follow you | 9 GB | about 10 GB |
 | `qwen3-8b-abliterated` | Qwen3-8B abliterated by mlabonne, for 8 GB cards | 5 GB | about 7 GB |
 | `dolphin3-8b` | Dolphin 3.0 (Llama 3.1 8B): uncensored retraining for chat, code and tools | 4.9 GB | about 7 GB |
+| `gpt-oss-20b-abliterated` | gpt-oss 20B abliterated by huihui-ai; reasons first | 12.1 GB | about 14 GB |
+| `dolphin-mistral-24b` | Dolphin Mistral 24B Venice Edition: Mistral Small retrained to be uncensored | 14.3 GB | about 18 GB |
+| `qwen3.8-27b-abliterated` | Qwen3.8 27B abliterated by OBLITERATUS; thinks first | 17 GB | about 20 GB |
+| `qwen3-30b-a3b-abliterated` | Qwen3 30B A3B abliterated by mlabonne; thinks first | 18.6 GB | about 21 GB |
 
-The video memory includes the 32k-token context. The Qwen3 and Qwen3.5 models think first:
-llama.cpp keeps that thinking out of the answer, but you wait for it, and it is not shown.
+The video memory includes the 32k-token context; the sizes are approximate. The models that
+think or reason first (Qwen3, Qwen3.5, Qwen3.8, gpt-oss): llama.cpp keeps that thinking out
+of the answer, but you wait for it, and it is not shown.
 
 Any other GGUF model with tool calling works too, such as Llama 3.1 Instruct. As a rule
 of thumb:
 
 | Video memory | Model size at Q4_K_M |
 | --- | --- |
-| 16 GB | up to 14B (the default) |
+| 24–32 GB | up to 32B, or a 30B–35B "A3B" mixture of experts |
+| 16 GB | up to 14B (the default), or gpt-oss 20B |
 | 8–12 GB | 7B to 8B |
 | 6 GB or less | 3B, or `--variant cpu` |
 

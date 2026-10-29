@@ -220,6 +220,14 @@ def test_the_setup_page_offers_lm_studio_and_saves_the_choice(
         app.on_setup_go()
         saved = json.loads((root / "config" / "launcher.json").read_text(encoding="utf-8"))
         assert saved["model_server"] == "lmstudio" and app.settings.uses_lmstudio
+        app.on_gpu(L.Gpu("RX 9060 XT", 16 * L.GB))  # the big models are marked, not hidden
+
+        def badges(key: str) -> list[str]:
+            return [w.cget("text") for w in app.cards[key]["badges"].winfo_children()]
+
+        assert "Too big for your graphics card" in badges("qwen3-32b")
+        assert "Too big for your graphics card" not in badges("ministral14b")
+        assert badges("qwen14b-uncensored") == ["Recommended for your PC"]
         app.select_model("qwen7b", touched=True)
         assert not app.gpu_check.instate(["disabled"])
         app.on_setup_go()

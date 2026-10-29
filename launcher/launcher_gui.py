@@ -471,6 +471,20 @@ class App:
         "hermes4-14b": 9.0,
         "qwen3-8b-abliterated": 5.0,
         "dolphin3-8b": 4.9,
+        "gpt-oss-20b": 12.1,
+        "mistral-small-24b": 14.3,
+        "gemma4-26b": 16.8,
+        "qwen3.8-27b": 16.5,
+        "qwen3-30b-a3b": 18.6,
+        "qwen3-coder-30b": 18.6,
+        "granite4-small": 19.5,
+        "gemma4-31b": 18.3,
+        "qwen3.5-35b-a3b": 21.5,
+        "qwen3-32b": 19.8,
+        "gpt-oss-20b-abliterated": 12.1,
+        "dolphin-mistral-24b": 14.3,
+        "qwen3.8-27b-abliterated": 17.0,
+        "qwen3-30b-a3b-abliterated": 18.6,
     }
 
     def _build_setup(self) -> None:
@@ -494,6 +508,7 @@ class App:
         keys.append(LMSTUDIO)
         # Other people's changes of a model, and models from elsewhere, each under a heading.
         headings = {
+            self.L.LARGE[0]: "FOR GRAPHICS CARDS WITH 24 TO 32 GB",
             self.L.MODIFIED[0]: "CHANGED BY OTHERS: ABLITERATED AND FINE-TUNED",
             keys[len(self.L.MODEL_PRESETS)]: "YOUR OWN MODEL",
         }
@@ -663,9 +678,18 @@ class App:
             if key == recommended:
                 pill_text = self.c.on_accent
                 self._pill(card["badges"], "Recommended for your PC", self.c.accent, pill_text)
+            elif key != "custom" and self._too_big(self.L.MODEL_INFO[key][2]):
+                warn_text = "#241a00" if self.c is DARK else "#ffffff"
+                self._pill(card["badges"], "Too big for your graphics card", self.c.warn, warn_text)
             if have:
                 dark_text = "#06240f" if self.c is DARK else "#ffffff"
                 self._pill(card["badges"], "Downloaded", self.c.ok, dark_text)
+
+    def _too_big(self, memory: float) -> bool:
+        """Whether a model needing this much video memory (GB) does not fit the card found
+        (it would then run partly on the processor, many times slower)."""
+        vram = getattr(self.gpu, "vram", None)
+        return bool(vram) and memory > vram / self.L.GB + 0.5
 
     def _refresh_lmstudio_card(self, card: dict[str, Any]) -> None:
         """What LM Studio said when the page opened: running, and with which model."""

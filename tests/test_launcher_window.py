@@ -71,6 +71,8 @@ def test_the_real_graphics_card_is_picked_not_a_placeholder() -> None:
 @pytest.mark.parametrize(
     ("gpu", "preset"),
     [
+        (L.Gpu("RTX 5090", 32 * GB), "qwen3.8-27b"),
+        (L.Gpu("RX 7900 XTX", 24 * GB), "qwen3.8-27b"),
         (L.Gpu("RX 9060 XT", 16 * GB), "qwen14b-uncensored"),
         (L.Gpu("RTX 3060", 12 * GB), "qwen14b-uncensored"),
         (L.Gpu("GTX 1660", 6 * GB), "qwen7b"),
@@ -98,8 +100,12 @@ def test_every_preset_has_a_download_size_and_its_own_file() -> None:
     assert len(set(files)) == len(files)  # no two presets would share models/<file>
     for url in L.MODEL_PRESETS.values():
         assert url.startswith("https://huggingface.co/") and "/resolve/main/" in url
-    # the changed models come last, under their own heading in the setup window
-    assert list(L.MODEL_PRESETS)[-len(L.MODIFIED) :] == list(L.MODIFIED)
+    # the large and the changed models come last, each under a heading in the setup window
+    keys = list(L.MODEL_PRESETS)
+    assert keys[-len(L.MODIFIED) :] == list(L.MODIFIED)
+    start = keys.index(L.LARGE[0])
+    assert keys[start : start + len(L.LARGE)] == list(L.LARGE)
+    assert all(L.MODEL_INFO[key][2] > 16 for key in L.LARGE)  # what a 16 GB card cannot hold
 
 
 # -- remembered choices ----------------------------------------------------------------------------

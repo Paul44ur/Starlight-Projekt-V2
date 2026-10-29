@@ -70,6 +70,10 @@ MODEL_PRESETS = {
         "https://huggingface.co/unsloth/Ministral-3-14B-Instruct-2512-GGUF/resolve/main/"
         "Ministral-3-14B-Instruct-2512-Q4_K_M.gguf"
     ),
+    # OpenAI's open model: 21B weights, 3.6B used per token, so quick; reasons first.
+    "gpt-oss-20b": (
+        "https://huggingface.co/ggml-org/gpt-oss-20b-GGUF/resolve/main/gpt-oss-20b-mxfp4.gguf"
+    ),
     # Mistral and NVIDIA's 12B: a little smaller and quicker, good in many languages.
     "mistral-nemo": (
         "https://huggingface.co/bartowski/Mistral-Nemo-Instruct-2407-GGUF/resolve/main/"
@@ -101,6 +105,40 @@ MODEL_PRESETS = {
         "https://huggingface.co/ggml-org/gemma-4-E4B-it-GGUF/resolve/main/"
         "gemma-4-E4B-it-Q4_K_M.gguf"
     ),
+    # For graphics cards with 24 to 32 GB (see LARGE): 24B to 35B models.
+    "mistral-small-24b": (
+        "https://huggingface.co/bartowski/mistralai_Mistral-Small-3.2-24B-Instruct-2506-GGUF/"
+        "resolve/main/mistralai_Mistral-Small-3.2-24B-Instruct-2506-Q4_K_M.gguf"
+    ),
+    "gemma4-26b": (
+        "https://huggingface.co/ggml-org/gemma-4-26B-A4B-it-GGUF/resolve/main/"
+        "gemma-4-26B-A4B-it-Q4_K_M.gguf"
+    ),
+    "qwen3.8-27b": (
+        "https://huggingface.co/unsloth/Qwen3.8-27B-GGUF/resolve/main/Qwen3.8-27B-UD-Q4_K_M.gguf"
+    ),
+    "qwen3-30b-a3b": (
+        "https://huggingface.co/bartowski/Qwen_Qwen3-30B-A3B-Instruct-2507-GGUF/resolve/main/"
+        "Qwen_Qwen3-30B-A3B-Instruct-2507-Q4_K_M.gguf"
+    ),
+    "qwen3-coder-30b": (
+        "https://huggingface.co/unsloth/Qwen3-Coder-30B-A3B-Instruct-GGUF/resolve/main/"
+        "Qwen3-Coder-30B-A3B-Instruct-Q4_K_M.gguf"
+    ),
+    "granite4-small": (
+        "https://huggingface.co/bartowski/ibm-granite_granite-4.0-h-small-GGUF/resolve/main/"
+        "ibm-granite_granite-4.0-h-small-Q4_K_M.gguf"
+    ),
+    "gemma4-31b": (
+        "https://huggingface.co/unsloth/gemma-4-31B-it-GGUF/resolve/main/gemma-4-31B-it-Q4_K_M.gguf"
+    ),
+    "qwen3.5-35b-a3b": (
+        "https://huggingface.co/bartowski/Qwen_Qwen3.5-35B-A3B-GGUF/resolve/main/"
+        "Qwen_Qwen3.5-35B-A3B-Q4_K_M.gguf"
+    ),
+    "qwen3-32b": (
+        "https://huggingface.co/bartowski/Qwen_Qwen3-32B-GGUF/resolve/main/Qwen_Qwen3-32B-Q4_K_M.gguf"
+    ),
     # Changed by others (see MODIFIED): "abliterated" models have the direction in the
     # network that makes them refuse removed; the others are fine-tuned on new data.
     "qwen3-14b-abliterated": (
@@ -123,7 +161,36 @@ MODEL_PRESETS = {
         "https://huggingface.co/bartowski/Dolphin3.0-Llama3.1-8B-GGUF/resolve/main/"
         "Dolphin3.0-Llama3.1-8B-Q4_K_M.gguf"
     ),
+    "gpt-oss-20b-abliterated": (
+        "https://huggingface.co/bartowski/huihui-ai_Huihui-gpt-oss-20b-BF16-abliterated-GGUF/"
+        "resolve/main/huihui-ai_Huihui-gpt-oss-20b-BF16-abliterated-MXFP4_MOE.gguf"
+    ),
+    "dolphin-mistral-24b": (
+        "https://huggingface.co/bartowski/"
+        "cognitivecomputations_Dolphin-Mistral-24B-Venice-Edition-GGUF/resolve/main/"
+        "cognitivecomputations_Dolphin-Mistral-24B-Venice-Edition-Q4_K_M.gguf"
+    ),
+    "qwen3.8-27b-abliterated": (
+        "https://huggingface.co/OBLITERATUS/Qwen3.8-27B-OBLITERATED/resolve/main/"
+        "Qwen3.8-27B-OBLITERATED-Q4_K_M.gguf"
+    ),
+    "qwen3-30b-a3b-abliterated": (
+        "https://huggingface.co/mradermacher/Qwen3-30B-A3B-abliterated-GGUF/resolve/main/"
+        "Qwen3-30B-A3B-abliterated.Q4_K_M.gguf"
+    ),
 }
+# Presets for graphics cards with 24 to 32 GB (the setup window lists them apart).
+LARGE = (
+    "mistral-small-24b",
+    "gemma4-26b",
+    "qwen3.8-27b",
+    "qwen3-30b-a3b",
+    "qwen3-coder-30b",
+    "granite4-small",
+    "gemma4-31b",
+    "qwen3.5-35b-a3b",
+    "qwen3-32b",
+)
 # Presets that are other people's changes of a model (the setup window lists them apart).
 # The default, qwen14b-uncensored, is one too, but it stays at the top as the default.
 MODIFIED = (
@@ -132,6 +199,10 @@ MODIFIED = (
     "hermes4-14b",
     "qwen3-8b-abliterated",
     "dolphin3-8b",
+    "gpt-oss-20b-abliterated",
+    "dolphin-mistral-24b",
+    "qwen3.8-27b-abliterated",
+    "qwen3-30b-a3b-abliterated",
 )
 # What the setup window tells about each preset: (title, description, video memory in GB).
 MODEL_INFO = {
@@ -154,6 +225,11 @@ MODEL_INFO = {
         "Ministral 3 14B",
         "Mistral's newest 14B, made for using tools; strong in German and French.",
         11.0,
+    ),
+    "gpt-oss-20b": (
+        "gpt-oss 20B",
+        "OpenAI's open model: quick (only 3.6B of its 21B work per word), reasons first.",
+        14.0,
     ),
     "mistral-nemo": (
         "Mistral Nemo 12B",
@@ -190,6 +266,51 @@ MODEL_INFO = {
         "Google's small, quick model for 6 to 8 GB cards; knows 140 languages.",
         6.0,
     ),
+    "mistral-small-24b": (
+        "Mistral Small 3.2 24B",
+        "Mistral's 24B: sure with tools, strong in German and French; no thinking first.",
+        18.0,
+    ),
+    "gemma4-26b": (
+        "Gemma 4 26B A4B",
+        "Google's mixture of experts: 4B of 26B work per word, so quick for its size.",
+        19.0,
+    ),
+    "qwen3.8-27b": (
+        "Qwen3.8 27B",
+        "The strongest Qwen that fits 24 GB: reasoning, code and tools; thinks first.",
+        20.0,
+    ),
+    "qwen3-30b-a3b": (
+        "Qwen3 30B A3B 2507",
+        "Only 3B of 30B work per word: very quick, answers without thinking first.",
+        21.0,
+    ),
+    "qwen3-coder-30b": (
+        "Qwen3 Coder 30B A3B",
+        "The quick 30B tuned for code and for working through tasks with tools.",
+        21.0,
+    ),
+    "granite4-small": (
+        "Granite 4.0 Small 32B",
+        "IBM's 32B (9B work per word), made for tools and long documents.",
+        21.0,
+    ),
+    "gemma4-31b": (
+        "Gemma 4 31B",
+        "Google's largest Gemma 4: the best writer here, 140 languages.",
+        22.0,
+    ),
+    "qwen3.5-35b-a3b": (
+        "Qwen3.5 35B A3B",
+        "The newer quick mixture of experts (3B of 35B per word); thinks first.",
+        24.0,
+    ),
+    "qwen3-32b": (
+        "Qwen3 32B",
+        "The largest here: all 32B work on every word. Thorough and slower; thinks first.",
+        25.0,
+    ),
     "qwen3-14b-abliterated": (
         "Qwen3 14B, abliterated",
         "Qwen3 14B with its refusals removed (by mlabonne); thinks before it answers.",
@@ -214,6 +335,26 @@ MODEL_INFO = {
         "Dolphin 3.0 8B",
         "An uncensored retraining of Llama 3.1 8B for chat, code and tools.",
         7.0,
+    ),
+    "gpt-oss-20b-abliterated": (
+        "gpt-oss 20B, abliterated",
+        "OpenAI's open model with its refusals removed (by huihui-ai); reasons first.",
+        14.0,
+    ),
+    "dolphin-mistral-24b": (
+        "Dolphin Mistral 24B Venice",
+        "Mistral Small 24B retrained to be as uncensored as possible (Venice Uncensored).",
+        18.0,
+    ),
+    "qwen3.8-27b-abliterated": (
+        "Qwen3.8 27B, abliterated",
+        "Qwen3.8 27B with its refusals removed (by OBLITERATUS); thinks first.",
+        20.0,
+    ),
+    "qwen3-30b-a3b-abliterated": (
+        "Qwen3 30B A3B, abliterated",
+        "The quick 30B with its refusals removed (by mlabonne); thinks first.",
+        21.0,
     ),
 }
 # Voice (optional, --voice): speech-to-text with whisper.cpp and text-to-speech with Piper,
@@ -1609,6 +1750,11 @@ def recommend_model(gpu: Gpu | None) -> tuple[str, str]:
             "The 14B models need about 10 GB of video memory.",
         )
     gigabytes = gpu.vram / GB
+    if gigabytes >= 23.5:
+        return (
+            "qwen3.8-27b",
+            "That is room for a 27B model, the strongest that fits.",
+        )
     if gigabytes >= 12:
         return (
             default,
