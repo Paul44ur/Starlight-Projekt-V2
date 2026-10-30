@@ -169,7 +169,7 @@ def test_a_model_link_that_no_longer_works_says_what_to_do(server: str, tmp_path
 
 
 def test_every_preset_has_known_tags() -> None:
-    known = {"thinks first", "quick", "code", "tools", "languages", "uncensored"}
+    known = set(L.TAG_INFO)
     assert set(L.MODEL_TAGS) <= set(L.MODEL_PRESETS)
     assert all(set(tags) <= known and tags for tags in L.MODEL_TAGS.values())
     assert all("uncensored" in L.MODEL_TAGS[key] for key in L.MODIFIED)

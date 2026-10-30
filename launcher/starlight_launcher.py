@@ -204,11 +204,16 @@ MODIFIED = (
     "qwen3.8-27b-abliterated",
     "qwen3-30b-a3b-abliterated",
 )
-# Short tags the setup window shows next to a model's name, to tell the 30 apart at a glance:
-# "thinks first" it reasons before it answers (better at hard questions, a slower reply);
-# "quick" few weights work per word, or it is small; "code" tuned for programming; "tools"
-# made for calling tools; "languages" strong beyond English (German, French ...);
-# "uncensored" refuses (almost) nothing.
+# What each of the tags below means (the setup window shows it when you point at a tag).
+TAG_INFO = {
+    "quick": "Few of its weights work on each word, or it is small: it answers fast.",
+    "thinks first": "It reasons before it answers: better at hard questions, a slower reply.",
+    "code": "Tuned for writing and fixing programs.",
+    "tools": "Made for calling tools, which Starlight's tasks are built on.",
+    "languages": "Strong beyond English: German, French and many more.",
+    "uncensored": "Changed by others so that it refuses (almost) nothing.",
+}
+# Short tags the setup window shows next to a model's name, to tell the 30 apart at a glance.
 MODEL_TAGS: dict[str, tuple[str, ...]] = {
     "qwen14b-uncensored": ("uncensored",),
     "qwen3-14b": ("thinks first",),

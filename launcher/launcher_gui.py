@@ -225,6 +225,42 @@ def rounded_rect(canvas: tk.Canvas, x0: float, y0: float, x1: float, y1: float, 
     return canvas.create_polygon(points, smooth=True, **options)
 
 
+class Tooltip:
+    """A short note that appears when the pointer rests on a widget for a moment."""
+
+    def __init__(self, app: App, widget: tk.Misc, text: str) -> None:
+        self.app, self.widget, self.text = app, widget, text
+        self.window: tk.Toplevel | None = None
+        self.job: str | None = None
+        widget.bind("<Enter>", self._soon, add="+")
+        widget.bind("<Leave>", self._hide, add="+")
+        widget.bind("<ButtonPress>", self._hide, add="+")
+
+    def _soon(self, _event: object = None) -> None:
+        self._hide()
+        self.job = self.widget.after(450, self._show)
+
+    def _show(self) -> None:
+        self.job = None
+        c, px = self.app.c, self.app.px
+        x, y = self.widget.winfo_pointerxy()
+        self.window = window = tk.Toplevel(self.widget)
+        window.wm_overrideredirect(True)
+        window.configure(bg=c.border)
+        tk.Label(window, text=self.text, font=self.app.f_small, bg=c.panel2, fg=c.text,
+                 padx=px(8), pady=px(4), justify="left",
+                 wraplength=px(320)).pack(padx=1, pady=1)  # fmt: skip
+        window.wm_geometry(f"+{x + px(12)}+{y + px(16)}")
+
+    def _hide(self, _event: object = None) -> None:
+        if self.job is not None:
+            self.widget.after_cancel(self.job)
+            self.job = None
+        if self.window is not None:
+            self.window.destroy()
+            self.window = None
+
+
 class CheckRow(tk.Frame):
     """A check box drawn like the rest of the window (the model cards' round marks): a
     rounded square that fills with a check mark, and its text. A click or Space toggles it."""
@@ -275,8 +311,8 @@ class CheckRow(tk.Frame):
             canvas.create_line(*[p * size for p in points], fill=c.on_accent, width=width,
                                capstyle="round", joinstyle="round")  # fmt: skip
         else:
-            rounded_rect(canvas, pad, pad, size - pad, size - pad, radius, fill=c.panel2,
-                         outline=c.dim if self.disabled else c.border, width=2)  # fmt: skip
+            rounded_rect(canvas, pad, pad, size - pad, size - pad, radius, fill=c.panel,
+                         outline=c.dim, width=2)  # fmt: skip
         self.label.configure(fg=c.dim if self.disabled else c.text)
         self.configure(cursor="arrow" if self.disabled else "hand2")
 
@@ -569,6 +605,9 @@ class App:
         # scrollbar fits it at once.
         changed = name != self.page
         self.page = name
+        titles = {"setup": "setup", "progress": "getting ready", "error": "could not start"}
+        if name in titles:
+            self.root.title(f"Starlight · {titles[name]}")
         if changed:
             self.scroller.yview_moveto(0)
             self.root.after_idle(self._fit_body)
@@ -652,8 +691,24 @@ class App:
         models = ttk.Frame(page)
         models.grid(row=2, column=0, sticky="ew")
         models.columnconfigure(0, weight=1)
-        section = self._label(models, "MODEL", "Section.TLabel")
-        section.grid(row=0, column=0, sticky="w", pady=(0, self.px(6)))
+        head = ttk.Frame(models)
+        head.grid(row=0, column=0, sticky="ew", pady=(0, self.px(6)))
+        head.columnconfigure(0, weight=1)
+        self._label(head, "MODEL", "Section.TLabel").grid(row=0, column=0, sticky="w")
+        # Show only the models with one tag (the list is long); "All" shows them all again.
+        chips = ttk.Frame(head)
+        chips.grid(row=0, column=1, sticky="e")
+        self.tag_filter = ""
+        self.chips: dict[str, tk.Label] = {}
+        for tag in ("", *self.L.TAG_INFO):
+            chip = tk.Label(chips, text=tag.capitalize() if tag else "All", font=self.f_small,
+                            padx=self.px(8), pady=self.px(1), cursor="hand2")  # fmt: skip
+            chip.pack(side="left", padx=(self.px(4), 0))
+            chip.bind("<Button-1>", partial(self._filter_by, tag))
+            if tag:
+                Tooltip(self, chip, f'Show the models tagged "{tag}": {self.L.TAG_INFO[tag]}')
+            self.chips[tag] = chip
+        self._paint_chips()
         self.model_var = tk.StringVar(value="")
         keys = list(self.L.MODEL_PRESETS)
         if self.settings.model_url not in self.L.MODEL_PRESETS.values():
@@ -826,6 +881,7 @@ class App:
         ]
         for tag_label in tag_labels:
             tag_label.pack(side="left", padx=(0, self.px(4)))
+            Tooltip(self, tag_label, self.L.TAG_INFO.get(tag_label.cget("text"), ""))
         desc = tk.Label(frame, text=text, font=self.f_small, bg=c.panel, fg=c.dim, anchor="w",
                         justify="left")  # fmt: skip
         desc.grid(row=1, column=1, sticky="w", pady=(0, self.px(8)))
@@ -845,21 +901,52 @@ class App:
                 "desc": desc, "side": side, "head": head, "tags": tags}  # fmt: skip
         self.cards[key] = card
         frame.bind("<Configure>", self._layout_cards_soon, add="+")
+        for widget in (frame, mark, head, name, tags, *tag_labels, desc, side, meta, badges):
+            widget.bind("<Enter>", partial(self._hover_card, key), add="+")
+            widget.bind("<Leave>", partial(self._hover_card, key), add="+")
 
-    def _hidden_as_too_big(self, key: str) -> bool:
-        """Folded away: too big for the graphics card, unless asked for or already chosen."""
-        if key in ("custom", LMSTUDIO) or self.show_big_var.get():
+    def _hover_card(self, key: str, _event: object = None) -> None:
+        """The card under the pointer gets a lighter border (moving between its parts is
+        a Leave and an Enter: what counts is where the pointer is)."""
+        frame = self.cards[key]["frame"]
+        x, y = self.root.winfo_pointerxy()
+        widget = self.root.winfo_containing(x, y)
+        while widget is not None and widget is not frame:
+            widget = widget.master if isinstance(widget.master, tk.Misc) else None
+        self._paint_card(key, hover=widget is frame)
+
+    def _paint_card(self, key: str, hover: bool = False) -> None:
+        c = self.c
+        chosen = key == self.model_var.get()
+        border = c.accent if chosen else c.dim if hover else c.border
+        self.cards[key]["frame"].configure(highlightbackground=border)
+
+    def _filter_by(self, tag: str, _event: object = None) -> None:
+        self.tag_filter = "" if tag == self.tag_filter else tag  # a second click: all again
+        self._paint_chips()
+        self._apply_visibility()
+
+    def _paint_chips(self) -> None:
+        c = self.c
+        for tag, chip in self.chips.items():
+            on = tag == self.tag_filter
+            chip.configure(bg=c.accent if on else c.panel2, fg=c.on_accent if on else c.dim)
+
+    def _hidden(self, key: str) -> bool:
+        """Folded away: without the tag chosen above the list, or too big for the graphics
+        card (unless asked for). Never the chosen model, nor LM Studio or your own."""
+        if key in ("custom", LMSTUDIO) or key in (self.model_var.get(), self._current_model_key()):
             return False
-        if key in (self.model_var.get(), self._current_model_key()):
-            return False
-        return self._too_big(self.L.MODEL_INFO[key][2])
+        if self.tag_filter and self.tag_filter not in self.L.MODEL_TAGS.get(key, ()):
+            return True
+        return not self.show_big_var.get() and self._too_big(self.L.MODEL_INFO[key][2])
 
     def _apply_visibility(self) -> None:
         """Which cards and headings show: none with the test model, the ones that fit the
         graphics card (or all, see show_big_var), and a heading only above shown cards."""
         use_model = self.settings.use_model
         for heading, keys in self.sections:
-            shown = [k for k in keys if use_model and not self._hidden_as_too_big(k)]
+            shown = [k for k in keys if use_model and not self._hidden(k)]
             for key in keys:
                 if key in shown:
                     self.cards[key]["frame"].grid()
@@ -963,7 +1050,7 @@ class App:
             self.think_check.grid_remove()  # (LM Studio: set it in LM Studio)
         for card_key, card in self.cards.items():
             chosen = card_key == key
-            card["frame"].configure(highlightbackground=self.c.accent if chosen else self.c.border)
+            self._paint_card(card_key)
             self._draw_mark(
                 card["mark"],
                 "radio" if chosen else "empty",
@@ -1300,8 +1387,8 @@ class App:
         details.columnconfigure(0, weight=1)
         details.rowconfigure(1, weight=1)
         self.details_open = tk.BooleanVar(value=False)
-        self.details_toggle = tk.Label(details, text="▸  Show details", font=self.f_small,
-                                       bg=c.bg, fg=c.dim, cursor="hand2")  # fmt: skip
+        self.details_toggle = tk.Label(details, text="Show details", font=self.f_small,
+                                       bg=c.bg, fg=c.accent, cursor="hand2")  # fmt: skip
         self.details_toggle.grid(row=0, column=0, sticky="w")
         self.details_toggle.bind("<Button-1>", lambda _event: self._flip_details())
         self.log_frame = ttk.Frame(details)
@@ -1330,7 +1417,7 @@ class App:
 
     def _toggle_details(self) -> None:
         self.details_toggle.configure(
-            text="▾  Hide details" if self.details_open.get() else "▸  Show details"
+            text="Hide details" if self.details_open.get() else "Show details"
         )
         if self.details_open.get():
             self.log_frame.grid(row=1, column=0, sticky="nsew", pady=(self.px(6), 0))
@@ -1532,8 +1619,14 @@ class App:
         footer = ttk.Frame(page)
         footer.grid(row=5, column=0, sticky="ew")
         footer.columnconfigure(0, weight=1)
-        self.r_footer = self._label(footer, "", "Small.TLabel")
+        # Starlight's folder, a link that opens it
+        self.r_footer = tk.Label(footer, text="", font=self.f_small, bg=self.c.bg,
+                                 fg=self.c.dim, cursor="hand2", anchor="w")  # fmt: skip
         self.r_footer.grid(row=0, column=0, sticky="w")
+        self.r_footer.bind("<Button-1>", lambda _event: open_folder(self.settings.root))
+        self.r_footer.bind("<Enter>", lambda _event: self.r_footer.configure(fg=self.c.accent))
+        self.r_footer.bind("<Leave>", lambda _event: self.r_footer.configure(fg=self.c.dim))
+        Tooltip(self, self.r_footer, "Open Starlight's folder")
         self._button(footer, "Settings ...", self.open_settings).grid(
             row=0, column=1, padx=(0, self.px(8))
         )
@@ -1555,6 +1648,12 @@ class App:
     def on_status(self, status: Any) -> None:
         L, c = self.L, self.c
         self.last_status = status
+        state = (
+            "kill switch on" if status.kill
+            else "ready" if status.model in ("ready", "off") and status.chat
+            else "starting"
+        )  # fmt: skip
+        self.root.title(f"Starlight · {state}")  # (the taskbar shows it too)
         model_name = self.settings.model_file.stem if self.settings.use_model else ""
         elapsed = L.format_duration(status.seconds)
         if status.model == "ready":
@@ -1622,7 +1721,7 @@ class App:
             sub = f"Your chat is at {chat_url}. Close this window to stop Starlight."
         self.r_title.configure(text=title)
         self.r_sub.configure(text=sub)
-        self.r_footer.configure(text=str(self.settings.root))
+        self.r_footer.configure(text=f"Folder: {self.settings.root}")
         ready = status.chat and status.model in ("ready", "off")
         if ready and not self.opened_browser and self.settings.web:
             self.opened_browser = True

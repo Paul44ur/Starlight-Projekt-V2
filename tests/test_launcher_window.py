@@ -530,3 +530,54 @@ def test_the_install_button_stays_in_view_and_pages_open_at_their_top(
         assert app.btn_restart.cget("text") == "Reload the model"
     finally:
         app.root.destroy()
+
+
+@pytest.mark.skipif(not has_display(), reason="needs tkinter and a display")
+def test_tags_filter_the_list_explain_themselves_and_the_title_follows_the_state(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from tests.test_cleanup_launcher import load_gui
+    from tests.test_lmstudio import starlight_root  # (they import this module)
+
+    gui = load_gui()
+    monkeypatch.setattr(gui.App, "_start_background_lookups", lambda self: None)  # no network
+    root = starlight_root(tmp_path)
+    monkeypatch.setenv("UV_CACHE_DIR", str(root / ".uv-cache"))
+    app = gui.App(L, L.build_parser().parse_args(["--root", str(root)]))
+    try:
+        app.open_setup(False)
+        assert app.root.title() == "Starlight · setup"
+
+        def shown() -> set[str]:
+            return {k for k in L.MODEL_PRESETS if app.cards[k]["frame"].winfo_manager()}
+
+        everything = shown()
+        app._filter_by("code")
+        chosen = app.model_var.get()
+        assert shown() == {k for k in L.MODEL_PRESETS if "code" in L.MODEL_TAGS.get(k, ())} | {
+            chosen
+        }
+        assert app.cards[gui.LMSTUDIO]["frame"].winfo_manager()  # your own models stay
+        assert app.chips["code"].cget("bg") == app.c.accent
+        app._filter_by("code")  # a second click shows all again
+        assert shown() == everything and app.chips[""].cget("bg") == app.c.accent
+
+        # a tag explains itself when pointed at
+        tag = app.cards["qwen3-14b"]["tags"].winfo_children()[0]
+        tip = gui.Tooltip(app, tag, L.TAG_INFO["thinks first"])
+        tip._show()
+        assert tip.window is not None and tip.window.winfo_exists()
+        tip._hide()
+        assert tip.window is None
+
+        # the window title says how Starlight is doing (and so does the taskbar)
+        app.show("running")
+        app.on_status(L.Status("loading", "", False, True, None, 5.0))
+        assert app.root.title() == "Starlight · starting"
+        app.on_status(L.Status("ready", "", True, True, False, 50.0))
+        assert app.root.title() == "Starlight · ready"
+        app.on_status(L.Status("ready", "", True, True, True, 60.0))
+        assert app.root.title() == "Starlight · kill switch on"
+        assert app.r_footer.cget("text") == f"Folder: {app.settings.root}"
+    finally:
+        app.root.destroy()
