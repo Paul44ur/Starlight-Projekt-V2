@@ -1,0 +1,8 @@
+name: podcasts
+version: 0.1.0
+description: Podcasts - subscribe to feeds, see new episodes, and play one
+keywords: ["podcast", "podcasts", "episode", "episodes", "subscribe", "listen", "Podcast", "Folge", "Folgen", "abonnieren", "anhören"]
+entrypoint: module:PodcastsModule
+permissions: [safe]
+dependencies: []
+enabled_by_default: true

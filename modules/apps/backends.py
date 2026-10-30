@@ -43,6 +43,8 @@ class Backend(Protocol):
     def focus(self, window: Window) -> None: ...
     def show(self, window: Window, state: str) -> None: ...  # minimize | maximize | restore
     def close(self, window: Window) -> None: ...
+    def place(self, window: Window) -> tuple[int, int, int, int]: ...  # left, top, width, height
+    def move(self, window: Window, place: tuple[int, int, int, int]) -> None: ...
 
 
 def _scan(folders: list[Path], suffix: str) -> list[Path]:
@@ -128,6 +130,17 @@ class WindowsBackend:
     def close(self, window: Window) -> None:
         self.user32.PostMessageW(window.id, 0x0010, 0, 0)  # WM_CLOSE: the app may ask to save
 
+    def place(self, window: Window) -> tuple[int, int, int, int]:
+        rect = self.wintypes.RECT()
+        if not self.user32.GetWindowRect(window.id, self.ctypes.byref(rect)):
+            raise AppsUnavailable(f"could not read where {window.title} is")
+        return rect.left, rect.top, rect.right - rect.left, rect.bottom - rect.top
+
+    def move(self, window: Window, place: tuple[int, int, int, int]) -> None:
+        if self.user32.IsZoomed(window.id) or self.user32.IsIconic(window.id):
+            self.user32.ShowWindow(window.id, 9)  # restore first: a maximized one won't move
+        self.user32.MoveWindow(window.id, *place, True)
+
 
 # -- Linux ---------------------------------------------------------------------------------
 
@@ -186,6 +199,18 @@ class LinuxBackend:
 
     def close(self, window: Window) -> None:
         self._wmctrl("-i", "-c", hex(window.id))
+
+    def place(self, window: Window) -> tuple[int, int, int, int]:
+        for line in self._wmctrl("-l", "-G").splitlines():
+            parts = line.split(None, 7)
+            if len(parts) >= 6 and int(parts[0], 16) == window.id:
+                left, top, width, height = (int(v) for v in parts[2:6])
+                return left, top, width, height
+        raise AppsUnavailable(f"could not find where {window.title} is")
+
+    def move(self, window: Window, place: tuple[int, int, int, int]) -> None:
+        self._wmctrl("-i", "-r", hex(window.id), "-b", "remove,maximized_vert,maximized_horz")
+        self._wmctrl("-i", "-r", hex(window.id), "-e", "0," + ",".join(str(v) for v in place))
 
 
 def _run(command: list[str]) -> str:

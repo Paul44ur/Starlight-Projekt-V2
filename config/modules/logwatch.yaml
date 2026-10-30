@@ -1,0 +1,3 @@
+# The log watcher (modules/logwatch): files you asked it to watch are looked at this often.
+check_every: 30          # seconds
+max_lines: 5             # lines quoted per message

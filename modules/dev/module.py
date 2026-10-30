@@ -23,7 +23,16 @@ from typing import Any
 from pydantic import BaseModel, Field
 
 from starlight.core import Module, ModuleContext, Permission, ToolError, tool
+from starlight.core.model import Message
 from starlight.core.safepaths import expand, inside
+
+REVIEW = (
+    "You review a code change (a git diff) like a careful senior colleague. List, most "
+    "important first: real bugs (with file and line), risks (security, data loss, races, "
+    "error handling), then what could be simpler or clearer. Be concrete and short; say so "
+    "when the change looks good. Do not invent problems."
+)
+REVIEW_CHARS = 40000  # of the diff the model reads
 
 CONTAINER = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$")
 
@@ -163,6 +172,28 @@ class DevModule(Module):
         if file.strip():
             args += ["--", file.strip()]
         return {"diff": await self._git(repo, *args) or "(no changes)"}
+
+    @tool
+    async def review(self, repo: str, staged: bool = False, file: str = "") -> dict[str, Any]:
+        """A code review of the uncommitted (or staged) changes by the model: bugs, risks,
+        and what could be simpler, each with the file and line."""
+        args = ["diff", "--unified=5", *(["--cached"] if staged else [])]
+        if file.strip():
+            args += ["--", file.strip()]
+        diff = await self._git(repo, *args)
+        if not diff.strip():
+            return {"review": "There are no changes to review."}
+        model = self.ctx.model_for("code")
+        if model is None:
+            raise ToolError("no model is configured")
+        cut = len(diff) > REVIEW_CHARS
+        reply = await model.chat(
+            [Message("system", REVIEW), Message("user", diff[:REVIEW_CHARS])], []
+        )
+        result: dict[str, Any] = {"review": str(reply.content).strip()}
+        if cut:
+            result["note"] = f"only the first {REVIEW_CHARS} characters of the diff were read"
+        return result
 
     @tool
     async def git_branches(self, repo: str) -> dict[str, Any]:

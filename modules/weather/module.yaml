@@ -1,7 +1,7 @@
 name: weather
 version: 0.1.0
-description: Current weather and a short forecast for any place (free, no account or API key)
-keywords: ["weather", "rain", "temperature", "forecast", "sunny", "cold", "warm", "wind", "Wetter", "Regen", "Temperatur", "Vorhersage", "kalt"]
+description: Current weather, a short forecast, pollen, air quality and UV for any place (free, no account or API key)
+keywords: ["weather", "rain", "temperature", "forecast", "sunny", "cold", "warm", "wind", "Wetter", "Regen", "Temperatur", "Vorhersage", "kalt", "pollen", "hay fever", "allergy", "air quality", "UV", "Pollen", "Heuschnupfen", "Allergie", "Luftqualität"]
 entrypoint: module:WeatherModule
 permissions: [safe]
 dependencies: []

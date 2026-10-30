@@ -1,0 +1,8 @@
+name: recipes
+version: 0.1.0
+description: Recipes - keep them as files, find them, scale them to more or fewer servings, and make a shopping list
+keywords: ["recipe", "recipes", "cook", "cooking", "bake", "ingredients", "servings", "shopping list", "Rezept", "Rezepte", "kochen", "backen", "Zutaten", "Portionen", "Einkaufsliste"]
+entrypoint: module:RecipesModule
+permissions: [safe]
+dependencies: []
+enabled_by_default: true

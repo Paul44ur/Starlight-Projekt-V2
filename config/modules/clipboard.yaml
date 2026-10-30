@@ -1,2 +1,6 @@
 # The clipboard module (modules/clipboard): read and set the system clipboard.
 max_chars: 100000
+# Clipboard history: what you copy is kept in memory (never on disk) while Starlight runs,
+# so "what did I copy before?" works. Text that looks like a password is skipped.
+history: false
+history_size: 30

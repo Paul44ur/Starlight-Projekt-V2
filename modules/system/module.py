@@ -20,11 +20,13 @@ import shutil
 import subprocess
 import sys
 import time
+from pathlib import Path
 from typing import Any
 
 from pydantic import BaseModel, Field
 
 from starlight.core import Module, ModuleContext, Permission, ToolError, tool
+from starlight.core.jsonfile import load_json, save_json
 
 
 def _psutil() -> Any | None:
@@ -58,6 +60,107 @@ def human_duration(seconds: float) -> str:
         parts.append(f"{hours}h")
     parts.append(f"{minutes}m")
     return " ".join(parts)
+
+
+def folder_sizes(
+    root: Path, budget: float = 20.0
+) -> tuple[dict[str, int], list[tuple[str, int]], bool]:
+    """Sizes of the folders right inside ``root`` (each with all it holds), the biggest
+    files anywhere below, and whether it was all counted within ``budget`` seconds."""
+    deadline = time.monotonic() + budget
+    folders: dict[str, int] = {}
+    files: list[tuple[str, int]] = []
+    complete = True
+    for top in sorted(root.iterdir(), key=lambda p: p.name.lower()) if root.is_dir() else []:
+        total = 0
+        stack = [top]
+        while stack:
+            if time.monotonic() > deadline:
+                complete = False
+                break
+            current = stack.pop()
+            try:
+                if current.is_symlink():
+                    continue
+                if current.is_file():
+                    size = current.stat().st_size
+                    total += size
+                    files.append((str(current), size))
+                    continue
+                with os.scandir(current) as entries:
+                    stack.extend(Path(entry.path) for entry in entries)
+            except OSError:  # no access, or gone meanwhile
+                continue
+        if top.is_dir():
+            folders[top.name] = total
+        if not complete:
+            break
+    files.sort(key=lambda f: -f[1])
+    return folders, files[:15], complete
+
+
+RUN_KEY = r"Software\Microsoft\Windows\CurrentVersion\Run"
+
+
+def run_entries() -> list[dict[str, str]]:
+    """Windows' Run lists: yours and the one for all users."""
+    if sys.platform != "win32":
+        return []
+    import winreg
+
+    found = []
+    for hive, where in (
+        (winreg.HKEY_CURRENT_USER, "you"),
+        (winreg.HKEY_LOCAL_MACHINE, "all users"),
+    ):
+        with contextlib.suppress(OSError), winreg.OpenKey(hive, RUN_KEY) as key:
+            index = 0
+            while True:
+                try:
+                    name, value, _ = winreg.EnumValue(key, index)
+                except OSError:
+                    break
+                found.append({"name": name, "command": str(value), "where": f"Run ({where})"})
+                index += 1
+    return found
+
+
+def set_run_entry(name: str, command: str | None) -> None:
+    """Add (or with None remove) a program in your own Run list."""
+    if sys.platform != "win32":
+        raise ToolError("the Run list is a Windows thing")
+    import winreg
+
+    with winreg.OpenKey(winreg.HKEY_CURRENT_USER, RUN_KEY, 0, winreg.KEY_SET_VALUE) as key:
+        if command is None:
+            winreg.DeleteValue(key, name)
+        else:
+            winreg.SetValueEx(key, name, 0, winreg.REG_SZ, command)
+
+
+def startup_entries(platform_name: str) -> list[dict[str, str]]:
+    """The programs that start when you log in: Windows' Run lists and Startup folder, or
+    Linux's autostart folder. Each with where it is set, so it can be turned off."""
+    found: list[dict[str, str]] = []
+    if platform_name == "win32":
+        found += run_entries()
+        appdata = os.environ.get("APPDATA", "")
+        folders = (
+            [Path(appdata) / "Microsoft/Windows/Start Menu/Programs/Startup"] if appdata else []
+        )
+    else:
+        folders = [Path.home() / ".config/autostart"]
+    for folder in folders:
+        for item in sorted(folder.glob("*")) if folder.is_dir() else []:
+            if item.is_file() and item.suffix.lower() in (
+                ".lnk",
+                ".desktop",
+                ".url",
+                ".bat",
+                ".cmd",
+            ):
+                found.append({"name": item.stem, "command": str(item), "where": "Startup folder"})
+    return found
 
 
 class Config(BaseModel):
@@ -137,6 +240,77 @@ class SystemModule(Module):
 
     def _platform(self) -> str:
         return sys.platform
+
+    @tool
+    def big_folders(self, path: str = "~") -> dict[str, Any]:
+        """What takes the space in a folder (your home folder if not said, or e.g. "C:\\"):
+        the folders right inside it, biggest first, and the biggest files below it.
+        Only sizes are read, never what is in the files."""
+        root = Path(os.path.expandvars(path.strip() or "~")).expanduser()
+        if not root.is_dir():
+            raise ToolError(f"{root} is not a folder")
+        folders, files, complete = folder_sizes(root)
+        ranked = sorted(folders.items(), key=lambda kv: -kv[1])[:20]
+        return {
+            "folder": str(root),
+            "biggest_folders": [{"name": n, "size": human_bytes(b)} for n, b in ranked if b],
+            "biggest_files": [{"file": f, "size": human_bytes(b)} for f, b in files],
+            "complete": complete or "it took too long: the numbers are what was counted so far",
+        }
+
+    @tool
+    def startup_programs(self) -> dict[str, Any]:
+        """The programs that start when you log in (Windows Run lists and Startup
+        folder, or Linux autostart), and the ones you turned off here."""
+        off = load_json(self.ctx.data_dir / "startup_off.json", {})
+        return {"starting": startup_entries(self._platform()),
+                "turned_off_here": sorted(off)}  # fmt: skip
+
+    @tool(permission=Permission.CONFIRM)
+    def startup_off(self, name: str) -> dict[str, Any]:
+        """Stop a program from starting when you log in (yours, not all users'). It can be
+        turned on again with system.startup_on. Asks first."""
+        entry = next((e for e in startup_entries(self._platform())
+                      if e["name"].casefold() == name.strip().casefold()), None)  # fmt: skip
+        if entry is None:
+            raise ToolError(
+                f"{name} is not among the programs that start (system.startup_programs)"
+            )
+        store = self.ctx.data_dir / "startup_off.json"
+        off = load_json(store, {})
+        if entry["where"] == "Startup folder":
+            source = Path(entry["command"])
+            kept = self.ctx.data_dir / "startup_off" / source.name
+            kept.parent.mkdir(parents=True, exist_ok=True)
+            shutil.move(str(source), kept)
+            off[entry["name"]] = {"kind": "file", "from": str(source), "kept": str(kept)}
+        elif entry["where"] == "Run (you)":
+            set_run_entry(entry["name"], None)
+            off[entry["name"]] = {"kind": "run", "command": entry["command"]}
+        else:
+            raise ToolError(
+                f"{name} starts for all users; turning it off needs administrator rights "
+                "(Task Manager, Startup apps)"
+            )
+        save_json(store, off)
+        return {"turned_off": entry["name"]}
+
+    @tool
+    def startup_on(self, name: str) -> dict[str, Any]:
+        """Let a program you turned off with system.startup_off start at login again."""
+        store = self.ctx.data_dir / "startup_off.json"
+        off = load_json(store, {})
+        key_name = next((k for k in off if k.casefold() == name.strip().casefold()), None)
+        if key_name is None:
+            raise ToolError(f"{name} was not turned off here")
+        entry = off.pop(key_name)
+        if entry["kind"] == "file":
+            Path(entry["from"]).parent.mkdir(parents=True, exist_ok=True)
+            shutil.move(entry["kept"], entry["from"])
+        else:
+            set_run_entry(key_name, entry["command"])
+        save_json(store, off)
+        return {"turned_on": key_name}
 
     def _run(self, command: list[str]) -> None:
         try:

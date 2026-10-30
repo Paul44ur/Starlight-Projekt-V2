@@ -1,0 +1,8 @@
+name: birthdays
+version: 0.1.0
+description: Birthdays - remembers them, tells you on the day and a few days before, and how old someone turns
+keywords: ["birthday", "birthdays", "born", "anniversary", "Geburtstag", "Geburtstage", "geboren", "Jahrestag"]
+entrypoint: module:BirthdaysModule
+permissions: [safe]
+dependencies: []
+enabled_by_default: true

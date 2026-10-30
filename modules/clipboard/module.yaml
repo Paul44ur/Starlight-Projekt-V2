@@ -1,7 +1,7 @@
 name: clipboard
 version: 0.1.0
 description: Read and set the clipboard, so Starlight can use what you copied and copy things for you
-keywords: ["clipboard", "copy", "paste", "copied", "Zwischenablage", "kopieren", "einfügen"]
+keywords: ["clipboard", "copy", "paste", "copied", "Zwischenablage", "kopieren", "einfügen", "history", "copied before", "Verlauf"]
 entrypoint: module:ClipboardModule
 permissions: [safe]
 dependencies: []

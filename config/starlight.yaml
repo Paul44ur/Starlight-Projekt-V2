@@ -200,6 +200,10 @@ permissions:
     - desktop.read_screen
     - desktop.describe_screen
     - watch.check_now
+    - "podcasts.*"
+    - expenses.read_receipt
+    - logwatch.check_now
+    - dev.review
 
 tools:
   timeout: 120   # seconds before a tool call is aborted

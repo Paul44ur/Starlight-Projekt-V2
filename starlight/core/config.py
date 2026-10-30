@@ -155,6 +155,10 @@ class PermissionsConfig(_Strict):
             "desktop.read_screen",
             "desktop.describe_screen",
             "watch.check_now",
+            "podcasts.*",
+            "expenses.read_receipt",
+            "logwatch.check_now",
+            "dev.review",
         ]
     )
     # How often a tool may run on its own: {"mail.send": "20/hour"}. A pattern counts all

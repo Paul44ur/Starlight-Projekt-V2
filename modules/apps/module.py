@@ -13,6 +13,8 @@ from __future__ import annotations
 
 import difflib
 import re
+import shutil
+import subprocess
 from typing import Any
 
 from pydantic import BaseModel, Field
@@ -34,6 +36,36 @@ RUNNABLE = {
 class Config(BaseModel):
     extra_folders: list[str] = Field(default_factory=list)
     ask_first_open: bool = True  # ask the first time each program is opened
+
+
+def winget_table(text: str) -> list[dict[str, str]]:
+    """winget's table (a header line, a line of dashes, then rows aligned under it) as
+    rows of {"name", "id", "version", "available", "source"}."""
+    lines = [ln.rstrip() for ln in text.replace("\r", "\n").splitlines()]
+    rule = next(
+        (
+            i
+            for i, ln in enumerate(lines)
+            if ln.strip().startswith("---") and set(ln.strip()) == {"-"}
+        ),
+        None,
+    )  # (not the "-" of winget's spinner)
+    if rule is None or rule == 0:
+        return []
+    header = lines[rule - 1]
+    names = [m.group(0) for m in re.finditer(r"\S+", header)]
+    starts = [m.start() for m in re.finditer(r"\S+", header)]
+    rows = []
+    for line in lines[rule + 1 :]:
+        if not line.strip() or re.match(r"^\d+ (upgrades?|packages?) ", line.strip()):
+            continue
+        cells = [
+            line[a:b].strip() for a, b in zip(starts, [*starts[1:], len(line) + 1], strict=True)
+        ]
+        row = {key.lower(): value for key, value in zip(names, cells, strict=True)}
+        if row.get("id"):
+            rows.append(row)
+    return rows
 
 
 class AppsModule(Module):
@@ -223,3 +255,114 @@ class AppsModule(Module):
         window = self._window(title)
         self._guarded(self.backend.close, window)
         return {"closed": window.title}
+
+    # -- window layouts ------------------------------------------------------------------
+
+    @property
+    def layouts_file(self) -> Any:
+        return self.ctx.data_dir / "layouts.json"
+
+    @tool
+    def save_layout(self, name: str) -> dict[str, Any]:
+        """Remember where the open windows are now, as a layout ("work", "gaming" ...)."""
+        name = " ".join(name.split())
+        if not name:
+            raise ToolError("give the layout a name")
+        saved = []
+        for window in self._guarded(self.backend.windows):
+            try:
+                place = self._guarded(self.backend.place, window)
+            except ToolError:
+                continue  # (a window that closed meanwhile)
+            saved.append({"title": window.title, "program": window.program, "place": list(place)})
+        layouts = load_json(self.layouts_file, {})
+        layouts[name] = saved
+        save_json(self.layouts_file, layouts)
+        return {"saved": name, "windows": len(saved)}
+
+    @tool
+    def restore_layout(self, name: str) -> dict[str, Any]:
+        """Put the open windows back where a layout has them (by program, and title)."""
+        layouts = load_json(self.layouts_file, {})
+        key = next((k for k in layouts if k.casefold() == name.strip().casefold()), None)
+        if key is None:
+            raise ToolError(f"no layout called {name}; saved: {', '.join(layouts) or 'none'}")
+        open_now: list[Window] = list(self._guarded(self.backend.windows))
+        moved: list[str] = []
+        missing: list[str] = []
+        for entry in layouts[key]:
+            same_title = [w for w in open_now if w.title == entry["title"]]
+            same_program = [
+                w for w in open_now if entry["program"] and w.program == entry["program"]
+            ]
+            candidates = same_title or same_program
+            if not candidates:
+                missing.append(entry["title"])
+                continue
+            target = candidates[0]
+            open_now.remove(target)
+            self._guarded(self.backend.move, target, tuple(entry["place"]))
+            moved.append(target.title)
+        return {"layout": key, "moved": moved, "not_open": missing}
+
+    @tool
+    def layouts(self) -> dict[str, Any]:
+        """The window layouts you saved."""
+        saved = load_json(self.layouts_file, {})
+        return {"layouts": {name: len(windows) for name, windows in saved.items()}}
+
+    # -- installing programs (winget) -------------------------------------------------------
+
+    def _winget(self, *args: str, timeout: float = 120) -> str:
+        """Run winget (Windows' own package manager, part of App Installer)."""
+        winget = shutil.which("winget")
+        if winget is None:
+            raise ToolError("installing programs needs winget (Windows 10/11, App Installer)")
+        self.ctx.kill_switch.check()
+        try:
+            done = subprocess.run(
+                [winget, *args, "--accept-source-agreements", "--disable-interactivity"],
+                capture_output=True, text=True, encoding="utf-8", errors="replace",
+                timeout=timeout, check=False,
+                creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+            )  # fmt: skip
+        except subprocess.TimeoutExpired:
+            raise ToolError("winget took too long") from None
+        if done.returncode != 0 and not done.stdout.strip():
+            raise ToolError(f"winget failed: {done.stderr.strip()[:300] or done.returncode}")
+        return done.stdout
+
+    @tool
+    def find_program(self, text: str) -> dict[str, Any]:
+        """Look for a program to install (winget's catalog): name, id, version."""
+        rows = winget_table(self._winget("search", text))
+        return {"found": rows[:15]}
+
+    @tool(permission=Permission.CONFIRM, own_timeout=True)
+    def install(self, id: str) -> dict[str, Any]:
+        """Install a program by its winget id (from apps.find_program), quietly. Asks
+        first."""
+        if not re.fullmatch(r"[\w.+-]{2,100}", id.strip()):
+            raise ToolError("give the program's winget id, e.g. VideoLAN.VLC")
+        out = self._winget(
+            "install", "--id", id.strip(), "--exact", "--silent",
+            "--accept-package-agreements", timeout=1800,
+        )  # fmt: skip
+        self._programs = None  # the new program shows in the list next time
+        return {"installed": id.strip(), "winget": out.strip().splitlines()[-3:]}
+
+    @tool
+    def updates(self) -> dict[str, Any]:
+        """The installed programs that have a newer version (winget)."""
+        return {"updates": winget_table(self._winget("upgrade"))}
+
+    @tool(permission=Permission.CONFIRM, own_timeout=True)
+    def update(self, id: str = "all") -> dict[str, Any]:
+        """Update one program by its winget id, or all of them ("all"). Asks first."""
+        args = (
+            ["upgrade", "--all"]
+            if id.strip() in ("", "all")
+            else ["upgrade", "--id", id.strip(), "--exact"]
+        )
+        out = self._winget(*args, "--silent", "--accept-package-agreements", timeout=3600)
+        return {"updated": id.strip() or "all", "winget": out.strip().splitlines()[-5:]}

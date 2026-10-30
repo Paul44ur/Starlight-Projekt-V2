@@ -1,0 +1,8 @@
+name: habits
+version: 0.1.0
+description: Habits - tick off what you want to do daily or weekly, and see your streaks
+keywords: ["habit", "habits", "streak", "tick off", "every day", "routine", "Gewohnheit", "Gewohnheiten", "Serie", "abhaken", "täglich"]
+entrypoint: module:HabitsModule
+permissions: [safe]
+dependencies: []
+enabled_by_default: true

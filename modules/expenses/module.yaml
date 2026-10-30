@@ -1,0 +1,8 @@
+name: expenses
+version: 0.1.0
+description: What you spend - note expenses or read them off a receipt, see each month by category against a budget, export as CSV
+keywords: ["expense", "expenses", "spent", "spend", "receipt", "budget", "money", "bill", "Ausgabe", "Ausgaben", "ausgegeben", "Kassenbon", "Quittung", "Beleg", "Rechnung", "Haushaltsbuch"]
+entrypoint: module:ExpensesModule
+permissions: [safe]
+dependencies: []
+enabled_by_default: true

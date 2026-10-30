@@ -1,0 +1,8 @@
+name: logwatch
+version: 0.1.0
+description: Log watcher - keeps an eye on log files and tells you when an error (or a pattern you choose) shows up
+keywords: ["log", "logs", "log file", "error", "errors", "watch", "monitor", "Logdatei", "Protokoll", "Fehler", "überwachen"]
+entrypoint: module:LogwatchModule
+permissions: [safe]
+dependencies: []
+enabled_by_default: true

@@ -16,6 +16,27 @@ from starlight.core.http import HttpError
 
 GEOCODE = "https://geocoding-api.open-meteo.com/v1/search"
 FORECAST = "https://api.open-meteo.com/v1/forecast"
+AIR = "https://air-quality-api.open-meteo.com/v1/air-quality"  # pollen: Europe only
+POLLEN = {
+    "alder_pollen": "alder", "birch_pollen": "birch", "grass_pollen": "grass",
+    "mugwort_pollen": "mugwort", "olive_pollen": "olive", "ragweed_pollen": "ragweed",
+}  # fmt: skip
+# Grains per cubic metre -> how much it bothers someone who is allergic.
+POLLEN_LEVELS = (
+    (1, "none"),
+    (10, "low"),
+    (50, "moderate"),
+    (200, "high"),
+    (float("inf"), "very high"),
+)
+# The European air quality index (0 good ... 100+ extremely poor).
+AQI_LEVELS = ((20, "good"), (40, "fair"), (60, "moderate"), (80, "poor"), (100, "very poor"),
+              (float("inf"), "extremely poor"))  # fmt: skip
+
+
+def level(value: float, levels: tuple[tuple[float, str], ...]) -> str:
+    return next(name for limit, name in levels if value < limit)
+
 
 # WMO weather codes -> plain description.
 CODES: dict[int, str] = {
@@ -147,6 +168,44 @@ class WeatherModule(Module):
             for i, date in enumerate(dates)
         ]
         return {"place": self._place_name(spot), "days": days_out}
+
+    @tool
+    async def air(self, place: str = "") -> dict[str, Any]:
+        """Pollen (alder, birch, grass, mugwort, olive, ragweed - in Europe), air quality
+        and UV for today and the next two days, for a place."""
+        spot = await self._geocode(place)
+        fields = ",".join([*POLLEN, "european_aqi", "uv_index"])
+        url = (
+            f"{AIR}?latitude={spot['latitude']}&longitude={spot['longitude']}"
+            f"&hourly={fields}&forecast_days=3&timezone=auto"
+        )
+        hourly = (await self._fetch(url)).get("hourly") or {}
+        times = hourly.get("time") or []
+        days: dict[str, dict[str, float]] = {}
+        for i, stamp in enumerate(times):
+            day = days.setdefault(str(stamp)[:10], {})
+            for key in (*POLLEN, "european_aqi", "uv_index"):
+                value = at(hourly.get(key), i)
+                if isinstance(value, int | float):
+                    day[key] = max(day.get(key, value), value)
+        out = []
+        for date, peak in days.items():
+            pollen = {
+                name: f"{level(peak[key], POLLEN_LEVELS)} ({peak[key]:.0f})"
+                for key, name in POLLEN.items()
+                if key in peak and peak[key] >= 1
+            }
+            entry: dict[str, Any] = {"date": date, "pollen": pollen or "none in the air"}
+            if not any(key in peak for key in POLLEN):
+                entry["pollen"] = "no pollen data for this region (Europe only)"
+            if "european_aqi" in peak:
+                entry["air"] = (
+                    f"{level(peak['european_aqi'], AQI_LEVELS)} ({peak['european_aqi']:.0f})"
+                )
+            if "uv_index" in peak:
+                entry["uv_max"] = round(peak["uv_index"], 1)
+            out.append(entry)
+        return {"place": self._place_name(spot), "days": out}
 
     async def _fetch(self, url: str, use_cache: bool = False) -> dict[str, Any]:
         """The service's JSON answer; the weather itself is never cached (current data)."""

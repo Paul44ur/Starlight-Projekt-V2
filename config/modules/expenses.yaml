@@ -1,0 +1,4 @@
+# The expenses module (modules/expenses): what you spend, kept in data/modules/expenses.
+currency: EUR
+monthly_budget: 0        # 0: no budget; otherwise the month's total is compared with it
+categories: [groceries, eating out, household, transport, health, clothes, leisure, gifts, bills, other]

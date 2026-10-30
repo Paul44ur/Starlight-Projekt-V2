@@ -1,0 +1,8 @@
+name: trips
+version: 0.1.0
+description: Trips - your travel plans with a countdown, and a packing list that looks at the weather there
+keywords: ["trip", "trips", "travel", "holiday", "vacation", "packing", "pack", "Reise", "Reisen", "Urlaub", "packen", "Packliste"]
+entrypoint: module:TripsModule
+permissions: [safe]
+dependencies: []
+enabled_by_default: true
