@@ -1,0 +1,8 @@
+name: trains
+version: 0.1.0
+description: Train connections and departure boards in Germany (Deutsche Bahn, free, no account or API key)
+keywords: ["train", "trains", "rail", "connection", "departure", "departures", "platform", "delay", "station", "ICE", "IC", "S-Bahn", "U-Bahn", "Bahn", "Zug", "Züge", "Verbindung", "Abfahrt", "Abfahrten", "Gleis", "Verspätung", "Bahnhof", "Fahrplan", "DB"]
+entrypoint: module:TrainsModule
+permissions: [safe]
+dependencies: []
+enabled_by_default: true

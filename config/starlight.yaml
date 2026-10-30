@@ -172,6 +172,28 @@ permissions:
   # Starlight folder, granting access (access.*, always asks).
   confirm: []
   blocked: []
+  # The injection guard: once a request has read outside content (the tools below: web
+  # pages, mail, PDFs, the screen ...), the tools above that normally ask ask again for
+  # the rest of that request, with a note saying why. Hidden text in a page or an email
+  # cannot then send mail or type for you unnoticed. false: they never ask.
+  guard_after_untrusted: true
+  untrusted_sources:
+    - "web.*"
+    - news.headlines
+    - "research.*"
+    - "transcripts.*"
+    - mail.inbox
+    - mail.read
+    - mail.unread
+    - mail.summary
+    - login.open
+    - network.http_get
+    - network.http_request
+    - pdf.read_pdf
+    - "office.read_*"
+    - desktop.read_screen
+    - desktop.describe_screen
+    - watch.check_now
 
 tools:
   timeout: 120   # seconds before a tool call is aborted

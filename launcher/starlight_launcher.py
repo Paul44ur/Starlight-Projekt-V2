@@ -1400,11 +1400,39 @@ class ProcessGroup:
         self._logs.clear()
 
 
+# Game mode: Starlight writes this file to free the graphics card (a game started, or you
+# said so), and removes it to get the model back. Same as starlight/core/modelpause.py.
+PAUSE_FILE = "model.pause.json"
+
+
+def pause_file(root: Path) -> Path:
+    return root / "data" / PAUSE_FILE
+
+
+def read_pause(root: Path) -> dict[str, Any] | None:
+    """The pause in force ({"reason", "by", "since"}), or None."""
+    try:
+        data = json.loads(pause_file(root).read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+    return data if isinstance(data, dict) else {"reason": "paused"}
+
+
+def end_pause(root: Path) -> bool:
+    """Remove the pause file (Resume now). True if there was one."""
+    try:
+        pause_file(root).unlink()
+    except OSError:  # not there, or held open for a moment
+        return False
+    return True
+
+
 class ModelServerWatchdog:
     """Starts the model server again when it stops by itself (a graphics driver hiccup, out
     of video memory), so a crash costs a minute instead of the whole session. A server that
     cannot run is not restarted forever: after ``limit`` restarts within ``window``
-    seconds it stays down, and the log says why."""
+    seconds it stays down, and the log says why. While ``pause`` exists (game mode) the
+    server is stopped on purpose, and started again when it goes."""
 
     def __init__(
         self,
@@ -1418,13 +1446,16 @@ class ModelServerWatchdog:
         window: float = 600.0,
         poll: float = 2.0,
         backoff: float = 3.0,
+        pause: Path | None = None,
     ) -> None:
         self.group, self.command, self.process = group, command, process
         self.log, self.cwd, self.ui = log, cwd, ui
         self.limit, self.window, self.poll, self.backoff = limit, window, poll, backoff
+        self.pause = pause
         self.restarts: list[float] = []
         self.gave_up = False
         self.restarting = False  # it stopped by itself and is being started again
+        self.paused = False  # stopped for game mode
         self._stopped = threading.Event()
         self._thread = threading.Thread(target=self._watch, name="model-watchdog", daemon=True)
 
@@ -1438,11 +1469,16 @@ class ModelServerWatchdog:
             self._thread.join(timeout=5)
 
     def restart_now(self) -> None:
-        """The user asked for a restart: end the server, start it again, count from zero."""
+        """The user asked for a restart: end the server, start it again, count from zero.
+        A game-mode pause ends with it."""
         self._stopped.set()
         if self._thread.is_alive() and self._thread is not threading.current_thread():
             self._thread.join(timeout=5)
         self.group.terminate(self.process)
+        if self.pause is not None:
+            with contextlib.suppress(OSError):
+                self.pause.unlink(missing_ok=True)
+        self.paused = False
         self.restarts.clear()
         self.gave_up = False
         self.restarting = True
@@ -1459,8 +1495,34 @@ class ModelServerWatchdog:
 
     def _watch(self) -> None:
         while not self._stopped.wait(self.poll):
+            if self._follow_pause():
+                continue
             if self.process.poll() is not None and not self._restart():
                 return
+
+    def _follow_pause(self) -> bool:
+        """Stop the server when a pause begins, start it when it ends. True while paused
+        or just resumed (nothing else to check this round)."""
+        wanted = self.pause is not None and self.pause.exists()
+        if wanted == self.paused:
+            return wanted
+        self.paused = wanted
+        if wanted:
+            self.ui.say("\nGame mode: the model server stops to free the graphics card.")
+            self.group.terminate(self.process)
+            return True
+        self.ui.say("\nGame mode ended: starting the model server again ...")
+        self.restarts.clear()
+        self.gave_up = False
+        self.restarting = True
+        try:
+            self.process = self.group.start(self.command, self.log, self.cwd)
+        except OSError as exc:
+            self.ui.say(f"   could not start it: {exc}")
+            self.gave_up = True
+        finally:
+            self.restarting = False
+        return True
 
     def _restart(self) -> bool:
         now = time.monotonic()
@@ -1873,7 +1935,8 @@ def viewer_url() -> str:
 class Status:
     """What the status window shows."""
 
-    model: str  # "off", "loading", "ready", "restarting", "down" or "waiting" (LM Studio)
+    # "off", "loading", "ready", "restarting", "down", "waiting" (LM Studio) or "paused"
+    model: str
     model_detail: str = ""
     chat: bool = False
     viewer: bool | None = None  # None: not used
@@ -2073,7 +2136,21 @@ def reload_in_lmstudio(settings: Settings) -> str:
         if not key:
             return "LM Studio has no model loaded: load one there, or choose one in Settings"
         return load_in_lmstudio(url, key, settings.context)
-    body = json.dumps({"instance_id": state.loaded}).encode("utf-8")
+    problem = unload_in_lmstudio(url, state.loaded)
+    if problem:
+        return problem
+    return load_in_lmstudio(url, lmstudio_key(settings, state.loaded), settings.context)
+
+
+def lmstudio_key(settings: Settings, instance: str) -> str:
+    """The model to load again: the instance id is the model's key, or the key and ":2"
+    for a second copy of it."""
+    return settings.lmstudio_model or instance.rsplit(":", 1)[0]
+
+
+def unload_in_lmstudio(url: str, instance: str) -> str:
+    """Unload one loaded model from LM Studio. "" when done, else what went wrong."""
+    body = json.dumps({"instance_id": instance}).encode("utf-8")
     request = urllib.request.Request(
         f"{url}/api/v1/models/unload",
         data=body,
@@ -2082,16 +2159,65 @@ def reload_in_lmstudio(settings: Settings) -> str:
     )
     try:
         with _local_open(request, 120):
-            pass
+            return ""
     except urllib.error.HTTPError as exc:
         if exc.code == 404:  # an older LM Studio without the v1 API
-            return "this LM Studio cannot be told to reload: reload the model in LM Studio"
+            return "this LM Studio cannot be told to unload: do it in LM Studio"
         return f"LM Studio did not unload it: HTTP {exc.code}"
     except (OSError, http.client.HTTPException) as exc:
         return f"LM Studio did not unload it: {exc}"
-    # the instance id is the model's key, or the key and ":2" for a second copy of it
-    key = settings.lmstudio_model or state.loaded.rsplit(":", 1)[0]
-    return load_in_lmstudio(url, key, settings.context)
+
+
+class LMStudioPause:
+    """Game mode with LM Studio on this PC: while the pause file exists, the model is
+    unloaded (its video memory is free for the game), and loaded again when it goes."""
+
+    def __init__(self, settings: Settings, ui: Ui, poll: float = 2.0) -> None:
+        self.settings, self.ui, self.poll = settings, ui, poll
+        self.pause = pause_file(settings.root)
+        self.paused = False
+        self.unloaded = ""  # the model that was unloaded, to load it again
+        self._stopped = threading.Event()
+        self._thread = threading.Thread(target=self._watch, name="lmstudio-pause", daemon=True)
+
+    def start(self) -> None:
+        self._thread.start()
+
+    def stop(self) -> None:
+        self._stopped.set()
+        if self._thread.is_alive() and self._thread is not threading.current_thread():
+            self._thread.join(timeout=5)
+
+    def _watch(self) -> None:
+        while not self._stopped.wait(self.poll):
+            self.check()
+
+    def check(self) -> None:
+        wanted = self.pause.exists()
+        if wanted == self.paused:
+            return
+        self.paused = wanted
+        url = self.settings.lmstudio_url
+        if wanted:
+            state = lmstudio_state(url)
+            if not state.loaded:
+                return
+            self.ui.say(f"\nGame mode: unloading {state.loaded} from LM Studio.")
+            problem = unload_in_lmstudio(url, state.loaded)
+            if problem:
+                self.ui.say(f"   {problem}")
+            else:
+                self.unloaded = lmstudio_key(self.settings, state.loaded)
+        elif self.unloaded:
+            key, self.unloaded = self.unloaded, ""
+            self.ui.say(f"\nGame mode ended: loading {key} in LM Studio again ...")
+            problem = load_in_lmstudio(url, key, self.settings.context)
+            if problem:
+                self.ui.say(f"   LM Studio could not load it: {problem}")
+
+
+def lmstudio_on_this_pc(url: str) -> bool:
+    return urllib.parse.urlsplit(url).hostname in ("127.0.0.1", "localhost", "::1")
 
 
 def ensure_lmstudio(settings: Settings, ui: Ui, wait: float = 30) -> LMStudioState:
@@ -2102,8 +2228,7 @@ def ensure_lmstudio(settings: Settings, ui: Ui, wait: float = 30) -> LMStudioSta
     url = settings.lmstudio_url
     state = lmstudio_state(url)
     address = urllib.parse.urlsplit(url)
-    on_this_pc = address.hostname in ("127.0.0.1", "localhost", "::1")
-    lms = find_lms() if on_this_pc else None  # LM Studio on another PC: started there
+    lms = find_lms() if lmstudio_on_this_pc(url) else None  # on another PC: started there
     if not state.answers and lms is not None:
         ui.say("   LM Studio's server is off: starting it (lms server start)")
         command = [str(lms), "server", "start"]
@@ -2181,6 +2306,7 @@ class Services:
         self.group = group or ProcessGroup()
         self.logs = settings.root / "logs"
         self.watchdog: ModelServerWatchdog | None = None
+        self.lmstudio_pause: LMStudioPause | None = None
         self.started = time.monotonic()
 
     def start(self) -> None:
@@ -2191,9 +2317,13 @@ class Services:
             log = self.logs / "llama-server.log"
             process = self.group.start(serve, log, settings.root)
             self.watchdog = ModelServerWatchdog(
-                self.group, serve, process, log, settings.root, self.ui
-            )
+                self.group, serve, process, log, settings.root, self.ui,
+                pause=pause_file(settings.root),
+            )  # fmt: skip
             self.watchdog.start()
+        if settings.uses_lmstudio and lmstudio_on_this_pc(settings.lmstudio_url):
+            self.lmstudio_pause = LMStudioPause(settings, self.ui)
+            self.lmstudio_pause.start()
         if settings.viewer and not port_in_use(VIEWER_PORT):
             self.group.start(starlight(uv, "viewer"), self.logs / "viewer.log", settings.root)
         if not port_in_use(WEB_PORT):
@@ -2214,8 +2344,11 @@ class Services:
     def poll(self) -> Status:
         settings, dog = self.settings, self.watchdog
         elapsed = time.monotonic() - self.started
+        pause = read_pause(settings.root) if settings.use_model else None
         if not settings.use_model:
             model, detail = "off", "the built-in test model"
+        elif pause is not None:
+            model, detail = "paused", f"game mode: {pause.get('reason') or 'paused'}"
         elif settings.uses_lmstudio:
             lms = lmstudio_state(settings.lmstudio_url)
             if lms.loaded:
@@ -2260,6 +2393,13 @@ class Services:
         self.started = time.monotonic()
         return True
 
+    def resume_model(self) -> bool:
+        """End a game-mode pause: the watchers bring the model back. True if paused."""
+        resumed = end_pause(self.settings.root)
+        if resumed:
+            self.started = time.monotonic()
+        return resumed
+
     def set_kill_switch(self, engaged: bool) -> bool:
         """Engage or release the kill switch through the chat backend. True on success."""
         path = "/api/kill" if engaged else "/api/resume"
@@ -2269,6 +2409,8 @@ class Services:
     def stop(self) -> None:
         if self.watchdog is not None:
             self.watchdog.stop()
+        if self.lmstudio_pause is not None:
+            self.lmstudio_pause.stop()
         self.group.stop()
 
 
@@ -2277,7 +2419,11 @@ def start(settings: Settings, ui: Ui, installed: Installed, ask: str | None) -> 
     group = ProcessGroup()
     logs = settings.root / "logs"
     watchdog: ModelServerWatchdog | None = None
+    lms_pause: LMStudioPause | None = None
     try:
+        if settings.uses_lmstudio and ask is None and lmstudio_on_this_pc(settings.lmstudio_url):
+            lms_pause = LMStudioPause(settings, ui)
+            lms_pause.start()
         if settings.runs_llama:
             ui.step("Starting the model server on the GPU")
             log = logs / "llama-server.log"
@@ -2289,7 +2435,10 @@ def start(settings: Settings, ui: Ui, installed: Installed, ask: str | None) -> 
                 server_process = group.start(serve, log, settings.root)
             wait_for_model(settings.port, server_process, log, ui)
             if server_process is not None and ask is None:
-                watchdog = ModelServerWatchdog(group, serve, server_process, log, settings.root, ui)
+                watchdog = ModelServerWatchdog(
+                    group, serve, server_process, log, settings.root, ui,
+                    pause=pause_file(settings.root),
+                )  # fmt: skip
                 watchdog.start()
         if settings.viewer and ask is None:
             if not port_in_use(VIEWER_PORT):
@@ -2320,6 +2469,8 @@ def start(settings: Settings, ui: Ui, installed: Installed, ask: str | None) -> 
     finally:
         if watchdog is not None:
             watchdog.stop()  # first: stopping the server on purpose is not a crash
+        if lms_pause is not None:
+            lms_pause.stop()
         group.stop()
 
 

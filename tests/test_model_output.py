@@ -325,3 +325,43 @@ def test_a_reply_starting_with_a_tag_like_text_is_not_held() -> None:
     filtered = StreamFilter()
     assert filtered.feed("<") == ""  # could become <think>
     assert filtered.feed("b>bold</b> text") == "<b>bold</b> text"
+
+
+async def test_the_thinking_goes_to_the_thoughts_box_and_not_the_reply() -> None:
+    from starlight.core.model import thought_sink
+
+    thoughts: list[str] = []
+    shown: list[str] = []
+    token = thought_sink.set(thoughts.append)
+    try:
+        p = provider("<thi", "nk>\nThe user greets me.", " I should answer brie", "fly.</th",
+                     "ink>\n\nHello", " Paul!")  # fmt: skip
+        reply = await p.chat([Message("user", "hi")], [], shown.append)
+    finally:
+        thought_sink.reset(token)
+    assert reply.content == "Hello Paul!" and "".join(shown) == "Hello Paul!"
+    assert "".join(thoughts) == "\nThe user greets me. I should answer briefly."
+
+
+async def test_thinking_sent_apart_from_the_reply_reaches_the_box_too() -> None:
+    from starlight.core.model import thought_sink
+
+    def chunk(delta: dict[str, Any]) -> str:
+        return "data: " + json.dumps({"choices": [{"delta": delta}]}) + "\n\n"
+
+    body = (
+        chunk({"reasoning_content": "Greeting: "}) + chunk({"reasoning_content": "be short."})
+        + chunk({"reasoning": {"not": "text"}}) + chunk({"content": "Hi!"}) + "data: [DONE]\n\n"
+    )  # fmt: skip
+    p = OpenAICompatProvider(
+        transport=httpx.MockTransport(lambda request: httpx.Response(200, content=body))
+    )
+    thoughts: list[str] = []
+    token = thought_sink.set(thoughts.append)
+    try:
+        reply = await p.chat([Message("user", "hi")], [], lambda _t: None)
+    finally:
+        thought_sink.reset(token)
+    assert reply.content == "Hi!" and thoughts == ["Greeting: ", "be short."]
+    no_sink = await p.chat([Message("user", "hi")], [], lambda _t: None)  # nowhere: no error
+    assert no_sink.content == "Hi!"

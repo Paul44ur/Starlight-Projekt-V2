@@ -31,10 +31,11 @@ from starlight.core.logging import (
     shutdown_logging,
 )
 from starlight.core.model import Message, ModelProvider, TokenCallback, create_provider
+from starlight.core.modelpause import pause_note
 from starlight.core.modules import ModuleManager, Services
 from starlight.core.output import resolve_output_folder
 from starlight.core.paths import Paths
-from starlight.core.permissions import PermissionPolicy, apply_saved_rules
+from starlight.core.permissions import PermissionPolicy, apply_saved_rules, confirm_reason
 from starlight.core.situation import Situation
 from starlight.core.stats import Stats
 from starlight.core.toolroute import ToolRouter
@@ -47,9 +48,14 @@ def confirmer_for(ui: UserIO) -> Confirmer:
     """Turn the user interface into the dispatcher's confirmation callback."""
 
     async def confirm(tool: Tool, args: dict[str, Any]) -> bool:
-        return await ui.confirm(f"Run {tool.qualified_name} with {args}?")
+        return await ui.confirm(question_for(tool, args))
 
     return confirm
+
+
+def question_for(tool: Tool, args: dict[str, Any]) -> str:
+    """The confirmation question, with the reason when it is not the tool's usual one."""
+    return f"{confirm_reason.get()}Run {tool.qualified_name} with {args}?"
 
 
 def channel_confirmer(fallback: Confirmer) -> Confirmer:
@@ -59,7 +65,7 @@ def channel_confirmer(fallback: Confirmer) -> Confirmer:
     async def confirm(tool: Tool, args: dict[str, Any]) -> bool:
         ui = current_ui.get()
         if ui is not None:
-            return await ui.confirm(f"Run {tool.qualified_name} with {args}?")
+            return await ui.confirm(question_for(tool, args))
         return await fallback(tool, args)
 
     return confirm
@@ -144,6 +150,7 @@ class Kernel:
             stats=self.stats,
             router=self.router,
             max_result_chars=self.config.tools.max_result_chars,
+            pause_note=lambda: pause_note(self.paths),  # game mode (modelpause.py)
         )
         self.situation = Situation(lambda: self.services.output_dir, self._profile)
         self.agent.enrichers.append(self.situation.enrich)

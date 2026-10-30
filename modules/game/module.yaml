@@ -1,0 +1,8 @@
+name: game
+version: 0.1.0
+description: Game mode - pause the model while a game runs, to free the graphics card, and bring it back afterwards
+keywords: ["game", "games", "gaming", "play", "steam", "epic", "vram", "video memory", "graphics card", "pause", "Spiel", "spielen", "zocken", "Grafikkarte", "Grafikspeicher"]
+entrypoint: module:GameModule
+permissions: [safe]
+dependencies: []
+enabled_by_default: true

@@ -1,0 +1,14 @@
+# Game mode (modules/game): while a game runs, Starlight's model pauses so the game gets the
+# whole graphics card; when the game closes, the model comes back (a minute to load).
+auto: true             # false: only when you ask (game.pause_model / game.resume_model)
+check_every: 10        # seconds between looks at the running programs
+# Programs from these folders count as games (Steam, Epic, GOG, EA, Ubisoft, Riot, Battle.net
+# and Xbox games). Add your own folders, or single programs below.
+folders: ["steamapps/common", "Epic Games", "GOG Galaxy/Games", "GOG Games", "EA Games",
+          "Ubisoft Game Launcher/games", "Riot Games", "Battle.net", "XboxGames"]
+games: []              # extra program names, e.g. ["eldenring.exe", "minecraft.exe"]
+# Never games: the stores themselves and their helpers.
+ignore: ["steam.exe", "steamwebhelper.exe", "steamservice.exe", "EpicGamesLauncher.exe",
+         "EpicWebHelper.exe", "GalaxyClient.exe", "EADesktop.exe", "UbisoftConnect.exe",
+         "RiotClientServices.exe", "Battle.net.exe", "Agent.exe", "CrashReportClient.exe",
+         "UnityCrashHandler64.exe", "UnityCrashHandler32.exe"]

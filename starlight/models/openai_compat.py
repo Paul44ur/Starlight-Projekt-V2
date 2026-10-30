@@ -19,7 +19,7 @@ from typing import Any
 
 import httpx
 
-from starlight.core.model import Message, ModelResponse, TokenCallback, ToolCall
+from starlight.core.model import Message, ModelResponse, TokenCallback, ToolCall, emit_thought
 from starlight.models.common import function_tools, openai_messages, tool_call
 from starlight.models.output import (
     TURN_MARKERS,
@@ -134,7 +134,7 @@ class OpenAICompatProvider:
         on_token: TokenCallback | None,
         known: set[str],
     ) -> ModelResponse:
-        shown = StreamFilter()  # what of the reply may be shown while it streams
+        shown = StreamFilter(emit_thought)  # what of the reply may be shown while it streams
         calls: dict[int, dict[str, str]] = {}
         usage: dict[str, Any] = {}
         began = False  # the first piece of the answer arrived (before that: prompt reading)
@@ -168,6 +168,11 @@ class OpenAICompatProvider:
                     if choice.get("finish_reason"):
                         usage["finish_reason"] = choice["finish_reason"]
                     delta = choice.get("delta") or {}
+                    # thinking sent apart from the reply (llama-server's reasoning format,
+                    # LM Studio): for the thoughts box only
+                    thinking = delta.get("reasoning_content") or delta.get("reasoning")
+                    if isinstance(thinking, str):
+                        emit_thought(thinking)
                     if delta.get("content"):
                         visible = shown.feed(delta["content"])
                         if visible and on_token is not None:

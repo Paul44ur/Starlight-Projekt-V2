@@ -16,7 +16,12 @@ from starlight.core.config import ConfigError
 from starlight.core.events import EventBus
 from starlight.core.killswitch import KillSwitch, KillSwitchEngaged
 from starlight.core.logging import AuditLog, get_logger, redact
-from starlight.core.permissions import Permission, PermissionPolicy
+from starlight.core.permissions import (
+    Permission,
+    PermissionPolicy,
+    confirm_reason,
+    request_taint,
+)
 from starlight.core.stats import Stats
 from starlight.core.tools import Tool, ToolError
 
@@ -95,6 +100,9 @@ class Dispatcher:
             return self._finish(ToolResult(name, False, error=f"unknown tool '{name}'"), request_id)
 
         permission = self.policy.resolve(name, tool.permission)
+        guard = self.policy.guarded(name, tool.permission, permission)
+        if guard:  # the injection guard: ask, although it would run on its own
+            permission = Permission.CONFIRM
         if permission is Permission.BLOCKED:
             self.audit.record("tool.denied", tool=name, reason="blocked", request_id=request_id)
             return self._finish(ToolResult(name, False, error="blocked by permissions"), request_id)
@@ -105,10 +113,17 @@ class Dispatcher:
                 ToolResult(name, False, error=f"invalid arguments: {exc.errors()}"), request_id
             )
         if permission is Permission.CONFIRM:
-            approved = self.confirmer is not None and await self.confirmer(tool, args)
+            reason = confirm_reason.set(guard)
+            try:
+                approved = self.confirmer is not None and await self.confirmer(tool, args)
+            finally:
+                confirm_reason.reset(reason)
             if not approved:
                 self.audit.record(
-                    "tool.denied", tool=name, reason="not confirmed", request_id=request_id
+                    "tool.denied",
+                    tool=name,
+                    reason="not confirmed" + (" (injection guard)" if guard else ""),
+                    request_id=request_id,
                 )
                 return self._finish(
                     ToolResult(name, False, error="not confirmed by user"), request_id
@@ -154,6 +169,9 @@ class Dispatcher:
             self._log.exception("tool failed", tool=name, module=tool.module)
             result = ToolResult(name, False, error=f"{type(exc).__name__}: {exc}")
         result.duration_ms = round((time.perf_counter() - started) * 1000, 2)
+        taint = request_taint.get()
+        if result.ok and taint is not None and self.policy.is_untrusted_source(name):
+            taint.sources.append(name)  # from now on in this request, the guard is up
         return self._finish(result, request_id)
 
     def _finish(self, result: ToolResult, request_id: str | None) -> ToolResult:

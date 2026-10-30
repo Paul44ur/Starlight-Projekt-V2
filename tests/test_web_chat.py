@@ -160,3 +160,46 @@ def test_a_delivered_message_reaches_every_open_chat_once(tmp_path: Path) -> Non
                 break
         assert [m["text"] for m in seen if m["type"] == "notify"] == ["tea is ready"]
         assert watcher.receive_json() == {"type": "notify", "text": "tea is ready"}
+
+
+def test_the_model_s_thinking_is_shown_apart_and_not_kept(tmp_path: Path) -> None:
+    from typing import Any
+
+    from starlight.core.model import (
+        Message,
+        ModelResponse,
+        TokenCallback,
+        emit_thought,
+        register_provider,
+    )
+
+    class Thinker:
+        name = "thinker"
+        supports_streaming = True
+
+        async def chat(
+            self, messages: list[Message], tools: list[Any], on_token: TokenCallback | None = None
+        ) -> ModelResponse:
+            emit_thought("The user says hello. ")
+            emit_thought("Answer kindly.")
+            if on_token is not None:
+                on_token("Hello!")
+            return ModelResponse(content="Hello!")
+
+    register_provider("thinker", lambda options: Thinker())
+    root = web_home(tmp_path / "h")
+    config = root / "config" / "starlight.yaml"
+    config.write_text(config.read_text().replace("provider: echo", "provider: thinker"))
+    with client(root) as c, c.websocket_connect("/ws", headers=LOCAL) as ws:  # type: ignore[attr-defined]
+        ws.send_json({"type": "ask", "text": "hello"})
+        seen: list[dict[str, Any]] = []
+        while not seen or seen[-1]["type"] != "answer":
+            seen.append(ws.receive_json())
+        kept = c.get("/api/conversations").json()
+        name = kept["current"]
+        messages = c.get(f"/api/conversations/{name}").json()
+    thoughts = [m["text"] for m in seen if m["type"] == "thought"]
+    assert thoughts == ["The user says hello. ", "Answer kindly."]
+    assert [m["type"] for m in seen].index("thought") < [m["type"] for m in seen].index("token")
+    assert seen[-1]["text"] == "Hello!" and "Hello!" in str(messages)
+    assert "Answer kindly" not in str(messages)

@@ -383,3 +383,45 @@ async def test_settings_groups_tools_under_their_modules_and_fits_a_phone(
             ]
         finally:
             await browser.close()
+
+
+async def test_thinking_is_folded_away_above_the_answer_and_a_pause_shows(
+    static_site: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    async_api = pytest.importorskip("playwright.async_api")
+    monkeypatch.setenv("NO_PROXY", "127.0.0.1")
+    async with async_api.async_playwright() as playwright:
+        browser, page = await open_chat(playwright, static_site)
+        try:
+            await page.evaluate(SEND, {"type": "start", "conversation": "c1"})
+            await page.evaluate(SEND, {"type": "thought", "text": "The user greets me. "})
+            await page.evaluate(SEND, {"type": "thought", "text": "<b>Be</b> brief."})
+            box = page.locator(".msg.bot details.thoughts")
+            assert await box.count() == 1
+            assert await box.locator("summary").text_content() == "Thinking …"
+            assert not await box.evaluate("d => d.open")  # folded away
+            text = await box.locator(".thought-text").text_content()
+            assert text == "The user greets me. <b>Be</b> brief."  # as text, never HTML
+            assert await box.locator("b").count() == 0
+            await page.evaluate(SEND, {"type": "token", "text": "Hello!"})
+            summary = await box.locator("summary").text_content()
+            assert summary is not None and summary.startswith("Thought for ")
+            await page.evaluate(SEND, {"type": "answer", "text": "Hello!", "conversation": "c1"})
+            assert await page.locator(".msg.bot .body").last.text_content() == "Hello!"
+            order = await page.evaluate(
+                "() => [...document.querySelector('.msg.bot').children].map(e => e.className)"
+            )
+            assert order.index("thoughts") < order.index("body md")
+
+            assert await page.locator("#paused").is_hidden()
+            await page.evaluate(
+                """() => { window.fetch = async (url) => new Response(JSON.stringify(
+                  url.includes('/api/status') ? {model: 'x', kill: {engaged: false},
+                  access: {}, local: true, paused: 'game.exe is running'} : {resumed: true}),
+                  {headers: {'content-type': 'application/json'}}); refresh(); }"""
+            )
+            await page.wait_for_function("() => !document.getElementById('paused').hidden")
+            title = await page.locator("#paused").get_attribute("title")
+            assert title is not None and "game.exe is running" in title
+        finally:
+            await browser.close()

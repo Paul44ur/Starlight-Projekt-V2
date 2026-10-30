@@ -39,10 +39,12 @@ and answer you on WhatsApp. It will ask you before it does anything risky. And o
 | **Look up vulnerabilities** | Checks a service or product against the public CVE database (NVD). Pairs with a scan. Free, no key. |
 | **Check certificates** | Reads your servers' TLS certificates and warns when one is about to expire. |
 | **Check passwords** | Tells you if a password is in known breaches — the password never leaves your PC (only a short hash prefix is sent). |
+| **Game mode** | Start a game and Starlight's model steps aside: the launcher stops the model server (or unloads the model in LM Studio) so the game gets the whole graphics card, and brings it back when the game closes. A game is anything from Steam, Epic, GOG or Xbox game folders, or a program you name ("count minecraft.exe as a game"). Meanwhile Starlight answers with a short note instead of an error; **Resume now** in the Starlight window or the web chat, or `starlight model resume`, brings it back early. Turn it off with `auto: false` in `config\modules\game.yaml`. |
 | **Check your PC** | CPU, memory, disk space, battery, uptime and running programs. Can close a program, and lock, sleep, shut down or restart the PC, now or in a few minutes (asks first, except locking; the kill switch also cancels a planned shutdown). |
 | **Focus mode** | "Focus for 90 minutes" — holds back reminders, alerts and messages while you work, then gives you one summary. Urgent things (an event about to start, a server down, an unknown device on your WiFi) still come through. |
 | **Watch pages and prices** | "Tell me when this kettle costs less than 50 €", "… when 'sold out' is gone", "… when this page changes" — checks the page every so often (at least 5 minutes apart, robots.txt respected) and tells you on every channel. |
 | **Use the clipboard** | Reads what you copied and copies things for you. |
+| **Trains** | "When is the next train to Berlin?", "Verbindung morgen um 8 Uhr nach München" — Deutsche Bahn connections with delays, platforms, changes and cancellations, and the departure board of any station (trains, S-/U-Bahn, buses, trams). Free, no account or API key (db.transport.rest). Set `home_station` in `config\modules\trains.yaml` to leave out where you start. |
 | **Weather** | Current weather and a short forecast for any place — free, no account or API key. |
 | **News** | Headlines and topic search from free news feeds (RSS). No account or API key. |
 | **Prices** | Stock, currency and crypto prices from free sources. No API key. |
@@ -160,7 +162,8 @@ Send. Actions that change something show Approve / Deny buttons.
 The window stays as the control panel. It shows live whether the model, the chat, the
 statistics page and the kill switch are up, and has buttons for **Open chat**,
 **Statistics**, **Stop everything** (the kill switch; the button becomes **Resume**),
-**Restart model server**, **Check everything** (the same as `starlight doctor`),
+**Restart model server** (**Resume now** while game mode has paused the model),
+**Check everything** (the same as `starlight doctor`),
 **Open logs folder** and **Settings** (change the model or options; it restarts
 Starlight). If something fails, the window says what and offers **Try again**, **Open
 logs folder** and **Copy details**. There is a light and a dark look, following Windows.
@@ -610,9 +613,15 @@ off with `starlight remote disable`.
   listed under `permissions: auto_approve:` (and `output: write_anywhere:`) — delete a
   line and that action asks again. Still asking: any command line (it shows you the exact
   command), shutdown, restart and sleep, your named commands, replacing, adding to or
-  reading a file outside the Starlight folder, and granting access. **Be aware:** a web page or an email the model reads could try to talk
-  it into one of these actions, and nothing stops to ask. The kill switch (Ctrl+Alt+J or
-  a screen corner) and `logs\audit.log` remain.
+  reading a file outside the Starlight folder, and granting access.
+- **A guard against hidden instructions.** A web page, an email or a document can carry
+  text written to talk the model into doing something. Once a request has read such
+  outside content (a web page, mail, a PDF, the screen ...), the actions above ask you
+  again for the rest of that request, with a note saying why. Your own requests that
+  read nothing from outside are not interrupted. The list of what counts as outside
+  content is `permissions: untrusted_sources:` in `config\starlight.yaml`;
+  `guard_after_untrusted: false` turns the guard off. The kill switch (Ctrl+Alt+J or a
+  screen corner) and `logs\audit.log` remain either way.
 - **Passwords stay out of files.** Passwords and keys are kept in the Windows Credential
   Manager, never in config files. They are hidden in every log line, and
   `starlight logs scan` checks for leaks.
@@ -752,6 +761,8 @@ If you installed with `Starlight.exe`, uv isn't on your PATH. Either install it 
 | `starlight tools` | Everything Starlight can use, and whether it asks first. |
 | `starlight modules list / enable / disable` | Turn modules on and off. |
 | `starlight model info / serve / bench` | The model: settings, start its server, measure its speed. |
+| `starlight model exam` | The tool-use exam: eight small tasks (pick a tool, fill in its arguments, use what it found, know when no tool is needed, German too) that show whether a model gets on with Starlight's tools. Nothing really runs; it takes a minute or two. |
+| `starlight model pause / resume` | Free the graphics card by hand (as game mode does), and bring the model back. |
 | `starlight memory list / search / add / forget` | What Starlight remembers. |
 | `starlight vault set / list / delete KEY` | Passwords and keys, in the Windows Credential Manager. |
 | `starlight skills list / show / approve / reject / rollback` | Learned skills. |

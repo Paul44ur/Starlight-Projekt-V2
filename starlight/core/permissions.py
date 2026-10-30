@@ -35,6 +35,20 @@ extra_confirm: ContextVar[tuple[str, ...]] = ContextVar("extra_confirm", default
 extra_blocked: ContextVar[tuple[str, ...]] = ContextVar("extra_blocked", default=())
 
 
+class Taint:
+    """What a request has read from outside so far (see PermissionsConfig.untrusted_sources):
+    one is made per request (Agent.run), and the dispatcher fills it in."""
+
+    def __init__(self) -> None:
+        self.sources: list[str] = []
+
+
+#: The request being handled; None outside one (automations, direct tool calls).
+request_taint: ContextVar[Taint | None] = ContextVar("request_taint", default=None)
+#: Why a question is asked, when it is not the tool's usual one (the confirmers show it).
+confirm_reason: ContextVar[str] = ContextVar("confirm_reason", default="")
+
+
 class PermissionPolicy:
     def __init__(self, config: PermissionsConfig | None = None) -> None:
         self.config = config or PermissionsConfig()
@@ -92,6 +106,29 @@ class PermissionPolicy:
             "confirm": list(self.config.confirm),
             "blocked": list(self.config.blocked),
         }
+
+    def is_untrusted_source(self, tool_name: str) -> bool:
+        return self.config.guard_after_untrusted and _matches(
+            tool_name, self.config.untrusted_sources
+        )
+
+    def guarded(self, tool_name: str, default: Permission, resolved: Permission) -> str:
+        """Why this call asks although it would run on its own: the request read something
+        from outside, and the tool is one that asks first by its nature. "" otherwise."""
+        taint = request_taint.get()
+        if (
+            not self.config.guard_after_untrusted
+            or taint is None
+            or not taint.sources
+            or resolved is not Permission.SAFE
+            or default is not Permission.CONFIRM
+            or tool_name in self._session_allowed
+        ):
+            return ""
+        return (
+            f"This request just read outside content ({', '.join(taint.sources[-3:])}), "
+            "which could try to talk Starlight into this. "
+        )
 
     def allow_for_session(self, tool_name: str) -> None:
         """Stop asking for this tool until the core restarts."""

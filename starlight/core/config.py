@@ -132,6 +132,31 @@ class PermissionsConfig(_Strict):
     auto_approve: list[str] = Field(default_factory=list)
     confirm: list[str] = Field(default_factory=list)
     blocked: list[str] = Field(default_factory=list)
+    # The injection guard: once a request has read something from outside (a web page, an
+    # email, a PDF ...), tools that ask first by their own nature ask again, even those you
+    # let run on their own, for the rest of that request. A page could try to talk the
+    # model into sending mail or typing on your desktop. false: off.
+    guard_after_untrusted: bool = True
+    untrusted_sources: list[str] = Field(
+        default_factory=lambda: [
+            "web.*",
+            "news.headlines",
+            "research.*",
+            "transcripts.*",
+            "mail.inbox",
+            "mail.read",
+            "mail.unread",
+            "mail.summary",
+            "login.open",
+            "network.http_get",
+            "network.http_request",
+            "pdf.read_pdf",
+            "office.read_*",
+            "desktop.read_screen",
+            "desktop.describe_screen",
+            "watch.check_now",
+        ]
+    )
 
 
 class ToolsConfig(_Strict):

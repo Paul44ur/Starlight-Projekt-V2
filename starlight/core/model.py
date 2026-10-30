@@ -6,6 +6,7 @@ from __future__ import annotations
 import json
 import uuid
 from collections.abc import Callable
+from contextvars import ContextVar
 from dataclasses import dataclass, field
 from typing import Any, Literal, Protocol, runtime_checkable
 
@@ -43,6 +44,16 @@ class ModelResponse:
 
 
 type TokenCallback = Callable[[str], None]
+
+#: Where the model's thinking goes while an answer streams (the web chat's thoughts box);
+#: None: nowhere. Set per request, so a background model call never shows up in a chat.
+thought_sink: ContextVar[TokenCallback | None] = ContextVar("thought_sink", default=None)
+
+
+def emit_thought(text: str) -> None:
+    sink = thought_sink.get()
+    if sink is not None and text:
+        sink(text)
 
 
 @runtime_checkable

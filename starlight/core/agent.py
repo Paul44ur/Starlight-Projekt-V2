@@ -16,6 +16,7 @@ from starlight.core.events import EventBus
 from starlight.core.killswitch import KillSwitch, KillSwitchEngaged
 from starlight.core.logging import AuditLog, get_logger
 from starlight.core.model import Message, ModelProvider, ModelResponse, TokenCallback
+from starlight.core.permissions import Taint, request_taint
 from starlight.core.stats import Stats
 from starlight.core.toolroute import ToolRouter, active_tools
 
@@ -65,8 +66,10 @@ class Agent:
         stats: Stats | None = None,
         router: ToolRouter | None = None,
         max_result_chars: int = 12000,
+        pause_note: Callable[[], str] | None = None,
     ) -> None:
         self.provider = provider
+        self.pause_note = pause_note  # "" or why the model is paused (game mode)
         self.router = router
         self.max_result_chars = max_result_chars
         self.dispatcher = dispatcher
@@ -85,6 +88,21 @@ class Agent:
         history: list[Message] | None = None,
         on_token: TokenCallback | None = None,
         images: list[bytes] | None = None,
+    ) -> AgentResult:
+        # What this request reads from outside (the injection guard, see permissions.py);
+        # a request started inside another one (a skill) keeps what the outer one read.
+        token = request_taint.set(request_taint.get() or Taint())
+        try:
+            return await self._run(request, history, on_token, images)
+        finally:
+            request_taint.reset(token)
+
+    async def _run(
+        self,
+        request: str,
+        history: list[Message] | None,
+        on_token: TokenCallback | None,
+        images: list[bytes] | None,
     ) -> AgentResult:
         request_id = uuid.uuid4().hex[:12]
         result = AgentResult(request_id=request_id, answer="")
@@ -208,6 +226,12 @@ class Agent:
     async def _loop(
         self, messages: list[Message], result: AgentResult, on_token: TokenCallback | None
     ) -> None:
+        paused = self.pause_note() if self.pause_note is not None else ""
+        if paused:  # the model is paused to free the graphics card: say so, not an error
+            result.answer, result.failed = paused, True
+            if on_token is not None and getattr(self.provider, "supports_streaming", False):
+                on_token(paused)
+            return
         for _ in range(self.config.max_steps):
             self.kill_switch.check()
             result.steps += 1

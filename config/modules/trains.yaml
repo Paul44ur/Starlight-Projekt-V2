@@ -1,0 +1,7 @@
+# The trains module (modules/trains): Deutsche Bahn connections and departure boards
+# through the free db.transport.rest service, no account or API key. Buses, trams and
+# the S-/U-Bahn are included, as in the DB app.
+api: https://v6.db.transport.rest
+home_station: ""       # used when you just ask "when is the next train to Berlin", e.g. "Hamburg Hbf"
+results: 4             # connections shown at a time
+language: en           # for the service's own notes (en or de)

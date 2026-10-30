@@ -35,6 +35,10 @@
               letter-spacing: .04em; }
   .msg .tools { display: flex; gap: 4px; margin-top: 6px; }
   .msg .att { font-size: 12px; color: var(--dim); margin-top: 4px; }
+  .msg .thoughts { margin: 0 0 6px; font-size: 13px; color: var(--dim); }
+  .msg .thoughts summary { cursor: pointer; user-select: none; width: fit-content; }
+  .msg .thoughts .thought-text { white-space: pre-wrap; overflow-wrap: anywhere; max-height: 240px;
+    overflow: auto; border-left: 2px solid var(--border); padding: 4px 10px; margin-top: 4px; }
   /* Answers drawn from Markdown (markdown.js). */
   .msg .body.md { white-space: normal; }
   .md > :first-child { margin-top: 0; } .md > :last-child { margin-bottom: 0; }
@@ -134,6 +138,7 @@
       <h1><img class="logo" src="/icon.svg" alt="" width="22" height="22" />Starlight</h1>
       <span id="conn" class="pill off">connecting…</span>
       <span id="where" class="pill off" hidden></span>
+      <button id="paused" class="pill warn" hidden title="Game mode: the model is off the graphics card. Press to bring it back now"><span class="wide">model paused · Resume</span><span class="narrow">Paused ▶</span></button>
       <span class="spacer"></span>
       <nav class="wide"><a href="/memory">Memory</a><a href="/settings">Settings</a></nav>
       <button id="speaker" class="icon" title="Read answers aloud">🔇</button>
@@ -297,7 +302,31 @@ function waitFor(body) {
     if (seconds >= 3) body.dataset.wait = `Working on it … ${seconds} s`;
   }, 1000);
 }
-function doneWaiting(body) { if (body) body.classList.remove("waiting"); }
+function doneWaiting(body) { if (body) { body.classList.remove("waiting"); thoughtsDone(body); } }
+
+// The model's thinking while it comes, folded away above the answer: open it to read
+// along. Only as text, never HTML; it is not kept with the conversation.
+function addThought(body, text) {
+  let box = body.thoughts;
+  if (!box) {
+    box = body.thoughts = el("details", "thoughts");
+    box.appendChild(el("summary", "", "Thinking …"));
+    box.text = box.appendChild(el("div", "thought-text"));
+    box.started = Date.now();
+    body.parentElement.insertBefore(box, body);
+  }
+  const stick = atBottom();
+  box.text.textContent += text;
+  if (box.open) box.text.scrollTop = box.text.scrollHeight;
+  if (stick) scroll();
+}
+function thoughtsDone(body) {
+  const box = body.thoughts;
+  if (!box || box.done) return;
+  box.done = true;
+  const seconds = Math.max(1, Math.round((Date.now() - box.started) / 1000));
+  box.firstChild.textContent = `Thought for ${seconds} s`;
+}
 
 // The conversation an answer is coming for: if you open another one meanwhile, its words
 // are not shown there (open the first one again to see the answer).
@@ -309,6 +338,11 @@ function handle(m) {
     current = addMsg("bot", "");
     waitFor(current);
     if (regenPending) current.parentElement.dataset.regen = "1";
+  }
+  else if (m.type === "thought") {
+    if (elsewhere(m)) return;
+    if (!current) { current = addMsg("bot", ""); waitFor(current); }
+    addThought(current, m.text);
   }
   else if (m.type === "token") {
     if (elsewhere(m)) return;
@@ -445,6 +479,13 @@ document.addEventListener("keydown", (e) => {
     e.preventDefault(); stopAnswer(); toast("Stopping …");
   }
 });
+document.getElementById("paused").onclick = async () => {
+  try {
+    const r = await api("/api/model/resume", { method: "POST" });
+    toast(r.resumed ? "The model is loading again (about a minute)" : "It was not paused");
+  } catch (e) { toast("Could not resume: " + e.message); }
+  refresh();
+};
 document.getElementById("kill").onclick = async () => {
   const k = document.getElementById("kill");
   try { await api(k.dataset.on === "1" ? "/api/resume" : "/api/kill", { method: "POST" }); }
@@ -606,6 +647,9 @@ async function refresh() {
       k.className = "kill"; k.dataset.on = "0"; k.disabled = false;
       k.title = "Kill switch: stop everything Starlight does on this PC, until you resume (also Ctrl+Alt+J)";
     }
+    const paused = document.getElementById("paused");
+    paused.hidden = !s.paused;
+    if (s.paused) paused.title = `Game mode (${s.paused}): the model is off the graphics card. Press to bring it back now`;
     fill("servers", s.access.servers || []); fill("logins", s.access.login_sites || []); fill("secrets", s.access.secrets || []);
     document.getElementById("saves").textContent = s.saves_files || "";
   } catch (e) { /* server starting */ }

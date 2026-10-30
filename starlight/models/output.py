@@ -26,6 +26,7 @@ from __future__ import annotations
 
 import json
 import re
+from collections.abc import Callable
 
 from starlight.core.model import ToolCall
 from starlight.models.common import decode_name, tool_call
@@ -178,9 +179,11 @@ def recover_tool_calls(text: str, known: set[str]) -> tuple[list[ToolCall], str]
 
 
 class StreamFilter:
-    """Feed it the streamed text; it returns what can be shown now."""
+    """Feed it the streamed text; it returns what can be shown now. The model's thinking
+    is never part of it; ``on_thought`` gets it as it comes, if given."""
 
-    def __init__(self) -> None:
+    def __init__(self, on_thought: Callable[[str], None] | None = None) -> None:
+        self.on_thought = on_thought
         self.text = ""  # the reply so far, cut at an end-of-turn marker
         self.shown = 0  # how much of it was shown
         self.ended = False  # an end-of-turn marker arrived: the turn is over
@@ -188,7 +191,11 @@ class StreamFilter:
         self._checked = 0  # length of the text when it was last checked for a loop
         self._scanned = 0  # length of the text when it was last scanned for a finished call
         self._thinking: bool | None = None  # in a <think> block; None: not known yet
-        self._think = ""  # what came while that is open: held, never shown
+        self._think = ""  # what came while that is open: never shown as the reply
+
+    def _thought(self, text: str) -> None:
+        if text and self.on_thought is not None:
+            self.on_thought(text)
 
     def _skip_thinking(self, piece: str) -> str:
         """What of the piece is the reply: nothing while the model thinks (see the module)."""
@@ -204,11 +211,15 @@ class StreamFilter:
                 out, self._think = self._think, ""
                 return out
             self._thinking = True
+            self._think = head[len(THINK_OPEN) :]
         end = self._think.find(THINK_CLOSE)
         if end < 0:
             keep = len(THINK_CLOSE) - 1  # enough to find a closing tag split across pieces
-            self._think = self._think[-keep:]
+            if len(self._think) > keep:
+                self._thought(self._think[:-keep])
+                self._think = self._think[-keep:]
             return ""
+        self._thought(self._think[:end])
         self._thinking = False
         rest, self._think = self._think[end + len(THINK_CLOSE) :].lstrip(), ""
         return rest

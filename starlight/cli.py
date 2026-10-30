@@ -27,6 +27,7 @@ from starlight.core.kernel import Kernel
 from starlight.core.killswitch import KillSwitch
 from starlight.core.logging import setup_logging
 from starlight.core.model import TokenCallback, create_provider
+from starlight.core.modelpause import pause_model, resume_model
 from starlight.core.modules import NAME_PATTERN, ModuleState, discover
 from starlight.core.output import describe_output_folder
 from starlight.core.paths import Paths
@@ -36,6 +37,9 @@ from starlight.core.tools import Tool
 from starlight.core.vault import Vault, VaultError
 from starlight.memory import Memory
 from starlight.models.bench import benchmark
+from starlight.models.exam import TASKS as EXAM_TASKS
+from starlight.models.exam import Result as ExamResult
+from starlight.models.exam import exam
 from starlight.models.serve import ServeError, run_server, serve_command
 from starlight.skills import SkillManager
 from starlight.skills.git import GitError
@@ -683,7 +687,15 @@ async def cmd_model(paths: Paths, args: argparse.Namespace) -> int:
     if args.action == "info":
         print(json.dumps(config.model.model_dump(), indent=2))
         return 0
-    # bench
+    if args.action == "pause":
+        pause_model(paths, "you paused it", by="cli")
+        print("Paused: the launcher stops the model and frees the graphics card.")
+        print("`starlight model resume` brings it back.")
+        return 0
+    if args.action == "resume":
+        print("Resumed: the model comes back." if resume_model(paths) else "It was not paused.")
+        return 0
+    # bench or exam
     paths.ensure()
     setup_logging(paths.logs, config.logging.level)
     provider = create_provider(config.model)
@@ -692,6 +704,11 @@ async def cmd_model(paths: Paths, args: argparse.Namespace) -> int:
         warmup = getattr(provider, "warmup", None)
         if warmup is not None:
             await warmup()
+        if args.action == "exam":
+            print(f"Tool-use exam for {provider.name} ({len(EXAM_TASKS)} tasks) ...")
+            report = await exam(provider, stats=stats, on_result=_print_exam_result)
+            print(f"\n{report['score']} of {report['of']} passed. {report['verdict']}")
+            return 0 if report["score"] >= report["of"] * 0.6 else 1
         report = await benchmark(provider, runs=args.runs, stats=stats)
     finally:
         stats.close()
@@ -700,6 +717,12 @@ async def cmd_model(paths: Paths, args: argparse.Namespace) -> int:
             await close()
     print(json.dumps(report, indent=2))
     return 0
+
+
+def _print_exam_result(result: ExamResult) -> None:
+    mark = "ok  " if result.passed else "FAIL"
+    note = f": {result.note}" if result.note else ""
+    print(f"  {mark} {result.task} ({result.seconds:.1f} s){note}", flush=True)
 
 
 # -- entry point -------------------------------------------------------------------------
@@ -790,8 +813,10 @@ def build_parser() -> argparse.ArgumentParser:
     service_cmd.add_argument("action", choices=["install", "uninstall", "start", "stop", "status"])
     service_cmd.add_argument("--print-only", action="store_true", help="only show what it does")
 
-    model = sub.add_parser("model", help="the local model: info, serve, bench")
-    model.add_argument("action", choices=["info", "serve", "bench"])
+    model = sub.add_parser(
+        "model", help="the local model: info, serve, bench, exam (tool use), pause, resume"
+    )
+    model.add_argument("action", choices=["info", "serve", "bench", "exam", "pause", "resume"])
     model.add_argument("--runs", type=int, default=3, help="benchmark runs")
     model.add_argument("--print-only", action="store_true", help="serve: only print the command")
     return parser

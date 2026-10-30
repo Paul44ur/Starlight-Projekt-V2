@@ -1666,6 +1666,10 @@ class App:
             self._set_row("Model", c.warn, "Stopped by itself; starting it again ...")
         elif status.model == "down":
             self._set_row("Model", c.bad, "Stopped: " + (status.model_detail or "see the logs"))
+        elif status.model == "paused":
+            self._set_row(
+                "Model", c.warn, f"Paused, the graphics card is free ({status.model_detail})"
+            )
         else:
             self._set_row("Model", c.warn, f"Loading into video memory ... {elapsed}")
         chat_url, viewer_url = L.chat_url(), L.viewer_url()
@@ -1700,8 +1704,13 @@ class App:
         can_restart = self.services is not None and (
             lmstudio or getattr(self.services, "watchdog", None) is not None
         )
-        self.btn_restart.state(["!disabled"] if can_restart else ["disabled"])
-        self.btn_restart.configure(text="Reload the model" if lmstudio else "Restart model server")
+        paused = status.model == "paused"
+        self.btn_restart.state(["!disabled"] if can_restart or paused else ["disabled"])
+        self.btn_restart.configure(
+            text="Resume now" if paused
+            else "Reload the model" if lmstudio
+            else "Restart model server"
+        )  # fmt: skip
 
         if status.model == "down":
             title, sub = (
@@ -1713,6 +1722,9 @@ class App:
                 "Starlight is stopped",
                 "The kill switch is engaged. Press Resume to let it act again.",
             )
+        elif paused:
+            title = "Starlight is paused for a game"
+            sub = "The model comes back when the game closes, or press Resume now."
         elif status.model in ("loading", "restarting") or not status.chat:
             title = "Starlight is starting ..."
             sub = "The model takes a minute to load; the chat opens by itself when it is ready."
@@ -1747,6 +1759,10 @@ class App:
 
     def restart_model(self) -> None:
         if self.services is None:
+            return
+        status = getattr(self, "last_status", None)
+        if status is not None and status.model == "paused":  # the button says Resume now
+            self.services.resume_model()
             return
 
         def restart() -> None:
@@ -1959,7 +1975,7 @@ class App:
         self.on_say("a line of output")
         self.on_step("Setting up Python")
         self.show("running")
-        for model in ("loading", "ready", "restarting", "down", "off"):
+        for model in ("loading", "ready", "restarting", "down", "off", "paused"):
             self.on_status(L.Status(model=model, chat=True, viewer=True, kill=False, seconds=75))
         self.on_status(L.Status(model="ready", chat=True, viewer=None, kill=True))
         self.on_error("A test error", "details")

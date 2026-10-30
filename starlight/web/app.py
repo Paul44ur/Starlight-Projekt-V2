@@ -33,6 +33,8 @@ from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 
 from starlight.core import AgentResult, Event, Kernel, Paths, ToolError
 from starlight.core.config import RemoteConfig, load_config
+from starlight.core.model import thought_sink
+from starlight.core.modelpause import read_pause, resume_model
 from starlight.core.output import describe_output_folder
 from starlight.core.permissions import Permission, extra_blocked, extra_confirm, save_rule
 from starlight.core.ui import current_ui
@@ -411,11 +413,13 @@ def create_app(paths: Paths | None = None) -> Any:
                 read_status = getattr(record.instance, "status", None)
                 if callable(read_status):
                     access = read_status()
+        pause = read_pause(paths)  # game mode: the model is off the graphics card
         return {
             "model": k.config.model.provider,
             "home": str(paths.root) if who.local else None,
             "saves_files": describe_output_folder(k.config.output.folder, paths.root),
             "kill": {"engaged": k.kill_switch.engaged, "reason": k.kill_switch.reason},
+            "paused": None if pause is None else str(pause.get("reason") or "paused"),
             "access": access,
             "local": who.local,
             "device": who.device.name if who.device else None,
@@ -432,6 +436,15 @@ def create_app(paths: Paths | None = None) -> Any:
         local_only(request)
         kernel().kill_switch.reset()
         return {"engaged": False}
+
+    @app.post("/api/model/resume")
+    def resume_paused_model(request: Request) -> dict[str, Any]:
+        """End a game-mode pause: the launcher brings the model back."""
+        viewer(request)
+        resumed = resume_model(paths)
+        if resumed:
+            kernel().audit.record("model.resumed", source="web")
+        return {"resumed": resumed}
 
     # -- conversations -------------------------------------------------------------------
 
@@ -847,17 +860,20 @@ async def _run_ask(
     """One request from the browser. ``regenerate``: ask the conversation's last question
     again (``text``, if given, is the question the page means) and replace its answer; if
     the new answer is stopped or fails, the old one stays."""
-    queue: asyncio.Queue[str | None] = asyncio.Queue()
+    queue: asyncio.Queue[tuple[str, str] | None] = asyncio.Queue()
 
     def on_token(token: str) -> None:
-        queue.put_nowait(token)
+        queue.put_nowait(("token", token))
+
+    def on_thought(text: str) -> None:  # the model's thinking, for the thoughts box
+        queue.put_nowait(("thought", text))
 
     async def pump() -> None:
         while True:
-            token = await queue.get()
-            if token is None:
+            item = await queue.get()
+            if item is None:
                 return
-            await send({"type": "token", "text": token})
+            await send({"type": item[0], "text": item[1]})
 
     def answer(result: AgentResult) -> dict[str, Any]:
         return {
@@ -876,6 +892,7 @@ async def _run_ask(
         await send({"type": "error", "text": "that conversation no longer exists"})
         return
     token_ctx = current_ui.set(web_ui)
+    thought_ctx = thought_sink.set(on_thought)
     confirm_ctx = extra_confirm.set(confirm_more)
     block_ctx = extra_blocked.set(block_more)
     pumper: asyncio.Task[None] | None = None
@@ -923,6 +940,7 @@ async def _run_ask(
                 await kernel.put_back(name)
         extra_blocked.reset(block_ctx)
         extra_confirm.reset(confirm_ctx)
+        thought_sink.reset(thought_ctx)
         current_ui.reset(token_ctx)
 
 
