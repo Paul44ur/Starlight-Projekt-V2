@@ -2,10 +2,27 @@
   "name": "Starlight",
   "short_name": "Starlight",
   "description": "Your local assistant",
+  "id": "/",
   "start_url": "/",
   "scope": "/",
   "display": "standalone",
   "background_color": "#0f1115",
   "theme_color": "#171a21",
-  "icons": [{ "src": "/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" }]
+  "icons": [{ "src": "/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" }],
+  "shortcuts": [
+    { "name": "Kill switch", "short_name": "Stop", "description": "Stop everything Starlight is doing", "url": "/kill",
+      "icons": [{ "src": "/kill-icon.svg", "sizes": "any", "type": "image/svg+xml" }] },
+    { "name": "Talk", "description": "Conversation mode", "url": "/?talk=1" }
+  ],
+  "share_target": {
+    "action": "/share",
+    "method": "POST",
+    "enctype": "multipart/form-data",
+    "params": {
+      "title": "title",
+      "text": "text",
+      "url": "url",
+      "files": [{ "name": "file", "accept": ["image/*", "application/pdf", "text/*", ".docx", ".xlsx"] }]
+    }
+  }
 }

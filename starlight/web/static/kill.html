@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Starlight kill switch</title>
+<link rel="icon" href="/kill-icon.svg" type="image/svg+xml" />
+<link rel="manifest" href="/kill.webmanifest" />
+<meta name="theme-color" content="#b3231d" />
+<link rel="stylesheet" href="/style.css" />
+<style>
+  body { display: flex; flex-direction: column; align-items: center; justify-content: center;
+         min-height: 100%; padding: 24px; text-align: center; gap: 18px; }
+  #stop { width: min(78vw, 320px); height: min(78vw, 320px); border-radius: 50%; font-size: 30px;
+          font-weight: 800; color: #fff; background: #b3231d; border: 6px solid #ff8a80;
+          box-shadow: var(--shadow); }
+  #stop:focus-visible { outline: 4px solid var(--accent); outline-offset: 6px; }
+  #stop.done { background: var(--panel2); color: var(--text); border-color: var(--border); }
+  #state { font-size: 17px; min-height: 2.6em; }
+</style>
+</head>
+<body>
+<h1 class="sr-only">Kill switch</h1>
+<button id="stop" type="button">STOP<br />everything</button>
+<p id="state" role="status" aria-live="assertive">One press stops everything Starlight is doing on the PC, until you resume there.</p>
+<p class="small dim">Add this page to your home screen for a one-tap kill switch. <a href="/">Back to the chat</a></p>
+<script src="/common.js"></script>
+<script>
+const stop = document.getElementById("stop"), state = document.getElementById("state");
+async function show() {
+  try {
+    const s = await api("/api/status");
+    if (s.kill.engaged) {
+      stop.classList.add("done"); stop.innerHTML = "Stopped";
+      state.textContent = "Starlight is stopped. Press Resume on the PC to let it go on.";
+    }
+  } catch (e) { state.textContent = "Starlight is not answering: the PC may be off or asleep."; }
+}
+stop.onclick = async () => {
+  stop.disabled = true;
+  try {
+    await api("/api/kill", { method: "POST", body: {} });
+    if (navigator.vibrate) navigator.vibrate(200);
+    show();
+  } catch (e) { state.textContent = "Could not reach Starlight: " + e.message; }
+  finally { stop.disabled = false; }
+};
+show();
+</script>
+</body>
+</html>

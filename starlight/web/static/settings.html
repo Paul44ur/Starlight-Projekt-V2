@@ -89,6 +89,20 @@
     <table id="devices"><thead><tr><th>Device</th><th>Paired</th><th>Last used</th><th></th></tr></thead><tbody></tbody></table>
   </div>
 
+  <div class="card local-only" id="voice-card" hidden>
+    <h2>Voice</h2>
+    <p class="dim small">Which voice reads answers aloud, for each language. More can be installed here
+      (German and English, from Piper's voices; 20 to 120 MB each). Everything runs on this PC.</p>
+    <div id="voices"></div>
+    <details>
+      <summary>Install another voice</summary>
+      <div id="catalog"></div>
+    </details>
+    <label class="practice"><span class="switch"><input type="checkbox" id="wake" /><span></span></span>
+      <span><b>"Hey Starlight"</b> <span class="dim small">— listen on this PC's microphone for the phrase,
+      then answer out loud. Only short bits of speech are written down, on this PC, to look for it.</span></span></label>
+  </div>
+
   <div class="card plain">
     <h2>In plain words</h2>
     <p class="dim small">What Starlight may do right now. A whole module is shown as
@@ -284,9 +298,64 @@ document.getElementById("pair").onclick = async () => {
   } catch (e) { toast(e.message); }
 };
 
+// -- voices ------------------------------------------------------------------------------
+const LANGUAGES = { de: "German", en: "English" };
+async function loadVoices() {
+  let data;
+  try { data = await api("/api/voices"); } catch (e) { return; }  // the voice module is off
+  document.getElementById("voice-card").hidden = false;
+  const box = document.getElementById("voices");
+  box.replaceChildren();
+  if (!data.installed.length) box.appendChild(el("p", "dim", "No voice is installed yet: start Starlight.exe with --voice, or install one below."));
+  Object.entries(LANGUAGES).forEach(([code, language]) => {
+    const mine = data.installed.filter(v => v.language === code);
+    if (!mine.length) return;
+    const row = el("div", "row");
+    const label = el("label", "", language); label.htmlFor = "voice-" + code;
+    const pick = el("select"); pick.id = "voice-" + code;
+    mine.forEach(v => { const o = new Option(v.name, v.name); o.selected = v.speaks; pick.appendChild(o); });
+    pick.onchange = async () => {
+      try { await api("/api/voices/choose", { method: "POST", body: { name: pick.value } }); toast(language + ": " + pick.value); }
+      catch (e) { toast(e.message); }
+    };
+    const hear = el("button", "", "▶ Try"); hear.type = "button";
+    hear.onclick = () => tryVoice(pick.value, code);
+    row.append(label, pick, hear);
+    box.appendChild(row);
+  });
+  const catalog = document.getElementById("catalog");
+  catalog.replaceChildren();
+  data.can_install.forEach(v => {
+    const row = el("div", "row");
+    row.append(el("span", "grow", `${v.name}`), el("span", "dim small", `${LANGUAGES[v.language] || v.language}, ${v.quality.replace("_", " ")} quality`));
+    const get = el("button", "", "Install"); get.type = "button";
+    get.onclick = async () => {
+      get.disabled = true; get.textContent = "Downloading…";
+      try { const r = await api("/api/voices/install", { method: "POST", body: { name: v.name } }); toast(`Installed ${r.installed} (${r.size_mb} MB)`); loadVoices(); }
+      catch (e) { toast(e.message); get.disabled = false; get.textContent = "Install"; }
+    };
+    row.appendChild(get);
+    catalog.appendChild(row);
+  });
+  const wake = document.getElementById("wake");
+  wake.checked = Boolean(data.wake_word);
+  wake.onchange = async () => {
+    try { await api("/api/voices/wake", { method: "POST", body: { on: wake.checked } }); toast(wake.checked ? "Listening for \"Hey Starlight\"" : "Not listening any more"); }
+    catch (e) { toast(e.message); wake.checked = !wake.checked; }
+  };
+}
+async function tryVoice(name, code) {
+  const sample = code === "de" ? "Hallo, ich bin Starlight. So klinge ich." : "Hello, I am Starlight. This is how I sound.";
+  try {
+    const response = await fetch("/api/speak", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ text: sample, voice: name }) });
+    if (!response.ok) { const d = await response.json().catch(() => ({})); toast(d.detail || "Could not speak"); return; }
+    new Audio(URL.createObjectURL(await response.blob())).play();
+  } catch (e) { toast("Could not speak"); }
+}
+
 (async () => {
   try { const s = await api("/api/status"); if (!s.local) document.body.classList.add("remote"); } catch (e) { /* */ }
-  load(); loadDevices();
+  load(); loadDevices(); loadVoices();
 })();
 </script>
 </body>

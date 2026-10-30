@@ -135,7 +135,14 @@
             padding: 10px 8px 2px; }
   #archived { margin: 4px 8px 10px; font-size: 12px; }
   .msg.bot:has(.body:empty) .tools { visibility: hidden; }
-  #mic.on { color: var(--bad); border-color: var(--bad); }
+  #mic.on, #talk.on { color: var(--bad); border-color: var(--bad); }
+  #talk.on { animation: pulse 1.6s ease-in-out infinite; }
+  @keyframes pulse { 50% { opacity: .55; } }
+  @media (prefers-reduced-motion: reduce) { #talk.on { animation: none; } }
+  #photo-actions { display: flex; flex-wrap: wrap; gap: 6px; margin: 0 0 6px; }
+  #offline { background: var(--warn); color: #2b1d00; padding: 8px 14px; display: flex; gap: 10px;
+             align-items: center; flex-wrap: wrap; font-size: 14px; }
+  #offline button { background: #2b1d00; color: #fff; border-color: #2b1d00; }
   @media (max-width: 1100px) { #side { display: none; } }
   @media (max-width: 760px) {
     #menu { display: inline-block; }
@@ -165,6 +172,8 @@
       <button class="icon" onclick="cycleTheme()" id="theme2" title="Theme">◐ Theme</button></nav>
   </aside>
   <div id="main">
+    <div id="offline" role="alert" hidden><span>Starlight is not answering: the PC may be off or asleep.</span>
+      <button id="wake" type="button" hidden>Wake the PC</button></div>
     <header class="top">
       <button id="menu" class="icon" title="Conversations">☰</button>
       <h1><img class="logo" src="/icon.svg" alt="" width="22" height="22" />Starlight</h1>
@@ -174,7 +183,7 @@
       <span id="privacy" class="pill" hidden title="A private conversation: never saved, nothing is learned from it, and it is gone when Starlight stops">private</span>
       <button id="paused" class="pill warn" hidden title="Game mode: the model is off the graphics card. Press to bring it back now"><span class="wide">model paused · Resume</span><span class="narrow">Paused ▶</span></button>
       <span class="spacer"></span>
-      <a id="waiting" class="pill warn" href="/activity#approvals" hidden title="Things Starlight prepared wait for your OK"></a>
+      <a id="waiting" class="pill warn" href="/activity#approvals" hidden title="Things Starlight prepared wait for your OK"><span class="wide"></span><span class="narrow"></span></a>
       <nav class="wide"><a href="/memory">Memory</a><a href="/activity">Activity</a><a href="/automations">Automations</a><a href="/settings">Settings</a></nav>
       <button id="speaker" class="icon" title="Read answers aloud">🔇</button>
       <button id="theme" class="icon wide" title="Theme" onclick="cycleTheme()">◐</button>
@@ -182,11 +191,15 @@
     </header>
     <div id="log"></div>
     <footer>
+      <div id="photo-actions" hidden></div>
       <div id="files"></div>
       <form id="form">
         <button id="attach" type="button" class="icon" title="Add a picture or document">📎</button>
         <input id="picker" type="file" multiple hidden />
-        <button id="mic" type="button" class="icon" title="Speak (press again to stop)">🎤</button>
+        <button id="camera" type="button" class="icon" title="Take a photo: read the text in it, translate it or describe it" aria-label="Take a photo">📷</button>
+        <input id="shot" type="file" accept="image/*" capture="environment" hidden />
+        <button id="mic" type="button" class="icon" title="Speak (press again to stop)" aria-label="Speak">🎤</button>
+        <button id="talk" type="button" class="icon" title="Conversation: just talk, and hear the answers; speaking interrupts an answer" aria-label="Conversation mode" aria-pressed="false">🗣</button>
         <textarea id="input" placeholder="Ask Starlight…  (Enter to send, Shift+Enter for a new line)"></textarea>
         <button id="send" class="ok" type="submit">Send</button>
       </form>
@@ -483,6 +496,7 @@ function handle(m) {
     else if (regenPending) current.parentElement.dataset.regen = "1";  // the old answer stays
     editPending = false;
     if (m.stopped) addSys("Kill switch engaged. Press Resume on the PC to continue.");
+    else if (talk) talkAnswer(markdownToSpeech(m.text));
     else if (speakAnswers) say(markdownToSpeech(m.text));
     current = null; answering = null; regenPending = false; loadList();
   }
@@ -499,6 +513,7 @@ function handle(m) {
     current = null; answering = null; regenPending = false;
   }
   else if (m.type === "error") {
+    if (talk) talk.waiting = false;
     doneWaiting(current); toolsDone(current);
     if (editPending) { editPending = false; setTimeout(() => open(conversation), 1500); }
     if (!elsewhere(m)) {
@@ -620,6 +635,7 @@ document.getElementById("form").onsubmit = (e) => {
   if (text.startsWith("/") && runCommand(text)) { input.value = ""; input.oninput(); return; }
   if (editing) { input.value = ""; input.style.height = "44px"; sendEdit(text); return; }
   const files = attached; attached = []; showFiles();
+  document.getElementById("photo-actions").hidden = true;
   input.value = ""; input.style.height = "44px";
   ask(text, files);
 };
@@ -788,6 +804,126 @@ document.getElementById("mic").onclick = async () => {
 };
 showSpeaker();
 
+// -- conversation mode: talk, hear the answer, talk again; speaking interrupts the answer ---
+// One microphone stream stays open while it is on. What it hears is cut into stretches of
+// speech (louder than the room's own noise, then a short pause); each one is written down by
+// the speech recognition on the PC and sent. While the answer is read out, speaking stops it.
+const TALK = { frame: 4096, pause: 0.8, longest: 30, ratio: 3, bargeIn: 0.25 };
+let talk = null;  // { stream, context, node, source, state, chunks, ... } while on
+
+function rms(samples) {
+  let sum = 0;
+  for (let i = 0; i < samples.length; i++) sum += samples[i] * samples[i];
+  return Math.sqrt(sum / (samples.length || 1));
+}
+// The talking state machine, free of the browser so it can be tried out on its own:
+// feed(level, seconds) for each piece of sound; it says "start", "end", "barge" or "".
+function talkMachine(opts = TALK) {
+  const m = { noise: 0.004, speaking: false, quiet: 0, voiced: 0, playing: false, loud: 0 };
+  m.feed = (level, seconds) => {
+    const loud = level > Math.max(m.noise * opts.ratio, 0.01);
+    if (m.playing) {  // the answer is being read out: only a voice for a moment counts
+      m.loud = loud ? m.loud + seconds : 0;
+      if (m.loud >= opts.bargeIn) { m.loud = 0; m.playing = false; m.speaking = true; m.quiet = 0; m.voiced = seconds; return "barge"; }
+      return "";
+    }
+    if (!m.speaking) {
+      if (!loud) { m.noise = 0.95 * m.noise + 0.05 * level; return ""; }
+      m.speaking = true; m.quiet = 0; m.voiced = seconds; return "start";
+    }
+    if (loud) { m.quiet = 0; m.voiced += seconds; } else m.quiet += seconds;
+    if (m.quiet >= opts.pause || m.voiced + m.quiet >= opts.longest) {
+      m.speaking = false; const enough = m.voiced >= 0.3; m.voiced = 0;
+      return enough ? "end" : "";
+    }
+    return "";
+  };
+  return m;
+}
+
+let talkAudio = null;  // the answer being read out in conversation mode
+async function startTalk() {
+  if (!navigator.mediaDevices) { toast("The microphone needs https:// or this PC"); return; }
+  const stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true } });
+  const context = new AudioContext();
+  const source = context.createMediaStreamSource(stream);
+  const node = context.createScriptProcessor(TALK.frame, 1, 1);
+  talk = { stream, context, source, node, machine: talkMachine(), chunks: [], before: [], waiting: false };
+  node.onaudioprocess = (e) => {
+    const samples = new Float32Array(e.inputBuffer.getChannelData(0));
+    const what = talk.waiting ? "" : talk.machine.feed(rms(samples), samples.length / context.sampleRate);
+    if (what === "barge" && talkAudio) { talkAudio.pause(); talkAudio = null; talk.chunks = [...talk.before]; }
+    if (what === "start") talk.chunks = [...talk.before];
+    talk.before = [...talk.before.slice(-2), samples];  // a moment from before the voice began
+    if (talk.machine.speaking || what === "end") talk.chunks.push(samples);
+    if (what === "end") heardInTalk(wav(talk.chunks, context.sampleRate));
+  };
+  source.connect(node); node.connect(context.destination);
+  document.getElementById("talk").classList.add("on");
+  document.getElementById("talk").setAttribute("aria-pressed", "true");
+  input.placeholder = "Conversation: just talk (press 🗣 to end)";
+}
+function stopTalk() {
+  if (!talk) return;
+  talk.node.disconnect(); talk.source.disconnect(); talk.stream.getTracks().forEach(t => t.stop());
+  talk.context.close(); talk = null;
+  if (talkAudio) { talkAudio.pause(); talkAudio = null; }
+  document.getElementById("talk").classList.remove("on");
+  document.getElementById("talk").setAttribute("aria-pressed", "false");
+  input.placeholder = idleHint();
+}
+async function heardInTalk(audio) {
+  if (!talk) return;
+  talk.waiting = true;  // not listening while it writes down and answers
+  try {
+    const response = await fetch("/api/transcribe", { method: "POST", headers: { "Content-Type": "audio/wav" }, body: audio });
+    const data = await response.json().catch(() => ({}));
+    const text = (data.text || "").trim();
+    if (!response.ok) { toast(data.detail || "Could not understand that"); talk.waiting = false; return; }
+    if (!text || busy()) { talk.waiting = false; return; }
+    const files = attached; attached = []; showFiles();
+    ask(text, files);
+  } catch (e) { toast("Could not understand that"); if (talk) talk.waiting = false; }
+}
+// The answer came: read it out, and listen again (for the next question or to interrupt).
+async function talkAnswer(text) {
+  if (!talk) return;
+  talk.waiting = false;
+  try {
+    const response = await fetch("/api/speak", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ text }) });
+    if (!response.ok || !talk) return;
+    talkAudio = new Audio(URL.createObjectURL(await response.blob()));
+    talk.machine.playing = true;
+    talkAudio.onended = () => { if (talk) talk.machine.playing = false; talkAudio = null; };
+    await talkAudio.play();
+  } catch (e) { if (talk) talk.machine.playing = false; }
+}
+document.getElementById("talk").onclick = async () => {
+  if (talk) { stopTalk(); return; }
+  if (recorder) document.getElementById("mic").click();  // (one microphone at a time)
+  try { await startTalk(); } catch (e) { toast("No microphone access: " + e.message); stopTalk(); }
+};
+
+// -- a photo from the phone's camera: read the text, translate it, or describe it --------
+const PHOTO = [["Read the text", "Write out all the text in this picture."],
+               ["Translate it", "Translate the text in this picture into my language."],
+               ["Describe it", "Describe what is in this picture."]];
+document.getElementById("camera").onclick = () => document.getElementById("shot").click();
+document.getElementById("shot").onchange = async (e) => {
+  const file = e.target.files[0]; e.target.value = "";
+  if (!file) return;
+  const before = attached.length;
+  await upload(file);
+  if (attached.length === before) return;
+  const box = document.getElementById("photo-actions");
+  box.replaceChildren(); box.hidden = false;
+  PHOTO.forEach(([label, prompt]) => {
+    const b = el("button", "pill", label); b.type = "button";
+    b.onclick = () => { box.hidden = true; input.value = prompt; document.getElementById("form").requestSubmit(); };
+    box.appendChild(b);
+  });
+};
+
 // -- conversations ---------------------------------------------------------------------------
 async function loadList() {
   const search = document.getElementById("search").value;
@@ -933,8 +1069,26 @@ async function refresh() {
     document.getElementById("saves").textContent = s.saves_files || "";
     const waiting = document.getElementById("waiting");
     waiting.hidden = !s.waiting;
-    waiting.textContent = s.waiting ? `${s.waiting} waiting for your OK` : "";
-  } catch (e) { /* server starting */ }
+    waiting.querySelector(".wide").textContent = `${s.waiting} waiting for your OK`;
+    waiting.querySelector(".narrow").textContent = `${s.waiting} ✋`;
+    misses = 0; document.getElementById("offline").hidden = true;
+    try { if (s.wake_url) localStorage.setItem("starlight-wake", s.wake_url); else localStorage.removeItem("starlight-wake"); } catch (e) { /* */ }
+  } catch (e) {  // the server is starting - or, twice in a row, not there at all
+    if (++misses >= 2) showOffline();
+  }
+}
+let misses = 0;
+function showOffline() {
+  document.getElementById("offline").hidden = false;
+  let wake = null;
+  try { wake = localStorage.getItem("starlight-wake"); } catch (e) { /* */ }
+  const button = document.getElementById("wake");
+  button.hidden = !wake;
+  button.onclick = async () => {
+    // Something else on the network (that stays on) sends the Wake-on-LAN packet.
+    try { await fetch(wake, { method: "POST", mode: "no-cors" }); toast("Asked the PC to wake up; give it a minute"); }
+    catch (e) { toast("Could not reach " + wake); }
+  };
 }
 function fill(id, items) {
   const box = document.getElementById(id); box.innerHTML = "";
@@ -942,10 +1096,24 @@ function fill(id, items) {
   box.className = ""; items.forEach(x => box.appendChild(el("div", "item", x)));
 }
 
+// Shared from the phone's share menu (/share), or the "Talk" shortcut on the home screen.
+function takeShared() {
+  const params = new URLSearchParams(location.search);
+  if (!params.has("share") && !params.has("files") && !params.has("talk")) return;
+  if (params.get("share")) { input.value = params.get("share") + "\n"; input.oninput(); }
+  try { JSON.parse(params.get("files") || "[]").forEach(f => attached.push({ id: f.id, name: f.name })); } catch (e) { /* */ }
+  showFiles();
+  if (params.has("share") || params.has("files")) { input.focus(); toast("Shared: say what to do with it, then Send"); }
+  if (params.has("talk")) { document.getElementById("talk").focus(); toast("Press 🗣 to start talking"); }
+  history.replaceState(null, "", "/");
+}
+
 (async () => {
+  takeShared();
   await loadList();
   if (conversation) await open(conversation);
   connect(); refresh(); setInterval(refresh, 4000);
+  if ("serviceWorker" in navigator) navigator.serviceWorker.register("/sw.js").catch(() => { /* http on a phone: no offline page */ });
 })();
 </script>
 </body>

@@ -245,6 +245,17 @@ class NetworkModule(Module):
         return {"forgot": key}
 
     @tool
+    def wake(self, mac: str, broadcast: str = "255.255.255.255") -> dict[str, Any]:
+        """Wake a computer or NAS on your network (Wake-on-LAN) by its hardware address,
+        e.g. "a4:2b:b0:11:22:33" (lan.devices shows them). It must have Wake-on-LAN on."""
+        packet = magic_packet(mac)
+        with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as out:
+            out.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
+            for port in (9, 7):
+                out.sendto(packet, (broadcast, port))
+        return {"sent": True, "mac": mac.strip().lower(), "note": "it may take a minute to start"}
+
+    @tool
     async def ping(self, server: str) -> dict[str, Any]:
         """ICMP ping a server once. Returns whether it answered and the latency."""
         name, srv = self._server(server)
@@ -520,3 +531,11 @@ class NetworkModule(Module):
             await self.ctx.publish(event, {"server": name, "host": srv.host})
             await self.ctx.deliver(f"Server {name} is {'back up' if up else 'DOWN'}", urgent=not up)
         return states
+
+
+def magic_packet(mac: str) -> bytes:
+    """The Wake-on-LAN packet: six 0xFF bytes, then the hardware address sixteen times."""
+    digits = re.sub(r"[^0-9a-fA-F]", "", mac)
+    if len(digits) != 12:
+        raise ToolError(f"'{mac}' is not a hardware address like a4:2b:b0:11:22:33")
+    return b"\xff" * 6 + bytes.fromhex(digits) * 16

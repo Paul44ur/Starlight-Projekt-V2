@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import email.policy
 import html
 import json
 import mimetypes
@@ -26,9 +27,10 @@ import unicodedata
 import uuid
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
+from email.parser import BytesParser
 from pathlib import Path
 from typing import Any
-from urllib.parse import quote, unquote, urlsplit
+from urllib.parse import parse_qsl, quote, unquote, urlencode, urlsplit
 
 from fastapi import FastAPI, HTTPException, Request, Response, WebSocket, WebSocketDisconnect
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse
@@ -235,6 +237,31 @@ def extract_text(name: str, data: bytes) -> str:
             raise ValueError(f"reading {suffix} files needs the '{extra}' extra") from exc
 
 
+def parse_form(content_type: str, data: bytes) -> tuple[dict[str, str], list[tuple[str, bytes]]]:
+    """A posted form (multipart or urlencoded) -> (its text fields, its files as (name,
+    bytes)). The standard library's email parser reads multipart without extra packages."""
+    if content_type.startswith("application/x-www-form-urlencoded"):
+        return {k: v for k, v in parse_qsl(data.decode("utf-8", "replace"))}, []
+    if not content_type.startswith("multipart/form-data"):
+        return {}, []
+    head = f"Content-Type: {content_type}\r\nMIME-Version: 1.0\r\n\r\n".encode()
+    message = BytesParser(policy=email.policy.HTTP).parsebytes(head + data)
+    fields: dict[str, str] = {}
+    files: list[tuple[str, bytes]] = []
+    for part in message.iter_parts() if message.is_multipart() else []:
+        name = part.get_param("name", header="content-disposition")
+        payload = part.get_payload(decode=True)
+        if not isinstance(name, str) or not isinstance(payload, bytes):
+            continue
+        filename = part.get_filename()
+        if filename:
+            if payload:
+                files.append((filename, payload))
+        else:
+            fields[name] = payload.decode(part.get_content_charset() or "utf-8", "replace")
+    return fields, files
+
+
 def first_sentence(text: str, limit: int = 160) -> str:
     """The first sentence of a tool's description (they wrap over several lines), cut to
     ``limit`` characters."""
@@ -389,6 +416,30 @@ def create_app(paths: Paths | None = None) -> Any:
     def icon() -> Response:
         return Response(page("icon.svg"), media_type="image/svg+xml")
 
+    @app.get("/kill-icon.svg")
+    def kill_icon() -> Response:
+        return Response(page("kill-icon.svg"), media_type="image/svg+xml")
+
+    @app.get("/kill.webmanifest")
+    def kill_manifest() -> Response:
+        return Response(page("kill.webmanifest"), media_type="application/manifest+json")
+
+    @app.get("/kill", response_class=HTMLResponse)
+    def kill_page(request: Request) -> Any:
+        peer = request.client.host if request.client else None
+        if gate.viewer(request.headers, dict(request.cookies), peer) is None:
+            if gate.remote_host(request.headers):
+                return RedirectResponse("/pair", status_code=303)
+            raise HTTPException(status_code=403, detail="not available here")
+        return page("kill.html")
+
+    @app.get("/sw.js")
+    def service_worker() -> Response:
+        # Keeps the chat page's shell on the phone for when the PC is off (see sw.js).
+        return Response(
+            page("sw.js"), media_type="text/javascript", headers={"Cache-Control": "no-cache"}
+        )
+
     # -- pairing and devices -------------------------------------------------------------
 
     @app.post("/api/pair")
@@ -468,6 +519,7 @@ def create_app(paths: Paths | None = None) -> Any:
             "local": who.local,
             "device": who.device.name if who.device else None,
             "waiting": waiting,  # things in the approval queue
+            "wake_url": config.web.remote.wake_url or None,  # for "Wake the PC" when it is off
         }
 
     @app.post("/api/kill")
@@ -637,6 +689,10 @@ def create_app(paths: Paths | None = None) -> Any:
         data = await limited_body(request)
         if not data:
             raise HTTPException(status_code=400, detail="the file is empty")
+        return await keep_upload(name, data)
+
+    async def keep_upload(name: str, data: bytes) -> dict[str, Any]:
+        """Keep a file until the message it goes with is sent (its text, for a document)."""
         now = time.time()
         for key in [k for k, u in uploads.items() if now - u.added > UPLOAD_KEEP]:
             uploads.pop(key, None)
@@ -652,6 +708,24 @@ def create_app(paths: Paths | None = None) -> Any:
         upload_id = uuid.uuid4().hex
         uploads[upload_id] = Upload(name, b"" if text is not None else data, now, text)
         return {"id": upload_id, "name": name, "kind": kind, "size": len(data)}
+
+    @app.post("/share")
+    async def share(request: Request) -> Any:
+        """The phone's share menu ("Share to Starlight"): a link, some text or a file
+        lands in the chat box, ready to send with what you want done with it."""
+        viewer(request)
+        data = await limited_body(request)
+        fields, files = parse_form(request.headers.get("content-type", ""), data)
+        kept = []
+        for name, content in files[:5]:
+            with contextlib.suppress(HTTPException):  # a file it cannot read is left out
+                kept.append(await keep_upload(Path(name).name[:120] or "file", content))
+        words = [fields.get(k, "").strip() for k in ("title", "text", "url")]
+        text = "\n".join(dict.fromkeys(w for w in words if w))[:4000]
+        query = {"share": text} if text else {}
+        if kept:
+            query["files"] = json.dumps([{"id": f["id"], "name": f["name"]} for f in kept])
+        return RedirectResponse("/?" + urlencode(query), status_code=303)
 
     def attach(text: str, ids: list[Any]) -> tuple[str, list[bytes]]:
         images: list[bytes] = []
@@ -693,11 +767,36 @@ def create_app(paths: Paths | None = None) -> Any:
         data = await body(request)
         try:
             audio = await voice().synthesize_audio(
-                str(data.get("text", "")), str(data.get("language", ""))
+                str(data.get("text", "")), str(data.get("language", "")), str(data.get("voice", ""))
             )
         except ToolError as exc:
             raise HTTPException(status_code=503, detail=str(exc)) from exc
         return Response(audio, media_type="audio/wav")
+
+    @app.get("/api/voices")
+    def voices(request: Request) -> dict[str, Any]:
+        viewer(request)
+        listed: dict[str, Any] = voice().voice_list()
+        return listed
+
+    @app.post("/api/voices/{action}")
+    async def voice_setting(action: str, request: Request) -> dict[str, Any]:
+        local_only(request)  # a download, a setting, the PC's microphone: at the PC
+        data = await body(request)
+        speech = voice()
+        try:
+            if action == "choose":
+                done: dict[str, Any] = speech.choose_voice(str(data.get("name", "")))
+            elif action == "install":
+                done = await speech.install_voice(str(data.get("name", "")))
+            elif action == "wake":
+                done = await speech.wake_word(bool(data.get("on")))
+            else:
+                raise HTTPException(status_code=404, detail="choose, install or wake")
+        except ToolError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        kernel().audit.record("web.voice", step=action, name=str(data.get("name", "")))
+        return done
 
     # -- automations and the approval queue -------------------------------------------------
 

@@ -234,8 +234,13 @@ class RemoteConfig(_Strict):
             "automations.allow", "network.allow", "login.add_site", "commands.add",
             "docs.add_folder", "home.connect", "backup.add",
             "commands.shell",  # a shell could rewrite Starlight's own settings
+            "voice.wake_word",  # (the PC's microphone is switched on at the PC)
         ]
     )  # fmt: skip
+    # When the PC does not answer, the phone's chat page offers "Wake the PC" and calls
+    # this address: something on your network that stays on and can send Wake-on-LAN,
+    # e.g. a Home Assistant webhook ("https://ha.local:8123/api/webhook/wake-pc").
+    wake_url: str = ""
 
 
 class WebConfig(_Strict):

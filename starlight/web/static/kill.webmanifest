@@ -1,0 +1,12 @@
+{
+  "name": "Starlight kill switch",
+  "short_name": "Stop Starlight",
+  "description": "One tap stops everything Starlight is doing on the PC",
+  "id": "/kill",
+  "start_url": "/kill",
+  "scope": "/kill",
+  "display": "standalone",
+  "background_color": "#0f1115",
+  "theme_color": "#b3231d",
+  "icons": [{ "src": "/kill-icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" }]
+}

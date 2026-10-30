@@ -1,7 +1,7 @@
 name: voice
 version: 0.1.0
 description: Talk to Starlight and hear answers - speech to text (whisper.cpp) and text to speech (Piper), all on this PC
-keywords: ["voice", "speak", "listen", "speech", "microphone", "Sprache", "sprechen", "zuhören", "Mikrofon"]
+keywords: ["voice", "voices", "speak", "listen", "speech", "microphone", "wake word", "Hey Starlight", "read aloud", "Sprache", "Stimme", "sprechen", "zuhören", "Mikrofon", "vorlesen"]
 entrypoint: module:VoiceModule
 permissions: [safe]
 dependencies: []

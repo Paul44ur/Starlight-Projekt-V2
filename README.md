@@ -79,7 +79,7 @@ and answer you on WhatsApp. It will ask you before it does anything risky. And o
 | **Journal** | "Journal: a long hike today, tired but happy" — one file a day in `Documents\Starlight\Journal`; read a day back or search it. "My weekly review" writes up the last seven days (with your to-dos and next week's calendar): what happened, what got done, what is open, what to focus on. Schedule it with an automation ("every Sunday at 18:00"). |
 | **Notes** | Quick notes as plain files ("note: …", "add eggs to my shopping note"), searchable and part of your knowledge base. |
 | **YouTube summaries** | Summarizes a video or answers a question about it from its captions, with the times it was said. |
-| **Talk to it** | Speak instead of typing and hear the answers — 🎤 and 🔊 in the web chat (on your phone too), `/talk` in the terminal. Speech recognition (whisper.cpp) and the voices (Piper, German and English) run on your PC. Install with `Starlight.exe --voice`. |
+| **Talk to it** | Speak instead of typing and hear the answers — 🎤 and 🔊 in the web chat (on your phone too), `/talk` in the terminal. **🗣 Conversation** in the web chat: just talk; when you pause, it is sent, the answer is read out, and it listens again — speaking while an answer is read out stops it. **"Hey Starlight"**: with it switched on (Settings → Voice, or "listen for Hey Starlight"), say the phrase near the PC and then what you want; the answer comes out of the PC's speakers. Only short bits of speech are written down, on the PC, to look for the phrase. **Settings → Voice** chooses the voice for each language and installs more (nine German and seven English voices, from Piper). Speech recognition (whisper.cpp) and the voices (Piper) run on your PC. Install with `Starlight.exe --voice`. |
 | **Summarize recordings** | "Summarize meeting.m4a" — transcribes a meeting, voice memo or lecture on your PC and writes the main points, decisions and to-dos; both are saved in `Documents\Starlight\Recordings`. Any length (it works in five-minute pieces). .wav works as it is; mp3, m4a, ogg or a video need ffmpeg (`winget install ffmpeg`). |
 | **Smart home** | "Turn off the living room lights", "is the front door locked?" — through your Home Assistant. Lights, plugs and scenes switch at once; locks, alarms, doors and heating ask first. |
 | **Your home network** | Which devices are on your WiFi (with names you give them), and a warning when an unknown one joins. Only ever looks at your own network. With `watch: true` in `config\modules\lan.yaml`, automations can react when a device you know comes home or leaves (`lan.device_joined`, `lan.device_left`). |
@@ -641,6 +641,18 @@ What is different on the phone:
   inside a frame. Tailscale is the only way in from outside.
 - A wrong code is counted; after 5 wrong tries that device waits 15 minutes. A code works
   once and for 5 minutes. Pairing a new device sends you a notice everywhere.
+
+On the phone, once the page is on the home screen:
+- **📷** takes a photo and offers *Read the text*, *Translate it* or *Describe it* (with a
+  model that understands pictures).
+- **Share to Starlight**: in another app's share menu, a link, some text or a file goes
+  straight into the chat box; say what to do with it and send.
+- **Stop Starlight**: long-press the app icon for the *Kill switch* shortcut, or open
+  `/kill` and add that page to the home screen too: one big button stops everything.
+- **When the PC is off or asleep** the page still opens and says so. With a
+  `wake_url` under `web: remote:` in the config — an address on your network that stays
+  on and sends Wake-on-LAN, such as a Home Assistant webhook — it offers **Wake the PC**.
+  (Starlight itself can wake other computers: "wake the NAS" with `network.wake`.)
 
 Remove a device in **Settings** (or `starlight remote revoke ID`), and turn the whole thing
 off with `starlight remote disable`.

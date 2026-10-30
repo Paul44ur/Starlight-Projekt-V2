@@ -11,3 +11,8 @@ voices: {}              # language -> voice model (.onnx), e.g. {de: "D:\\voices
                         # empty: every .onnx in tools/piper/voices, by its language
 default_voice: de       # used when the language of the text is not given
 record_seconds: 6       # how long `listen` / the terminal's /talk records
+# "Hey Starlight": listen on this PC's microphone for the phrase, then answer out loud.
+# Only short stretches of speech are written down (on this PC) to look for it.
+wake_word: false
+wake_phrases: ["hey starlight", "hi starlight", "hallo starlight", "okay starlight", "ok starlight"]
+wake_reply: "Ja?"       # said after the phrase alone; "" to say nothing
