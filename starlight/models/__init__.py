@@ -9,9 +9,11 @@
 
 from __future__ import annotations
 
+import os
 from typing import Any
 
 from starlight.core.model import ModelProvider, register_provider
+from starlight.models.lmstudio import TOKEN_ENV as LMSTUDIO_TOKEN_ENV
 from starlight.models.lmstudio import LMStudioProvider
 from starlight.models.ollama import OllamaProvider
 from starlight.models.openai_compat import OpenAICompatProvider
@@ -30,6 +32,8 @@ def _llamacpp(options: dict[str, Any]) -> ModelProvider:
 
 def _lmstudio(options: dict[str, Any]) -> ModelProvider:
     options = dict(options)
+    if not options.get("api_key") and os.environ.get(LMSTUDIO_TOKEN_ENV, "").strip():
+        options["api_key"] = os.environ[LMSTUDIO_TOKEN_ENV].strip()  # (or the kernel's vault)
     # LM Studio takes the same sampling settings (top_k and repeat_penalty included).
     options["extra"] = {**LLAMACPP_SAMPLING, **(options.get("extra") or {})}
     return LMStudioProvider(**options)

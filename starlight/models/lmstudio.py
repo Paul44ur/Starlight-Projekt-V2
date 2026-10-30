@@ -10,6 +10,9 @@ and the model:
 * ``auto`` (the default): the language model loaded in LM Studio; when none is loaded and
   LM Studio has exactly one, that one is loaded.
 
+When LM Studio asks for an API token ("Require Authentication", LM Studio 0.4), the token
+comes from the environment variable LM_API_TOKEN, or Starlight's vault (lmstudio.token).
+
 A model Starlight loads gets the context length Starlight plans with (model.context_window);
 LM Studio's own default is often only 4096 tokens. What LM Studio has is read from its REST
 API: ``/api/v1/models`` (current), ``/api/v0/models`` (older versions), else the OpenAI model
@@ -19,6 +22,8 @@ list, which only says what is downloaded.
 from __future__ import annotations
 
 import asyncio
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 from dataclasses import dataclass
 from typing import Any
 
@@ -34,10 +39,29 @@ STOP = ["<|im_end|>", "<|endoftext|>", "<|eot_id|>", "<end_of_turn>"]
 AUTO = ("", "auto")  # model.options.model: use whatever LM Studio has loaded
 LANGUAGE = ("llm", "vlm")  # model types that chat ("vlm": vision models in the v0 API)
 NO_MODEL = "load one in LM Studio, or set model.options.model to its name"
+TOKEN_ENV = "LM_API_TOKEN"  # where LM Studio's own tools look for its API token
+TOKEN_KEY = "lmstudio.token"  # the token's name in Starlight's vault
+NEEDS_TOKEN = (
+    "LM Studio asks for an API token (Require Authentication is on in its Developer tab): "
+    f"set the environment variable {TOKEN_ENV} to it (Windows: setx {TOKEN_ENV} <token>), "
+    f"or run `starlight vault set {TOKEN_KEY}`, then start Starlight again; or turn the "
+    "setting off"
+)
 
 
 class LMStudioError(RuntimeError):
     """LM Studio answers, but there is no model Starlight could use."""
+
+
+@asynccontextmanager
+async def _refused_as_advice() -> AsyncIterator[None]:
+    """LM Studio refusing for want of its API token says what to do about it."""
+    try:
+        yield
+    except httpx.HTTPStatusError as exc:
+        if exc.response.status_code in (401, 403):
+            raise LMStudioError(NEEDS_TOKEN) from exc
+        raise
 
 
 @dataclass(frozen=True)
@@ -178,7 +202,7 @@ class LMStudioProvider(OpenAICompatProvider):
         raise LMStudioError(f"LM Studio lists {len(ids)} models and does not say which: {NO_MODEL}")
 
     async def _choose(self) -> None:
-        async with self._choosing:
+        async with self._choosing, _refused_as_advice():
             self.model = await self.loaded_model()
 
     async def chat(
@@ -188,7 +212,8 @@ class LMStudioProvider(OpenAICompatProvider):
         on_token: TokenCallback | None = None,
     ) -> ModelResponse:
         await self._choose()  # asked every time: you may switch models in LM Studio
-        return await super().chat(messages, tools, on_token)
+        async with _refused_as_advice():
+            return await super().chat(messages, tools, on_token)
 
     async def warmup(self) -> None:
         """LM Studio is up and has a model to use (loading one if it is clear which)."""

@@ -6,7 +6,10 @@ LM Studio itself is faked: its OpenAI API and its own /api/v0/models."""
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import json
+import urllib.error
+from email.message import Message as Headers
 from pathlib import Path
 from typing import Any
 
@@ -345,7 +348,7 @@ def lm_studio_v1(models: dict[str, Any], log: list[tuple[str, Any]]) -> httpx.Mo
 
     def handler(request: httpx.Request) -> httpx.Response:
         path = request.url.path
-        body = json.loads(request.content) if request.content else None
+        body: Any = json.loads(request.content) if request.content else None
         log.append((path, body))
         if path == "/api/v1/models":
             return httpx.Response(200, json=models)
@@ -473,3 +476,174 @@ def test_the_launcher_starts_lm_studio_s_server_and_loads_the_model(
     settings.lmstudio_url = "http://192.168.1.5:1234"
     assert not L.ensure_lmstudio(settings, L.Ui(assume_yes=True), wait=0).answers
     assert started == []
+
+
+@pytest.mark.skipif(not has_display(), reason="needs tkinter and a display")
+def test_the_setup_page_lets_you_pick_which_lm_studio_model_is_loaded(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    gui = load_gui()
+    monkeypatch.setattr(gui.App, "_start_background_lookups", lambda self: None)  # no network
+    root = starlight_root(tmp_path)
+    monkeypatch.setenv("UV_CACHE_DIR", str(root / ".uv-cache"))
+    app = gui.App(L, L.build_parser().parse_args(["--root", str(root)]))
+    try:
+        monkeypatch.setattr(app, "begin", lambda: None)
+        app.open_setup(False)
+        names = ("qwen3-14b", "gemma-4-12b-it", "mistral-small-3.2")
+        app.on_lmstudio_found(L.LMStudioState(True, "", 0, None, names))
+        assert not app.lms_row.winfo_manager()  # LM Studio not chosen: no list
+        app.select_model(gui.LMSTUDIO, touched=True)
+        assert app.lms_row.winfo_manager()
+        assert list(app.lms_combo.cget("values")) == [gui.LMS_AUTO, *names]
+        meta = app.cards[gui.LMSTUDIO]["meta"]
+        assert meta.cget("text") == "found, but no model is loaded: pick one below"
+        app.lms_model_var.set("gemma-4-12b-it")
+        app._refresh_lms_choice()
+        assert meta.cget("text") == "found: gemma-4-12b-it is loaded when Starlight starts"
+        app.on_setup_go()
+        saved = json.loads((root / "config" / "launcher.json").read_text(encoding="utf-8"))
+        assert saved["lmstudio_model"] == "gemma-4-12b-it" and saved["model_server"] == "lmstudio"
+        assert L.lmstudio_model_config(app.settings)["options"]["model"] == "gemma-4-12b-it"
+        app.lms_model_var.set(gui.LMS_AUTO)
+        app.on_setup_go()
+        saved = json.loads((root / "config" / "launcher.json").read_text(encoding="utf-8"))
+        assert saved["lmstudio_model"] == ""  # back to whichever is loaded
+    finally:
+        app.root.destroy()
+
+
+def test_lmstudio_model_on_the_command_line(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    root = starlight_root(tmp_path)
+    args = L.build_parser().parse_args(["--root", str(root), "--lmstudio-model", " qwen3-14b "])
+    settings = L.load_settings(args)
+    assert settings.uses_lmstudio and settings.lmstudio_model == "qwen3-14b"
+
+
+# -- an API token (LM Studio's "Require Authentication") ---------------------------------------
+
+
+def locked_lm_studio(token: str, seen: list[str | None]) -> httpx.MockTransport:
+    """A fake LM Studio that answers only with this API token."""
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen.append(request.headers.get("Authorization"))
+        if request.headers.get("Authorization") != f"Bearer {token}":
+            return httpx.Response(401, json={"error": "invalid api token"})
+        if request.url.path == "/api/v1/models":
+            loaded = [{"id": "qwen3-14b", "config": {"context_length": 32768}}]
+            models = [{"key": "qwen3-14b", "type": "llm", "loaded_instances": loaded}]
+            return httpx.Response(200, json={"models": models})
+        return httpx.Response(200, json={"choices": [{"message": {"content": "hello"}}]})
+
+    return httpx.MockTransport(handler)
+
+
+async def test_lm_studio_asking_for_a_token_says_how_to_give_it(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from starlight.models.lmstudio import NEEDS_TOKEN, LMStudioError
+
+    monkeypatch.delenv("LM_API_TOKEN", raising=False)
+    seen: list[str | None] = []
+    options = {"transport": locked_lm_studio("s3cret", seen)}
+    provider = create_provider(ModelConfig(provider="lmstudio", options=options))
+    with pytest.raises(LMStudioError) as refused:
+        await provider.chat([Message("user", "hi")], [])
+    assert str(refused.value) == NEEDS_TOKEN and "LM_API_TOKEN" in NEEDS_TOKEN
+
+    monkeypatch.setenv("LM_API_TOKEN", " s3cret ")  # (as setx may leave it)
+    provider = create_provider(ModelConfig(provider="lmstudio", options=options))
+    answer = await provider.chat([Message("user", "hi")], [])
+    assert answer.content == "hello" and seen[-1] == "Bearer s3cret"
+
+
+async def test_the_token_can_also_come_from_the_vault(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from starlight.core import Kernel, Paths
+    from starlight.core.logging import redact
+    from starlight.core.vault import MemoryBackend
+
+    monkeypatch.delenv("LM_API_TOKEN", raising=False)
+    backend = MemoryBackend()
+    backend.values["lmstudio.token"] = "from-the-vault"
+    kernel = Kernel(Paths(tmp_path), vault_backend=backend)
+    config = ModelConfig(provider="lmstudio", options={"base_url": "http://127.0.0.1:1234/v1"})
+    assert kernel._with_token(config).options["api_key"] == "from-the-vault"
+    assert "from-the-vault" not in redact("token from-the-vault")  # never in a log line
+    assert kernel._with_token(ModelConfig(provider="llamacpp")).options == {}  # only LM Studio
+    mine = ModelConfig(provider="lmstudio", options={"api_key": "set-in-config"})
+    assert kernel._with_token(mine).options["api_key"] == "set-in-config"
+
+
+def test_the_launcher_and_the_doctor_name_a_missing_token(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    calls: list[tuple[str, dict[str, str]]] = []
+
+    def answer(request: Any, timeout: float) -> Any:
+        headers = dict(request.header_items())
+        calls.append((request.full_url, headers))
+        if headers.get("Authorization") != "Bearer s3cret":
+            raise urllib.error.HTTPError(request.full_url, 401, "Unauthorized", Headers(), None)
+        raise urllib.error.URLError("no more")  # (the rest is not under test)
+
+    monkeypatch.setattr(L, "_local_open", answer)
+    monkeypatch.delenv("LM_API_TOKEN", raising=False)
+    state = L.lmstudio_state("http://127.0.0.1:1234")
+    assert state.answers and state.locked
+    root = starlight_root(tmp_path)
+    settings = settings_for(root, monkeypatch, "--lmstudio")
+    services = L.Services(settings, L.Ui(assume_yes=True), L.Installed(Path("uv")))
+    assert services.poll().model_detail == L.LMSTUDIO_TOKEN_HINT
+    assert "LM_API_TOKEN" in L.load_in_lmstudio("http://127.0.0.1:1234", "qwen3-14b", 32768)
+    monkeypatch.setenv("LM_API_TOKEN", "s3cret")
+    assert not L.lmstudio_state("http://127.0.0.1:1234").locked
+    assert calls[-1][1]["Authorization"] == "Bearer s3cret"
+
+    config = StarlightConfig.model_validate({"model": {"provider": "lmstudio"}})
+
+    def refused(url: str) -> tuple[int | None, str]:
+        return 401, "Unauthorized"
+
+    from starlight.core import Paths
+
+    checks = check_model(config, Paths(tmp_path), get=refused, get_json=lambda url: None)
+    assert checks[-1].status == "fail" and "API token" in checks[-1].detail
+
+
+def test_restart_model_reloads_it_in_lm_studio(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    settings = settings_for(starlight_root(tmp_path), monkeypatch, "--lmstudio")
+    unloaded: list[Any] = []
+    loaded: list[tuple[str, str, int]] = []
+
+    def opened(request: Any, timeout: float) -> Any:
+        unloaded.append((request.full_url, json.loads(request.data)))
+        return contextlib.nullcontext()
+
+    monkeypatch.setattr(L, "_local_open", opened)
+
+    def load(*args: Any) -> str:
+        loaded.append(args)
+        return ""
+
+    monkeypatch.setattr(L, "load_in_lmstudio", load)
+    state = L.LMStudioState(True, "qwen3-14b:2", 32768)
+    monkeypatch.setattr(L, "lmstudio_state", lambda url: state)
+    assert L.reload_in_lmstudio(settings) == ""
+    assert unloaded == [
+        ("http://127.0.0.1:1234/api/v1/models/unload", {"instance_id": "qwen3-14b:2"})
+    ]
+    assert loaded == [("http://127.0.0.1:1234", "qwen3-14b", settings.context)]
+
+    monkeypatch.setattr(L, "lmstudio_state", lambda url: L.LMStudioState(True))
+    assert "no model loaded" in L.reload_in_lmstudio(settings)
+    monkeypatch.setattr(L, "lmstudio_state", lambda url: L.LMStudioState(True, locked=True))
+    assert L.reload_in_lmstudio(settings) == L.LMSTUDIO_TOKEN_HINT
+    monkeypatch.setattr(L, "lmstudio_state", lambda url: L.LMStudioState())
+    assert L.reload_in_lmstudio(settings) == L.LMSTUDIO_HINT

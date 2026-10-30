@@ -187,6 +187,7 @@ Run `Starlight.exe --help` in a terminal to see every option. The most useful on
 | --- | --- |
 | `--model qwen7b` | Use a ready-made model choice instead of the default (see [A different model](#a-different-model)). |
 | `--no-think` | Models that think before they answer (Qwen3, gpt-oss) answer at once: quicker, a little less careful. |
+| `--lmstudio-model <name>` | Use LM Studio, with this model loaded and used instead of whichever is loaded. |
 | `--model-url <link>` | Use another model (a direct download link to a `.gguf` file). |
 | `--context 16384` | A smaller context window: uses less video memory. |
 | `--variant cpu` | Run without a graphics card (slow). |
@@ -303,8 +304,9 @@ That is usually all. When Starlight starts it gets LM Studio ready:
   LM Studio's Developer tab (port 1234).
 - **The model.** If no model is loaded, Starlight loads the one you named
   (`"lmstudio_model"`), or the only one LM Studio has, with 32768 tokens of context
-  (`"context"` in `config\launcher.json`). With several models and none named, load one
-  yourself: Starlight then uses whichever is loaded.
+  (`"context"` in `config\launcher.json`). With several models, choose one under
+  **Model in LM Studio** on the setup page (it lists what LM Studio has), or start
+  `Starlight.exe --lmstudio-model <name>`; or load one in LM Studio yourself.
 
 The choice is saved in `config\launcher.json` as `"model_server": "lmstudio"`.
 `"lmstudio_url"` changes the address (default `http://127.0.0.1:1234`), and
@@ -322,6 +324,14 @@ What Starlight does for you:
   example, no model loaded). The status window, and **Check everything** (`starlight
   doctor`), say whether LM Studio answers, which model is loaded, whether its context is
   long enough, and whether the model is trained for tool use (Starlight's tools need it).
+- **Restart model** on the status page unloads the model in LM Studio and loads it again
+  with Starlight's context (when a model got slow or stuck).
+- **An API token, if LM Studio asks for one.** LM Studio 0.4 can require one (*Require
+  Authentication* in the Developer tab's server settings; it is off by default). Set the
+  environment variable `LM_API_TOKEN` to the token (Windows: `setx LM_API_TOKEN <token>`,
+  then start Starlight again): the launcher and Starlight both send it. Starlight alone
+  can also take it from its vault: `starlight vault set lmstudio.token`. Without it, the
+  setup page, the status window and `starlight doctor` say that LM Studio wants a token.
 - **Old and new LM Studio.** Starlight reads LM Studio's current REST API, and the older
   one of versions before it.
 - **Memories can use it too.** For memory search by meaning, load LM Studio's

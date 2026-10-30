@@ -169,6 +169,7 @@ def open_folder(path: Path) -> None:
 
 
 LMSTUDIO = "lmstudio"  # the model card for LM Studio (it runs the model; nothing is downloaded)
+LMS_AUTO = "Whichever is loaded in LM Studio"  # the LM Studio model choice for "auto"
 
 
 class GuiUi:
@@ -414,6 +415,22 @@ class App:
                   indicatorbackground=[("disabled", c.panel2), ("selected", c.accent)],
                   indicatorforeground=[("disabled", c.dim), ("selected", c.on_accent)],
                   foreground=[("disabled", c.dim)], background=[("active", c.bg)])  # fmt: skip
+        style.configure("TCombobox", fieldbackground=c.panel2, background=c.panel2,
+                        foreground=c.text, arrowcolor=c.text, bordercolor=c.border,
+                        selectbackground=c.panel2, selectforeground=c.text,
+                        padding=(self.px(6), self.px(3)))  # fmt: skip
+        style.map("TCombobox", fieldbackground=[("readonly", c.panel2)],
+                  foreground=[("readonly", c.text)], background=[("active", c.panel)],
+                  selectbackground=[("readonly", c.panel2)],
+                  selectforeground=[("readonly", c.text)])  # fmt: skip
+        # its drop-down list is a plain Tk listbox, styled through the option database
+        for option, value in (
+            ("background", c.panel2),
+            ("foreground", c.text),
+            ("selectBackground", c.accent),
+            ("selectForeground", c.on_accent),
+        ):
+            self.root.option_add(f"*TCombobox*Listbox.{option}", value)  # fmt: skip
         style.configure("Horizontal.TProgressbar", background=c.accent, troughcolor=c.panel2,
                         bordercolor=c.panel2, lightcolor=c.accent, darkcolor=c.accent,
                         thickness=self.px(10))  # fmt: skip
@@ -580,15 +597,29 @@ class App:
         self.gpu_label = self._label(
             models, "Graphics card: looking ...", "Small.TLabel", wrap=True
         )
-        self.gpu_label.grid(row=row, column=0, sticky="w", pady=(self.px(6), 0))
+        self.gpu_label.grid(row=row + 1, column=0, sticky="w", pady=(self.px(6), 0))
         # Models too big for the graphics card found are folded away (they would run partly on
         # the processor, many times slower); this shows them again.
         self.show_big_var = tk.BooleanVar(value=False)
         self.show_big_check = ttk.Checkbutton(
             models, variable=self.show_big_var, command=self._apply_visibility, cursor="hand2"
         )
-        self.show_big_check.grid(row=row + 1, column=0, sticky="w")
+        self.show_big_check.grid(row=row + 2, column=0, sticky="w")
         self.show_big_check.grid_remove()
+        # With LM Studio: which of its models Starlight loads (it has several, none loaded);
+        # right below its card, the last one.
+        self.lms_row = ttk.Frame(models)
+        self.lms_row.grid(
+            row=row, column=0, sticky="w", pady=(self.px(4), 0), padx=(self.px(14), 0)
+        )
+        self._label(self.lms_row, "Model in LM Studio:").pack(side="left")
+        self.lms_model_var = tk.StringVar(value=self.settings.lmstudio_model or LMS_AUTO)
+        self.lms_combo = ttk.Combobox(
+            self.lms_row, textvariable=self.lms_model_var, state="readonly", width=48
+        )
+        self.lms_combo.pack(side="left", padx=(self.px(8), 0))
+        self.lms_combo.bind("<<ComboboxSelected>>", lambda _event: self._refresh_lms_choice())
+        self.lms_row.grid_remove()
 
         options = ttk.Frame(page)
         options.grid(row=3, column=0, sticky="ew", pady=(self.px(16), 0))
@@ -832,6 +863,8 @@ class App:
             self.model_touched = True
         self.model_var.set(key)
         self.gpu_check.state(["disabled"] if key == LMSTUDIO else ["!disabled"])
+        if hasattr(self, "lms_row"):
+            self._refresh_lms_choice()
         if "thinks first" in self.L.MODEL_TAGS.get(key, ()):
             self.think_check.grid()
         else:
@@ -917,6 +950,26 @@ class App:
         vram = getattr(self.gpu, "vram", None)
         return bool(vram) and memory > vram / self.L.GB + 0.5
 
+    def _lms_choice(self) -> str:
+        """The LM Studio model chosen below the cards; "" for whichever is loaded."""
+        chosen = self.lms_model_var.get()
+        return "" if chosen == LMS_AUTO else chosen
+
+    def _refresh_lms_choice(self) -> None:
+        """The LM Studio model list: shown with LM Studio chosen, filled from what it has."""
+        state = self.lmstudio
+        names = list(state.available) if state is not None else []
+        chosen = self._lms_choice()
+        if chosen and chosen not in names:
+            names.insert(0, chosen)  # set before, or LM Studio is not running now
+        self.lms_combo.configure(values=[LMS_AUTO, *names])
+        if self.model_var.get() == LMSTUDIO and self.settings.use_model and names:
+            self.lms_row.grid()
+        else:
+            self.lms_row.grid_remove()
+        if LMSTUDIO in self.cards:
+            self._refresh_lmstudio_card(self.cards[LMSTUDIO])
+
     def _refresh_lmstudio_card(self, card: dict[str, Any]) -> None:
         """What LM Studio said when the page opened: running, and with which model."""
         state = self.lmstudio
@@ -924,14 +977,19 @@ class App:
             child.destroy()
         if state is None:
             text = "runs in LM Studio"
+        elif state.locked:
+            text = f"asks for an API token: set {self.L.LMSTUDIO_TOKEN_ENV} (see the README)"
         elif state.loaded:
             text = f"found: {shorten(state.loaded)}"
             pill_fg = "#06240f" if self.c is DARK else "#ffffff"
             self._pill(card["badges"], "Running", self.c.ok, pill_fg)
-        elif state.answers and len(state.available) == 1:
-            text = f"found: {shorten(state.available[0])} is loaded when Starlight starts"
+        elif state.answers and (self._lms_choice() or len(state.available) == 1):
+            name = self._lms_choice() or state.available[0]
+            text = f"found: {shorten(name)} is loaded when Starlight starts"
+        elif state.answers and state.available:
+            text = "found, but no model is loaded: pick one below"
         elif state.answers:
-            text = "found, but no model is loaded in it"
+            text = "found, but it has no model yet: download one in LM Studio"
         else:
             text = "not running now (start its local server)"
         card["meta"].configure(text=text)
@@ -981,6 +1039,7 @@ class App:
 
     def on_lmstudio_found(self, state: Any) -> None:
         self.lmstudio = state
+        self._refresh_lms_choice()
         recommended, _ = self.L.recommend_model(self.gpu)
         self._refresh_cards(recommended if self.gpu is not None else "")
 
@@ -1102,6 +1161,9 @@ class App:
         if settings.use_model:
             settings.model_server = "lmstudio" if key == LMSTUDIO else "llamacpp"
             choices["model_server"] = settings.model_server
+        if settings.use_model and key == LMSTUDIO:
+            settings.lmstudio_model = self._lms_choice()
+            choices["lmstudio_model"] = settings.lmstudio_model
         if settings.use_model and key not in ("custom", LMSTUDIO):
             settings.model_url = L.MODEL_PRESETS[key]
             choices["model"] = key
@@ -1489,8 +1551,9 @@ class App:
 
         def restart() -> None:
             if self.settings.uses_lmstudio:
-                note = "LM Studio runs the model: reload it there, or restart LM Studio."
-                self.events.put(("note", note))
+                problem = self.L.reload_in_lmstudio(self.settings)
+                if problem:
+                    self.events.put(("note", f"The model was not reloaded: {problem}"))
             elif not self.services.restart_model():
                 self.events.put(
                     (

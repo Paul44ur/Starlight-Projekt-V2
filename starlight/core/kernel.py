@@ -14,7 +14,7 @@ from typing import Any
 import httpx
 
 from starlight.core.agent import Agent, AgentResult
-from starlight.core.config import ConfigError, StarlightConfig, load_config
+from starlight.core.config import ConfigError, ModelConfig, StarlightConfig, load_config
 from starlight.core.context import SUMMARY_PREFIX, ContextManager
 from starlight.core.conversations import ConversationStore
 from starlight.core.corelock import CoreLock
@@ -107,7 +107,8 @@ class Kernel:
             timeout=self.config.tools.timeout,
             stats=self.stats,
         )
-        self.provider = provider or create_provider(self.config.model)
+        self.vault = Vault(self.paths.config / "vault_index.yaml", vault_backend)
+        self.provider = provider or create_provider(self._with_token(self.config.model))
         self.http = PoliteHttp(
             self.config.http,
             stats=self.stats,
@@ -115,7 +116,6 @@ class Kernel:
             cache_path=self.paths.data / "web_cache.sqlite",
             transport=http_transport,  # tests pass a mock transport
         )
-        self.vault = Vault(self.paths.config / "vault_index.yaml", vault_backend)
 
         from starlight.memory import Memory  # memory and skills build on the core
         from starlight.skills import SkillManager
@@ -232,7 +232,7 @@ class Kernel:
         if config is None:
             return self.provider
         if role not in self._role_models:
-            self._role_models[role] = create_provider(config)
+            self._role_models[role] = create_provider(self._with_token(config))
         return self._role_models[role]
 
     async def start(self) -> None:
@@ -366,6 +366,26 @@ class Kernel:
                 current_ui.reset(token)
 
         self._spawn(handle(), f"message-{event.source}")
+
+    def _with_token(self, config: ModelConfig) -> ModelConfig:
+        """An LM Studio model with the API token it may ask for: the environment variable
+        LM_API_TOKEN, else the vault's lmstudio.token (masked in the logs either way)."""
+        if config.provider != "lmstudio" or config.options.get("api_key"):
+            return config
+        import os
+
+        from starlight.models.lmstudio import TOKEN_ENV, TOKEN_KEY
+
+        token = os.environ.get(TOKEN_ENV, "").strip()
+        if not token:
+            try:
+                token = (self.vault.get(TOKEN_KEY) or "").strip()
+            except Exception:  # no keyring on this machine: LM Studio will say what it needs
+                token = ""
+        if not token:
+            return config
+        add_secret_values([token])
+        return config.model_copy(update={"options": {**config.options, "api_key": token}})
 
     def _protect_secrets(self) -> None:
         """Mask the vault's values wherever they would appear in a log line."""

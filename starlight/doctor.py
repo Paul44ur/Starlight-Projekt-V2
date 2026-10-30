@@ -8,7 +8,9 @@ temporary file into each data folder to see that it can).
 from __future__ import annotations
 
 import contextlib
+import functools
 import json
+import os
 import socket
 import sys
 import urllib.error
@@ -22,6 +24,8 @@ from typing import Any
 
 from starlight.core.config import ConfigError, StarlightConfig, load_config
 from starlight.core.paths import Paths
+from starlight.core.vault import Vault
+from starlight.models.lmstudio import NEEDS_TOKEN, TOKEN_ENV, TOKEN_KEY
 
 GB = 1024**3
 MB = 1024**2
@@ -114,18 +118,21 @@ def _model_base(config: StarlightConfig) -> tuple[str, dict[str, Any]]:
 LOOPBACK = ("127.0.0.1", "localhost", "::1")
 
 
-def _open(url: str, timeout: float) -> Any:
+def _open(url: str, timeout: float, headers: dict[str, str] | None = None) -> Any:
     """Open a URL; one on this PC never through a system proxy (it cannot reach 127.0.0.1,
     and urllib would send the request to it all the same)."""
+    request = urllib.request.Request(url, headers=headers or {})
     if (urllib.parse.urlsplit(url).hostname or "") in LOOPBACK:
         opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
-        return opener.open(url, timeout=timeout)
-    return urllib.request.urlopen(url, timeout=timeout)
+        return opener.open(request, timeout=timeout)
+    return urllib.request.urlopen(request, timeout=timeout)
 
 
-def _get(url: str, timeout: float = 3.0) -> tuple[int | None, str]:
+def _get(
+    url: str, timeout: float = 3.0, headers: dict[str, str] | None = None
+) -> tuple[int | None, str]:
     try:
-        with _open(url, timeout) as response:
+        with _open(url, timeout, headers) as response:
             return response.status, ""
     except urllib.error.HTTPError as exc:
         return exc.code, str(exc)
@@ -133,10 +140,10 @@ def _get(url: str, timeout: float = 3.0) -> tuple[int | None, str]:
         return None, str(getattr(exc, "reason", exc))
 
 
-def _get_json(url: str, timeout: float = 3.0) -> Any:
+def _get_json(url: str, timeout: float = 3.0, headers: dict[str, str] | None = None) -> Any:
     """A JSON answer, or None when there is none."""
     try:
-        with _open(url, timeout) as response:
+        with _open(url, timeout, headers) as response:
             return json.loads(response.read().decode("utf-8", errors="replace"))
     except (OSError, ValueError):
         return None
@@ -183,6 +190,17 @@ def check_lmstudio(config: StarlightConfig, base: str, get_json: Callable[[str],
     return ok(name, f"{model.id} is loaded")
 
 
+def _lmstudio_token(options: dict[str, Any], paths: Paths) -> str:
+    """The API token Starlight sends LM Studio (see starlight.models.lmstudio)."""
+    token = str(options.get("api_key") or os.environ.get(TOKEN_ENV, "")).strip()
+    if token:
+        return token
+    try:
+        return (Vault(paths.config / "vault_index.yaml").get(TOKEN_KEY) or "").strip()
+    except Exception:  # no keyring here
+        return ""
+
+
 def check_model(
     config: StarlightConfig,
     paths: Paths,
@@ -226,7 +244,17 @@ def check_model(
     # Only llama-server has /health. Another OpenAI-compatible server (LM Studio, vLLM)
     # may not: any answer from its model list means it is up.
     path = {"ollama": "/api/tags", "llamacpp": "/health"}.get(provider, "/v1/models")
+    if provider == "lmstudio":
+        token = _lmstudio_token(options, paths)
+        auth = {"Authorization": f"Bearer {token}"} if token else {}
+        if auth and get is _get:
+            get = functools.partial(_get, headers=auth)
+        if auth and get_json is _get_json:
+            get_json = functools.partial(_get_json, headers=auth)
     status, reason = get(base + path)
+    if provider == "lmstudio" and status in (401, 403):
+        results.append(fail("model server", "LM Studio asks for an API token", NEEDS_TOKEN))
+        return results
     answers = path == "/v1/models" and status is not None and status < 500
     if status == 200 or answers:
         results.append(ok("model server", f"answers at {base}"))

@@ -562,6 +562,9 @@ def load_settings(args: argparse.Namespace) -> Settings:
     settings.use_model = not args.no_model
     if getattr(args, "lmstudio", False):
         settings.model_server = "lmstudio"
+    if getattr(args, "lmstudio_model", None):
+        settings.model_server = "lmstudio"
+        settings.lmstudio_model = args.lmstudio_model.strip()
     if settings.model_server not in MODEL_SERVERS:
         raise LauncherError(
             f"model_server in config/launcher.json is {settings.model_server!r}; "
@@ -1874,10 +1877,14 @@ class Status:
 
 
 def fetch_json(
-    url: str, method: str = "GET", timeout: float = 2.0, origin: str | None = None
+    url: str,
+    method: str = "GET",
+    timeout: float = 2.0,
+    origin: str | None = None,
+    headers: dict[str, str] | None = None,
 ) -> dict[str, Any] | None:
     """A local JSON answer, or None. (POST sends the page's own Origin, as a browser would.)"""
-    headers = {"User-Agent": USER_AGENT}
+    headers = {"User-Agent": USER_AGENT, **(headers or {})}
     if origin:
         headers["Origin"] = origin
     request = urllib.request.Request(
@@ -1908,6 +1915,34 @@ def health_status(port: int) -> int | None:
 LMSTUDIO_HINT = (
     "LM Studio does not answer: start it, load a model and turn on its local server (Developer tab)"
 )
+# LM Studio 0.4 can ask for an API token ("Require Authentication" in its server settings).
+# Its own tools read it from this environment variable; so do the launcher and Starlight.
+LMSTUDIO_TOKEN_ENV = "LM_API_TOKEN"
+LMSTUDIO_TOKEN_HINT = (
+    "LM Studio asks for an API token (Require Authentication is on in its Developer tab): "
+    f"set the environment variable {LMSTUDIO_TOKEN_ENV} to it (Windows: setx "
+    f"{LMSTUDIO_TOKEN_ENV} <token>, then start Starlight again), or turn the setting off"
+)
+
+
+def _lmstudio_headers() -> dict[str, str]:
+    headers = {"User-Agent": USER_AGENT}
+    token = os.environ.get(LMSTUDIO_TOKEN_ENV, "").strip()
+    if token:
+        headers["Authorization"] = f"Bearer {token}"
+    return headers
+
+
+def _lmstudio_refuses(url: str) -> bool:
+    """LM Studio answers, but refuses: it wants an API token we do not have (or a wrong one)."""
+    request = urllib.request.Request(f"{url}/v1/models", headers=_lmstudio_headers())
+    try:
+        with _local_open(request, 2.0):
+            return False
+    except urllib.error.HTTPError as exc:
+        return exc.code in (401, 403)
+    except (OSError, http.client.HTTPException):
+        return False
 
 
 @dataclass(frozen=True)
@@ -1919,6 +1954,7 @@ class LMStudioState:
     context: int = 0  # the context length it is loaded with; 0 when LM Studio does not say
     tools: bool | None = None  # the loaded model is trained for tool use; None: not said
     available: tuple[str, ...] = ()  # the language models it could load (downloaded)
+    locked: bool = False  # it answers, but asks for an API token we do not have (HTTP 401)
 
 
 LANGUAGE_MODELS = ("llm", "vlm")  # model types that chat ("vlm": vision models in the v0 API)
@@ -1975,12 +2011,17 @@ def _lmstudio_v0(data: dict[str, Any]) -> LMStudioState | None:
 def lmstudio_state(url: str) -> LMStudioState:
     """Ask LM Studio at ``url``: its REST API (v1, else the older v0) says which model is
     loaded; without either, an answer from the OpenAI model list only says that it runs."""
+    auth = _lmstudio_headers()
     for path, parse in (("/api/v1/models", _lmstudio_v1), ("/api/v0/models", _lmstudio_v0)):
-        data = fetch_json(url + path)
+        data = fetch_json(url + path, headers=auth)
         state = parse(data) if data is not None else None
         if state is not None:
             return state
-    return LMStudioState(fetch_json(f"{url}/v1/models") is not None)
+    if fetch_json(f"{url}/v1/models", headers=auth) is not None:
+        return LMStudioState(answers=True)
+    if _lmstudio_refuses(url):
+        return LMStudioState(answers=True, locked=True)
+    return LMStudioState()
 
 
 def find_lms() -> Path | None:
@@ -1999,16 +2040,53 @@ def load_in_lmstudio(url: str, model: str, context: int, timeout: float = 600) -
         f"{url}/api/v1/models/load",
         data=body,
         method="POST",
-        headers={"Content-Type": "application/json", "User-Agent": USER_AGENT},
+        headers={"Content-Type": "application/json", **_lmstudio_headers()},
     )
     try:
         with _local_open(request, timeout):
             return ""
     except urllib.error.HTTPError as exc:
+        if exc.code in (401, 403):
+            return LMSTUDIO_TOKEN_HINT
         detail = exc.read().decode("utf-8", errors="replace")[:300]
         return f"HTTP {exc.code}: {detail}".strip()
     except (OSError, http.client.HTTPException) as exc:
         return str(exc)
+
+
+def reload_in_lmstudio(settings: Settings) -> str:
+    """Unload the model LM Studio has loaded and load it again with Starlight's context (a
+    model that got slow or stuck starts fresh). "" when done, else what went wrong."""
+    url = settings.lmstudio_url
+    state = lmstudio_state(url)
+    if state.locked:
+        return LMSTUDIO_TOKEN_HINT
+    if not state.answers:
+        return LMSTUDIO_HINT
+    if not state.loaded:
+        key = settings.lmstudio_model
+        if not key:
+            return "LM Studio has no model loaded: load one there, or choose one in Settings"
+        return load_in_lmstudio(url, key, settings.context)
+    body = json.dumps({"instance_id": state.loaded}).encode("utf-8")
+    request = urllib.request.Request(
+        f"{url}/api/v1/models/unload",
+        data=body,
+        method="POST",
+        headers={"Content-Type": "application/json", **_lmstudio_headers()},
+    )
+    try:
+        with _local_open(request, 120):
+            pass
+    except urllib.error.HTTPError as exc:
+        if exc.code == 404:  # an older LM Studio without the v1 API
+            return "this LM Studio cannot be told to reload: reload the model in LM Studio"
+        return f"LM Studio did not unload it: HTTP {exc.code}"
+    except (OSError, http.client.HTTPException) as exc:
+        return f"LM Studio did not unload it: {exc}"
+    # the instance id is the model's key, or the key and ":2" for a second copy of it
+    key = settings.lmstudio_model or state.loaded.rsplit(":", 1)[0]
+    return load_in_lmstudio(url, key, settings.context)
 
 
 def ensure_lmstudio(settings: Settings, ui: Ui, wait: float = 30) -> LMStudioState:
@@ -2037,6 +2115,9 @@ def ensure_lmstudio(settings: Settings, ui: Ui, wait: float = 30) -> LMStudioSta
             state = lmstudio_state(url)
     if not state.answers:
         ui.say("   " + LMSTUDIO_HINT)
+        return state
+    if state.locked:
+        ui.say("   " + LMSTUDIO_TOKEN_HINT)
         return state
     if not state.loaded:
         candidates = state.available
@@ -2135,6 +2216,8 @@ class Services:
             if lms.loaded:
                 note = "; not trained for tool use" if lms.tools is False else ""
                 model, detail = "ready", f"{lms.loaded} (LM Studio{note})"
+            elif lms.locked:
+                model, detail = "waiting", LMSTUDIO_TOKEN_HINT
             elif lms.answers:
                 model, detail = "waiting", "LM Studio answers but has no model loaded: load one"
             else:
@@ -2260,6 +2343,12 @@ def build_parser() -> argparse.ArgumentParser:
         "--lmstudio",
         action="store_true",
         help="use the model loaded in LM Studio (its local server) instead of downloading one",
+    )
+    parser.add_argument(
+        "--lmstudio-model",
+        metavar="NAME",
+        help="with LM Studio: the model Starlight loads and uses (its name in LM Studio), "
+        "instead of whichever is loaded",
     )
     parser.add_argument(
         "--no-model",
