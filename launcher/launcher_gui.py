@@ -217,6 +217,86 @@ class GuiUi:
         return reply.get()
 
 
+def rounded_rect(canvas: tk.Canvas, x0: float, y0: float, x1: float, y1: float, r: float,
+                 **options: Any) -> int:  # fmt: skip
+    """A rectangle with rounded corners on a canvas (a smoothed polygon)."""
+    points = [x0 + r, y0, x1 - r, y0, x1, y0, x1, y0 + r, x1, y1 - r, x1, y1, x1 - r, y1,
+              x0 + r, y1, x0, y1, x0, y1 - r, x0, y0 + r, x0, y0]  # fmt: skip
+    return canvas.create_polygon(points, smooth=True, **options)
+
+
+class CheckRow(tk.Frame):
+    """A check box drawn like the rest of the window (the model cards' round marks): a
+    rounded square that fills with a check mark, and its text. A click or Space toggles it."""
+
+    def __init__(
+        self,
+        app: App,
+        parent: tk.Misc,
+        text: str,
+        variable: tk.BooleanVar,
+        command: Any = None,
+    ) -> None:
+        c = app.c
+        super().__init__(parent, bg=c.bg, cursor="hand2", takefocus=1, highlightthickness=1,
+                         highlightbackground=c.bg, highlightcolor=c.accent)  # fmt: skip
+        self.app, self.variable, self.command = app, variable, command
+        self.disabled = False
+        size = app.px(18)
+        self.mark = tk.Canvas(self, width=size, height=size, bg=c.bg, highlightthickness=0)
+        self.mark.pack(side="left", padx=(app.px(2), app.px(8)), pady=app.px(3))
+        self.label = tk.Label(self, text=text, bg=c.bg, fg=c.text, font=app.f, anchor="w",
+                              justify="left")  # fmt: skip
+        self.label.pack(side="left", fill="x")
+        for widget in (self, self.mark, self.label):
+            widget.bind("<Button-1>", self._toggle)
+        self.bind("<space>", self._toggle)
+        variable.trace_add("write", lambda *_: self.draw())
+        app.check_rows.append(self)
+        self.draw()
+
+    def _toggle(self, _event: object = None) -> str:
+        if not self.disabled:
+            self.variable.set(not self.variable.get())
+            if self.command is not None:
+                self.command()
+        return "break"
+
+    def draw(self) -> None:
+        c, canvas = self.app.c, self.mark
+        canvas.delete("all")
+        size = int(canvas.cget("width"))
+        pad, radius = size * 0.08, size * 0.24
+        colour = c.dim if self.disabled else c.accent
+        if self.variable.get():
+            rounded_rect(canvas, pad, pad, size - pad, size - pad, radius, fill=colour, outline="")
+            points = [0.27, 0.52, 0.43, 0.68, 0.74, 0.34]
+            width = max(2, size // 8)
+            canvas.create_line(*[p * size for p in points], fill=c.on_accent, width=width,
+                               capstyle="round", joinstyle="round")  # fmt: skip
+        else:
+            rounded_rect(canvas, pad, pad, size - pad, size - pad, radius, fill=c.panel2,
+                         outline=c.dim if self.disabled else c.border, width=2)  # fmt: skip
+        self.label.configure(fg=c.dim if self.disabled else c.text)
+        self.configure(cursor="arrow" if self.disabled else "hand2")
+
+    @property
+    def text(self) -> str:
+        return str(self.label.cget("text"))
+
+    def set_text(self, text: str) -> None:
+        self.label.configure(text=text)
+
+    def state(self, spec: list[str]) -> None:
+        """As ttk widgets: ["disabled"] or ["!disabled"]."""
+        if "disabled" in spec or "!disabled" in spec:
+            self.disabled = "disabled" in spec
+            self.draw()
+
+    def instate(self, spec: list[str]) -> bool:
+        return all(self.disabled == (s == "disabled") for s in spec if s.endswith("disabled"))
+
+
 class App:
     """The window and everything on it."""
 
@@ -299,7 +379,7 @@ class App:
     def _build_scroller(self) -> None:
         """The pages sit in a canvas with a scrollbar that shows only when a page is taller
         than the window, so the buttons at the bottom of a page stay reachable."""
-        holder = ttk.Frame(self.root)
+        holder = self.scroll_holder = ttk.Frame(self.root)
         holder.pack(fill="both", expand=True)
         holder.columnconfigure(0, weight=1)
         holder.rowconfigure(0, weight=1)
@@ -311,6 +391,7 @@ class App:
         self.scrollbar.grid_remove()
         self._scrollable = False
         self.wrapping: list[ttk.Label] = []  # labels that wrap at the page width
+        self.check_rows: list[CheckRow] = []  # (their text wraps beside the box)
         self._wrapped_at = 0  # the page width they were wrapped at
         self._cards_pending = False  # a layout of the model cards is waiting (_layout_cards)
         self.cards: dict[str, dict[str, Any]] = {}
@@ -341,6 +422,8 @@ class App:
             self._wrapped_at = width
             for label in self.wrapping:
                 label.configure(wraplength=width)
+            for check in self.check_rows:
+                check.label.configure(wraplength=width - self.px(36))
             self._layout_cards_soon()
             self._wrap_status(width)
         scrollable = content > window_height
@@ -478,7 +561,17 @@ class App:
                 frame.grid(row=0, column=0, sticky="nsew")
             else:
                 frame.grid_remove()
+        if name == "setup":
+            self.setup_bar.pack(side="bottom", fill="x", before=self.scroll_holder)
+        else:
+            self.setup_bar.pack_forget()
+        # A page opens at its top (the last one may have been scrolled down), and the
+        # scrollbar fits it at once.
+        changed = name != self.page
         self.page = name
+        if changed:
+            self.scroller.yview_moveto(0)
+            self.root.after_idle(self._fit_body)
 
     def _new_page(self, name: str) -> ttk.Frame:
         frame = ttk.Frame(self.body)
@@ -599,9 +692,7 @@ class App:
         # Models too big for the graphics card found are folded away (they would run partly on
         # the processor, many times slower); this shows them again.
         self.show_big_var = tk.BooleanVar(value=False)
-        self.show_big_check = ttk.Checkbutton(
-            models, variable=self.show_big_var, command=self._apply_visibility, cursor="hand2"
-        )
+        self.show_big_check = CheckRow(self, models, "", self.show_big_var, self._apply_visibility)
         self.show_big_check.grid(row=row + 2, column=0, sticky="w")
         self.show_big_check.grid_remove()
         # With LM Studio: which of its models Starlight loads (it has several, none loaded);
@@ -651,9 +742,7 @@ class App:
             )
         )
         for index, (variable, text) in enumerate(rows, start=1):
-            check = ttk.Checkbutton(
-                options, text=text, variable=variable, command=self._refresh_summary, cursor="hand2"
-            )
+            check = CheckRow(self, options, text, variable, self._refresh_summary)
             check.grid(row=index, column=0, sticky="w")
             if variable is self.gpu_var:
                 self.gpu_check = check  # off with LM Studio: it decides where the model runs
@@ -661,24 +750,29 @@ class App:
                 self.think_check = check  # only for the models that think first
         self.has_ocr_option = any(variable is self.ocr_var for variable, _ in rows)
 
-        self.summary = self._label(page, "", "Dim.TLabel", wrap=True)
-        self.summary.grid(row=4, column=0, sticky="w", pady=(self.px(16), 0))
-        page.rowconfigure(5, weight=1)
-        buttons = ttk.Frame(page)
-        buttons.grid(row=6, column=0, sticky="ew", pady=(self.px(10), 0))
+        # At the foot of the window, always in view (the list of models above is long): what
+        # will be downloaded, and the buttons. show() puts it there for this page only.
+        self.setup_bar = ttk.Frame(self.root)
+        tk.Frame(self.setup_bar, bg=self.c.border, height=1).pack(fill="x")
+        buttons = ttk.Frame(
+            self.setup_bar, padding=(self.px(28), self.px(10), self.px(28), self.px(12))
+        )
+        buttons.pack(fill="x")
         buttons.columnconfigure(0, weight=1)
+        self.summary = self._label(buttons, "", "Dim.TLabel", wrap=True)
+        self.summary.grid(row=0, column=0, columnspan=4, sticky="w", pady=(0, self.px(8)))
         note = self._label(
             buttons, "Your choices are saved in config/launcher.json.", "Small.TLabel"
         )
-        note.grid(row=0, column=0, sticky="w")
+        note.grid(row=1, column=0, sticky="w")
         self.setup_cancel = self._button(buttons, "Cancel", self.on_setup_cancel)
-        self.setup_cancel.grid(row=0, column=1, padx=(0, self.px(8)))
+        self.setup_cancel.grid(row=1, column=1, padx=(0, self.px(8)))
         self.setup_quit = self._button(buttons, "Quit", self.quit_app)
-        self.setup_quit.grid(row=0, column=2, padx=(0, self.px(8)))
+        self.setup_quit.grid(row=1, column=2, padx=(0, self.px(8)))
         self.setup_go = self._button(
             buttons, "Install and start", self.on_setup_go, "Accent.TButton"
         )
-        self.setup_go.grid(row=0, column=3)
+        self.setup_go.grid(row=1, column=3)
 
     def _tesseract_installed(self) -> bool:
         import shutil
@@ -778,8 +872,8 @@ class App:
                     heading.grid_remove()
         big = [k for k in self.L.MODEL_PRESETS if self._too_big(self.L.MODEL_INFO[k][2])]
         if use_model and big:
-            self.show_big_check.configure(
-                text=f"Also show the {len(big)} models too big for this graphics card"
+            self.show_big_check.set_text(
+                f"Also show the {len(big)} models too big for this graphics card"
             )
             self.show_big_check.grid()
         else:
@@ -1206,10 +1300,10 @@ class App:
         details.columnconfigure(0, weight=1)
         details.rowconfigure(1, weight=1)
         self.details_open = tk.BooleanVar(value=False)
-        toggle = ttk.Checkbutton(
-            details, text="Show details", variable=self.details_open, command=self._toggle_details
-        )
-        toggle.grid(row=0, column=0, sticky="w")
+        self.details_toggle = tk.Label(details, text="▸  Show details", font=self.f_small,
+                                       bg=c.bg, fg=c.dim, cursor="hand2")  # fmt: skip
+        self.details_toggle.grid(row=0, column=0, sticky="w")
+        self.details_toggle.bind("<Button-1>", lambda _event: self._flip_details())
         self.log_frame = ttk.Frame(details)
         self.log_frame.columnconfigure(0, weight=1)
         self.log_frame.rowconfigure(0, weight=1)
@@ -1230,7 +1324,14 @@ class App:
         self._label(buttons, note, "Small.TLabel").grid(row=0, column=0, sticky="w")
         self._button(buttons, "Quit", self.quit_app).grid(row=0, column=1)
 
+    def _flip_details(self) -> None:
+        self.details_open.set(not self.details_open.get())
+        self._toggle_details()
+
     def _toggle_details(self) -> None:
+        self.details_toggle.configure(
+            text="▾  Hide details" if self.details_open.get() else "▸  Show details"
+        )
         if self.details_open.get():
             self.log_frame.grid(row=1, column=0, sticky="nsew", pady=(self.px(6), 0))
         else:
@@ -1481,7 +1582,7 @@ class App:
                 viewer_url if status.viewer else "Starting ...",
             )
         if status.kill is None:
-            self._set_row("Kill switch", c.dim, "-")
+            self._set_row("Kill switch", c.dim, "Ready once the chat is up")
         elif status.kill:
             self._set_row(
                 "Kill switch", c.bad, "ENGAGED: Starlight will not do anything until you resume"
@@ -1495,10 +1596,13 @@ class App:
             text="Resume" if status.kill else "Stop everything",
             style="TButton" if status.kill else "Danger.TButton",
         )
-        can_restart = (
-            self.services is not None and getattr(self.services, "watchdog", None) is not None
+        # Our own model server can be restarted; a model in LM Studio can be reloaded there.
+        lmstudio = self.settings.uses_lmstudio
+        can_restart = self.services is not None and (
+            lmstudio or getattr(self.services, "watchdog", None) is not None
         )
         self.btn_restart.state(["!disabled"] if can_restart else ["disabled"])
+        self.btn_restart.configure(text="Reload the model" if lmstudio else "Restart model server")
 
         if status.model == "down":
             title, sub = (

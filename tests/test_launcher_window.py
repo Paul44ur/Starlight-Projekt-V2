@@ -428,7 +428,7 @@ def test_the_model_list_folds_tags_flags_and_frees_space(
         assert shown("qwen14b-uncensored") and shown("gpt-oss-20b")  # 14 GB fits 16 GB
         large_heading = app.sections[1][0]
         assert large_heading is not None and not large_heading.winfo_manager()
-        assert "12 models too big" in app.show_big_check.cget("text")
+        assert "12 models too big" in app.show_big_check.text
         app.show_big_var.set(True)
         app._apply_visibility()
         assert shown("qwen3-32b") and large_heading.winfo_manager()
@@ -474,5 +474,59 @@ def test_the_model_list_folds_tags_flags_and_frees_space(
         app.select_model("qwen14b", touched=True)
         app.remove_model("qwen7b")
         assert not downloaded.exists() and "Downloaded" not in badges("qwen7b")
+    finally:
+        app.root.destroy()
+
+
+@pytest.mark.skipif(not has_display(), reason="needs tkinter and a display")
+def test_the_install_button_stays_in_view_and_pages_open_at_their_top(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from tests.test_cleanup_launcher import load_gui
+    from tests.test_lmstudio import starlight_root  # (they import this module)
+
+    gui = load_gui()
+    monkeypatch.setattr(gui.App, "_start_background_lookups", lambda self: None)  # no network
+    root = starlight_root(tmp_path, {"model_server": "lmstudio"})
+    monkeypatch.setenv("UV_CACHE_DIR", str(root / ".uv-cache"))
+    app = gui.App(L, L.build_parser().parse_args(["--root", str(root)]))
+    try:
+        app.root.deiconify()
+        app.open_setup(False)
+
+        def settle() -> None:
+            for _ in range(6):
+                app.root.update()
+                time.sleep(0.03)
+
+        settle()
+        # the bar with "Install and start" is outside the scrolled list: always in view
+        assert app.setup_bar.winfo_manager() == "pack" and app.setup_go.winfo_ismapped()
+        app.scroller.yview_moveto(1.0)
+        settle()
+        assert app.scroller.yview()[0] > 0
+        app.show("running")
+        settle()
+        assert app.scroller.yview()[0] == 0  # the next page opens at its top
+        assert not app.setup_bar.winfo_manager()  # and the bar is only for the setup page
+
+        # the check boxes: a click toggles them, not while disabled
+        app.show("setup")
+        settle()
+        before = app.voice_var.get()
+        voice = next(row for row in app.check_rows if row.variable is app.voice_var)
+        voice.label.event_generate("<Button-1>")
+        assert app.voice_var.get() is not before
+        app.gpu_check.state(["disabled"])
+        assert app.gpu_check.instate(["disabled"])
+        on = app.gpu_var.get()
+        app.gpu_check.event_generate("<Button-1>")
+        assert app.gpu_var.get() == on
+
+        # with LM Studio, the model can be reloaded from the status page
+        app.services = object()
+        app.on_status(L.Status("ready", "qwen3-14b (LM Studio)", True, True, False, 30.0))
+        assert not app.btn_restart.instate(["disabled"])
+        assert app.btn_restart.cget("text") == "Reload the model"
     finally:
         app.root.destroy()
