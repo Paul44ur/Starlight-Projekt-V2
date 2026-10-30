@@ -11,8 +11,12 @@ Safety:
 - nobody is there to say yes when a rule runs, so a tool that normally asks first only
   runs if you approved it for that rule when you made it (``allow``); anything else that
   wants a confirmation is refused, and you are told;
-- making, changing or re-enabling a rule always asks first;
+- making, changing or re-enabling a rule always asks first (on the Automations page the
+  click on Save is that answer, and the page shows what the rule may run without asking);
 - rules run only in the primary Starlight process, never twice.
+
+A tool step a rule was not allowed to run waits in the approval queue (when the approvals
+module is on), so one click runs it after all.
 """
 
 from __future__ import annotations
@@ -108,6 +112,34 @@ class Config(BaseModel):
     rules: list[Rule] = Field(default_factory=list)
 
 
+# The events modules send, with their fields (for the rule editor and automations.events).
+EVENTS: dict[str, tuple[str, list[str]]] = {
+    "calendar.soon": ("an event is about to start", ["title", "start"]),
+    "reminder.due": ("a reminder is due", ["id", "text"]),
+    "mail.new": ("new mail arrived (with mail watch on)", ["id", "from", "subject", "date"]),
+    "network.server_down": ("one of your servers stopped answering", ["server", "host"]),
+    "network.server_up": ("a server answers again", ["server", "host"]),
+    "lan.new_device": ("a device never seen before joined your network", ["ip", "mac"]),
+    "lan.device_joined": ("a known device came onto your network", ["ip", "mac", "name"]),
+    "lan.device_left": ("a known device left your network", ["ip", "mac", "name"]),
+    "home.changed": ("a smart-home device changed", ["entity", "old", "new"]),
+    "watch.price": ("a watched price crossed your limit", ["name", "url", "price", "message"]),
+    "watch.changed": ("a watched page changed", ["name", "url", "message"]),
+    "backup.done": ("a backup finished", ["name", "files"]),
+    "files.saved": ("Starlight saved a file", ["path"]),
+    "focus.started": ("focus mode began", ["until"]),
+    "focus.ended": ("focus mode ended", []),
+    "sensors.file_appeared": ("a new file in a folder you watch", ["path", "name", "folder"]),
+    "sensors.drive_added": ("a USB stick or drive was plugged in", ["drive", "label"]),
+    "sensors.drive_removed": ("a USB stick or drive was taken out", ["drive", "label"]),
+    "sensors.battery_low": ("the battery is low, on battery", ["percent"]),
+    "sensors.power_plugged": ("the charger was plugged in", ["percent"]),
+    "sensors.power_unplugged": ("the charger was unplugged", ["percent"]),
+    "sensors.app_started": ("a program was started", ["name"]),
+    "sensors.away": ("no mouse or keyboard for a while", ["idle_minutes"]),
+    "sensors.back": ("you are back at the PC", ["away_minutes"]),
+}
+
 TEMPLATES: dict[str, dict[str, Any]] = {
     "morning-briefing": {
         "when": "weekdays 7:30",
@@ -145,6 +177,22 @@ TEMPLATES: dict[str, dict[str, Any]] = {
             {"say": "Certificates expiring soon: {result.expiring}", "only_if": "expiring"},
         ],
     },
+    "morning-briefing-aloud": {
+        "when": "weekdays 7:30",
+        "actions": [{"tool": "briefing.read_aloud"}],
+    },
+    "overnight-mail": {
+        "when": "every day at 6:45",
+        "actions": [{"tool": "mail.overnight", "args": {"send": True}}],
+    },
+    "weekly-pc-checkup": {
+        "when": "sunday 18:00",
+        "actions": [{"tool": "system.health_report", "args": {"send": True}}],
+    },
+    "battery-low": {
+        "on": "sensors.battery_low",
+        "actions": [{"say": "The battery is at {event.percent}%: plug in the charger."}],
+    },
 }
 
 
@@ -155,6 +203,8 @@ class AutomationUI:
         self.module, self.rule = module, rule
         self.refused: list[str] = []
         self.step_tool: str | None = None  # the tool step running now (None in "ask" steps)
+        self.step_args: dict[str, Any] = {}
+        self.waiting: list[tuple[str, dict[str, Any]]] = []  # refused tool steps, to approve
 
     async def confirm(self, question: str) -> bool:
         match = re.match(r"Run (\S+) with", question)
@@ -164,6 +214,8 @@ class AutomationUI:
         ):
             return True
         self.refused.append(name or question[:120])
+        if name is not None and name == self.step_tool:
+            self.waiting.append((name, self.step_args))
         return False
 
     async def ask(self, question: str, secret: bool = False) -> str | None:
@@ -300,6 +352,7 @@ class AutomationsModule(Module):
                     steps.append({"action": action.describe(), "skipped": True})
                     continue
                 ui.step_tool = action.tool or None
+                ui.step_args = fill(action.args, event, result) if action.tool else {}
                 try:
                     ok, result, error = await self._act(action, event, result)
                 except Exception as exc:  # the kill switch, a crashed tool: stop this run
@@ -314,16 +367,36 @@ class AutomationsModule(Module):
             current_ui.reset(token_ui)
         if ui.refused:
             ok = False
+            queued = await self._queue(rule, ui.waiting)
             await self.ctx.deliver(
                 f"'{rule.name}' needed your OK for {', '.join(sorted(set(ui.refused)))}, which "
-                "it isn't allowed to give itself, so that step did not run. Approve it for this "
-                "rule with automations.allow if you want it to.",
+                "it isn't allowed to give itself, so that step did not run. "
+                + (
+                    "It waits in the approval queue (Activity page) for one click. "
+                    if queued
+                    else ""
+                )
+                + "To let this rule run it without asking, use automations.allow.",
                 title="Automation",
             )
         entry = {"time": self._now().isoformat(), "rule": rule.name, "ok": ok, "steps": steps}
         self._record(entry)
         self.ctx.logger.info("automation ran", rule=rule.name, ok=ok)
         return entry
+
+    async def _queue(self, rule: Rule, steps: list[tuple[str, dict[str, Any]]]) -> int:
+        """Put refused tool steps into the approval queue; how many went in."""
+        if not steps or not self.ctx.has_tool("approvals.add"):
+            return 0
+        count = 0
+        for name, args in steps:
+            added = await self.ctx.call(
+                "approvals.add",
+                {"title": f"Automation '{rule.name}': {name}", "tool": name, "args": args,
+                 "detail": f"From the automation '{rule.name}': {rule.describe()}"},
+            )  # fmt: skip
+            count += added.ok
+        return count
 
     async def _act(
         self, action: Action, event: dict[str, Any], previous: Any
@@ -361,7 +434,9 @@ class AutomationsModule(Module):
                 names.append(action.tool)
         return names
 
-    async def _save_rule(self, rule: Rule) -> dict[str, Any]:
+    async def _save_rule(self, rule: Rule, confirmed: bool = False) -> dict[str, Any]:
+        """Save a new rule, after asking (``confirmed``: the user already said yes, on the
+        Automations page)."""
         others = [r for r in self.config.rules if r.name != rule.name]
         if len(others) != len(self.config.rules):
             raise ToolError(f"an automation named '{rule.name}' exists; pick another name")
@@ -369,7 +444,7 @@ class AutomationsModule(Module):
         question = f"Create the automation '{rule.name}': {rule.describe()}?"
         if needs:
             question += f" It may run {', '.join(needs)} without asking each time."
-        if not await self.ctx.ui.confirm(question):
+        if not confirmed and not await self.ctx.ui.confirm(question):
             raise ToolError("not confirmed, nothing changed")
         rule.allow = sorted(set(rule.allow) | set(needs))
         self.config.rules = [*others, rule]
@@ -397,11 +472,11 @@ class AutomationsModule(Module):
     ) -> dict[str, Any]:
         """Make an automation. Trigger: `when` is a schedule ("weekdays 7:30", "every 2
         hours", "monday 9am") OR `on` is an event name ("network.server_down",
-        "calendar.soon", "reminder.due", "files.saved") with an optional `condition` on its
-        fields ("server == nas" for network.server_down). Actions, run in this order: `tool` (a
-        tool name like "briefing.send", with `args`), then `ask` (a question for the
-        assistant), then `say` (a message to you; may contain {result} and
-        {event.<field>}). Asks for confirmation before saving."""
+        "calendar.soon", "sensors.drive_added"; all of them: automations.events) with an
+        optional `condition` on its fields ("server == nas" for network.server_down).
+        Actions, run in this order: `tool` (a tool name like "briefing.send", with
+        `args`), then `ask` (a question for the assistant), then `say` (a message to you;
+        may contain {result} and {event.<field>}). Asks for confirmation before saving."""
         actions: list[dict[str, Any]] = []
         if tool.strip():
             actions.append({"tool": tool.strip(), "args": args or {}})
@@ -431,6 +506,47 @@ class AutomationsModule(Module):
         except ValidationError as exc:
             problems = "; ".join(e["msg"].removeprefix("Value error, ") for e in exc.errors())
             raise ToolError(f"that automation is not valid: {problems}") from exc
+
+    # -- the Automations page (a click there is the user's answer) ------------------------
+
+    def check_rule(self, data: dict[str, Any]) -> dict[str, Any]:
+        """What a rule from the page would do, and what it may run without asking."""
+        rule = self._build(data)
+        return {"does": rule.describe(), "may_run_without_asking": self._needs_ok(rule)}
+
+    async def save_from_page(self, data: dict[str, Any]) -> dict[str, Any]:
+        return await self._save_rule(self._build(data), confirmed=True)
+
+    async def page_action(self, name: str, action: str) -> dict[str, Any]:
+        rule = self._rule(name)
+        if action == "enable":
+            rule.enabled = True
+            if rule.when:
+                self._next[rule.name] = parse_schedule(rule.when).next_after(self._now())
+                self._save_state()
+            self._write_rules()
+            return {"enabled": rule.name, "next": self._next_text(rule)}
+        if action == "disable":
+            return self.disable(name)
+        if action == "remove":
+            return self.remove(name)
+        if action == "run":
+            return await self.run_now(name)
+        raise ToolError(f"unknown action '{action}'")
+
+    def template_rules(self) -> dict[str, dict[str, Any]]:
+        """Each template: what it does, and the rule to fill the page's form with."""
+        return {
+            name: {"does": self._build({"name": name, **data}).describe(),
+                   "rule": {"name": name, **data}}
+            for name, data in TEMPLATES.items()
+        }  # fmt: skip
+
+    @tool
+    def events(self) -> dict[str, Any]:
+        """The events an automation can start on ("on"), with the fields a condition or
+        a message can use ({event.<field>})."""
+        return {name: {"when": when, "fields": fields} for name, (when, fields) in EVENTS.items()}
 
     @tool
     def templates(self) -> dict[str, Any]:

@@ -204,6 +204,11 @@ permissions:
     - expenses.read_receipt
     - logwatch.check_now
     - dev.review
+    - mail.search
+    - mail.overnight
+    - mail.draft_reply
+    - calendar.prepare
+    - approvals.pending
 
 tools:
   timeout: 120   # seconds before a tool call is aborted

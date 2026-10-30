@@ -3,6 +3,9 @@ something starts. Events live in a standard iCalendar file (data/modules/calenda
 calendar.ics). You can also subscribe to read-only calendar feeds - for example the
 "secret address in iCal format" of a Google calendar, or an Outlook/Nextcloud ICS link;
 the address is a password, so it goes into the keyring.
+
+Before a meeting (``prepare_minutes``, 10 by default) it gathers what you have on it - notes,
+mail and documents that mention it - and sends that along, if it finds anything.
 """
 
 from __future__ import annotations
@@ -12,6 +15,7 @@ import json
 import re
 import uuid
 from datetime import datetime, time, timedelta
+from pathlib import Path
 from typing import Any, Literal
 
 from pydantic import BaseModel, Field
@@ -35,6 +39,16 @@ _RULES = {
 }
 FEED_KEY = "calendar.feed.{}"
 MAX_REMINDER = 366 * 24 * 60  # minutes; how far ahead check_alerts looks for any reminder
+# Words in a title that say nothing about what a meeting is about.
+COMMON = {"meeting", "call", "termin", "besprechung", "with", "mit", "and", "und", "the",
+          "der", "die", "das", "for", "für", "about", "über", "zoom", "teams", "video",
+          "online", "weekly", "daily", "sync", "jour", "fixe", "telefonat", "treffen"}  # fmt: skip
+
+
+def keywords(title: str) -> list[str]:
+    """The words of a title worth searching for: "Budget call with Anna" -> budget, anna."""
+    words = re.findall(r"[^\W\d_]{3,}", title.lower())
+    return [w for w in dict.fromkeys(words) if w not in COMMON][:3]
 
 
 def short_id(uid: str) -> str:
@@ -53,6 +67,7 @@ class Config(BaseModel):
     work_start: str = "08:00"
     work_end: str = "18:00"
     feeds: list[str] = Field(default_factory=list)
+    prepare_minutes: int = Field(default=10, ge=0)  # 0: no meeting preparation
 
 
 class CalendarModule(Module):
@@ -65,6 +80,8 @@ class CalendarModule(Module):
         self._feeds: dict[str, tuple[datetime, list[ics.Event]]] = {}
         if self.config.check_interval > 0:
             ctx.every(self.config.check_interval, self.check_alerts, "alerts")
+            if self.config.prepare_minutes > 0:
+                ctx.every(self.config.check_interval, self.check_prepare, "prepare")
 
     def _now(self) -> datetime:
         return datetime.now().replace(microsecond=0)
@@ -409,6 +426,100 @@ class CalendarModule(Module):
         if sent:
             self.alerted_file.write_text(json.dumps(alerted), encoding="utf-8")
         return sent
+
+    # -- meeting preparation -------------------------------------------------------------
+
+    async def _gather(self, event: ics.Event) -> dict[str, list[dict[str, Any]]]:
+        """Notes, mail and documents that mention what the event is about."""
+        words = keywords(event.title)
+        found: dict[str, list[dict[str, Any]]] = {"notes": [], "mail": [], "documents": []}
+        if not words:
+            return found
+        for word in words:
+            if self.ctx.has_tool("notes.find"):
+                out = await self.ctx.call("notes.find", {"text": word})
+                if out.ok:  # (not a note's title line: that is not about the meeting)
+                    found["notes"] += [
+                        n for n in out.output.get("matches", []) if not n["text"].startswith("#")
+                    ]
+            if self.ctx.has_tool("mail.search"):
+                out = await self.ctx.call("mail.search", {"text": word, "limit": 5})
+                if out.ok:
+                    found["mail"] += out.output.get("messages", [])
+        if self.ctx.has_tool("docs.search"):
+            out = await self.ctx.call("docs.search", {"query": event.title, "limit": 3})
+            if out.ok:
+                found["documents"] = out.output.get("results", [])
+        found["notes"] = list({(n["note"], n["line"]): n for n in found["notes"]}.values())[:6]
+        found["mail"] = list({m["id"]: m for m in found["mail"]}.values())[:6]
+        return found
+
+    @staticmethod
+    def _prep_text(when: datetime, event: ics.Event, found: dict[str, list[Any]]) -> str:
+        lines = [
+            f"{event.title} at {when:%H:%M}" + (f" ({event.location})" if event.location else "")
+        ]
+        if found["notes"]:
+            lines.append("Your notes:")
+            lines += [f"- {n['note']}: {n['text']}" for n in found["notes"]]
+        if found["mail"]:
+            lines.append("Mail about it:")
+            lines += [f"- {m['from']}: {m['subject']} ({m['date'][:16]})" for m in found["mail"]]
+        if found["documents"]:
+            lines.append("In your documents:")
+            lines += [f"- {d['file']}: {d['snippet'][:160]}" for d in found["documents"]]
+        return "\n".join(lines)
+
+    @tool
+    async def prepare(self, event: str) -> dict[str, Any]:
+        """Get ready for an event (by its id or a word from its title, within the next
+        week): your notes, mail and documents that mention what it is about."""
+        now = self._now()
+        upcoming = await self._between(now - timedelta(hours=2), now + timedelta(days=7))
+        chosen = self._find(list({e.uid: e for _, e in upcoming}.values()), event)
+        when = next(w for w, e in upcoming if e.uid == chosen.uid)
+        found = await self._gather(chosen)
+        return {"event": self._view(when, chosen), **found,
+                "text": self._prep_text(when, chosen, found)}  # fmt: skip
+
+    async def check_prepare(self, now: datetime | None = None) -> list[str]:
+        """Send what there is on each meeting starting within prepare_minutes."""
+        moment = now or self._now()
+        try:
+            events = await self._all()
+        except ToolError:
+            return []
+        horizon = moment + timedelta(minutes=self.config.prepare_minutes)
+        done_file = self.ctx.data_dir / "prepared.json"
+        done = {
+            k: v
+            for k, v in self._read_marks(done_file).items()
+            if v >= (moment - timedelta(days=1)).isoformat()
+        }
+        sent: list[str] = []
+        changed = False
+        for when, event in self._within(events, moment, horizon):
+            key = f"{event.uid}|{when.isoformat()}"
+            if event.all_day or when < moment or key in done:
+                continue
+            done[key], changed = when.isoformat(), True
+            found = await self._gather(event)
+            if any(found.values()):
+                await self.ctx.deliver(self._prep_text(when, event, found), title="Meeting prep")
+                sent.append(event.title)
+        if changed:
+            write_atomic(done_file, json.dumps(done))
+        return sent
+
+    @staticmethod
+    def _read_marks(path: Path) -> dict[str, str]:
+        try:
+            data = json.loads(path.read_text("utf-8"))
+        except (OSError, json.JSONDecodeError):
+            return {}
+        return (
+            {k: v for k, v in data.items() if isinstance(v, str)} if isinstance(data, dict) else {}
+        )
 
     def _alerted(self, now: datetime) -> dict[str, str]:
         try:

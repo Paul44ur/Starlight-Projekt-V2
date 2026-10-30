@@ -84,6 +84,7 @@ class LanModule(Module):
     async def setup(self, ctx: ModuleContext) -> None:
         self.config: Config = ctx.config
         self.file = ctx.data_dir / "devices.json"
+        self._online: dict[str, int] | None = None  # mac -> rounds missed (the watcher's view)
         if self.config.watch:
             ctx.every(self.config.watch_minutes * 60, self.check, "watch", first_delay=60)
 
@@ -191,6 +192,26 @@ class LanModule(Module):
             result["answered_ping"] = answered
         return result
 
+    async def _comings_and_goings(
+        self, present: dict[str, dict[str, Any]], known: set[str]
+    ) -> None:
+        online, self._online = self._online, {mac: 0 for mac in present}
+        if online is None:
+            return
+        for mac, device in present.items():
+            if mac not in online and mac in known:
+                await self.ctx.publish("lan.device_joined", device)
+        names = self._known()
+        for mac, missed in online.items():
+            if mac in present:
+                continue
+            if missed + 1 < 2:
+                self._online[mac] = missed + 1  # once: maybe asleep
+                continue
+            entry = names.get(mac, {})
+            await self.ctx.publish("lan.device_left", {"mac": mac, "ip": entry.get("ip", ""),
+                                                       "name": entry.get("name", "")})  # fmt: skip
+
     def _forget_old(self, known: dict[str, dict[str, Any]], present: set[str]) -> None:
         days = self.config.forget_unnamed_after_days
         if days <= 0:
@@ -235,12 +256,16 @@ class LanModule(Module):
         return {"forgotten": mac}
 
     async def check(self) -> list[dict[str, Any]]:
-        """One round of the watcher: warn about devices never seen before."""
+        """One round of the watcher: warn about devices never seen before, and publish
+        lan.device_joined / lan.device_left for the ones you know ("when my phone comes
+        home ..."). A device counts as gone after two rounds without it (the PC's neighbour
+        table forgets slowly, and a phone sleeps now and then)."""
         before = set(self._known())
-        if not before:  # the first round only learns what is there
-            await self.devices(sweep=self.config.sweep_on_watch)
-            return []
         result = await self.devices(sweep=self.config.sweep_on_watch)
+        present = {d["mac"]: d for d in result["devices"]}
+        await self._comings_and_goings(present, before)
+        if not before:  # the first round only learns what is there
+            return []
         new = [d for d in result["devices"] if d["mac"] not in before]
         for device in new:
             await self.ctx.publish("lan.new_device", device)

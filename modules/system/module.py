@@ -413,6 +413,65 @@ class SystemModule(Module):
             result["battery"] = battery
         return result
 
+    @tool(own_timeout=True)
+    async def health_report(self, send: bool = False) -> dict[str, Any]:
+        """A check-up of the PC: disk space, memory, how long since the last restart,
+        programs that start at login, program updates (winget), backups and certificates.
+        With send it is delivered as a message too (for a weekly automation)."""
+        good: list[str] = []
+        bad: list[str] = []
+        for disk in self.disks():
+            line = f"{disk['drive']}: {disk['free']} free ({disk['percent_used']}% used)"
+            (bad if disk["percent_used"] >= 90 else good).append(line)
+        ps = _psutil()
+        if ps is not None and (memory := ps.virtual_memory().percent) >= 90:
+            bad.append(f"memory is {memory}% full; close a program or restart")
+        boot = self._boot_time(ps)
+        if boot is not None:
+            days = (time.time() - boot) / 86400
+            since = f"last restart {human_duration(time.time() - boot)} ago"
+            (bad if days > 14 else good).append(since + ("; restart soon" if days > 14 else ""))
+        starting = startup_entries(self._platform())
+        good.append(f"{len(starting)} programs start at login")
+        await self._check_others(good, bad)
+        text = "\n".join(
+            ["PC check-up", *(f"⚠ {line}" for line in bad), *(f"✓ {line}" for line in good)]
+        )
+        if send:
+            await self.ctx.deliver(text, title="PC check-up")
+        return {"warnings": bad, "fine": good, "text": text}
+
+    async def _check_others(self, good: list[str], bad: list[str]) -> None:
+        """The parts that come from other modules, each left out when it is off."""
+        if self.ctx.has_tool("apps.updates"):
+            out = await self.ctx.call("apps.updates")
+            if out.ok:
+                count = len(out.output.get("updates", []))
+                (bad if count else good).append(
+                    f"{count} program updates waiting (say 'update all programs')"
+                    if count
+                    else "programs are up to date"
+                )
+        if self.ctx.has_tool("backup.list"):
+            out = await self.ctx.call("backup.list")
+            for plan in out.output.get("backups", []) if out.ok else []:
+                newest = plan.get("newest")
+                try:
+                    age = (
+                        time.time() - time.mktime(time.strptime(newest[:10], "%Y-%m-%d"))
+                    ) / 86400
+                except (TypeError, ValueError):
+                    bad.append(f"backup {plan['name']} has never run")
+                    continue
+                line = f"backup {plan['name']}: newest from {newest[:10]}"
+                (bad if age > 8 else good).append(line)
+        if self.ctx.has_tool("certs.expiring"):
+            out = await self.ctx.call("certs.expiring", {"days": 30})
+            if out.ok:
+                for cert in out.output.get("expiring", []):
+                    bad.append(f"certificate for {cert.get('host')} expires in "
+                               f"{cert.get('days_left')} days")  # fmt: skip
+
     @tool
     def disks(self) -> list[dict[str, Any]]:
         """Free and used space on each drive."""

@@ -82,6 +82,15 @@ Subject: {subject}
 
 {body}"""
 
+NEWSLETTER_PROMPT = """\
+Here are newsletters and other bulk mail from overnight. Write one short line for each:
+who it is from and the one thing worth knowing (or "nothing new"). Do not invent anything.
+
+{mails}"""
+
+# Senders a reply never goes to.
+NO_REPLY = re.compile(r"no-?reply|do-?not-?reply|mailer-daemon|notifications?@|newsletter", re.I)
+
 
 class EmailError(ToolError):
     pass
@@ -186,12 +195,68 @@ class EmailModule(Module):
         messages = await asyncio.to_thread(self._imap_list, password, count, True)
         if not messages:
             return {"count": 0, "summary": "No unread mail."}
-        lines = [
-            f"- [{m['id']}] from {m['from']}, subject: {m['subject']}. {m.get('snippet', '')}"
-            for m in messages
-        ]
+        lines = [_line(m) for m in messages]
         text = await self._write(SUMMARY_PROMPT.replace("{mails}", "\n".join(lines)))
         return {"count": len(messages), "summary": text}
+
+    @tool
+    async def search(self, text: str, limit: int = 10) -> dict[str, Any]:
+        """Find messages (read or not) that contain a word or name, newest first: sender,
+        subject and date. Nothing is marked as read."""
+        password = self._require()
+        if not text.strip():
+            raise EmailError("what should I look for?")
+        count = max(1, min(limit, 50))
+        messages = await asyncio.to_thread(self._imap_list, password, count, False, text.strip())
+        return {"count": len(messages), "messages": messages}
+
+    @tool(own_timeout=True)
+    async def overnight(
+        self, limit: int = 30, drafts: int = 3, send: bool = False
+    ) -> dict[str, Any]:
+        """Sort what came in unread: newsletters summed up in one line each, the rest
+        sorted into important / can wait / probably spam, and replies drafted for up to
+        `drafts` personal messages - these wait in the approval queue, nothing is sent.
+        With send, the result is delivered as a message too (for a morning automation)."""
+        password = self._require()
+        messages = await asyncio.to_thread(self._imap_list, password, max(1, min(limit, 50)), True)
+        if not messages:
+            text = "No unread mail."
+            if send:
+                await self.ctx.deliver(text, title="Mail overnight")
+            return {"count": 0, "text": text}
+        bulk = [m for m in messages if m.get("bulk")]
+        personal = [m for m in messages if not m.get("bulk")]
+        parts: list[str] = []
+        if personal:
+            lines = "\n".join(_line(m) for m in personal)
+            parts.append(await self._write(SUMMARY_PROMPT.replace("{mails}", lines)))
+        if bulk:
+            lines = "\n".join(_line(m) for m in bulk)
+            parts.append(
+                f"Newsletters ({len(bulk)}):\n"
+                + await self._write(NEWSLETTER_PROMPT.replace("{mails}", lines))
+            )
+        queued: list[str] = []
+        if drafts > 0 and self.ctx.has_tool("approvals.add"):
+            for message in [m for m in personal if not NO_REPLY.search(m["from"])][:drafts]:
+                draft = await self.draft_reply(message["id"])
+                added = await self.ctx.call("approvals.add", {
+                    "title": f"Reply to {message['from']}: {message['subject']}"[:200],
+                    "tool": "mail.reply",
+                    "args": {"id": message["id"], "body": draft["body"]},
+                    "detail": f"To: {draft['to']}\nSubject: {draft['subject']}\n\n{draft['body']}",
+                })  # fmt: skip
+                if added.ok:
+                    queued.append(message["subject"])
+        if queued:
+            replies = "1 reply" if len(queued) == 1 else f"{len(queued)} replies"
+            parts.append(f"{replies} drafted; they wait for your OK in the approval queue "
+                         "(Activity page).")  # fmt: skip
+        text = "\n\n".join(parts)
+        if send:
+            await self.ctx.deliver(text, title="Mail overnight")
+        return {"count": len(messages), "newsletters": len(bulk), "drafted": queued, "text": text}
 
     @tool
     async def draft_reply(self, id: str, instructions: str = "") -> dict[str, Any]:
@@ -328,10 +393,28 @@ class EmailModule(Module):
         _, data = client.uid("SEARCH", None, f"UID {','.join(uids)} UNSEEN")  # type: ignore[arg-type]
         return {u.decode() for u in (data[0].split() if data and data[0] else [])}
 
-    def _imap_list(self, password: str, count: int, unseen: bool = False) -> list[dict[str, Any]]:
+    @staticmethod
+    def _search(client: imaplib.IMAP4_SSL, text: str) -> list[str]:
+        """The UIDs of messages containing ``text`` (anywhere: headers or body)."""
+        if text.isascii():
+            quoted = text.replace("\\", "\\\\").replace('"', '\\"')
+            return EmailModule._uids(client, f'TEXT "{quoted}"')
+        session: Any = client  # (imaplib sends a bytes literal as it is; typeshed says str)
+        session.literal = text.encode()
+        _, data = client.uid("SEARCH", "CHARSET", "UTF-8", "TEXT")
+        return [u.decode() for u in (data[0].split() if data and data[0] else [])]
+
+    def _imap_list(
+        self, password: str, count: int, unseen: bool = False, search: str = ""
+    ) -> list[dict[str, Any]]:
         client = self._imap_session(password)
         try:
-            uids = self._uids(client, "UNSEEN" if unseen else "ALL")[-count:]
+            found = (
+                self._search(client, search)
+                if search
+                else self._uids(client, "UNSEEN" if unseen else "ALL")
+            )
+            uids = found[-count:]
             unread = set(uids) if unseen else self._flags(client, uids)
             messages: list[dict[str, Any]] = []
             for uid in reversed(uids):
@@ -346,6 +429,12 @@ class EmailModule(Module):
                     "subject": _decode(parsed.get("Subject", "")),
                     "date": parsed.get("Date", ""),
                     "unread": uid in unread,
+                    # a newsletter or other bulk mail
+                    "bulk": bool(
+                        parsed.get("List-Unsubscribe")
+                        or parsed.get("List-Id")
+                        or str(parsed.get("Precedence", "")).lower() in ("bulk", "list")
+                    ),
                 }
                 if unseen:
                     item["snippet"] = " ".join(_body(parsed).split())[:240]
@@ -455,6 +544,12 @@ def _payload(fetched: Any) -> bytes:
     first = fetched[0]
     part = first[1] if isinstance(first, tuple) and len(first) > 1 else first
     return bytes(part) if isinstance(part, (bytes, bytearray)) else b""
+
+
+def _line(message: dict[str, Any]) -> str:
+    """One message for the model: id, sender, subject and the first lines."""
+    snippet = message.get("snippet", "")
+    return f"- [{message['id']}] from {message['from']}, subject: {message['subject']}. {snippet}"
 
 
 def _reply_subject(subject: str) -> str:

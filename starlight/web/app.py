@@ -358,6 +358,11 @@ def create_app(paths: Paths | None = None) -> Any:
         viewer(request)
         return page("activity.html")
 
+    @app.get("/automations", response_class=HTMLResponse)
+    def automations_page(request: Request) -> str:
+        viewer(request)
+        return page("automations.html")
+
     @app.get("/pair", response_class=HTMLResponse)
     def pair_page(request: Request) -> Any:
         if gate.remote_host(request.headers) is None:
@@ -446,6 +451,12 @@ def create_app(paths: Paths | None = None) -> Any:
                 if callable(read_status):
                     access = read_status()
         pause = read_pause(paths)  # game mode: the model is off the graphics card
+        waiting = 0
+        queue = k.modules.records.get("approvals")
+        if queue is not None and queue.instance is not None:
+            waiting_list: Any = queue.instance
+            with contextlib.suppress(Exception):  # (read directly too, like access above)
+                waiting = len(waiting_list.items())
         return {
             "model": k.config.model.provider,
             "home": str(paths.root) if who.local else None,
@@ -456,6 +467,7 @@ def create_app(paths: Paths | None = None) -> Any:
             "access": access,
             "local": who.local,
             "device": who.device.name if who.device else None,
+            "waiting": waiting,  # things in the approval queue
         }
 
     @app.post("/api/kill")
@@ -686,6 +698,105 @@ def create_app(paths: Paths | None = None) -> Any:
         except ToolError as exc:
             raise HTTPException(status_code=503, detail=str(exc)) from exc
         return Response(audio, media_type="audio/wav")
+
+    # -- automations and the approval queue -------------------------------------------------
+
+    def module_instance(name: str, label: str) -> Any:
+        record = kernel().modules.records.get(name)
+        if record is None or record.instance is None:
+            raise HTTPException(status_code=404, detail=f"the {label} module is off")
+        return record.instance
+
+    @app.get("/api/automations")
+    def automations(request: Request) -> dict[str, Any]:
+        viewer(request)
+        rules = module_instance("automations", "automations")
+        return {
+            "rules": rules.list_rules()["automations"],
+            "templates": rules.template_rules(),
+            "events": rules.events(),
+            "tools": sorted(
+                [
+                    {
+                        "name": t.qualified_name,
+                        "tag": t.permission.value,
+                        "description": first_sentence(t.description),
+                    }
+                    for t in kernel().dispatcher.tools()
+                ],
+                key=lambda t: t["name"],
+            ),
+        }
+
+    @app.post("/api/automations/check")
+    async def check_automation(request: Request) -> dict[str, Any]:
+        local_only(request)
+        rule = await body(request)
+        try:
+            checked: dict[str, Any] = module_instance("automations", "automations").check_rule(rule)
+        except ToolError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        return checked
+
+    @app.post("/api/automations")
+    async def save_automation(request: Request) -> dict[str, Any]:
+        local_only(request)  # changing rules stays on the PC, like in the chat
+        rule = await body(request)
+        try:
+            saved: dict[str, Any] = await module_instance(
+                "automations", "automations"
+            ).save_from_page(rule)
+        except ToolError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        kernel().audit.record("web.automation", name=saved.get("saved"), rule=saved.get("rule"))
+        return saved
+
+    @app.post("/api/automations/{name}/{action}")
+    async def automation_action(name: str, action: str, request: Request) -> dict[str, Any]:
+        local_only(request)
+        if action not in {"enable", "disable", "remove", "run"}:
+            raise HTTPException(status_code=400, detail="enable, disable, remove or run")
+        try:
+            done: dict[str, Any] = await module_instance("automations", "automations").page_action(
+                name, action
+            )
+        except ToolError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        kernel().audit.record("web.automation", name=name, step=action)
+        return done
+
+    @app.get("/api/approvals")
+    def approvals(request: Request) -> dict[str, Any]:
+        viewer(request)
+        record = kernel().modules.records.get("approvals")
+        if record is None or record.instance is None:
+            return {"count": 0, "items": [], "off": True}
+        queue: Any = record.instance
+        listed: dict[str, Any] = queue.pending()
+        return listed
+
+    @app.post("/api/approvals/{item}")
+    async def approval_action(item: str, request: Request) -> dict[str, Any]:
+        who = viewer(request)
+        action = str((await body(request)).get("action", ""))
+        queue = module_instance("approvals", "approvals")
+        if action == "dismiss":
+            try:
+                gone: dict[str, Any] = queue.dismiss(item)
+            except ToolError as exc:
+                raise HTTPException(status_code=404, detail=str(exc)) from exc
+            return gone
+        if action != "approve":
+            raise HTTPException(status_code=400, detail="approve or dismiss")
+        # From the phone, what is blocked there stays blocked; the click is the yes.
+        block_ctx = extra_blocked.set(() if who.local else tuple(config.web.remote.blocked))
+        try:
+            done: dict[str, Any] = await queue.run_item(item)
+        except ToolError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+        finally:
+            extra_blocked.reset(block_ctx)
+        return done
 
     # -- settings: permissions and modules ---------------------------------------------------
 

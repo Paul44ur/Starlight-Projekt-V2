@@ -18,6 +18,11 @@
   .kind.denied, .kind.failed { color: var(--bad); border-color: var(--bad); }
   .kind.kill-switch { color: #fff; background: var(--bad); border-color: var(--bad); }
   .kind.practice, .kind.setting { color: var(--warn); border-color: var(--warn); }
+  .waiting { border-bottom: 1px solid var(--border); padding: 10px 0; }
+  .waiting:last-child { border-bottom: none; }
+  .waiting .runs { font-size: 12px; overflow-wrap: anywhere; }
+  .waiting pre { white-space: pre-wrap; overflow-wrap: anywhere; background: var(--panel2);
+                 border-radius: 8px; padding: 8px 10px; margin: 6px 0; font-size: 13px; }
   @media (max-width: 640px) {
     .entry { grid-template-columns: 1fr auto; gap: 2px 8px; }
     .entry .text { grid-column: 1 / -1; }
@@ -27,10 +32,16 @@
 <body>
 <header class="top">
   <h1><img class="logo" src="/icon.svg" alt="" width="22" height="22" />Activity</h1><span class="spacer"></span>
-  <nav><a href="/">Chat</a><a href="/memory">Memory</a><a href="/settings">Settings</a></nav>
+  <nav><a href="/">Chat</a><a href="/memory">Memory</a><a href="/automations">Automations</a><a href="/settings">Settings</a></nav>
   <button id="theme" class="icon" onclick="cycleTheme()">◐</button>
 </header>
 <div class="page">
+  <div class="card" id="approvals" hidden>
+    <h2>Waiting for your OK</h2>
+    <p class="dim small">Starlight prepared these: a reply it drafted, a step an automation was not allowed to take by itself.
+      <b>Approve</b> runs exactly what is shown; <b>Dismiss</b> drops it.</p>
+    <div id="queue"></div>
+  </div>
   <div class="card">
     <h2>What Starlight did</h2>
     <p class="dim small">Every action it took or was refused, newest first, from <code>logs/audit.log</code>.
@@ -72,10 +83,43 @@ async function load() {
   if (!data.entries.length) box.appendChild(el("p", "dim", "Nothing yet."));
   document.getElementById("count").textContent = data.entries.length + " shown";
 }
+async function loadQueue() {
+  let data;
+  try { data = await api("/api/approvals"); } catch (e) { return; }
+  const card = document.getElementById("approvals");
+  const box = document.getElementById("queue");
+  card.hidden = !data.items.length;
+  box.replaceChildren();
+  data.items.forEach(item => {
+    const row = el("div", "waiting");
+    const title = el("div", "", "");
+    title.append(el("b", "", item.title), el("span", "dim small", "  " + when(item.created)));
+    row.appendChild(title);
+    if (item.detail) row.appendChild(el("pre", "", item.detail));
+    row.appendChild(el("div", "runs dim", "Approving runs " + item.runs));
+    const buttons = el("div", "row");
+    const yes = el("button", "ok", "Approve"), no = el("button", "", "Dismiss");
+    yes.onclick = () => act(item, "approve", [yes, no]);
+    no.onclick = () => act(item, "dismiss", [yes, no]);
+    buttons.append(yes, no);
+    row.appendChild(buttons);
+    box.appendChild(row);
+  });
+}
+async function act(item, action, buttons) {
+  buttons.forEach(b => b.disabled = true);
+  try {
+    const done = await api(`/api/approvals/${encodeURIComponent(item.id)}`, { method: "POST", body: { action } });
+    if (action === "approve") toast(done.ok ? "Done: " + item.title : "It did not work: " + done.error);
+    else toast("Dismissed");
+  } catch (e) { toast(e.message); }
+  loadQueue(); load();
+}
 let typing;
 document.getElementById("search").oninput = () => { clearTimeout(typing); typing = setTimeout(load, 250); };
-load();
+load(); loadQueue();
 setInterval(() => { if (!document.hidden && !document.getElementById("search").value) load(); }, 10000);
+setInterval(() => { if (!document.hidden) loadQueue(); }, 15000);
 </script>
 </body>
 </html>

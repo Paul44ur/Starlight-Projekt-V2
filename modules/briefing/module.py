@@ -9,6 +9,8 @@ rules; only read-only tools are used. A part whose module is off or not set up i
 from __future__ import annotations
 
 import asyncio
+import re
+import unicodedata
 from collections.abc import Awaitable, Callable
 from datetime import datetime
 from typing import Any
@@ -155,6 +157,28 @@ class BriefingModule(Module):
         made = await self.briefing(sections)
         await self.ctx.deliver(made["text"], title="Briefing")
         return {"sent": True, "sections": made["sections"]}
+
+    @tool(own_timeout=True)
+    async def read_aloud(self, sections: str = "") -> dict[str, Any]:
+        """Make the briefing and say it out loud on this PC's speakers (the voice module);
+        it is delivered as text too."""
+        if not self.ctx.has_tool("voice.speak"):
+            raise ToolError("reading aloud needs the voice module (Starlight.exe --voice)")
+        made = await self.briefing(sections)
+        await self.ctx.deliver(made["text"], title="Briefing")
+        spoken = await self.ctx.call("voice.speak", {"text": spoken_text(made["text"])})
+        if not spoken.ok:
+            raise ToolError(f"the briefing was sent, but not spoken: {spoken.error}")
+        return {"spoken": True, "sections": made["sections"]}
+
+
+def spoken_text(text: str) -> str:
+    """The briefing as it reads out loud: no list marks, symbols or link addresses."""
+    text = re.sub(r"https?://\S+", "", text)
+    text = re.sub(r"^[\s•*\-\u2013]+", "", text, flags=re.MULTILINE)
+    text = "".join(c for c in text if unicodedata.category(c) != "So" and c not in "#*_`|")
+    lines = [ln.strip() for ln in text.splitlines() if ln.strip()]
+    return " ".join(ln if ln[-1] in ".!?:" else ln + "." for ln in lines)
 
 
 def _cert_line(cert: dict[str, Any]) -> str:

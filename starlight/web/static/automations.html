@@ -1,0 +1,278 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Starlight automations</title>
+<link rel="icon" href="/icon.svg" type="image/svg+xml" />
+<link rel="stylesheet" href="/style.css" />
+<style>
+  .rule { display: grid; grid-template-columns: 1fr auto; gap: 4px 12px; padding: 9px 0;
+          border-bottom: 1px solid var(--border); align-items: center; }
+  .rule:last-child { border-bottom: none; }
+  .rule .does { grid-column: 1 / -1; font-size: 14px; overflow-wrap: anywhere; }
+  .rule .actions { display: flex; gap: 6px; flex-wrap: wrap; justify-content: flex-end; }
+  fieldset { border: 1px solid var(--border); border-radius: 10px; margin: 12px 0; padding: 10px 12px; }
+  legend { font-weight: 700; padding: 0 6px; }
+  label.choice { display: inline-flex; gap: 6px; align-items: center; margin-right: 14px; }
+  .step { display: grid; grid-template-columns: 11em 1fr auto; gap: 8px; align-items: start;
+          margin: 8px 0; }
+  .step textarea { width: 100%; min-height: 2.6em; font-family: ui-monospace, Consolas, monospace; font-size: 13px; }
+  .step .what { display: grid; gap: 6px; }
+  .hint { font-size: 12px; color: var(--dim); }
+  .preview { background: var(--panel2); border-radius: 8px; padding: 8px 10px; margin-top: 10px; }
+  .template { display: flex; gap: 10px; align-items: baseline; padding: 6px 0;
+              border-bottom: 1px solid var(--border); }
+  .template:last-child { border-bottom: none; }
+  .template .text { flex: 1; overflow-wrap: anywhere; }
+  input.wide, select.wide { width: 100%; }
+  .gap-top { margin-top: 8px; }
+  .rule .pill { margin-left: 8px; }
+  @media (max-width: 640px) { .step { grid-template-columns: 1fr; } }
+</style>
+</head>
+<body>
+<header class="top">
+  <h1><img class="logo" src="/icon.svg" alt="" width="22" height="22" />Automations</h1><span class="spacer"></span>
+  <nav><a href="/">Chat</a><a href="/memory">Memory</a><a href="/activity">Activity</a><a href="/settings">Settings</a></nav>
+  <button id="theme" class="icon" onclick="cycleTheme()" aria-label="Change the theme">◐</button>
+</header>
+<div class="page">
+  <div class="card">
+    <h2>Your automations</h2>
+    <p class="dim small">Rules that run on a schedule or when something happens. They can be changed on the PC only.</p>
+    <div id="rules"></div>
+  </div>
+
+  <div class="card">
+    <h2 id="editor-title">New automation</h2>
+    <form id="editor" onsubmit="return false">
+      <div class="row"><label for="name">Name</label>
+        <input id="name" type="text" class="grow" placeholder="e.g. usb-backup (lowercase, - or _)" maxlength="41" required /></div>
+
+      <fieldset>
+        <legend>When</legend>
+        <label class="choice"><input type="radio" name="trigger" value="when" checked /> On a schedule</label>
+        <label class="choice"><input type="radio" name="trigger" value="on" /> When something happens</label>
+        <div id="when-box" class="row gap-top">
+          <input id="when" type="text" class="grow" aria-label="Schedule" placeholder="weekdays 7:30 · every 2 hours · monday 9am · every month on the 1st at 10:00" />
+        </div>
+        <div id="on-box" class="gap-top" hidden>
+          <select id="on" class="wide" aria-label="Event"></select>
+          <div id="on-hint" class="hint"></div>
+        </div>
+      </fieldset>
+
+      <fieldset id="if-box" hidden>
+        <legend>If (optional)</legend>
+        <div class="row">
+          <select id="if-field" aria-label="Field"><option value="">always</option></select>
+          <select id="if-op" aria-label="Comparison">
+            <option value="==">is</option><option value="!=">is not</option><option value="~">contains</option>
+            <option value="&gt;">is more than</option><option value="&lt;">is less than</option>
+            <option value="&gt;=">is at least</option><option value="&lt;=">is at most</option>
+          </select>
+          <input id="if-value" type="text" class="grow" aria-label="Value" placeholder="value, e.g. nas" />
+        </div>
+      </fieldset>
+
+      <fieldset>
+        <legend>Then</legend>
+        <div id="steps"></div>
+        <button type="button" id="add-step">+ Add a step</button>
+        <p class="hint">In a step, <code>{result}</code> or <code>{result.count}</code> is what the step before gave back, and
+          <code>{event.label}</code> a field of the event. Tools that normally ask first are allowed for this rule when you save it.</p>
+      </fieldset>
+
+      <div class="row">
+        <button type="button" id="check">Check</button>
+        <button type="button" id="save" class="ok">Save</button>
+        <button type="button" id="clear">Clear</button>
+      </div>
+      <div id="preview" class="preview" hidden aria-live="polite"></div>
+    </form>
+  </div>
+
+  <div class="card">
+    <h2>Ready-made</h2>
+    <p class="dim small"><b>Use</b> fills the form above; change what you like, then save.</p>
+    <div id="templates"></div>
+  </div>
+</div>
+<datalist id="tool-list"></datalist>
+<script src="/common.js"></script>
+<script>
+let data = { rules: [], templates: {}, events: {}, tools: [] };
+
+function triggerKind() { return document.querySelector('input[name="trigger"]:checked').value; }
+function showTrigger() {
+  const kind = triggerKind();
+  document.getElementById("when-box").hidden = kind !== "when";
+  document.getElementById("on-box").hidden = kind !== "on";
+  document.getElementById("if-box").hidden = kind !== "on";
+  showEvent();
+}
+document.querySelectorAll('input[name="trigger"]').forEach(r => r.onchange = showTrigger);
+
+function showEvent() {
+  const name = document.getElementById("on").value;
+  const info = data.events[name];
+  document.getElementById("on-hint").textContent = info
+    ? info.when + (info.fields.length ? " · fields: " + info.fields.join(", ") : "") : "";
+  const field = document.getElementById("if-field");
+  const keep = field.value;
+  field.replaceChildren(new Option("always", ""));
+  (info ? info.fields : []).forEach(f => field.appendChild(new Option(f, f)));
+  if ([...field.options].some(o => o.value === keep)) field.value = keep;
+}
+document.getElementById("on").onchange = showEvent;
+
+function addStep(step = {}) {
+  const row = el("div", "step");
+  const kind = el("select");
+  kind.setAttribute("aria-label", "Kind of step");
+  [["tool", "Run a tool"], ["ask", "Ask Starlight"], ["say", "Tell me"]].forEach(([v, t]) => kind.appendChild(new Option(t, v)));
+  kind.value = step.tool ? "tool" : step.ask ? "ask" : step.say ? "say" : "tool";
+  const what = el("div", "what");
+  const tool = el("input"); tool.type = "text"; tool.setAttribute("list", "tool-list");
+  tool.placeholder = "tool, e.g. briefing.send"; tool.value = step.tool || ""; tool.setAttribute("aria-label", "Tool");
+  const args = el("textarea"); args.placeholder = 'arguments as JSON, e.g. {"days": 1}';
+  args.value = step.args && Object.keys(step.args).length ? JSON.stringify(step.args) : ""; args.setAttribute("aria-label", "Arguments");
+  const text = el("textarea"); text.placeholder = "what to ask, or the message"; text.value = step.ask || step.say || "";
+  text.setAttribute("aria-label", "Text");
+  const onlyIf = el("input"); onlyIf.type = "text"; onlyIf.placeholder = "only if the step before gave, e.g. count > 0 (optional)";
+  onlyIf.value = step.only_if || ""; onlyIf.setAttribute("aria-label", "Only if");
+  what.append(tool, args, text, onlyIf);
+  const remove = el("button", "icon", "✕"); remove.type = "button"; remove.title = "Remove this step";
+  remove.setAttribute("aria-label", "Remove this step");
+  remove.onclick = () => row.remove();
+  const show = () => { const t = kind.value === "tool"; tool.hidden = !t; args.hidden = !t; text.hidden = t; };
+  kind.onchange = show; show();
+  row.append(kind, what, remove);
+  row.read = () => {
+    const out = {};
+    if (kind.value === "tool") {
+      out.tool = tool.value.trim();
+      if (args.value.trim()) {
+        try { out.args = JSON.parse(args.value); } catch (e) { throw new Error("the arguments of " + (out.tool || "a tool step") + " are not valid JSON"); }
+      }
+    } else out[kind.value] = text.value.trim();
+    if (onlyIf.value.trim()) out.only_if = onlyIf.value.trim();
+    return out;
+  };
+  document.getElementById("steps").appendChild(row);
+}
+document.getElementById("add-step").onclick = () => addStep();
+
+function readRule() {
+  const rule = { name: document.getElementById("name").value.trim().toLowerCase() };
+  if (triggerKind() === "when") rule.when = document.getElementById("when").value.trim();
+  else {
+    rule.on = document.getElementById("on").value;
+    const field = document.getElementById("if-field").value, value = document.getElementById("if-value").value.trim();
+    if (field) rule.condition = value ? `${field} ${document.getElementById("if-op").value} ${value}` : field;
+  }
+  rule.actions = [...document.getElementById("steps").children].map(row => row.read());
+  return rule;
+}
+
+function fillForm(rule) {
+  document.getElementById("name").value = rule.name || "";
+  const kind = rule.on ? "on" : "when";
+  document.querySelector(`input[name="trigger"][value="${kind}"]`).checked = true;
+  document.getElementById("when").value = rule.when || "";
+  if (rule.on) document.getElementById("on").value = rule.on;
+  showTrigger();
+  const match = /^(\S+)\s+(==|!=|~|>=|<=|>|<)\s+(.+)$/.exec(rule.condition || "");
+  document.getElementById("if-field").value = match ? match[1] : (rule.condition || "");
+  if (match) { document.getElementById("if-op").value = match[2]; document.getElementById("if-value").value = match[3]; }
+  else document.getElementById("if-value").value = "";
+  document.getElementById("steps").replaceChildren();
+  (rule.actions || [{}]).forEach(addStep);
+  document.getElementById("preview").hidden = true;
+  document.getElementById("name").focus();
+}
+
+function preview(text, bad) {
+  const box = document.getElementById("preview");
+  box.hidden = false; box.textContent = text; box.style.color = bad ? "var(--bad)" : "";
+}
+
+async function check() {
+  const rule = readRule();
+  const checked = await api("/api/automations/check", { method: "POST", body: rule });
+  const extra = checked.may_run_without_asking.length
+    ? " — it may run " + checked.may_run_without_asking.join(", ") + " without asking each time." : "";
+  preview("This automation: " + checked.does + extra);
+  return checked;
+}
+document.getElementById("check").onclick = async () => { try { await check(); } catch (e) { preview(e.message, true); } };
+document.getElementById("save").onclick = async () => {
+  try {
+    const checked = await check();
+    const extra = checked.may_run_without_asking.length
+      ? `\n\nIt may run ${checked.may_run_without_asking.join(", ")} without asking each time.` : "";
+    if (!confirm(`Save this automation?\n\n${checked.does}${extra}`)) return;
+    const saved = await api("/api/automations", { method: "POST", body: readRule() });
+    toast("Saved: " + saved.saved + (saved.next ? " (next " + saved.next + ")" : ""));
+    fillForm({ actions: [{}] });
+    load();
+  } catch (e) { preview(e.message, true); }
+};
+document.getElementById("clear").onclick = () => fillForm({ actions: [{}] });
+
+async function act(name, action) {
+  if (action === "remove" && !confirm(`Delete the automation '${name}'?`)) return;
+  try {
+    const done = await api(`/api/automations/${encodeURIComponent(name)}/${action}`, { method: "POST", body: {} });
+    if (action === "run") toast(done.ok ? `'${name}' ran` : `'${name}' did not finish: see Activity`);
+    load();
+  } catch (e) { toast(e.message); }
+}
+
+async function load() {
+  try { data = await api("/api/automations"); } catch (e) { toast(e.message); return; }
+  const rules = document.getElementById("rules");
+  rules.replaceChildren();
+  data.rules.forEach(r => {
+    const row = el("div", "rule");
+    const head = el("div", "");
+    head.append(el("b", "", r.name), el("span", "pill " + (r.enabled ? "on" : "off"), r.enabled ? "on" : "off"));
+    if (r.next) head.append(el("span", "dim small", "  next " + r.next));
+    const actions = el("div", "actions");
+    [["run", "Run now"], [r.enabled ? "disable" : "enable", r.enabled ? "Switch off" : "Switch on"], ["remove", "Delete"]]
+      .forEach(([a, label]) => { const b = el("button", a === "remove" ? "danger" : "", label); b.onclick = () => act(r.name, a); actions.appendChild(b); });
+    row.append(head, actions, el("div", "does", r.does));
+    if (r.may_run_without_asking.length) row.appendChild(el("div", "does dim small", "Runs without asking: " + r.may_run_without_asking.join(", ")));
+    rules.appendChild(row);
+  });
+  if (!data.rules.length) rules.appendChild(el("p", "dim", "None yet. Make one below, or start from a ready-made one."));
+
+  const on = document.getElementById("on");
+  const chosen = on.value;
+  on.replaceChildren();
+  Object.entries(data.events).forEach(([name, info]) => on.appendChild(new Option(`${name} — ${info.when}`, name)));
+  if (chosen) on.value = chosen;
+  showEvent();
+
+  const list = document.getElementById("tool-list");
+  list.replaceChildren();
+  data.tools.forEach(t => { const o = el("option"); o.value = t.name; o.label = t.description; list.appendChild(o); });
+
+  const templates = document.getElementById("templates");
+  templates.replaceChildren();
+  Object.entries(data.templates).forEach(([name, t]) => {
+    const row = el("div", "template");
+    const text = el("div", "text"); text.append(el("b", "", name), el("div", "dim small", t.does));
+    const use = el("button", "", "Use"); use.onclick = () => { fillForm(t.rule); window.scrollTo({ top: document.getElementById("editor-title").offsetTop - 10, behavior: "smooth" }); };
+    row.append(text, use);
+    templates.appendChild(row);
+  });
+}
+
+addStep();
+showTrigger();
+load();
+</script>
+</body>
+</html>

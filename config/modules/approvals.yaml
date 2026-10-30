@@ -1,0 +1,3 @@
+# The approval queue (modules/approvals): what Starlight prepared waits here for your OK,
+# on the Activity page of the web chat or "what waits for my approval?".
+keep_days: 14   # older items are dropped

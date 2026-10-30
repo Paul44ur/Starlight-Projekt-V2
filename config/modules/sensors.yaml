@@ -1,0 +1,8 @@
+# The sensors module (modules/sensors): what happens on this PC, as events automations can
+# react to (sensors.file_appeared, sensors.drive_added, sensors.battery_low, ...).
+check_every: 10            # seconds between looks
+folders: []                # folders whose new files are noticed (or: "watch my Downloads folder")
+battery_low: 20            # percent: sensors.battery_low below this, on battery
+away_after_minutes: 10     # no mouse or keyboard this long: you are away
+away_summary: true         # coming back: one message with what came in meanwhile
+watch_programs: true       # sensors.app_started when a program starts

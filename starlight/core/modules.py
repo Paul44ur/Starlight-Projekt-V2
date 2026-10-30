@@ -53,13 +53,13 @@ NAME_PATTERN = r"^[a-z][a-z0-9_]*$"
 
 #: The modules that come with Starlight (a test checks this against the modules folder).
 SHIPPED = frozenset({
-    "access", "apps", "automations", "backup", "birthdays", "breach", "briefing", "calc",
-    "calendar", "certs", "clipboard", "code", "commands", "cve", "desktop", "dev", "docs",
-    "expenses", "files", "filesearch", "finance", "focus", "game", "habits", "hello", "home",
-    "journal", "lan", "login", "logwatch", "mail", "media", "network", "news", "notes",
-    "notify", "office", "pdf", "podcasts", "recipes", "recon", "reminders", "research",
-    "system", "todo", "trains", "transcripts", "translate", "trips", "voice", "watch",
-    "weather", "web", "whatsapp",
+    "access", "apps", "approvals", "automations", "backup", "birthdays", "breach", "briefing",
+    "calc", "calendar", "certs", "clipboard", "code", "commands", "cve", "desktop", "dev",
+    "docs", "expenses", "files", "filesearch", "finance", "focus", "game", "habits", "hello",
+    "home", "journal", "lan", "login", "logwatch", "mail", "media", "network", "news",
+    "notes", "notify", "office", "pdf", "podcasts", "recipes", "recon", "reminders",
+    "research", "sensors", "system", "todo", "trains", "transcripts", "translate", "trips",
+    "voice", "watch", "weather", "web", "whatsapp",
 })  # fmt: skip
 
 

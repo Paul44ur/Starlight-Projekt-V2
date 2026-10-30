@@ -1,0 +1,8 @@
+name: approvals
+version: 0.1.0
+description: Approval queue - things Starlight prepared (a drafted reply, an automation step it may not take by itself) wait here for your one click
+keywords: ["approve", "approval", "queue", "waiting", "pending", "suggestions", "what waits for me", "freigeben", "genehmigen", "warten", "Vorschläge"]
+entrypoint: module:ApprovalsModule
+permissions: [safe]
+dependencies: []
+enabled_by_default: true

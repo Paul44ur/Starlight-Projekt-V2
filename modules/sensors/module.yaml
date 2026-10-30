@@ -1,0 +1,8 @@
+name: sensors
+version: 0.1.0
+description: Sensors - notices what happens on this PC (a new file in a folder, a USB drive, a low battery, a program starting, you leaving and coming back) so automations can react, and sums up what came in while you were away
+keywords: ["new file", "folder", "download", "downloads", "usb", "usb stick", "drive", "battery", "low battery", "plugged", "away", "while I was away", "came back", "program started", "when I open", "Ordner", "neue Datei", "USB-Stick", "Akku", "Batterie", "weg", "zurück"]
+entrypoint: module:SensorsModule
+permissions: [safe]
+dependencies: []
+enabled_by_default: true
