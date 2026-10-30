@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import html
 import json
 import re
 import time
@@ -34,6 +35,7 @@ from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from starlight.core import AgentResult, Event, Kernel, Paths, ToolError
 from starlight.core.activity import read_activity
 from starlight.core.config import RemoteConfig, load_config
+from starlight.core.dispatcher import tool_sink
 from starlight.core.model import thought_sink
 from starlight.core.modelpause import read_pause, resume_model
 from starlight.core.modules import outside_warning
@@ -476,10 +478,23 @@ def create_app(paths: Paths | None = None) -> Any:
     # -- conversations -------------------------------------------------------------------
 
     @app.get("/api/conversations")
-    def conversations(request: Request, search: str = "") -> dict[str, Any]:
+    def conversations(request: Request, search: str = "", archived: bool = False) -> dict[str, Any]:
         viewer(request)
         store = kernel().conversations
-        return {"current": store.current, "conversations": store.list(search)}
+        return {"current": store.current, "conversations": store.list(search, archived=archived)}
+
+    @app.post("/api/conversations/{conversation}/branch")
+    async def branch_conversation(conversation: str, request: Request) -> dict[str, Any]:
+        """A new conversation with this one's first ``turns`` exchanges, to take it
+        another way from there."""
+        viewer(request)
+        turns = (await body(request)).get("turns")
+        if not isinstance(turns, int):
+            raise HTTPException(status_code=400, detail="give turns: how many exchanges")
+        try:
+            return {"id": kernel().conversations.branch(conversation, turns)}
+        except KeyError as exc:
+            raise HTTPException(status_code=404, detail="no such conversation or message") from exc
 
     @app.post("/api/conversations")
     async def new_conversation(request: Request) -> dict[str, Any]:
@@ -500,36 +515,60 @@ def create_app(paths: Paths | None = None) -> Any:
             raise HTTPException(status_code=404, detail="no such conversation") from exc
 
     @app.get("/api/conversations/{conversation}/export")
-    def export_conversation(conversation: str, request: Request) -> Response:
-        """The conversation as a Markdown file to download."""
+    def export_conversation(
+        conversation: str, request: Request, format: str = "md", show: bool = False
+    ) -> Response:
+        """The conversation as a Markdown file, or (format=html) a page that works on its
+        own, to keep or to print as a PDF. ``show``: open it in the browser (and print)
+        instead of downloading it."""
         viewer(request)
         store = kernel().conversations
         try:
-            text = store.markdown(conversation)
-            title = store.get(conversation)["title"]
+            data = store.get(conversation)
+            title = data["title"]
+            text = store.markdown(conversation) if format != "html" else ""
         except KeyError as exc:
             raise HTTPException(status_code=404, detail="no such conversation") from exc
+        if format == "html":
+            text = export_html(data, page("markdown.js"), print_now=show)
         name = re.sub(r"[^\w\- ]+", "", title).strip()[:60] or "conversation"
         ascii_name = unicodedata.normalize("NFKD", name)  # "ü" -> "u" for old browsers
         plain = re.sub(r"[^\w\- ]+", "", ascii_name, flags=re.ASCII).strip() or "conversation"
+        suffix, media = (".html", "text/html") if format == "html" else (".md", "text/markdown")
+        disposition = "inline" if show else "attachment"
         return Response(
             text,
-            media_type="text/markdown; charset=utf-8",
+            media_type=f"{media}; charset=utf-8",
             headers={
-                "Content-Disposition": f'attachment; filename="{plain}.md"; '
-                f"filename*=UTF-8''{quote(name + '.md')}"
+                "Content-Disposition": f'{disposition}; filename="{plain}{suffix}"; '
+                f"filename*=UTF-8''{quote(name + suffix)}"
             },
         )
 
     @app.patch("/api/conversations/{conversation}")
-    async def rename_conversation(conversation: str, request: Request) -> dict[str, Any]:
+    async def change_conversation(conversation: str, request: Request) -> dict[str, Any]:
+        """Rename it ({"title"}), or pin, archive or file it ({"pinned", "archived",
+        "folder"})."""
         viewer(request)
-        title = str((await body(request)).get("title", "")).strip()
+        data = await body(request)
+        store = kernel().conversations
+        changed: dict[str, Any] = {"id": conversation}
         try:
-            kernel().conversations.rename(conversation, title)
+            if "title" in data:
+                title = str(data.get("title") or "").strip()
+                store.rename(conversation, title)
+                changed["title"] = title
+            flags = {k: data[k] for k in ("pinned", "archived") if isinstance(data.get(k), bool)}
+            folder = data.get("folder")
+            if flags or isinstance(folder, str):
+                changed.update(
+                    store.organize(
+                        conversation, folder=folder if isinstance(folder, str) else None, **flags
+                    )
+                )
         except KeyError as exc:
             raise HTTPException(status_code=404, detail="no such conversation") from exc
-        return {"id": conversation, "title": title}
+        return changed
 
     @app.delete("/api/conversations/{conversation}")
     def delete_conversation(conversation: str, request: Request) -> dict[str, Any]:
@@ -861,6 +900,24 @@ def create_app(paths: Paths | None = None) -> Any:
                             regenerate=True,
                         )
                     )
+                elif kind == "edit" and str(message.get("text", "")).strip():
+                    if ask_task is not None and not ask_task.done():
+                        await send({"type": "busy"})
+                        continue
+                    ask_task = asyncio.create_task(
+                        _run_ask(
+                            k,
+                            web_ui,
+                            send,
+                            str(message.get("question") or ""),
+                            None,
+                            message.get("conversation") or None,
+                            confirm_more,
+                            block_more,
+                            regenerate=True,
+                            replacement=str(message["text"]).strip(),
+                        )
+                    )
                 elif kind == "reply":
                     web_ui.resolve(message.get("id", ""), message.get("value", ""))
                 elif kind == "stop" and ask_task is not None and not ask_task.done():
@@ -891,6 +948,79 @@ def answer_stats(usage: list[dict[str, Any]]) -> dict[str, Any]:
     return stats
 
 
+EXPORT_PAGE = """<!doctype html>
+<html lang="en"><head><meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>__TITLE__</title>
+<style>
+  body { font: 15px/1.55 system-ui, "Segoe UI", sans-serif; color: #1f2328; background: #fff;
+         max-width: 820px; margin: 24px auto; padding: 0 16px; }
+  h1 { font-size: 22px; margin-bottom: 2px; } .when { color: #5a6372; font-size: 13px; }
+  .msg { border: 1px solid #d8dce3; border-radius: 10px; padding: 10px 14px; margin: 12px 0;
+         break-inside: avoid; }
+  .msg.you { background: #eef4ff; } .who { font-size: 11px; text-transform: uppercase;
+         letter-spacing: .05em; color: #5a6372; margin-bottom: 4px; }
+  .you .body { white-space: pre-wrap; }
+  pre { background: #f6f7f9; border-radius: 6px; padding: 8px 10px; overflow-x: auto; }
+  code { font-family: ui-monospace, Consolas, monospace; font-size: .92em; }
+  .md-code-bar { font-size: 12px; color: #5a6372; } .md-code-bar button { display: none; }
+  table { border-collapse: collapse; } th, td { border: 1px solid #d8dce3; padding: 3px 7px; }
+  blockquote { border-left: 3px solid #d8dce3; margin: 0; padding-left: 10px; color: #5a6372; }
+  .tok-k { color: #8250df; } .tok-s { color: #116329; } .tok-n { color: #b35900; }
+  .tok-c { color: #6e7781; font-style: italic; } .tok-f { color: #0550ae; }
+  .tok-v { color: #953800; }
+  .math { font-family: "Cambria Math", "STIX Two Math", Georgia, serif; }
+  .math-block { display: block; text-align: center; margin: .4em 0; }
+  .bar { position: sticky; top: 0; background: #fff; padding: 6px 0; text-align: right; }
+  @media print { .bar { display: none; } body { margin: 0 auto; } }
+</style></head><body>
+<div class="bar"><button onclick="print()">Print or save as PDF</button></div>
+<h1 id="title"></h1><div class="when" id="when"></div><div id="log"></div>
+<script type="application/json" id="data">__DATA__</script>
+<script>
+function el(tag, cls, text) { const e = document.createElement(tag); if (cls) e.className = cls;
+  if (text !== undefined) e.textContent = text; return e; }
+function toast() {}
+</script>
+<script>__MARKDOWN__</script>
+<script>
+const data = JSON.parse(document.getElementById("data").textContent);
+document.getElementById("title").textContent = data.title;
+document.getElementById("when").textContent = (data.created || "").slice(0, 16).replace("T", " ");
+for (const m of data.messages) {
+  const box = el("div", "msg " + (m.role === "user" ? "you" : "bot"));
+  box.appendChild(el("div", "who", m.role === "user" ? "You" : "Starlight"));
+  const body = box.appendChild(el("div", "body"));
+  if (m.role === "user") body.textContent = m.content; else renderMarkdown(body, m.content);
+  document.getElementById("log").appendChild(box);
+}
+if (data.print) setTimeout(() => print(), 300);
+</script></body></html>
+"""
+
+
+def export_html(data: dict[str, Any], markdown_js: str, print_now: bool = False) -> str:
+    """A conversation as one HTML file that shows it on its own (no server, no network):
+    the answers drawn from their Markdown by the chat's own safe renderer."""
+    payload = {
+        "title": data.get("title") or "Conversation",
+        "created": data.get("created") or "",
+        "messages": [
+            {"role": m.get("role"), "content": str(m.get("content", ""))}
+            for m in data.get("messages", [])
+        ],
+        "print": print_now,
+    }
+    # "</" would end the script element early: a message cannot close it
+    embedded = json.dumps(payload, ensure_ascii=False).replace("</", "<\\/")
+    parts = {
+        "__TITLE__": html.escape(str(payload["title"])),
+        "__MARKDOWN__": markdown_js.replace("</script", "<\\/script"),
+        "__DATA__": embedded,
+    }  # in one pass: a title or message that says "__DATA__" stays as it is
+    return re.sub("__(?:TITLE|MARKDOWN|DATA)__", lambda m: parts[m.group(0)], EXPORT_PAGE)
+
+
 async def _run_ask(
     kernel: Kernel,
     web_ui: WebUI,
@@ -901,24 +1031,29 @@ async def _run_ask(
     confirm_more: tuple[str, ...] = (),
     block_more: tuple[str, ...] = (),
     regenerate: bool = False,
+    replacement: str | None = None,
 ) -> None:
     """One request from the browser. ``regenerate``: ask the conversation's last question
     again (``text``, if given, is the question the page means) and replace its answer; if
-    the new answer is stopped or fails, the old one stays."""
-    queue: asyncio.Queue[tuple[str, str] | None] = asyncio.Queue()
+    the new answer is stopped or fails, the old one stays. ``replacement``: ask this
+    instead of that question (you edited it)."""
+    queue: asyncio.Queue[dict[str, Any] | None] = asyncio.Queue()
 
     def on_token(token: str) -> None:
-        queue.put_nowait(("token", token))
+        queue.put_nowait({"type": "token", "text": token})
 
     def on_thought(text: str) -> None:  # the model's thinking, for the thoughts box
-        queue.put_nowait(("thought", text))
+        queue.put_nowait({"type": "thought", "text": text})
+
+    def on_tool(report: dict[str, Any]) -> None:  # a tool starts or ends: the timeline
+        queue.put_nowait({"type": "tool", **report})
 
     async def pump() -> None:
         while True:
             item = await queue.get()
             if item is None:
                 return
-            await send({"type": item[0], "text": item[1]})
+            await send(item)
 
     def answer(result: AgentResult) -> dict[str, Any]:
         return {
@@ -938,6 +1073,7 @@ async def _run_ask(
         return
     token_ctx = current_ui.set(web_ui)
     thought_ctx = thought_sink.set(on_thought)
+    tool_ctx = tool_sink.set(on_tool)
     confirm_ctx = extra_confirm.set(confirm_more)
     block_ctx = extra_blocked.set(block_more)
     pumper: asyncio.Task[None] | None = None
@@ -955,6 +1091,8 @@ async def _run_ask(
                 return
             taken = True
             text, images = question.content, question.images  # the pictures go again too
+            if replacement:
+                text = replacement
         await send({"type": "start", "conversation": name})
         pumper = asyncio.create_task(pump())
         result = await kernel.ask(
@@ -985,6 +1123,7 @@ async def _run_ask(
                 await kernel.put_back(name)
         extra_blocked.reset(block_ctx)
         extra_confirm.reset(confirm_ctx)
+        tool_sink.reset(tool_ctx)
         thought_sink.reset(thought_ctx)
         current_ui.reset(token_ctx)
 

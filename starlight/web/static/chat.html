@@ -60,6 +60,13 @@
   .md pre { margin: 0; padding: 10px 12px; overflow-x: auto; background: var(--bg); }
   .md pre code { background: none; padding: 0; font-size: 13px; white-space: pre; }
   .md .md-table-wrap { overflow-x: auto; margin: 0 0 .6em; }
+  .md .tok-k { color: var(--hl-k); } .md .tok-s { color: var(--hl-s); } .md .tok-n { color: var(--hl-n); }
+  .md .tok-c { color: var(--hl-c); font-style: italic; } .md .tok-f { color: var(--hl-f); }
+  .md .tok-v { color: var(--hl-v); }
+  .md .math { font-family: "Cambria Math", "STIX Two Math", "Latin Modern Math", Georgia, serif;
+              font-size: 1.08em; white-space: pre-wrap; }
+  .md .math-block { display: block; text-align: center; margin: 0 0 .6em; font-size: 1.1em;
+                    overflow-x: auto; }
   .md table { width: auto; border-collapse: collapse; font-size: 14px; }
   .md th, .md td { border: 1px solid var(--border); padding: 4px 8px; text-align: left;
                    vertical-align: top; }
@@ -103,6 +110,30 @@
      answer that has not begun. */
   .msg.bot .regen { display: none; }
   .msg.bot.latest .regen { display: inline-block; }
+  /* Edit only on your latest question; Branch only on an answer that was kept. */
+  .msg.you .edit { display: none; }
+  .msg.you.latest .edit { display: inline-block; }
+  .msg.you .tools { justify-content: flex-end; }
+  .msg.you:not(.latest) .tools { display: none; }
+  .msg.you.editing { outline: 2px dashed var(--accent); }
+  .msg.bot:not([data-kept]) .branch { display: none; }
+  /* the tools an answer used, as they run */
+  .toolrow { display: flex; flex-wrap: wrap; gap: 4px; margin: 0 0 6px; }
+  .toolstep { font-size: 12px; color: var(--dim); border: 1px solid var(--border); border-radius: 999px;
+              padding: 1px 8px; white-space: nowrap; font-variant-numeric: tabular-nums; }
+  .toolstep[data-state="running"] { color: var(--accent); border-color: var(--accent); }
+  .toolstep[data-state="failed"], .toolstep[data-state="refused"] { color: var(--bad); border-color: var(--bad); }
+  .toolstep[data-state="practice"] { color: var(--warn); border-color: var(--warn); }
+  /* a small menu (a conversation's ⋯, the / commands) */
+  .popmenu { position: fixed; z-index: 60; background: var(--panel); border: 1px solid var(--border);
+             border-radius: 10px; box-shadow: var(--shadow); padding: 4px; min-width: 190px; max-width: 92vw; }
+  .popmenu button { display: flex; width: 100%; gap: 10px; text-align: left; border: 0; background: none;
+                    padding: 6px 10px; border-radius: 6px; font-size: 14px; }
+  .popmenu button:hover, .popmenu button.sel { background: var(--panel2); }
+  .popmenu .hint { color: var(--dim); font-size: 12px; margin-left: auto; }
+  .folder { font-size: 11px; text-transform: uppercase; letter-spacing: .05em; color: var(--dim);
+            padding: 10px 8px 2px; }
+  #archived { margin: 4px 8px 10px; font-size: 12px; }
   .msg.bot:has(.body:empty) .tools { visibility: hidden; }
   #mic.on { color: var(--bad); border-color: var(--bad); }
   @media (max-width: 1100px) { #side { display: none; } }
@@ -116,7 +147,7 @@
     header.top { flex-wrap: nowrap; gap: 8px; }
     header.top .wide { display: none; }
     .narrow { display: inline; }
-    .drawer-nav { display: flex; gap: 14px; align-items: center; padding: 12px 14px;
+    .drawer-nav { display: flex; flex-wrap: wrap; gap: 8px 14px; align-items: center; padding: 12px 14px;
                   border-top: 1px solid var(--border); font-size: 14px; }
     #conn { width: 10px; height: 10px; padding: 0; font-size: 0; flex: none; }
   }
@@ -197,24 +228,106 @@ function addMsg(who, text, files, plain) {
   if (who !== "you" && !plain) setAnswer(body, text || "");
   m.appendChild(body);
   if (files && files.length) m.appendChild(el("div", "att", "📎 " + files.join(", ")));
-  if (who !== "you") {
-    const tools = el("div", "tools");
+  const tools = el("div", "tools");
+  if (who === "you") {
+    const edit = el("button", "icon edit", "Edit");
+    edit.title = "Change this question and ask it again (its answer is replaced)";
+    edit.onclick = () => startEdit(m);
+    tools.append(edit);
+  } else {
     const copy = el("button", "icon", "Copy");
     copy.onclick = () => navigator.clipboard.writeText(body.raw ?? body.textContent).then(() => toast("Copied"));
     const retry = el("button", "icon regen", "Regenerate");
     retry.title = "Ask the last message again and replace this answer";
     retry.onclick = () => regenerate(m);
-    tools.append(copy, retry);
-    m.appendChild(tools);
+    const fork = el("button", "icon branch", "Branch");
+    fork.title = "A new conversation up to here, to go another way (this one stays)";
+    fork.onclick = () => branchFrom(m);
+    tools.append(copy, retry, fork);
   }
+  m.appendChild(tools);
   log.appendChild(m);
   markLatest();
   if (stick) scroll();
   return body;
 }
 function markLatest() {
-  const answers = log.querySelectorAll(".msg.bot");
-  answers.forEach((a, i) => a.classList.toggle("latest", i === answers.length - 1));
+  for (const kind of [".msg.bot", ".msg.you"]) {
+    const all = log.querySelectorAll(kind);
+    all.forEach((a, i) => a.classList.toggle("latest", i === all.length - 1));
+  }
+}
+
+// -- the tools an answer used ------------------------------------------------------------------
+const TOOL_MARK = { running: "⋯", done: "✓", failed: "✗", refused: "⊘", practice: "◌", stopped: "■" };
+const TOOL_SAYS = { running: "running …", done: "done", failed: "failed", refused: "not run",
+                    practice: "practice mode: described, not run", stopped: "stopped" };
+function toolStep(body, tool, state, ms, error) {
+  let row = body.toolRow;
+  if (!row) {
+    row = body.toolRow = el("div", "toolrow");
+    body.parentElement.insertBefore(row, body);
+  }
+  let chip = state === "running" ? null
+    : [...row.children].reverse().find(c => c.dataset.tool === tool && c.dataset.state === "running");
+  if (!chip) { chip = el("span", "toolstep"); chip.dataset.tool = tool; row.appendChild(chip); }
+  chip.dataset.state = state;
+  const time = ms ? " " + (ms < 1000 ? Math.round(ms) + " ms" : (ms / 1000).toFixed(1) + " s") : "";
+  chip.textContent = `${TOOL_MARK[state] || "•"} ${tool}${time}`;
+  chip.title = error || TOOL_SAYS[state] || "";
+}
+function toolsDone(body) {  // the answer ended: a tool still "running" was stopped
+  if (body && body.toolRow) body.toolRow.querySelectorAll('[data-state="running"]').forEach(c => {
+    c.dataset.state = "stopped"; c.textContent = `${TOOL_MARK.stopped} ${c.dataset.tool}`; c.title = TOOL_SAYS.stopped;
+  });
+}
+
+// -- edit your last question, branch from an answer --------------------------------------------
+let editing = null;  // the question (.msg.you) being changed
+function startEdit(msg) {
+  if (busy()) { toast("Wait until this answer is finished"); return; }
+  cancelEdit();
+  editing = msg;
+  msg.classList.add("editing");
+  input.value = msg.querySelector(".body").textContent; input.oninput(); input.focus();
+  input.placeholder = "Change your question … (Enter asks it again, Esc cancels)";
+}
+function cancelEdit() {
+  if (editing) editing.classList.remove("editing");
+  editing = null; input.placeholder = idleHint();
+}
+function sendEdit(text) {
+  const question = editing; cancelEdit();
+  const old = question.querySelector(".body").textContent;
+  let answer = question.nextElementSibling;
+  while (answer && !answer.classList.contains("bot")) answer = answer.nextElementSibling;
+  const kept = answer && (answer.dataset.kept || answer.dataset.regen);
+  while (question.nextElementSibling) question.nextElementSibling.remove();
+  question.remove();
+  lastQuestion = text; asking = true; syncSend();
+  addMsg("you", text);
+  if (kept) {  // the server replaces that exchange; if this fails, the old one stays
+    regenPending = true; editPending = true;
+    ws.send(JSON.stringify({ type: "edit", question: old, text, conversation }));
+  } else ws.send(JSON.stringify({ type: "ask", text, conversation }));
+}
+let editPending = false;
+// The exchanges the server keeps: each question whose answer was kept.
+function keptTurns(upTo) {
+  let turns = 0;
+  for (const m of log.querySelectorAll(".msg.you, .msg.bot")) {
+    if (m.classList.contains("bot") && m.dataset.kept) turns++;
+    if (m === upTo) return turns;
+  }
+  return turns;
+}
+async function branchFrom(msg) {
+  if (!msg.dataset.kept) { toast("Only a saved answer can be a branch point"); return; }
+  try {
+    const d = await api(`/api/conversations/${conversation}/branch`, { method: "POST", body: { turns: keptTurns(msg) } });
+    await open(d.id);
+    toast("A new branch from there; the original stays as it was");
+  } catch (e) { toast(e.message); }
 }
 // Only the latest answer can be regenerated: it replaces that answer. An answer the server
 // kept (or the old one it keeps after a failed regenerate) is asked again with "regenerate";
@@ -342,6 +455,11 @@ function handle(m) {
     waitFor(current);
     if (regenPending) current.parentElement.dataset.regen = "1";
   }
+  else if (m.type === "tool") {
+    if (elsewhere(m)) return;
+    if (!current) { current = addMsg("bot", ""); waitFor(current); }
+    toolStep(current, m.tool, m.state, m.ms, m.error);
+  }
   else if (m.type === "thought") {
     if (elsewhere(m)) return;
     if (!current) { current = addMsg("bot", ""); waitFor(current); }
@@ -357,10 +475,12 @@ function handle(m) {
     // The final answer replaces what streamed in: it is the cleaned one (a reply cut
     // where the model started repeating itself may have streamed a little too far).
     if (m.text || !current) setAnswer(current || (current = addMsg("bot", "")), m.text);
-    doneWaiting(current);
+    doneWaiting(current); toolsDone(current);
     addStats(current, m.stats);
     if (!m.stopped && !m.failed) current.parentElement.dataset.kept = "1";
+    else if (editPending) { toast("Not changed: the earlier question and answer stay"); setTimeout(() => open(conversation), 1500); }
     else if (regenPending) current.parentElement.dataset.regen = "1";  // the old answer stays
+    editPending = false;
     if (m.stopped) addSys("Kill switch engaged. Press Resume on the PC to continue.");
     else if (speakAnswers) say(markdownToSpeech(m.text));
     current = null; answering = null; regenPending = false; loadList();
@@ -372,12 +492,14 @@ function handle(m) {
     if (conversation) open(conversation);
   }
   else if (m.type === "stopped") {
-    doneWaiting(current);
+    doneWaiting(current); toolsDone(current);
+    if (editPending) { editPending = false; setTimeout(() => open(conversation), 300); }
     if (!elsewhere(m)) addSys("[stopped]");
     current = null; answering = null; regenPending = false;
   }
   else if (m.type === "error") {
-    doneWaiting(current);
+    doneWaiting(current); toolsDone(current);
+    if (editPending) { editPending = false; setTimeout(() => open(conversation), 1500); }
     if (!elsewhere(m)) {
       const b = addMsg("bot", "⚠ " + m.text, null, true); b.style.color = "var(--bad)";
       if (regenPending) b.parentElement.dataset.regen = "1";
@@ -425,6 +547,57 @@ function ask(text, files) {
   ws.send(JSON.stringify({ type: "ask", text, conversation, attachments: files.map(f => f.id) }));
 }
 
+// -- / commands: done here in the page, never sent to the model ---------------------------------
+async function currentConversation() { return api("/api/conversations/" + conversation); }
+async function togglePractice() {
+  const s = await api("/api/status");
+  if (s.practice && !confirm("Leave practice mode? Actions will run for real again.")) return;
+  try {
+    await api("/api/practice", { method: "POST", body: { on: !s.practice } });
+    toast(s.practice ? "Practice mode is off" : "Practice mode: actions are described, not done");
+  } catch (e) { toast("Only at the PC: " + e.message); }
+  refresh();
+}
+const COMMANDS = [
+  ["/new", "＋", "New conversation", () => document.getElementById("new").click()],
+  ["/private", "🔒", "New private conversation", () => document.getElementById("newprivate").click()],
+  ["/practice", "◌", "Practice mode on or off", togglePractice],
+  ["/pin", "📌", "Pin or unpin this conversation", async () => {
+    const c = await currentConversation(); changeConversation(conversation, { pinned: !c.pinned });
+    toast(c.pinned ? "Unpinned" : "Pinned to the top");
+  }],
+  ["/archive", "🗄", "Archive this conversation", async () => {
+    await changeConversation(conversation, { archived: true }); toast("Archived (🗄 Archive in the list)");
+  }],
+  ["/export", "⤓", "Download it as Markdown", () => download(`/api/conversations/${conversation}/export`)],
+  ["/pdf", "🖨", "Print or save it as PDF", () => window.open(`/api/conversations/${conversation}/export?format=html&show=true`, "_blank")],
+  ["/activity", "📜", "What Starlight did", () => { location.href = "/activity"; }],
+  ["/memory", "🧠", "Memory and skills", () => { location.href = "/memory"; }],
+  ["/settings", "⚙", "Settings", () => { location.href = "/settings"; }],
+  ["/stars", "✦", "A little starfall", () => starfall()],
+  ["/help", "?", "These commands", () => addSys("Commands: " + COMMANDS.map(c => `${c[0]} (${c[2].toLowerCase()})`).join(", "))],
+];
+// A typed command; false when the text is not one (it is then sent as a message).
+function runCommand(text) {
+  if (!/^\/[a-z]+$/.test(text)) return false;
+  const found = COMMANDS.find(c => c[0] === text);
+  if (found) found[3](); else toast(`No command ${text}: type / to see them`);
+  return true;
+}
+let slashSel = 0, slashItems = [];
+function slashMenu() {
+  const text = input.value;
+  if (!/^\/[a-z]*$/.test(text)) { if (openMenu && openMenu.slash) closeMenu(); return; }
+  slashItems = COMMANDS.filter(c => c[0].startsWith(text));
+  if (!slashItems.length) { closeMenu(); return; }
+  slashSel = Math.max(0, Math.min(slashSel, slashItems.length - 1));
+  const menu = popMenu(document.getElementById("form"),
+    slashItems.map(([cmd, icon, label, action]) => [icon, label, () => { input.value = ""; input.oninput(); action(); }, cmd]),
+    "above");
+  menu.slash = true;
+  menu.children[slashSel].classList.add("sel");
+}
+
 // Typing /stars: a little starfall, here in the page (nothing is sent to the model).
 function starfall() {
   for (let i = 0; i < 48; i++) {
@@ -443,12 +616,25 @@ document.getElementById("form").onsubmit = (e) => {
   if (busy()) { stopAnswer(); return; }
   const text = input.value.trim();
   if (!text) return;
-  if (text === "/stars") { input.value = ""; starfall(); return; }
+  if (text.startsWith("/") && runCommand(text)) { input.value = ""; input.oninput(); return; }
+  if (editing) { input.value = ""; input.style.height = "44px"; sendEdit(text); return; }
   const files = attached; attached = []; showFiles();
   input.value = ""; input.style.height = "44px";
   ask(text, files);
 };
 input.onkeydown = (e) => {
+  if (openMenu && openMenu.slash && slashItems.length) {
+    if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+      e.preventDefault();
+      slashSel = (slashSel + (e.key === "ArrowDown" ? 1 : -1) + slashItems.length) % slashItems.length;
+      slashMenu(); return;
+    }
+    if (e.key === "Enter" || e.key === "Tab") {
+      e.preventDefault();
+      const pick = slashItems[slashSel];
+      closeMenu(); input.value = ""; input.oninput(); pick[3](); return;
+    }
+  }
   if (e.key === "Enter" && !e.shiftKey) {
     e.preventDefault();
     // Enter never stops an answer (you may be typing the next question): that is Esc or Stop.
@@ -465,7 +651,11 @@ input.onkeydown = (e) => {
     input.setSelectionRange(last.length, last.length);
   }
 };
-input.oninput = () => { input.style.height = "44px"; input.style.height = Math.min(input.scrollHeight, 180) + "px"; };
+input.oninput = () => {
+  input.style.height = "44px"; input.style.height = Math.min(input.scrollHeight, 180) + "px";
+  if (!input.value.startsWith("/")) slashSel = 0;
+  slashMenu();
+};
 function stopAnswer() { if (ws && ws.readyState === 1) ws.send(JSON.stringify({ type: "stop" })); }
 // While an answer is being written, the Send button stops it.
 let asking = false;  // a question was sent and its answer has not begun yet
@@ -478,9 +668,11 @@ function syncSend() {
 }
 // Esc stops the answer that is being written (as the Stop button does).
 document.addEventListener("keydown", (e) => {
-  if (e.key === "Escape" && (current || answering) && !e.target.closest(".confirm")) {
+  if (e.key !== "Escape") return;
+  if (openMenu) { closeMenu(); return; }
+  if ((current || answering) && !e.target.closest(".confirm")) {
     e.preventDefault(); stopAnswer(); toast("Stopping …");
-  }
+  } else if (editing) { cancelEdit(); input.value = ""; input.oninput(); }
 });
 document.getElementById("practice").onclick = async () => {
   if (!confirm("Leave practice mode? Actions will run for real again.")) return;
@@ -599,29 +791,92 @@ showSpeaker();
 async function loadList() {
   const search = document.getElementById("search").value;
   let data;
-  try { data = await api("/api/conversations?search=" + encodeURIComponent(search)); } catch (e) { return; }
+  try { data = await api("/api/conversations?search=" + encodeURIComponent(search) + (showArchived ? "&archived=true" : "")); } catch (e) { return; }
   if (!conversation) conversation = data.current;
   const list = document.getElementById("list"); list.innerHTML = "";
-  data.conversations.forEach(c => {
+  if (showArchived) list.appendChild(el("div", "folder", "🗄 Archive"));
+  // pinned ones stay on top; the rest are grouped by folder (no folder first)
+  const pinned = data.conversations.filter(c => c.pinned);
+  const rest = data.conversations.filter(c => !c.pinned)
+    .sort((a, b) => (a.folder || "").localeCompare(b.folder || ""));
+  let folder = "";
+  [...pinned, ...rest].forEach(c => {
+    if (!c.pinned && (c.folder || "") !== folder) {
+      folder = c.folder || "";
+      if (folder) list.appendChild(el("div", "folder", "📁 " + folder));
+    }
     const row = el("div", "conv" + (c.id === conversation ? " active" : ""));
-    const t = el("span", "t", (c.private ? "🔒 " : "") + c.title); t.title = c.title + " — " + c.updated.replace("T", " ").slice(0, 16);
+    const mark = (c.pinned ? "📌 " : "") + (c.private ? "🔒 " : "");
+    const t = el("span", "t", mark + c.title); t.title = c.title + " — " + c.updated.replace("T", " ").slice(0, 16);
     const acts = el("span", "acts");
-    const ren = el("button", "icon", "✎"); ren.title = "Rename";
-    ren.onclick = async (e) => { e.stopPropagation(); const title = prompt("New name", c.title); if (title) { await api("/api/conversations/" + c.id, { method: "PATCH", body: { title } }); loadList(); } };
-    const del = el("button", "icon", "🗑"); del.title = "Delete";
-    del.onclick = async (e) => { e.stopPropagation(); if (confirm("Delete \"" + c.title + "\"?")) { await api("/api/conversations/" + c.id, { method: "DELETE" }); if (c.id === conversation) { const d = await api("/api/conversations", { method: "POST" }); await open(d.id); } else loadList(); } };
-    const exp = el("button", "icon", "⤓"); exp.title = "Download as a Markdown file";
-    exp.onclick = (e) => {
-      e.stopPropagation();
-      const a = document.createElement("a");
-      a.href = "/api/conversations/" + c.id + "/export"; a.download = "";
-      document.body.appendChild(a); a.click(); a.remove();
-    };
-    acts.append(ren, exp, del); row.append(t, acts);
+    const more = el("button", "icon", "⋯"); more.title = "Rename, pin, folder, archive, download, delete";
+    more.onclick = (e) => { e.stopPropagation(); conversationMenu(c, more); };
+    acts.append(more); row.append(t, acts);
     row.onclick = () => open(c.id);
     list.appendChild(row);
   });
+  const toggle = el("button", "icon", showArchived ? "← Back to your conversations" : "🗄 Archive");
+  toggle.id = "archived";
+  toggle.onclick = () => { showArchived = !showArchived; loadList(); };
+  list.appendChild(toggle);
 }
+
+// Conversations: pinned first, then by folder; the archive is a list of its own.
+let showArchived = false;
+function download(href) {
+  const a = document.createElement("a");
+  a.href = href; a.download = "";
+  document.body.appendChild(a); a.click(); a.remove();
+}
+async function changeConversation(id, change) {
+  try { await api("/api/conversations/" + id, { method: "PATCH", body: change }); }
+  catch (e) { toast(e.message); }
+  loadList();
+}
+function conversationMenu(c, anchor) {
+  const base = "/api/conversations/" + c.id;
+  popMenu(anchor, [
+    ["✎", "Rename", async () => { const title = prompt("New name", c.title); if (title) changeConversation(c.id, { title }); }],
+    ["📌", c.pinned ? "Unpin" : "Pin to the top", () => changeConversation(c.id, { pinned: !c.pinned })],
+    ["📁", c.folder ? `Folder: ${c.folder}` : "Put in a folder", () => {
+      const folder = prompt("Folder (empty: none)", c.folder || "");
+      if (folder !== null) changeConversation(c.id, { folder });
+    }],
+    ["🗄", c.archived ? "Take out of the archive" : "Archive", () => changeConversation(c.id, { archived: !c.archived })],
+    ["⤓", "Download as Markdown", () => download(base + "/export")],
+    ["⤓", "Download as a web page", () => download(base + "/export?format=html")],
+    ["🖨", "Print or save as PDF", () => window.open(base + "/export?format=html&show=true", "_blank")],
+    ["🗑", "Delete", async () => {
+      if (!confirm("Delete \"" + c.title + "\"?")) return;
+      await api(base, { method: "DELETE" });
+      if (c.id === conversation) { const d = await api("/api/conversations", { method: "POST" }); await open(d.id); } else loadList();
+    }],
+  ]);
+}
+
+// A small menu at an element: items are [icon, label, action, hint?].
+let openMenu = null;
+function closeMenu() { if (openMenu) { openMenu.remove(); openMenu = null; } }
+function popMenu(anchor, items, place) {
+  closeMenu();
+  const menu = el("div", "popmenu");
+  items.forEach(([icon, label, action, hint]) => {
+    const b = el("button");
+    b.append(el("span", "", icon), el("span", "", label));
+    if (hint) b.appendChild(el("span", "hint", hint));
+    b.onclick = (e) => { e.stopPropagation(); closeMenu(); action(); };
+    menu.appendChild(b);
+  });
+  document.body.appendChild(menu);
+  const r = anchor.getBoundingClientRect();
+  const left = Math.max(8, Math.min(r.left, innerWidth - menu.offsetWidth - 8));
+  const below = r.bottom + 4, above = r.top - menu.offsetHeight - 4;
+  menu.style.left = left + "px";
+  menu.style.top = (place === "above" || below + menu.offsetHeight > innerHeight ? Math.max(8, above) : below) + "px";
+  openMenu = menu;
+  return menu;
+}
+document.addEventListener("click", (e) => { if (openMenu && !openMenu.contains(e.target)) closeMenu(); });
 async function open(id) {
   document.body.classList.remove("drawer");
   let data;
@@ -631,6 +886,7 @@ async function open(id) {
   data.messages.forEach(m => {
     const body = addMsg(m.role === "user" ? "you" : "bot", m.content);
     if (m.role !== "user") body.parentElement.dataset.kept = "1";
+    (m.tools || []).forEach(t => toolStep(body, t.tool, t.ok ? "done" : "failed"));
   });
   if (!data.messages.length) addSys(data.private
     ? "Private conversation: it is never saved and nothing is learned from it. It is gone when Starlight stops."

@@ -7,6 +7,7 @@ import asyncio
 import json
 import time
 from collections.abc import Awaitable, Callable
+from contextvars import ContextVar
 from dataclasses import dataclass
 from typing import Any
 
@@ -26,6 +27,18 @@ from starlight.core.stats import Stats
 from starlight.core.tools import Tool, ToolError
 
 type Confirmer = Callable[[Tool, dict[str, Any]], Awaitable[bool]]
+
+#: Where the tools of the request being handled are reported as they run (the web chat's
+#: tool timeline): {"tool", "state": running/done/failed/refused/practice, "ms", "error"}.
+tool_sink: ContextVar[Callable[[dict[str, Any]], None] | None] = ContextVar(
+    "tool_sink", default=None
+)
+
+
+def _report(tool: str, state: str, **details: Any) -> None:
+    sink = tool_sink.get()
+    if sink is not None:
+        sink({"tool": tool, "state": state, **details})
 
 
 @dataclass
@@ -109,7 +122,9 @@ class Dispatcher:
             permission = Permission.CONFIRM
         if permission is Permission.BLOCKED:
             self.audit.record("tool.denied", tool=name, reason="blocked", request_id=request_id)
-            return self._finish(ToolResult(name, False, error="blocked by permissions"), request_id)
+            return self._finish(
+                ToolResult(name, False, error="blocked by permissions"), request_id, "refused"
+            )
         try:  # before asking you: never confirm a call that cannot run
             validated = tool.validate(args)
         except ValidationError as exc:
@@ -128,6 +143,7 @@ class Dispatcher:
                     "Tell the user what would have happened; nothing was changed.",
                 ),
                 request_id,
+                "practice",
             )
         if permission is Permission.CONFIRM:
             reason = confirm_reason.set(guard)
@@ -143,7 +159,7 @@ class Dispatcher:
                     request_id=request_id,
                 )
                 return self._finish(
-                    ToolResult(name, False, error="not confirmed by user"), request_id
+                    ToolResult(name, False, error="not confirmed by user"), request_id, "refused"
                 )
             self.kill_switch.check()  # the question may have taken a while
 
@@ -155,6 +171,7 @@ class Dispatcher:
             request_id=request_id,
         )
         await self.bus.publish("tool.called", {"tool": name, "request_id": request_id})
+        _report(name, "running")
         started = time.perf_counter()
         budget = asyncio.timeout(None if tool.own_timeout else self.timeout)
         try:
@@ -193,7 +210,15 @@ class Dispatcher:
             taint.sources.append(name)  # from now on in this request, the guard is up
         return self._finish(result, request_id)
 
-    def _finish(self, result: ToolResult, request_id: str | None) -> ToolResult:
+    def _finish(
+        self, result: ToolResult, request_id: str | None, state: str | None = None
+    ) -> ToolResult:
+        _report(
+            result.tool,
+            state or ("done" if result.ok else "failed"),
+            ms=result.duration_ms,
+            **({"error": str(result.error)[:200]} if result.error else {}),
+        )
         if self.stats is not None:
             module = result.tool.split(".", 1)[0]
             self.stats.record("tool.calls", 1, module=module, tool=result.tool, ok=result.ok)

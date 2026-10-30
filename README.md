@@ -436,8 +436,25 @@ is working, and for how long. While it writes, **Send** turns into **Stop** (or 
 your last question. Every answer has **Copy** (the text as written, Markdown
 included), and the latest one **Regenerate** (asks the same
 question again and replaces that answer); under it you see how fast it was written
-(tokens per second) and how long it took. ⤓ next to a conversation downloads it as a
-Markdown file. **Settings** lists the modules, each with an on/off switch; open one to
+(tokens per second) and how long it took.
+
+- **Edit** under your last question puts it back in the box: change it and press Enter,
+  and that exchange is asked again (if that fails, the earlier one stays).
+- **Branch** under an answer starts a new conversation up to that point, to try another
+  way; the original stays as it was.
+- The tools an answer uses show above it as they run (✓ done, ✗ failed, ⊘ not run,
+  ◌ practice mode), also when you reopen the conversation later.
+- A model that thinks first shows its thinking in a folded **Thinking …** box.
+- Code is coloured (Python, JavaScript, PowerShell, bash, SQL, JSON, YAML, C-like
+  languages), and maths written as LaTeX (`$x^2$`, `$$\frac{a}{b}$$`) is shown with
+  proper symbols (x², a/b, α ≤ β). Money like "$5 and $10" stays money.
+- Type **/** for the commands: `/new`, `/private`, `/practice`, `/pin`, `/archive`,
+  `/export`, `/pdf`, `/activity`, `/memory`, `/settings`, `/stars`, `/help`.
+- ⋯ next to a conversation: rename, **pin** it to the top, put it in a **folder**,
+  **archive** it (🗄 Archive at the end of the list shows the archive), download it as
+  Markdown or as a web page that works on its own, **print or save it as PDF**, or delete it.
+
+**Settings** lists the modules, each with an on/off switch; open one to
 choose for each of its tools whether it runs on its own, asks first or is blocked (the search
 finds modules and tools), and pair your phone there. **Memory**
 lets you read, correct and delete what Starlight remembers, and approve or undo the skills
