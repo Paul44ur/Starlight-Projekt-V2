@@ -144,8 +144,8 @@ def test_launcher_settings_choose_lm_studio(
     flagged = settings_for(starlight_root(tmp_path / "other"), monkeypatch, "--lmstudio")
     assert flagged.uses_lmstudio
     assert not settings_for(root, monkeypatch, "--no-model").uses_lmstudio  # the test model
-    (root / "config" / "launcher.json").write_text(json.dumps({"model_server": "ollama"}))
-    with pytest.raises(L.LauncherError, match="llamacpp or lmstudio"):
+    (root / "config" / "launcher.json").write_text(json.dumps({"model_server": "vllm"}))
+    with pytest.raises(L.LauncherError, match="llamacpp, lmstudio, ollama, remote"):
         settings_for(root, monkeypatch)
 
 

@@ -26,6 +26,7 @@ import os
 import platform
 import re
 import shutil
+import struct
 import subprocess
 import sys
 import tarfile
@@ -434,7 +435,19 @@ class MissingDownload(LauncherError):
 
 
 LMSTUDIO_URL = "http://127.0.0.1:1234"  # LM Studio's local server (its Developer tab)
-MODEL_SERVERS = ("llamacpp", "lmstudio")
+# llamacpp: Starlight downloads and runs llama.cpp itself; lmstudio: LM Studio's server;
+# ollama: Ollama's; remote: any OpenAI-compatible server, e.g. on another PC in your network.
+MODEL_SERVERS = ("llamacpp", "lmstudio", "ollama", "remote")
+OLLAMA_URL = "http://127.0.0.1:11434"
+# Answer styles: how freely the model picks its words. Balanced is Starlight's default.
+STYLES: dict[str, dict[str, Any]] = {
+    "precise": {"temperature": 0.1, "top_p": 0.8, "top_k": 20},
+    "balanced": {"temperature": 0.3},
+    "creative": {"temperature": 0.8, "top_p": 0.95, "top_k": 40},
+}
+# Context sizes offered, and the one used when it cannot be worked out ("auto" = 0).
+CONTEXT_STEPS = (8192, 16384, 32768, 49152, 65536, 98304, 131072)
+DEFAULT_CONTEXT = 32768
 
 
 @dataclass
@@ -450,6 +463,12 @@ class Settings:
     model_server: str = "llamacpp"
     lmstudio_url: str = LMSTUDIO_URL
     lmstudio_model: str = ""  # empty: whichever model LM Studio has loaded
+    ollama_url: str = OLLAMA_URL
+    ollama_model: str = ""  # an Ollama model name, e.g. "qwen3:14b"
+    remote_url: str = ""  # an OpenAI-compatible server, e.g. http://192.168.1.20:8080/v1
+    remote_model: str = ""  # its model name, if it needs one
+    style: str = "balanced"  # precise, balanced or creative (STYLES)
+    models_dir: str = ""  # where models are kept; "" = the models folder in Starlight's
     viewer: bool = True
     web: bool = True  # open the browser chat; False: the terminal chat
     both: bool = False  # open the browser chat AND a terminal connected to the same backend
@@ -470,7 +489,7 @@ class Settings:
 
     @property
     def models(self) -> Path:
-        return self.root / "models"
+        return Path(self.models_dir).expanduser() if self.models_dir else self.root / "models"
 
     @property
     def model_file(self) -> Path:
@@ -481,9 +500,17 @@ class Settings:
         return self.use_model and self.model_server == "lmstudio"
 
     @property
+    def uses_ollama(self) -> bool:
+        return self.use_model and self.model_server == "ollama"
+
+    @property
+    def uses_remote(self) -> bool:
+        return self.use_model and self.model_server == "remote"
+
+    @property
     def runs_llama(self) -> bool:
         """Starlight downloads llama.cpp and the model, and runs the model server itself."""
-        return self.use_model and self.model_server != "lmstudio"
+        return self.use_model and self.model_server == "llamacpp"
 
 
 def _file_name(url: str) -> str:
@@ -547,6 +574,12 @@ def load_settings(args: argparse.Namespace) -> Settings:
                     "whisper_url",
                     "whisper_model_url",
                     "piper_url",
+                    "ollama_url",
+                    "ollama_model",
+                    "remote_url",
+                    "remote_model",
+                    "style",
+                    "models_dir",
                 ):
                     setattr(settings, key, value)
         except (OSError, ValueError) as exc:
@@ -570,12 +603,31 @@ def load_settings(args: argparse.Namespace) -> Settings:
     if getattr(args, "lmstudio_model", None):
         settings.model_server = "lmstudio"
         settings.lmstudio_model = args.lmstudio_model.strip()
+    if getattr(args, "ollama_model", None):
+        settings.model_server = "ollama"
+        settings.ollama_model = args.ollama_model.strip()
+    if getattr(args, "remote_url", None):
+        settings.model_server = "remote"
+        settings.remote_url = args.remote_url.strip()
+    if getattr(args, "style", None):
+        settings.style = args.style
     if settings.model_server not in MODEL_SERVERS:
         raise LauncherError(
             f"model_server in config/launcher.json is {settings.model_server!r}; "
-            "it can be llamacpp or lmstudio"
+            f"it can be {', '.join(MODEL_SERVERS)}"
+        )
+    if settings.style not in STYLES:
+        raise LauncherError(
+            f"style in config/launcher.json is {settings.style!r}; it can be " + ", ".join(STYLES)
+        )
+    if settings.uses_remote and not str(settings.remote_url).startswith(("http://", "https://")):
+        raise LauncherError(
+            "remote_url in config/launcher.json must be the server's address, "
+            "e.g. http://192.168.1.20:8080/v1"
         )
     settings.lmstudio_url = str(settings.lmstudio_url).rstrip("/").removesuffix("/v1")
+    settings.ollama_url = str(settings.ollama_url).rstrip("/")
+    settings.remote_url = str(settings.remote_url).rstrip("/")
     settings.assume_yes = args.yes
     settings.update = args.update
     if args.tesseract:
@@ -824,6 +876,11 @@ def replace_file(source: Path, target: Path) -> None:
     os.replace(source, target)
 
 
+# Set while you paused the downloads (the launcher window's Pause button): the download in
+# progress stops at the next megabyte and goes on from there when this is cleared.
+DOWNLOADS_PAUSED = threading.Event()
+
+
 def download(
     url: str,
     dest: Path,
@@ -832,12 +889,16 @@ def download(
     token: str | None = None,
     attempts: int = 4,
 ) -> Path:
-    """Download to ``dest``, resuming a previous ``.part`` file, and check the SHA-256."""
+    """Download to ``dest``, resuming a previous ``.part`` file, and check the SHA-256.
+    A pause (DOWNLOADS_PAUSED) closes the connection and resumes it later; it does not
+    count as a failed attempt."""
     dest.parent.mkdir(parents=True, exist_ok=True)
     part = dest.with_name(dest.name + ".part")
-    for attempt in range(1, attempts + 1):
+    attempt = 1
+    while True:
         have = part.stat().st_size if part.exists() else 0
         headers = {"Range": f"bytes={have}-"} if have else {}
+        paused = False
         try:
             with urllib.request.urlopen(_request(url, token, **headers), timeout=60) as response:
                 if have and response.status != 206:  # the server ignored the range
@@ -854,11 +915,18 @@ def download(
                         if time.monotonic() - last > 0.5:
                             ui.progress(done - have, (total - have) if total else None, started)
                             last = time.monotonic()
-                ui.progress(done - have, (total - have) if total else None, started)
-                ui.say()
-                if total is not None and done < total:  # closed early, without an error
-                    raise ConnectionError(f"the connection closed after {done} of {total} bytes")
-            break
+                        if DOWNLOADS_PAUSED.is_set():
+                            paused = True
+                            break
+                if not paused:
+                    ui.progress(done - have, (total - have) if total else None, started)
+                    ui.say()
+                    if total is not None and done < total:  # closed early, without an error
+                        raise ConnectionError(
+                            f"the connection closed after {done} of {total} bytes"
+                        )
+            if not paused:
+                break
         except urllib.error.HTTPError as exc:
             if exc.code == 416 and have:  # already complete
                 break
@@ -875,8 +943,15 @@ def download(
         ) as exc:
             if attempt == attempts:
                 raise LauncherError(f"download failed: {url} ({exc})") from exc
+        if paused:
+            ui.say(f"   paused at {part.stat().st_size / GB:.2f} GB; Resume continues it")
+            while DOWNLOADS_PAUSED.is_set():
+                time.sleep(0.25)
+            ui.say("   resuming the download ...")
+            continue
         ui.say(f"   connection problem, resuming (try {attempt + 1} of {attempts}) ...")
         time.sleep(2 * attempt)
+        attempt += 1
     if sha256:
         ui.say("   checking the SHA-256 checksum ...")
         actual = sha256_of(part)
@@ -1300,12 +1375,161 @@ def remove_old_draft(settings: Settings, ui: Ui) -> None:
         ui.say(f"   removed the old draft model (no longer used), freed {size / GB:.1f} GB")
 
 
+# -- how much context fits ---------------------------------------------------------------
+
+GGUF_TYPES = {
+    0: "B",
+    1: "b",
+    2: "H",
+    3: "h",
+    4: "I",
+    5: "i",
+    6: "f",
+    7: "?",
+    10: "Q",
+    11: "q",
+    12: "d",
+}
+GGUF_STRING, GGUF_ARRAY = 8, 9
+
+
+def gguf_info(path: Path) -> dict[str, Any]:
+    """The few facts of a GGUF model's header that decide how much memory its context
+    needs: architecture, layers, attention heads (and key-value heads), the size of a head,
+    and the context it was trained for. {} when the file is not a GGUF model."""
+    wanted = ("block_count", "attention.head_count", "attention.head_count_kv",
+              "embedding_length", "attention.key_length", "context_length")  # fmt: skip
+    found: dict[str, Any] = {}
+
+    def read(fmt: str) -> Any:
+        size = struct.calcsize("<" + fmt)
+        data = handle.read(size)
+        if len(data) < size:
+            raise EOFError
+        return struct.unpack("<" + fmt, data)[0]
+
+    def text() -> str:
+        return handle.read(read("Q")).decode("utf-8", "replace")
+
+    def value(kind: int) -> Any:
+        if kind == GGUF_STRING:
+            return text()
+        if kind == GGUF_ARRAY:
+            item, count = read("I"), read("Q")
+            if item in GGUF_TYPES:
+                if count <= 4096:  # a short list of numbers (a head count per layer): kept
+                    return [read(GGUF_TYPES[item]) for _ in range(count)]
+                handle.seek(struct.calcsize("<" + GGUF_TYPES[item]) * count, 1)
+                return []
+            for _ in range(count):  # strings (the tokenizer's words): read past
+                value(item)
+            return []
+        return read(GGUF_TYPES[kind])
+
+    try:
+        with path.open("rb") as handle:
+            if handle.read(4) != b"GGUF":
+                return {}
+            version = read("I")
+            read("Q" if version >= 2 else "I")  # tensors
+            entries = read("Q" if version >= 2 else "I")
+            arch = ""
+            for _ in range(min(entries, 100000)):
+                key, kind = text(), read("I")
+                if kind not in GGUF_TYPES and kind not in (GGUF_STRING, GGUF_ARRAY):
+                    return {}
+                got = value(kind)
+                if key == "general.architecture":
+                    arch = str(got)
+                elif arch and key.startswith(arch + ".") and key[len(arch) + 1 :] in wanted:
+                    found[key[len(arch) + 1 :]] = got
+                if arch and all(k in found for k in wanted[:4]) and "context_length" in found:
+                    break
+    except (OSError, EOFError, struct.error, KeyError, ValueError):
+        return found if found.get("block_count") else {}
+    if arch:
+        found["architecture"] = arch
+    return found
+
+
+def kv_bytes_per_token(info: dict[str, Any], cache: str = "q8_0") -> int:
+    """The memory one token of context takes (keys and values in every layer); 0 if the
+    header does not say enough."""
+
+    def number(value: Any) -> int:
+        if isinstance(value, list):
+            return max((int(v) for v in value), default=0)
+        return int(value or 0)
+
+    layers, heads = number(info.get("block_count")), number(info.get("attention.head_count"))
+    kv_heads = number(info.get("attention.head_count_kv")) or heads
+    head_size = number(info.get("attention.key_length")) or (
+        number(info.get("embedding_length")) // heads if heads else 0
+    )
+    per_value = {"f16": 2.0, "q8_0": 34 / 32, "q4_0": 18 / 32}.get(cache, 2.0)
+    return int(2 * layers * kv_heads * head_size * per_value)
+
+
+def context_fit(model: Path, vram: int, cache: str = "q8_0") -> int:
+    """The largest of CONTEXT_STEPS that fits in ``vram`` bytes next to the model (and what
+    llama.cpp needs on top), and that the model was trained for; 0 if it cannot tell."""
+    info = gguf_info(model)
+    per_token = kv_bytes_per_token(info, cache)
+    if not per_token or not vram:
+        return 0
+    room = vram * 0.95 - model.stat().st_size - 0.8 * GB  # (the compute buffers, the desktop)
+    trained = int(info.get("context_length") or CONTEXT_STEPS[-1])
+    fitting = [c for c in CONTEXT_STEPS if c <= trained and c * per_token * 1.1 <= room]
+    return fitting[-1] if fitting else min(CONTEXT_STEPS[0], trained)
+
+
+def choose_context(settings: Settings, model: Path) -> int:
+    """The context to run with: what you chose, or (context 0, "auto") what fits."""
+    if settings.context:
+        return settings.context
+    gpu = detect_gpu() if settings.variant != "cpu" else None
+    fit = context_fit(model, gpu.vram) if gpu is not None and gpu.vram else 0
+    return fit or DEFAULT_CONTEXT
+
+
 def write_launcher_config(settings: Settings, server: Path | None, model: Path | None) -> Path:
     """config/starlight.launcher.yaml: the model server for Starlight. JSON is valid YAML,
     and your own config/starlight.local.yaml still overrides it."""
     data: dict[str, Any]
+    # Balanced is the model servers' own default: only the other styles are written down.
+    style = dict(STYLES[settings.style]) if settings.style != "balanced" else {}
+    temperature = {"temperature": style.pop("temperature")} if style else {}
+    extra = {**style, **({} if settings.think else NO_THINKING)}
     if settings.uses_lmstudio:
         data = {"model": lmstudio_model_config(settings)}
+        data["model"]["options"].update({**temperature, **({"extra": extra} if extra else {})})
+    elif settings.uses_ollama:
+        data = {
+            "model": {
+                "provider": "ollama",
+                "options": {
+                    "base_url": settings.ollama_url,
+                    "model": settings.ollama_model or "qwen3:14b",
+                    **temperature,
+                    "num_ctx": settings.context or DEFAULT_CONTEXT,
+                    **({"options": style} if style else {}),
+                },
+                "context_window": settings.context or DEFAULT_CONTEXT,
+            }
+        }
+    elif settings.uses_remote:
+        data = {
+            "model": {
+                "provider": "openai_compat",
+                "options": {
+                    "base_url": settings.remote_url,
+                    "model": settings.remote_model or "local",
+                    **temperature,
+                    **({"extra": extra} if extra else {}),
+                },
+                "context_window": settings.context or DEFAULT_CONTEXT,
+            }
+        }
     elif settings.use_model and server is not None and model is not None:
         data = {
             "model": {
@@ -1313,9 +1537,10 @@ def write_launcher_config(settings: Settings, server: Path | None, model: Path |
                 "options": {
                     "base_url": f"http://127.0.0.1:{settings.port}/v1",
                     "model": model.stem,
-                    **({} if settings.think else {"extra": NO_THINKING}),
+                    **temperature,
+                    **({"extra": extra} if extra else {}),
                 },
-                "context_window": settings.context,
+                "context_window": choose_context(settings, model),
                 "server": {
                     "binary": str(server),
                     "model_path": str(model),
@@ -1736,6 +1961,10 @@ def setup(settings: Settings, ui: Ui) -> Installed:
     if settings.uses_lmstudio:
         ui.step("Getting LM Studio ready")
         ensure_lmstudio(settings, ui)
+    if settings.uses_ollama or settings.uses_remote:
+        ui.step("Checking the model server")
+        state, detail = other_server_state(settings)
+        ui.say(f"   {detail}" if state == "ready" else f"   {detail} (Starlight starts anyway)")
     write_launcher_config(settings, installed.server, installed.model)
     return installed
 
@@ -1899,6 +2128,121 @@ def recommend_model(gpu: Gpu | None) -> tuple[str, str]:
             "That is plenty for a 14B model.",
         )
     return "qwen7b", "The 7B model fits it comfortably."
+
+
+# -- starting with Windows ----------------------------------------------------------------
+
+RUN_KEY = r"Software\Microsoft\Windows\CurrentVersion\Run"
+AUTOSTART_NAME = "Starlight"
+
+
+def autostart_command(root: Path) -> str:
+    """What Windows runs at logon: Starlight.exe, or this script with its Python."""
+    if getattr(sys, "frozen", False):
+        return f'"{Path(sys.executable).resolve()}"'
+    return f'"{sys.executable}" "{Path(__file__).resolve()}" --root "{root}"'
+
+
+def autostart_enabled() -> bool:
+    if sys.platform != "win32":
+        return False
+    import winreg
+
+    try:
+        with winreg.OpenKey(winreg.HKEY_CURRENT_USER, RUN_KEY) as key:
+            winreg.QueryValueEx(key, AUTOSTART_NAME)
+            return True
+    except OSError:
+        return False
+
+
+def set_autostart(on: bool, command: str) -> None:
+    """Start Starlight when you log in to Windows (your own account's Run list), or not."""
+    if sys.platform != "win32":
+        raise LauncherError("starting with the computer is set up here on Windows only")
+    import winreg
+
+    with winreg.OpenKey(winreg.HKEY_CURRENT_USER, RUN_KEY, 0, winreg.KEY_SET_VALUE) as key:
+        if on:
+            winreg.SetValueEx(key, AUTOSTART_NAME, 0, winreg.REG_SZ, command)
+        else:
+            with contextlib.suppress(FileNotFoundError):
+                winreg.DeleteValue(key, AUTOSTART_NAME)
+
+
+# -- models from Hugging Face ------------------------------------------------------------
+
+HF = "https://huggingface.co"
+SPLIT_PART = re.compile(r"-\d{5}-of-\d{5}\.gguf$")  # one part of a model in several files
+
+
+def _get_json(url: str, timeout: float = 20) -> Any:
+    request = urllib.request.Request(url, headers={"User-Agent": USER_AGENT})
+    try:
+        with urllib.request.urlopen(request, timeout=timeout) as response:
+            return json.loads(response.read(8 * MB).decode("utf-8"))
+    except (OSError, ValueError, http.client.HTTPException) as exc:
+        raise LauncherError(f"Hugging Face did not answer: {exc}") from exc
+
+
+def search_hf(query: str, limit: int = 25) -> list[dict[str, Any]]:
+    """GGUF models on Hugging Face matching ``query``, most downloaded first."""
+    query = query.strip()
+    if not query:
+        return []
+    found = _get_json(
+        f"{HF}/api/models?search={urllib.parse.quote(query)}&filter=gguf"
+        f"&sort=downloads&direction=-1&limit={limit}"
+    )
+    return [
+        {"repo": str(m["id"]), "downloads": int(m.get("downloads") or 0),
+         "likes": int(m.get("likes") or 0)}
+        for m in found if isinstance(m, dict) and m.get("id")
+    ] if isinstance(found, list) else []  # fmt: skip
+
+
+def hf_files(repo: str) -> list[dict[str, Any]]:
+    """The model files of a Hugging Face repository that Starlight can run (one .gguf each;
+    not the vision add-ons or models split over several files), smallest first."""
+    if not re.fullmatch(r"[\w-][\w.-]*/[\w-][\w.-]*", repo):  # (no "..": not a path)
+        raise LauncherError(f"not a Hugging Face repository: {repo}")
+    listed = _get_json(f"{HF}/api/models/{repo}/tree/main?recursive=true")
+    files = []
+    for entry in listed if isinstance(listed, list) else []:
+        path = str(entry.get("path", "")) if isinstance(entry, dict) else ""
+        name = path.rsplit("/", 1)[-1].lower()
+        if not name.endswith(".gguf") or "mmproj" in name or SPLIT_PART.search(name):
+            continue
+        size = int((entry.get("lfs") or {}).get("size") or entry.get("size") or 0)
+        url = f"{HF}/{repo}/resolve/main/{urllib.parse.quote(path)}"
+        files.append({"file": path, "size": size, "url": url})
+    return sorted(files, key=lambda f: f["size"])
+
+
+# -- what takes the disk space ---------------------------------------------------------------
+
+
+def disk_report(settings: Settings) -> list[dict[str, Any]]:
+    """Each downloaded model (the one in use marked) and the other big folders, with sizes."""
+    report: list[dict[str, Any]] = []
+    if settings.models.is_dir():
+        for model in sorted(settings.models.glob("*.gguf")):
+            report.append({
+                "name": model.name, "path": model, "bytes": model.stat().st_size,
+                "kind": "model", "in_use": model == settings.model_file and settings.runs_llama,
+            })  # fmt: skip
+    for name, folder in (
+        ("llama.cpp, speech and other tools", settings.tools),
+        ("Python and Starlight's packages", settings.root / ".venv"),
+        ("download cache", settings.root / ".uv-cache"),
+        ("logs", settings.root / "logs"),
+        ("data (conversations, statistics, indexes)", settings.root / "data"),
+        ("memory", settings.root / "memory"),
+    ):
+        if folder.is_dir():
+            report.append({"name": name, "path": folder, "bytes": folder_size(folder),
+                           "kind": "folder", "in_use": True})  # fmt: skip
+    return report
 
 
 def save_choices(root: Path, choices: dict[str, Any], drop: tuple[str, ...] = ()) -> Path:
@@ -2135,11 +2479,13 @@ def reload_in_lmstudio(settings: Settings) -> str:
         key = settings.lmstudio_model
         if not key:
             return "LM Studio has no model loaded: load one there, or choose one in Settings"
-        return load_in_lmstudio(url, key, settings.context)
+        return load_in_lmstudio(url, key, settings.context or DEFAULT_CONTEXT)
     problem = unload_in_lmstudio(url, state.loaded)
     if problem:
         return problem
-    return load_in_lmstudio(url, lmstudio_key(settings, state.loaded), settings.context)
+    return load_in_lmstudio(
+        url, lmstudio_key(settings, state.loaded), settings.context or DEFAULT_CONTEXT
+    )
 
 
 def lmstudio_key(settings: Settings, instance: str) -> str:
@@ -2211,7 +2557,7 @@ class LMStudioPause:
         elif self.unloaded:
             key, self.unloaded = self.unloaded, ""
             self.ui.say(f"\nGame mode ended: loading {key} in LM Studio again ...")
-            problem = load_in_lmstudio(url, key, self.settings.context)
+            problem = load_in_lmstudio(url, key, self.settings.context or DEFAULT_CONTEXT)
             if problem:
                 self.ui.say(f"   LM Studio could not load it: {problem}")
 
@@ -2256,8 +2602,9 @@ def ensure_lmstudio(settings: Settings, ui: Ui, wait: float = 30) -> LMStudioSta
             names = ", ".join(candidates[:5]) or "none downloaded"
             ui.say(f"   LM Studio has no model loaded ({names}): load one in LM Studio")
             return state
-        ui.say(f"   loading {key} in LM Studio with {settings.context} tokens of context ...")
-        problem = load_in_lmstudio(url, key, settings.context)
+        tokens = settings.context or DEFAULT_CONTEXT
+        ui.say(f"   loading {key} in LM Studio with {tokens} tokens of context ...")
+        problem = load_in_lmstudio(url, key, tokens)
         if problem:
             ui.say(f"   LM Studio could not load it: {problem}")
         state = lmstudio_state(url)
@@ -2277,7 +2624,7 @@ SHORT_CONTEXT = 16384  # below this, less room is kept for the answer (reserve_t
 def lmstudio_model_config(settings: Settings) -> dict[str, Any]:
     """The model section for LM Studio. Starlight plans its prompts with context_window, so
     it is never more than LM Studio has loaded: a longer prompt would be refused."""
-    context = settings.context
+    context = settings.context or DEFAULT_CONTEXT
     loaded = lmstudio_state(settings.lmstudio_url).context
     if loaded:
         context = min(context, loaded)
@@ -2292,6 +2639,28 @@ def lmstudio_model_config(settings: Settings) -> dict[str, Any]:
     if context < SHORT_CONTEXT:  # the default 4096 would leave too little for the prompt
         model["reserve_tokens"] = max(256, context // 4)
     return model
+
+
+OLLAMA_HINT = "Ollama does not answer: start Ollama (it runs in the background once installed)"
+
+
+def other_server_state(settings: Settings) -> tuple[str, str]:
+    """("ready" or "waiting", what to say) for Ollama or a server on another PC."""
+    if settings.uses_ollama:
+        tags = fetch_json(f"{settings.ollama_url}/api/tags", timeout=3)
+        if tags is None:
+            return "waiting", OLLAMA_HINT
+        names = [str(m.get("name", "")) for m in tags.get("models") or [] if isinstance(m, dict)]
+        wanted = settings.ollama_model or "qwen3:14b"
+        if any(n == wanted or n.split(":")[0] == wanted for n in names):
+            return "ready", f"{wanted} (Ollama)"
+        return "waiting", f"Ollama has no {wanted}: run  ollama pull {wanted}"
+    listed = fetch_json(f"{settings.remote_url}/models", timeout=3)
+    if listed is None:
+        return "waiting", f"the model server at {settings.remote_url} does not answer"
+    names = [str(m.get("id", "")) for m in listed.get("data") or [] if isinstance(m, dict)]
+    shown = settings.remote_model or (names[0] if names else "its model")
+    return "ready", f"{shown} (at {urllib.parse.urlsplit(settings.remote_url).netloc})"
 
 
 class Services:
@@ -2360,6 +2729,8 @@ class Services:
                 model, detail = "waiting", "LM Studio answers but has no model loaded: load one"
             else:
                 model, detail = "waiting", LMSTUDIO_HINT
+        elif settings.uses_ollama or settings.uses_remote:
+            model, detail = other_server_state(settings)
         else:
             code = health_status(settings.port)
             if code == 200:
@@ -2507,6 +2878,20 @@ def build_parser() -> argparse.ArgumentParser:
         "instead of whichever is loaded",
     )
     parser.add_argument(
+        "--ollama-model",
+        metavar="NAME",
+        help="use a model in Ollama (e.g. qwen3:14b) instead of downloading one",
+    )
+    parser.add_argument(
+        "--remote-url",
+        metavar="URL",
+        help="use a model server on another PC (OpenAI-compatible, e.g. "
+        "http://192.168.1.20:8080/v1) instead of running one here",
+    )
+    parser.add_argument(
+        "--style", choices=list(STYLES), help="how freely the model words its answers"
+    )
+    parser.add_argument(
         "--no-model",
         action="store_true",
         help="use Starlight's built-in test model; download no model",
@@ -2537,7 +2922,9 @@ def build_parser() -> argparse.ArgumentParser:
     # Accepted so older shortcuts keep working; the draft model was removed.
     parser.add_argument("--no-draft", action="store_true", help=argparse.SUPPRESS)
     parser.add_argument("--draft-url", help=argparse.SUPPRESS)
-    parser.add_argument("--context", type=int, help="context window in tokens")
+    parser.add_argument(
+        "--context", type=int, help="context window in tokens (0: as much as fits the card)"
+    )
     parser.add_argument("--variant", choices=["vulkan", "cpu"], help="llama.cpp build")
     parser.add_argument("--llama-release", help='llama.cpp release tag (default "latest")')
     parser.add_argument("--port", type=int, help="model server port (default 8080)")

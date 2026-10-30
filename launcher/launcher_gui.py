@@ -15,6 +15,7 @@ import contextlib
 import math
 import os
 import queue
+import shutil
 import subprocess
 import sys
 import threading
@@ -148,6 +149,31 @@ def system_uses_light_theme() -> bool:
         return False
 
 
+def flash_window(root: tk.Tk) -> None:
+    """Make the taskbar button blink until the window is looked at (Windows), when it is
+    not in front: a model that took minutes to load is ready."""
+    if sys.platform != "win32" or root.focus_displayof() is not None:
+        return
+    import ctypes
+    from ctypes import wintypes
+
+    class FlashInfo(ctypes.Structure):
+        _fields_ = [("cbSize", wintypes.UINT), ("hwnd", wintypes.HWND),
+                    ("dwFlags", wintypes.DWORD), ("uCount", wintypes.UINT),
+                    ("dwTimeout", wintypes.DWORD)]  # fmt: skip
+
+    with contextlib.suppress(Exception):
+        handle = ctypes.windll.user32.GetParent(root.winfo_id())
+        info = FlashInfo(ctypes.sizeof(FlashInfo), handle, 0x3 | 0xC, 0, 0)  # all, until focus
+        ctypes.windll.user32.FlashWindowEx(ctypes.byref(info))
+
+
+def selected(box: tk.Listbox) -> int | None:
+    """The chosen line of a list box, or None."""
+    chosen = box.curselection()  # type: ignore[no-untyped-call]
+    return int(chosen[0]) if chosen else None
+
+
 def shorten(text: str, limit: int = 40) -> str:
     """A name cut to ``limit`` characters with an ellipsis in the middle (the start and the
     end of a model name say the most: maker, size, quantization)."""
@@ -170,6 +196,21 @@ def open_folder(path: Path) -> None:
 
 LMSTUDIO = "lmstudio"  # the model card for LM Studio (it runs the model; nothing is downloaded)
 LMS_AUTO = "Whichever is loaded in LM Studio"  # the LM Studio model choice for "auto"
+STYLE_NAMES = {
+    "precise": "Precise: sticks closely to the facts",
+    "balanced": "Balanced (the usual)",
+    "creative": "Creative: more varied wording",
+}
+CONTEXT_NAMES = {
+    0: "Auto: as much as fits your graphics card",
+    8192: "8k tokens: fastest, remembers the least",
+    16384: "16k tokens",
+    32768: "32k tokens (the usual)",
+    49152: "48k tokens",
+    65536: "64k tokens",
+    98304: "96k tokens",
+    131072: "128k tokens: remembers the most, needs much video memory",
+}
 
 
 class GuiUi:
@@ -710,10 +751,7 @@ class App:
             self.chips[tag] = chip
         self._paint_chips()
         self.model_var = tk.StringVar(value="")
-        keys = list(self.L.MODEL_PRESETS)
-        if self.settings.model_url not in self.L.MODEL_PRESETS.values():
-            keys.append("custom")
-        keys.append(LMSTUDIO)
+        keys = [*self.L.MODEL_PRESETS, "custom", LMSTUDIO]  # custom: shown only when in use
         # Other people's changes of a model, and models from elsewhere, each under a heading.
         headings = {
             self.L.LARGE[0]: "FOR GRAPHICS CARDS WITH 24 TO 32 GB",
@@ -804,6 +842,45 @@ class App:
             if variable is self.think_var:
                 self.think_check = check  # only for the models that think first
         self.has_ocr_option = any(variable is self.ocr_var for variable, _ in rows)
+        self.autostart_var = tk.BooleanVar(value=False)
+        next_row = len(rows) + 1
+        if sys.platform == "win32":
+            self.autostart_var.set(self.L.autostart_enabled())
+            CheckRow(
+                self, options, "Start Starlight when I log in to Windows", self.autostart_var,
+                self._refresh_summary,
+            ).grid(row=next_row, column=0, sticky="w")  # fmt: skip
+            next_row += 1
+        # Two choices that are more than on or off: how the model words its answers, and how
+        # much of the conversation it keeps in mind at once.
+        picks = ttk.Frame(options)
+        picks.grid(row=next_row, column=0, sticky="w", pady=(self.px(8), 0))
+        self.style_var = tk.StringVar(value=STYLE_NAMES[self.settings.style])
+        self.context_names = dict(CONTEXT_NAMES)
+        if self.settings.context not in self.context_names:
+            self.context_names[self.settings.context] = f"{self.settings.context} tokens"
+        self.context_var = tk.StringVar(value=self.context_names[self.settings.context])
+        for row_index, (label, choice_var, values, tip) in enumerate((
+            ("Answers:", self.style_var, list(STYLE_NAMES.values()),
+             "How freely the model chooses its words: precise for facts and tools, creative "
+             "for stories and ideas."),
+            ("Context:", self.context_var, list(self.context_names.values()),
+             "How much of the conversation (and of long texts) the model keeps in mind at "
+             "once. More needs more video memory; Auto works it out from the model file and "
+             "your graphics card."),
+        )):  # fmt: skip
+            name = self._label(picks, label)
+            name.grid(row=row_index, column=0, sticky="w", pady=self.px(2))
+            combo = ttk.Combobox(picks, textvariable=choice_var, values=values,
+                                 state="readonly", width=52)  # fmt: skip
+            combo.grid(row=row_index, column=1, sticky="w", padx=(self.px(8), 0), pady=self.px(2))
+            Tooltip(self, name, tip)
+            Tooltip(self, combo, tip)
+        hf = tk.Label(models, text="Find more models on Hugging Face ...", font=self.f_link,
+                      bg=self.c.bg, fg=self.c.accent, cursor="hand2")  # fmt: skip
+        hf.grid(row=row + 3, column=0, sticky="w", pady=(self.px(6), 0))
+        hf.bind("<Button-1>", lambda _event: self.open_hf_search())
+        Tooltip(self, hf, "Search Hugging Face for other GGUF models and use one of them")
 
         # At the foot of the window, always in view (the list of models above is long): what
         # will be downloaded, and the buttons. show() puts it there for this page only.
@@ -828,6 +905,114 @@ class App:
             buttons, "Install and start", self.on_setup_go, "Accent.TButton"
         )
         self.setup_go.grid(row=1, column=3)
+
+    # -- more models: Hugging Face ------------------------------------------------------------
+
+    def open_hf_search(self) -> None:
+        """A small window: search Hugging Face for GGUF models, pick a file, use it."""
+        c = self.c
+        window = tk.Toplevel(self.root)
+        window.transient(self.root)  # in front of the launcher, not behind it
+        window.title("Find a model on Hugging Face")
+        window.configure(bg=c.bg)
+        window.geometry(f"{self.px(760)}x{self.px(520)}")
+        top = ttk.Frame(window, padding=self.px(12))
+        top.pack(fill="x")
+        query = tk.StringVar(value="Qwen3 GGUF")
+        entry = ttk.Entry(top, textvariable=query, width=40)
+        entry.pack(side="left", fill="x", expand=True)
+        state = self._label(top, "", "Small.TLabel")
+        lists = ttk.Frame(window, padding=(self.px(12), 0))
+        lists.pack(fill="both", expand=True)
+        lists.columnconfigure((0, 1), weight=1)
+        lists.rowconfigure(1, weight=1)
+        self._label(lists, "Models (most downloaded first)", "Section.TLabel").grid(
+            row=0, column=0, sticky="w"
+        )
+        self._label(lists, "Files (pick one size)", "Section.TLabel").grid(
+            row=0, column=1, sticky="w", padx=(self.px(10), 0)
+        )
+        repos = tk.Listbox(lists, bg=c.panel, fg=c.text, font=self.f, activestyle="none",
+                           exportselection=False, relief="flat")  # fmt: skip
+        repos.grid(row=1, column=0, sticky="nsew")
+        files = tk.Listbox(lists, bg=c.panel, fg=c.text, font=self.f, activestyle="none",
+                           exportselection=False, relief="flat")  # fmt: skip
+        files.grid(row=1, column=1, sticky="nsew", padx=(self.px(10), 0))
+        found: dict[str, list[Any]] = {"repos": [], "files": []}
+        vram = self.gpu.vram if getattr(self, "gpu", None) is not None and self.gpu.vram else 0
+
+        def run(job: Any, done: Any) -> None:
+            def work() -> None:
+                try:
+                    result = job()
+                except self.L.LauncherError as exc:
+                    message = str(exc)
+                    self.root.after(0, lambda: state.configure(text=message))
+                    return
+                self.root.after(0, lambda: done(result))
+
+            state.configure(text="Asking Hugging Face ...")
+            threading.Thread(target=work, name="hf", daemon=True).start()
+
+        def show_repos(result: list[dict[str, Any]]) -> None:
+            found["repos"] = result
+            repos.delete(0, "end")
+            files.delete(0, "end")
+            for item in result:
+                repos.insert("end", f"{item['repo']}   ({item['downloads']:,} downloads)")
+            state.configure(text=f"{len(result)} found" if result else "Nothing found")
+
+        def show_files(result: list[dict[str, Any]]) -> None:
+            found["files"] = result
+            files.delete(0, "end")
+            for item in result:
+                fits = " - fits your card" if vram and item["size"] * 1.15 < vram else ""
+                files.insert("end", f"{item['file'].rsplit('/', 1)[-1]}   "
+                                    f"{self.L.format_size(item['size'])}{fits}")  # fmt: skip
+            state.configure(text=f"{len(result)} files" if result else "No single-file GGUF here")
+
+        def search(_event: object = None) -> None:
+            run(lambda: self.L.search_hf(query.get()), show_repos)
+
+        def pick_repo(_event: object = None) -> None:
+            chosen = selected(repos)
+            if chosen is not None:
+                repo = found["repos"][chosen]["repo"]
+                run(lambda: self.L.hf_files(repo), show_files)
+
+        def use() -> None:
+            chosen = selected(files)
+            if chosen is None:
+                state.configure(text="Pick a file first")
+                return
+            self.use_model_url(found["files"][chosen]["url"], found["files"][chosen]["size"])
+            window.destroy()
+
+        entry.bind("<Return>", search)
+        repos.bind("<<ListboxSelect>>", pick_repo)
+        files.bind("<Double-Button-1>", lambda _event: use())
+        self._button(top, "Search", search).pack(side="left", padx=(self.px(8), 0))
+        state.pack(side="left", padx=(self.px(10), 0))
+        bottom = ttk.Frame(window, padding=self.px(12))
+        bottom.pack(fill="x")
+        self._label(
+            bottom, "Models not from the list are not tested with Starlight: try the tool-use "
+            "exam once it runs.", "Small.TLabel", wrap=True,
+        ).pack(side="left", fill="x", expand=True)  # fmt: skip
+        self._button(bottom, "Use this model", use, "Accent.TButton").pack(side="right")
+        entry.focus_set()
+
+    def use_model_url(self, url: str, size: int = 0) -> None:
+        """Make a model from elsewhere the chosen one (the "your own model" card)."""
+        self.settings.model_url = url
+        if size:
+            self.sizes[url] = size
+        card = self.cards["custom"]
+        card["name"].configure(text=f"Your own model: {shorten(self.L._file_name(url))}")
+        card["desc"].configure(text="From Hugging Face. Downloaded when you start.")
+        self.select_model("custom", touched=True)
+        self._apply_visibility()
+        self._refresh_cards()
 
     def _tesseract_installed(self) -> bool:
         import shutil
@@ -935,7 +1120,11 @@ class App:
     def _hidden(self, key: str) -> bool:
         """Folded away: without the tag chosen above the list, or too big for the graphics
         card (unless asked for). Never the chosen model, nor LM Studio or your own."""
-        if key in ("custom", LMSTUDIO) or key in (self.model_var.get(), self._current_model_key()):
+        if key in (self.model_var.get(), self._current_model_key()):
+            return False
+        if key == "custom":  # your own model's card: while it is the one chosen
+            return True
+        if key == LMSTUDIO:
             return False
         if self.tag_filter and self.tag_filter not in self.L.MODEL_TAGS.get(key, ()):
             return True
@@ -1336,8 +1525,13 @@ class App:
             "viewer": self.viewer_var.get(),
             "think": self.think_var.get(),
         }
+        style = next(k for k, v in STYLE_NAMES.items() if v == self.style_var.get())
+        context = next(k for k, v in self.context_names.items() if v == self.context_var.get())
+        choices.update(style=style, context=context)
+        settings.style, settings.context = style, context
         drop: tuple[str, ...] = ()
-        if settings.use_model:
+        keep_server = settings.model_server in ("ollama", "remote") and not self.model_touched
+        if settings.use_model and not keep_server:  # (Ollama or another PC: set in the file)
             settings.model_server = "lmstudio" if key == LMSTUDIO else "llamacpp"
             choices["model_server"] = settings.model_server
         if settings.use_model and key == LMSTUDIO:
@@ -1347,6 +1541,16 @@ class App:
             settings.model_url = L.MODEL_PRESETS[key]
             choices["model"] = key
             drop = ("model_url",)
+        elif settings.use_model and key == "custom":
+            choices["model_url"] = settings.model_url
+            drop = ("model",)
+        if sys.platform == "win32" and self.autostart_var.get() != L.autostart_enabled():
+            try:
+                L.set_autostart(self.autostart_var.get(), L.autostart_command(settings.root))
+            except (OSError, L.LauncherError) as exc:
+                messagebox.showwarning(
+                    "Starlight", f"Could not change the start with Windows: {exc}"
+                )
         settings.variant = choices["variant"]
         settings.voice = choices["voice"]
         settings.viewer = choices["viewer"]
@@ -1409,7 +1613,20 @@ class App:
         buttons.columnconfigure(0, weight=1)
         note = "Finished downloads are kept if you stop."
         self._label(buttons, note, "Small.TLabel").grid(row=0, column=0, sticky="w")
-        self._button(buttons, "Quit", self.quit_app).grid(row=0, column=1)
+        self.pause_button = self._button(buttons, "Pause download", self.toggle_download_pause)
+        self.pause_button.grid(row=0, column=1, padx=(0, self.px(8)))
+        self.pause_button.grid_remove()  # shown while something downloads
+        self._button(buttons, "Quit", self.quit_app).grid(row=0, column=2)
+
+    def toggle_download_pause(self) -> None:
+        """Pause the download (it stops at the next megabyte) or go on with it."""
+        paused = self.L.DOWNLOADS_PAUSED
+        if paused.is_set():
+            paused.clear()
+            self.pause_button.configure(text="Pause download")
+        else:
+            paused.set()
+            self.pause_button.configure(text="Resume download")
 
     def _flip_details(self) -> None:
         self.details_open.set(not self.details_open.get())
@@ -1447,6 +1664,8 @@ class App:
         self.step_rows.append((glyph, label))
 
     def on_step(self, text: str) -> None:
+        if not self.L.DOWNLOADS_PAUSED.is_set():
+            self.pause_button.grid_remove()  # a new step: no download in progress yet
         if self.step_rows:
             glyph, label = self.step_rows[-1]
             self._draw_mark(glyph, "done", self.c.ok)
@@ -1459,6 +1678,7 @@ class App:
     def on_progress(self, done: int, total: int | None, started: float) -> None:
         fraction, text = self.L.transfer_text(done, total, started)
         self.p_sub.configure(text=text)
+        self.pause_button.grid()  # (only downloads report progress)
         if fraction < 0:
             return
         self.bar.stop()
@@ -1608,9 +1828,18 @@ class App:
         self.btn_restart = self._button(buttons, "Restart model server", self.restart_model)
         self.btn_check = self._button(buttons, "Check everything", self.run_check)
         self.btn_logs = self._button(buttons, "Open logs folder", self.open_logs)
+        self.btn_speed = self._button(buttons, "Speed test", self.run_speed_test)
+        Tooltip(self, self.btn_speed, "How fast the model answers (tokens per second)")
+        self.btn_exam = self._button(buttons, "Tool-use exam", self.run_exam)
+        Tooltip(
+            self, self.btn_exam, "Eight small tasks: does this model use Starlight's tools well?"
+        )
+        self.btn_disk = self._button(buttons, "Disk space", self.open_disk)
+        Tooltip(self, self.btn_disk, "What takes space: models and folders; remove unused models")
         grid = [
             [self.btn_chat, self.btn_stats, self.btn_kill],
             [self.btn_restart, self.btn_check, self.btn_logs],
+            [self.btn_speed, self.btn_exam, self.btn_disk],
         ]
         for row, widgets in enumerate(grid):
             for column, widget in enumerate(widgets):
@@ -1735,6 +1964,9 @@ class App:
         self.r_sub.configure(text=sub)
         self.r_footer.configure(text=f"Folder: {self.settings.root}")
         ready = status.chat and status.model in ("ready", "off")
+        if ready and not getattr(self, "was_ready", False):
+            flash_window(self.root)  # it took a while: the taskbar button says it is ready
+        self.was_ready = ready
         if ready and not self.opened_browser and self.settings.web:
             self.opened_browser = True
             self.open_chat()
@@ -1789,28 +2021,47 @@ class App:
 
     def run_check(self) -> None:
         """Run `starlight doctor` and show what it says."""
+        self._run_starlight(("doctor",), "Starlight check", 120)
+
+    def run_speed_test(self) -> None:
+        self._run_starlight(("model", "bench", "--runs", "2"), "Speed test", 600, "Measuring ...")
+
+    def run_exam(self) -> None:
+        self._run_starlight(
+            ("model", "exam"), "Tool-use exam", 1800, "Eight tasks, a minute or two ..."
+        )
+
+    def _run_starlight(
+        self, args: tuple[str, ...], title: str, timeout: float, note: str = ""
+    ) -> None:
+        """Run a `starlight ...` command in the background and show its output."""
         if self.services is None:
             return
         uv, root = self.services.installed.uv, self.settings.root
+        if note:
+            self.events.put(("note_quiet", f"{title}: {note}"))
 
-        def check() -> None:
+        def work() -> None:
             flags = subprocess.CREATE_NO_WINDOW if sys.platform == "win32" else 0  # type: ignore[attr-defined,unused-ignore]
             try:
                 done = subprocess.run(
-                    self.L.starlight(uv, "doctor"), cwd=root, capture_output=True, text=True,
-                    encoding="utf-8", errors="replace", timeout=120, creationflags=flags,
+                    self.L.starlight(uv, *args), cwd=root, capture_output=True, text=True,
+                    encoding="utf-8", errors="replace", timeout=timeout, creationflags=flags,
                 )  # fmt: skip
                 text = (done.stdout + done.stderr).strip()
             except (OSError, subprocess.SubprocessError) as exc:
-                text = f"The check could not run: {exc}"
-            self.events.put(("doctor", text or "No output."))
+                text = f"It could not run: {exc}"
+            self.events.put(("doctor", text or "No output.", title))
 
-        threading.Thread(target=check, name="doctor", daemon=True).start()
+        threading.Thread(target=work, name=args[0], daemon=True).start()
 
-    def on_doctor(self, text: str) -> None:
+    def on_note_quiet(self, text: str) -> None:
+        self.r_sub.configure(text=text)
+
+    def on_doctor(self, text: str, title: str = "Starlight check") -> None:
         c = self.c
         window = tk.Toplevel(self.root)
-        window.title("Starlight check")
+        window.title(title)
         window.configure(bg=c.bg)
         width = min(self.px(760), self.root.winfo_screenwidth() - 40)
         height = min(self.px(420), self.root.winfo_screenheight() - 100)
@@ -1832,6 +2083,54 @@ class App:
         row.pack(fill="x", padx=self.px(12), pady=self.px(10))
         self._button(row, "Copy", lambda: self._copy(text)).pack(side="left")
         self._button(row, "Close", window.destroy).pack(side="right")
+
+    def open_disk(self) -> None:
+        """What takes space: the models (unused ones can be removed) and the big folders."""
+        c, L = self.c, self.L
+        window = tk.Toplevel(self.root)
+        window.transient(self.root)
+        window.title("Disk space")
+        window.configure(bg=c.bg)
+        body = ttk.Frame(window, padding=self.px(14))
+        body.pack(fill="both", expand=True)
+        body.columnconfigure(0, weight=1)
+
+        def fill() -> None:
+            for child in body.winfo_children():
+                child.destroy()
+            report = L.disk_report(self.settings)
+            total = sum(item["bytes"] for item in report)
+            free = shutil.disk_usage(self.settings.root).free
+            used = (
+                f"Starlight uses {L.format_size(total)}; {L.format_size(free)} free on this drive."
+            )
+            self._label(body, used, "Head.TLabel").grid(
+                row=0, column=0, columnspan=3, sticky="w", pady=(0, self.px(8))
+            )
+            for row, item in enumerate(report, start=1):
+                name = item["name"] + (
+                    "   (in use)" if item["kind"] == "model" and item["in_use"] else ""
+                )
+                self._label(body, name).grid(row=row, column=0, sticky="w", pady=self.px(2))
+                self._label(body, L.format_size(item["bytes"]), "Dim.TLabel").grid(
+                    row=row, column=1, sticky="e", padx=self.px(12)
+                )
+                if item["kind"] == "model" and not item["in_use"]:
+                    self._button(body, "Remove", partial(remove, item["path"])).grid(
+                        row=row, column=2
+                    )
+                elif item["kind"] == "folder":
+                    self._button(body, "Open", partial(open_folder, item["path"])).grid(
+                        row=row, column=2
+                    )
+
+        def remove(path: Path) -> None:
+            if messagebox.askyesno("Starlight", f"Delete {path.name}? It can be downloaded again."):
+                with contextlib.suppress(OSError):
+                    path.unlink()
+                fill()
+
+        fill()
 
     def _copy(self, text: str) -> None:
         self.root.clipboard_clear()
@@ -1974,6 +2273,12 @@ class App:
         self.on_progress(3 * L.GB, 9 * L.GB, time.monotonic() - 60)
         self.on_say("a line of output")
         self.on_step("Setting up Python")
+        self.toggle_download_pause()
+        self.toggle_download_pause()  # (paused and going on again)
+        self.use_model_url("https://huggingface.co/a/b/resolve/main/model-Q4_K_M.gguf", 5 * L.GB)
+        self.open_hf_search()
+        self.open_disk()
+        self.on_doctor("40 tokens per second", "Speed test")
         self.show("running")
         for model in ("loading", "ready", "restarting", "down", "off", "paused"):
             self.on_status(L.Status(model=model, chat=True, viewer=True, kill=False, seconds=75))

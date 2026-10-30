@@ -194,7 +194,10 @@ Run `Starlight.exe --help` in a terminal to see every option. The most useful on
 | `--no-think` | Models that think before they answer (Qwen3, gpt-oss) answer at once: quicker, a little less careful. |
 | `--lmstudio-model <name>` | Use LM Studio, with this model loaded and used instead of whichever is loaded. |
 | `--model-url <link>` | Use another model (a direct download link to a `.gguf` file). |
-| `--context 16384` | A smaller context window: uses less video memory. |
+| `--context 16384` | A smaller context window: uses less video memory. `--context 0` (*Auto* in the window) reads the model file and your graphics card and uses as much as fits. |
+| `--style precise` | How freely the model words its answers: `precise` (facts and tools), `balanced` (the usual) or `creative` (stories, ideas). *Answers* in the window. |
+| `--ollama-model qwen3:14b` | Use a model in [Ollama](https://ollama.com) instead of downloading one (`"ollama_url"` in `launcher.json` if it is not on this PC). |
+| `--remote-url http://192.168.1.20:8080/v1` | Use a model server on another PC in your network (llama-server, LM Studio, vLLM … anything OpenAI-compatible); `"remote_model"` names its model if it needs one. |
 | `--variant cpu` | Run without a graphics card (slow). |
 | `--terminal` | Chat in the terminal instead of opening the browser. |
 | `--no-gui` | Don't open the Starlight window; use the text version. (`--gui` forces the window.) |
@@ -210,6 +213,19 @@ To use options every time, put them into `config\launcher.json`, for example:
 ```json
 { "context": 16384, "viewer": false }
 ```
+
+`"models_dir": "D:\\Models"` keeps the models in a folder of your own (another drive, or
+one LM Studio shares).
+
+**In the window.** *Find more models on Hugging Face …* under the list searches Hugging
+Face for GGUF models and shows each one's files with their size (and which fit your
+graphics card); *Use this model* makes it your own model. While a model downloads,
+**Pause download** stops it and **Resume download** goes on where it stopped. On Windows,
+*Start Starlight when I log in to Windows* adds it to your account's start list. When the
+model is ready while the window is in the background, its taskbar button blinks. The
+status page also has **Speed test** (tokens per second), **Tool-use exam** (does this model
+use Starlight's tools well?) and **Disk space** (what each model and folder takes; unused
+models can be removed there).
 
 #### A different model
 
