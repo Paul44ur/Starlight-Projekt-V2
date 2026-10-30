@@ -271,8 +271,8 @@ def test_memory_and_skills_from_the_browser(tmp_path: Path) -> None:
 
 def test_pages_and_app_files_load(tmp_path: Path) -> None:
     with client(home(tmp_path / "h", remote=False)) as c:
-        for path in ("/", "/settings", "/memory", "/style.css", "/common.js", "/icon.svg",
-                     "/manifest.webmanifest"):  # fmt: skip
+        for path in ("/", "/settings", "/memory", "/style.css", "/common.js", "/markdown.js",
+                     "/icon.svg", "/manifest.webmanifest"):  # fmt: skip
             assert c.get(path, headers=LOCAL).status_code == 200, path
 
 

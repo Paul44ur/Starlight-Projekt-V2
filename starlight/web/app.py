@@ -333,6 +333,10 @@ def create_app(paths: Paths | None = None) -> Any:
     def common() -> Response:
         return Response(page("common.js"), media_type="text/javascript")
 
+    @app.get("/markdown.js")
+    def markdown() -> Response:
+        return Response(page("markdown.js"), media_type="text/javascript")
+
     @app.get("/icon.svg")
     def icon() -> Response:
         return Response(page("icon.svg"), media_type="image/svg+xml")

@@ -416,7 +416,10 @@ colored terminal chat. Both use the same assistant, settings and safeguards.
 **The web chat.** Your conversations are saved: the list on the left reopens, renames,
 searches and deletes them (the terminal continues the most recent one). Drop pictures or
 documents (PDF, Word, Excel, text) onto the chat, or press 📎, to send them with your
-message. Every answer has **Copy**, and the latest one **Regenerate** (asks the same
+message. Answers show their formatting: headings, lists, tables, links and code blocks
+(each with its own **Copy**). Until the first word arrives, the answer shows that Starlight
+is working, and for how long. Every answer has **Copy** (the text as written, Markdown
+included), and the latest one **Regenerate** (asks the same
 question again and replaces that answer); under it you see how fast it was written
 (tokens per second) and how long it took. ⤓ next to a conversation downloads it as a
 Markdown file. **Settings** shows what each tool may do
