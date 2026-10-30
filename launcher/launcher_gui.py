@@ -1907,6 +1907,7 @@ class App:
             services.start()
             self.services = services
             self.events.put(("running",))
+            L.tell_whats_new(self.settings.root, self.ui)  # once, after an update
         except L.LauncherError as exc:
             self.events.put(("error", str(exc), ""))
         except (urllib.error.URLError, TimeoutError) as exc:

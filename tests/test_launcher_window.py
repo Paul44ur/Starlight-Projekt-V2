@@ -581,3 +581,42 @@ def test_tags_filter_the_list_explain_themselves_and_the_title_follows_the_state
         assert app.r_footer.cget("text") == f"Folder: {app.settings.root}"
     finally:
         app.root.destroy()
+
+
+@pytest.mark.skipif(not has_display(), reason="needs tkinter and a display")
+def test_the_window_shows_what_is_new_after_an_update(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from tests.test_cleanup_launcher import load_gui
+    from tests.test_lmstudio import starlight_root
+
+    gui = load_gui()
+    monkeypatch.setattr(gui.App, "_start_background_lookups", lambda self: None)  # no network
+    root = starlight_root(tmp_path)
+    (root / "docs").mkdir(exist_ok=True)
+    notes = root / "docs" / "release-notes.md"
+    notes.write_text("## Starlight V2 1.00.00\n\nFirst.\n", encoding="utf-8")
+    L.whats_new(root)  # the installed version, seen once
+    notes.write_text("## Starlight V2 1.01.00\n\n- Hey Starlight\n", encoding="utf-8")
+
+    class Started:
+        def __init__(self, *args: Any, **kwargs: Any) -> None:
+            pass
+
+        def start(self) -> None:
+            pass
+
+    monkeypatch.setattr(L, "setup", lambda settings, ui: L.Installed(uv=Path("uv")))
+    monkeypatch.setattr(L, "Services", Started)
+    app = gui.App(L, L.build_parser().parse_args(["--root", str(root)]))
+    try:
+        app._work()  # what the window's worker thread runs
+        events = []
+        while not app.events.empty():
+            events.append(app.events.get())
+        assert ("running",) in events
+        notes_shown = [e for e in events if e[0] == "note"]
+        assert notes_shown and "Starlight V2 1.01.00" in notes_shown[0][1]
+        assert "- Hey Starlight" in notes_shown[0][1]
+    finally:
+        app.root.destroy()
