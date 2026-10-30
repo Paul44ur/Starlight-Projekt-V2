@@ -6,6 +6,7 @@ start again.
 
 from __future__ import annotations
 
+import asyncio
 import re
 from pathlib import Path
 from typing import Any
@@ -96,12 +97,14 @@ class LogwatchModule(Module):
     async def check(self) -> dict[str, int]:
         watches = self._all()
         found: dict[str, int] = {}
+        moved = False
         for name, watch in watches.items():
-            try:
-                lines, position = self._new_matches(watch)
+            try:  # (a big or far-away log: read beside the loop that answers the chat)
+                lines, position = await asyncio.to_thread(self._new_matches, watch)
             except OSError as exc:
                 self.ctx.logger.warning("log not readable", log=name, error=str(exc))
                 continue
+            moved = moved or position != watch.get("position")
             watch["position"] = position
             if not lines:
                 continue
@@ -113,5 +116,6 @@ class LogwatchModule(Module):
                 else ""
             )
             await self.ctx.deliver(f"{name}: new lines that match{more}:\n{shown}", "Log watcher")
-        save_json(self.file, watches)
+        if moved:  # (nothing new: nothing to write)
+            save_json(self.file, watches)
         return found

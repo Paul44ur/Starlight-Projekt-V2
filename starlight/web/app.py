@@ -717,7 +717,15 @@ def create_app(paths: Paths | None = None) -> Any:
     async def share(request: Request) -> Any:
         """The phone's share menu ("Share to Starlight"): a link, some text or a file
         lands in the chat box, ready to send with what you want done with it."""
-        viewer(request)
+        headers = dict(request.headers)
+        if headers.get("origin") in (None, "null") and headers.get("sec-fetch-site") == "none":
+            # The share menu: the browser itself sends this (no page did, so it has no
+            # origin of its own). Another site's page cannot send "none", and never has the
+            # pairing cookie (SameSite=Strict); everything else is checked as usual.
+            headers.pop("origin", None)
+        peer = request.client.host if request.client else None
+        if gate.viewer(headers, dict(request.cookies), peer) is None:
+            raise HTTPException(status_code=403, detail="pair this device first")
         data = await limited_body(request)
         fields, files = parse_form(request.headers.get("content-type", ""), data)
         kept = []

@@ -7,6 +7,7 @@ wl-clipboard, xclip or xsel); on a server with no desktop it says so clearly.
 
 from __future__ import annotations
 
+import asyncio
 from typing import Any
 
 from pydantic import BaseModel, Field
@@ -48,8 +49,8 @@ class ClipboardModule(Module):
 
     async def _sample(self) -> None:
         """Note what is on the clipboard now, when it is new."""
-        try:
-            text = self._backend().get()
+        try:  # (xclip and friends are programs: not run on the loop that answers the chat)
+            text = await asyncio.to_thread(self._backend().get)
         except (ClipboardUnavailable, ToolError):
             return
         if not text.strip() or len(text) > self.config.max_chars or looks_secret(text):

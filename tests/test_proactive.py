@@ -5,6 +5,7 @@ coming and going on the network, the briefing read aloud, and the Automations pa
 
 from __future__ import annotations
 
+import asyncio
 import ipaddress
 from collections.abc import Callable
 from datetime import datetime, timedelta
@@ -241,6 +242,49 @@ async def test_the_queue_runs_exactly_what_was_approved(queue_project: Paths) ->
         await call(k, "approvals.dismiss", id=other["waiting"])
         assert (await call(k, "approvals.pending"))["count"] == 0
         assert "nothing with the id" in await fails(k, "approvals.approve", id=added["waiting"])
+
+
+async def test_a_failed_approval_waits_again(queue_project: Paths) -> None:
+    async with Kernel(queue_project) as k:
+        queue = instance(k, "approvals")
+        probe = instance(k, "probe")
+
+        def broken(what: str = "x") -> str:
+            raise RuntimeError("the server is away")
+
+        probe.calls = []
+        wipe = k.dispatcher.get("probe.wipe")
+        assert wipe is not None
+        wipe.func = broken
+        item = queue.add(title="Wipe", tool="probe.wipe", args={"what": "a"})
+        done = await queue.run_item(item["waiting"])
+        assert not done["ok"] and done["still_waiting"]
+        waiting = queue.items()
+        assert [i["title"] for i in waiting] == ["Wipe"] and "away" in waiting[0]["last_error"]
+
+
+async def test_slow_probes_do_not_hold_up_the_chat(project: Paths) -> None:
+    import time as clock
+
+    async with Kernel(project) as k:
+        sensors, pc = instance(k, "sensors"), Probes()
+        pc.attach(sensors)
+
+        def slow() -> set[str]:
+            clock.sleep(0.4)  # tasklist on a busy PC
+            return {"explorer"}
+
+        sensors._programs = slow
+        ticks = 0
+
+        async def other_work() -> None:
+            nonlocal ticks
+            for _ in range(20):
+                await asyncio.sleep(0.01)
+                ticks += 1
+
+        await asyncio.gather(sensors.check(), other_work())
+        assert ticks == 20  # the loop went on while the programs were listed
 
 
 async def test_old_items_are_dropped(queue_project: Paths) -> None:

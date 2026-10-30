@@ -22,6 +22,7 @@
   .waiting { border-bottom: 1px solid var(--border); padding: 10px 0; }
   .waiting:last-child { border-bottom: none; }
   .waiting .runs { font-size: 12px; overflow-wrap: anywhere; }
+  .waiting .bad { color: var(--bad); }
   .waiting pre { white-space: pre-wrap; overflow-wrap: anywhere; background: var(--panel2);
                  border-radius: 8px; padding: 8px 10px; margin: 6px 0; font-size: 13px; }
   @media (max-width: 640px) {
@@ -98,6 +99,7 @@ async function loadQueue() {
     row.appendChild(title);
     if (item.detail) row.appendChild(el("pre", "", item.detail));
     row.appendChild(el("div", "runs dim", "Approving runs " + item.runs));
+    if (item.last_error) row.appendChild(el("div", "runs bad", "Last try did not work: " + item.last_error));
     const buttons = el("div", "row");
     const yes = el("button", "ok", "Approve"), no = el("button", "", "Dismiss");
     yes.onclick = () => act(item, "approve", [yes, no]);

@@ -582,7 +582,8 @@ class VoiceModule(Module):
                 frames.put_nowait(frame)
 
         def heard(data: Any, count: int, when: Any, status: Any) -> None:  # (audio thread)
-            loop.call_soon_threadsafe(keep, bytes(data))
+            if not self.speaking:  # not its own voice
+                loop.call_soon_threadsafe(keep, bytes(data))
 
         try:
             stream = sounddevice.RawInputStream(
@@ -605,6 +606,10 @@ class VoiceModule(Module):
                     await self.on_speech(speech, lambda: self._next_speech(frames))
                 except Exception:  # (speech recognition gone, the kill switch): listen on
                     self.ctx.logger.exception("wake word: could not answer")
+                # What came in while it wrote down and answered is old by now: start afresh.
+                while not frames.empty():
+                    frames.get_nowait()
+                segmenter = Segmenter()
 
     async def _next_speech(self, frames: asyncio.Queue[bytes], wait: float = 8.0) -> bytes | None:
         """The next stretch of speech, after the "yes?": up to ``wait`` seconds for it."""

@@ -82,8 +82,10 @@ class ApprovalsModule(Module):
             outcome = await self.ctx.call(item["tool"], dict(item.get("args") or {}))
         finally:
             current_ui.reset(token)
-        if not outcome.ok:
-            return {"approved": item["title"], "ok": False, "error": outcome.error}
+        if not outcome.ok:  # (the mail server was away, ...): it waits again, to try later
+            save_json(self.file, [*self.items(), {**item, "last_error": str(outcome.error)[:300]}])
+            return {"approved": item["title"], "ok": False, "error": outcome.error,
+                    "still_waiting": True}  # fmt: skip
         return {"approved": item["title"], "ok": True, "result": outcome.output}
 
     @tool

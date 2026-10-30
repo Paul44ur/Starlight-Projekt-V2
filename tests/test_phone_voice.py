@@ -297,6 +297,19 @@ def test_sharing_from_the_phone_lands_in_the_chat_box(web_home: Path) -> None:
         assert parse_qs(urlsplit(plain.headers["location"]).query)["share"] == [
             "https://example.org/x"
         ]
+        # the phone's share menu: sent by the browser itself, with "null" as its origin
+        menu = {**LOCAL, "content-type": kind, "origin": "null", "sec-fetch-site": "none"}
+        assert (
+            c.post("/share", content=data, headers=menu, follow_redirects=False).status_code == 303
+        )
+        page = {**LOCAL, "content-type": kind, "origin": "null", "sec-fetch-site": "cross-site"}
+        assert (
+            c.post("/share", content=data, headers=page, follow_redirects=False).status_code == 403
+        )
+        evil = {**LOCAL, "content-type": kind, "origin": "https://evil.example"}
+        assert (
+            c.post("/share", content=data, headers=evil, follow_redirects=False).status_code == 403
+        )
         elsewhere = {"host": "other.example", "content-type": kind}
         stranger = c.post("/share", content=data, headers=elsewhere, follow_redirects=False)
         assert stranger.status_code == 403

@@ -15,6 +15,7 @@ Everything is local: no account, no network.
 
 from __future__ import annotations
 
+import time
 import uuid
 from datetime import datetime, timedelta
 from typing import Any
@@ -53,6 +54,7 @@ class RemindersModule(Module):
         if self.config.check_interval > 0:
             # Only the primary core fires reminders, so two open Starlights never fire twice.
             ctx.every(self.config.check_interval, self.check_due, "reminders")
+        self._read_for_programs = float("-inf")
         ctx.bus.subscribe("sensors.app_started", self._on_program, owner=ctx.name)
 
     def _now(self) -> datetime:
@@ -148,7 +150,14 @@ class RemindersModule(Module):
 
     async def _on_program(self, event: Event) -> None:
         started = str(event.data.get("name", ""))
-        self._refresh()
+        # Programs start all the time: the file (which also has reminders made in another
+        # Starlight window) is read again at most once a minute for them.
+        if time.monotonic() - self._read_for_programs > 60:
+            self._read_for_programs = time.monotonic()
+            self._refresh()
+        if not any(i["kind"] == "program" and i["program"] == started for i in self.items):
+            return
+        self._refresh()  # one is due: read the file first, so saving loses nothing
         due = [i for i in self.items if i["kind"] == "program" and i["program"] == started]
         if not due:
             return

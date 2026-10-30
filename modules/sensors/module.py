@@ -9,6 +9,7 @@ this PC; nothing is sent anywhere.
 
 from __future__ import annotations
 
+import asyncio
 import contextlib
 import os
 import shutil
@@ -205,34 +206,43 @@ class SensorsModule(Module):
 
     async def check(self) -> list[str]:
         """Look once at everything; publish what changed. Returns the event names."""
-        fired: list[tuple[str, dict[str, Any]]] = []
-        fired += self._check_folders()
         watched = self._watched()
+        # The probes wait on the system (a slow drive, the process list): not on the loop
+        # that answers the chat.
+        found, idle = await asyncio.to_thread(self._look, watched)
         notes = [
             f"New in {Path(data['folder']).name}: {data['name']}"
-            for _, data in fired
-            if watched.get(data["folder"], {}).get("tell")
+            for name, data in found
+            if name == "sensors.file_appeared" and watched.get(data["folder"], {}).get("tell")
         ]
         if notes:
             await self.ctx.deliver("\n".join(notes[:10]), title="New files")
-        fired += self._check_drives()
-        fired += self._check_battery()
-        if self.config.watch_programs:
-            fired += self._check_programs()
-        fired += await self._check_away()
+        fired = [*found, *await self._check_away(idle)]
         for name, data in fired:
             await self.ctx.publish(name, data)
         return [name for name, _ in fired]
 
-    def _check_folders(self) -> list[tuple[str, dict[str, Any]]]:
+    def _look(
+        self, watched: dict[str, dict[str, Any]]
+    ) -> tuple[list[tuple[str, dict[str, Any]]], float | None]:
+        fired = self._check_folders(watched)
+        fired += self._check_drives()
+        fired += self._check_battery()
+        if self.config.watch_programs:
+            fired += self._check_programs()
+        return fired, self._idle()
+
+    def _check_folders(
+        self, watched: dict[str, dict[str, Any]]
+    ) -> list[tuple[str, dict[str, Any]]]:
         fired = []
-        watched = self._watched()
         for folder in list(self._files):
             if folder not in watched:
                 del self._files[folder]
         for folder in watched:
             try:
-                names = {e.name for e in os.scandir(folder) if e.is_file()}
+                with os.scandir(folder) as entries:
+                    names = {e.name for e in entries if e.is_file()}
             except OSError:  # gone, or a drive not plugged in: look again next time
                 continue
             before = self._files.get(folder)
@@ -295,8 +305,7 @@ class SensorsModule(Module):
             del self._closed[name]  # (long gone: forget it)
         return [("sensors.app_started", {"name": name}) for name in started]
 
-    async def _check_away(self) -> list[tuple[str, dict[str, Any]]]:
-        idle = self._idle()
+    async def _check_away(self, idle: float | None) -> list[tuple[str, dict[str, Any]]]:
         if idle is None:
             return []
         limit = self.config.away_after_minutes * 60

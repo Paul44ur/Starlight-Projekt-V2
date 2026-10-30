@@ -148,6 +148,7 @@
     [/^Done: (.+)$/, "Erledigt: $1"],
     [/^It did not work: (.+)$/, "Hat nicht geklappt: $1"],
     [/^Approving runs (.+)$/, "Erlauben führt aus: $1"],
+    [/^Last try did not work: (.+)$/, "Der letzte Versuch hat nicht geklappt: $1"],
     [/^Runs without asking: (.+)$/, "Läuft ohne Nachfrage: $1"],
     [/^next (.+)$/, "nächstes Mal $1"],
     [/^Saved: (.+)$/, "Gespeichert: $1"],
