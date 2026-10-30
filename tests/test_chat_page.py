@@ -227,3 +227,23 @@ async def test_esc_stops_an_answer_and_up_brings_back_the_last_question(
             assert await box.input_value() == "How warm is it in Berlin?"
         finally:
             await browser.close()
+
+
+async def test_slash_stars(static_site: str, monkeypatch: pytest.MonkeyPatch) -> None:
+    async_api = pytest.importorskip("playwright.async_api")
+    monkeypatch.setenv("NO_PROXY", "127.0.0.1")
+    async with async_api.async_playwright() as playwright:
+        browser, page = await open_chat(playwright, static_site)
+        try:
+            await page.evaluate(
+                "() => { const s = window.sockets[window.sockets.length - 1];"
+                " s.readyState = 1; s.sent = []; s.send = d => s.sent.push(d); }"
+            )
+            await page.locator("#input").fill("/stars")
+            await page.locator("#input").press("Enter")
+            assert await page.locator(".star").count() == 48
+            assert await page.evaluate("() => window.sockets.at(-1).sent.length") == 0  # (local)
+            assert await page.locator("#input").input_value() == ""
+            await page.wait_for_function("() => !document.querySelector('.star')", timeout=9000)
+        finally:
+            await browser.close()

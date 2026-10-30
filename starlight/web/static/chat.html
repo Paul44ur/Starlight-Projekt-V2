@@ -65,6 +65,11 @@
   .msg .body.waiting:empty::before { content: attr(data-wait); color: var(--dim);
     animation: waiting 1.4s ease-in-out infinite; }
   @keyframes waiting { 50% { opacity: .35; } }
+  /* /stars */
+  .star { position: fixed; top: -1.5em; z-index: 60; pointer-events: none; color: #f8d56b;
+          text-shadow: 0 0 8px rgba(248, 213, 107, .7); animation: starfall linear forwards; }
+  @keyframes starfall { to { transform: translateY(110vh) rotate(540deg); opacity: .15; } }
+  @media (prefers-reduced-motion: reduce) { .star { display: none; } }
   @media (prefers-reduced-motion: reduce) { .msg .body.waiting:empty::before { animation: none; } }
   .confirm { align-self: flex-start; max-width: min(780px, 100%); border: 1px solid var(--warn); border-radius: 12px;
              padding: 12px 14px; background: var(--panel); }
@@ -355,10 +360,24 @@ function ask(text, files) {
   ws.send(JSON.stringify({ type: "ask", text, conversation, attachments: files.map(f => f.id) }));
 }
 
+// Typing /stars: a little starfall, here in the page (nothing is sent to the model).
+function starfall() {
+  for (let i = 0; i < 48; i++) {
+    const star = el("div", "star", "✦✧⋆★"[i % 4]);
+    star.style.left = Math.random() * 100 + "vw";
+    star.style.fontSize = 10 + Math.random() * 24 + "px";
+    star.style.animationDuration = 2.2 + Math.random() * 2.4 + "s";
+    star.style.animationDelay = Math.random() * 1.4 + "s";
+    document.body.appendChild(star);
+    setTimeout(() => star.remove(), 6500);
+  }
+}
+
 document.getElementById("form").onsubmit = (e) => {
   e.preventDefault();
   const text = input.value.trim();
   if (!text) return;
+  if (text === "/stars") { input.value = ""; starfall(); return; }
   const files = attached; attached = []; showFiles();
   input.value = ""; input.style.height = "44px";
   ask(text, files);
