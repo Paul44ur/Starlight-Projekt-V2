@@ -328,7 +328,7 @@ class SkillManager:
             if isinstance(output, dict) and output.get("success") and output.get("files"):
                 code.update({str(k): str(v) for k, v in output["files"].items()})
         example = f"Request: {requests[-1]}\n\nAnswer: {answer}"
-        skill = self.draft(
+        return self.draft(
             str(spec.get("name") or "repeated-task"),
             str(spec.get("description") or ""),
             str(spec.get("instructions")),
@@ -338,7 +338,6 @@ class SkillManager:
             code=code,
             source=f"repeated task ({entry['count']}x)",
         )
-        return skill
 
     # -- turning a skill into a module -------------------------------------------------
 

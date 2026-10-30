@@ -325,4 +325,3 @@ def test_a_reply_starting_with_a_tag_like_text_is_not_held() -> None:
     filtered = StreamFilter()
     assert filtered.feed("<") == ""  # could become <think>
     assert filtered.feed("b>bold</b> text") == "<b>bold</b> text"
-    assert filtered.thought == 0

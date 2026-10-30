@@ -572,7 +572,6 @@ class App:
             self.L.MODIFIED[0]: "CHANGED BY OTHERS: ABLITERATED AND FINE-TUNED",
             keys[len(self.L.MODEL_PRESETS)]: "YOUR OWN MODEL",
         }
-        self.card_headings: list[ttk.Label] = []
         # (its heading, its cards): a heading shows only while one of its cards does
         self.sections: list[tuple[ttk.Label | None, list[str]]] = [(None, [])]
         row = 1
@@ -580,7 +579,6 @@ class App:
             if key in headings:
                 heading = self._label(models, headings[key], "Section.TLabel")
                 heading.grid(row=row, column=0, sticky="w", pady=(self.px(10), self.px(4)))
-                self.card_headings.append(heading)
                 self.sections.append((heading, []))
                 row += 1
             self._make_card(models, key, row)

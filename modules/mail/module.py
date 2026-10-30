@@ -166,8 +166,7 @@ class EmailModule(Module):
         password = self._require()
         if not id.strip():
             raise EmailError("give a message id from mail.inbox")
-        message = await asyncio.to_thread(self._imap_fetch, password, id.strip())
-        return message
+        return await asyncio.to_thread(self._imap_fetch, password, id.strip())
 
     @tool
     async def unread(self, limit: int = 15) -> dict[str, Any]:
