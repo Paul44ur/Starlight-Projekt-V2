@@ -15,6 +15,7 @@ from pydantic import BaseModel
 from starlight.core import Module, ModuleContext, ToolError, tool
 
 _BAD = re.compile(r'[<>:"/\\|?*\x00-\x1f]')
+_RESERVED = re.compile(r"^(con|prn|aux|nul|com[0-9]|lpt[0-9])(\..*)?$", re.IGNORECASE)
 
 
 MAX_NOTE_BYTES = 1_000_000  # a note this big is a document: start another one
@@ -43,6 +44,8 @@ class NotesModule(Module):
 
     def _file(self, title: str) -> Path:
         name = _BAD.sub("", title).strip().strip(".")[:80]
+        if _RESERVED.match(name):  # "Con", "Nul": names Windows keeps for devices
+            name = f"_{name}"
         if not name:
             raise ToolError("give the note a title")
         return self.folder / f"{name}.md"

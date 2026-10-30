@@ -27,6 +27,7 @@ from pydantic import BaseModel
 from starlight.core import Module, ModuleContext, ToolError, tool
 
 _BAD = re.compile(r'[<>:"/\\|?*\x00-\x1f]')
+_RESERVED = re.compile(r"^(con|prn|aux|nul|com[0-9]|lpt[0-9])(\..*)?$", re.IGNORECASE)
 # An amount at the start of an ingredient: 2, 1.5, 1,5, 1/2, 1 1/2, ½
 AMOUNT = re.compile(r"^\s*(\d+\s+\d+/\d+|\d+/\d+|\d+(?:[.,]\d+)?|[½¼¾⅓⅔])(?=\s|[a-zA-Z]|$)")
 VULGAR = {"½": Fraction(1, 2), "¼": Fraction(1, 4), "¾": Fraction(3, 4),
@@ -100,6 +101,8 @@ class RecipesModule(Module):
 
     def _file(self, title: str) -> Path:
         name = _BAD.sub("", title).strip().strip(".")[:80]
+        if _RESERVED.match(name):  # "Con", "Nul": names Windows keeps for devices
+            name = f"_{name}"
         if not name:
             raise ToolError("give the recipe a name")
         return self.folder / f"{name}.md"

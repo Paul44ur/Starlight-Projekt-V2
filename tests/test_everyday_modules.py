@@ -449,3 +449,10 @@ async def test_a_code_review_of_the_changes(
         review = await call(k, "dev.review", repo=str(repo))
     assert "b == 0" in review["review"]
     assert "-    return a / b" in provider.calls[0][1].content
+
+
+async def test_names_windows_keeps_for_devices_still_save(project: Paths, documents: Path) -> None:
+    async with Kernel(project) as k:
+        saved = await call(k, "recipes.save", title="Con", ingredients=["1 egg"], steps=["Fry"])
+        assert Path(saved["saved"]).name == "_Con.md"
+        assert (await call(k, "recipes.show", title="Con"))["title"] == "Con"
