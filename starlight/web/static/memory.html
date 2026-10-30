@@ -16,6 +16,14 @@
   .skill pre { white-space: pre-wrap; background: var(--panel2); padding: 8px; border-radius: 8px;
                font-size: 13px; max-height: 240px; overflow: auto; }
   body.remote .local-only { display: none; }
+  label.button-like { cursor: pointer; }
+  a.button-link { padding: 6px 12px; border: 1px solid var(--border); border-radius: 8px;
+                  background: var(--panel2); color: var(--text); font-size: 14px; }
+  .views { display: flex; gap: 6px; margin: 8px 0 2px; flex-wrap: wrap; }
+  .views button.on { background: var(--accent); border-color: var(--accent); color: #fff; }
+  .month { font-size: 12px; text-transform: uppercase; letter-spacing: .05em; color: var(--dim);
+           margin: 14px 0 0; padding-bottom: 4px; border-bottom: 1px solid var(--border); }
+  .mem.expired { opacity: .6; }
 </style>
 </head>
 <body>
@@ -30,12 +38,16 @@
     <p class="dim small">Each memory is a plain text file in the <code>memory</code> folder. Edit or delete
       anything that is wrong or that you don't want kept.</p>
     <div class="row"><input id="search" type="search" class="grow" placeholder="Search memories" /><span id="count" class="dim small"></span></div>
+    <div class="views" id="views"></div>
     <div id="memories"></div>
   </div>
   <div class="card">
     <h2>Skills it learned</h2>
     <p class="dim small">Drafts are only used after you approve them<span class="local-only"> here</span>.
       Every change is kept, so "Undo" brings back the version before.</p>
+    <div class="row local-only"><label class="button-like"><input type="file" id="importskill" accept=".json" hidden />
+      <span class="pill">⤒ Import a skill</span></label>
+      <span class="dim small">A file someone exported: it comes in as a draft for you to read and approve.</span></div>
     <div id="skills"></div>
   </div>
 </div>
@@ -51,11 +63,22 @@ async function loadMemories() {
   if (asked !== latestSearch) return;  // a newer search is under way
   document.getElementById("count").textContent = data.count + (data.count === 1 ? " memory" : " memories");
   const box = document.getElementById("memories"); box.innerHTML = "";
-  data.memories.forEach(m => {
-    const item = el("div", "mem");
+  let shown = data.memories, heading = () => "";
+  if (view === "timeline") heading = m => monthName(m.date);
+  if (view === "people") {
+    shown = shown.filter(m => m.tags.includes("person") || m.tags.includes("place"))
+      .sort((a, b) => (a.tags.includes("person") ? 0 : 1) - (b.tags.includes("person") ? 0 : 1) || a.topic.localeCompare(b.topic));
+    heading = m => (m.tags.includes("person") ? "People" : "Places");
+  }
+  let last = null;
+  shown.forEach(m => {
+    const head = heading(m);
+    if (head && head !== last) { box.appendChild(el("div", "month", head)); last = head; }
+    const item = el("div", "mem" + (m.expired ? " expired" : ""));
     item.appendChild(el("div", "topic", m.topic));
     const text = el("div", "text", m.content); item.appendChild(text);
-    item.appendChild(el("div", "dim small", (m.date || "") + " · from " + m.source));
+    const until = m.expires ? (m.expired ? " · expired " : " · until ") + m.expires : "";
+    item.appendChild(el("div", "dim small", (m.date || "") + until + " · from " + m.source));
     const row = el("div", "row");
     const edit = el("button", "", "Edit");
     edit.onclick = () => {
@@ -68,7 +91,24 @@ async function loadMemories() {
     del.onclick = async () => { if (confirm("Forget this?")) { try { await api("/api/memory/" + memoryPath(m.id), { method: "DELETE" }); } catch (e) { toast(e.message); } loadMemories(); } };
     row.append(edit, del); item.appendChild(row); box.appendChild(item);
   });
-  if (!data.memories.length) box.appendChild(el("div", "dim small", "Nothing yet."));
+  if (!shown.length) box.appendChild(el("div", "dim small", view === "people"
+    ? "No people or places yet: Starlight notes them as you mention them." : "Nothing yet."));
+}
+// List (newest first), Timeline (by month) or People & places
+let view = "list";
+const VIEWS = [["list", "List"], ["timeline", "Timeline"], ["people", "People & places"]];
+VIEWS.forEach(([value, label]) => {
+  const b = el("button", value === view ? "on" : "", label);
+  b.onclick = () => {
+    view = value;
+    document.querySelectorAll("#views button").forEach(x => x.classList.toggle("on", x === b));
+    loadMemories();
+  };
+  document.getElementById("views").appendChild(b);
+});
+function monthName(date) {
+  const d = new Date((date || "") + "T12:00:00");
+  return isNaN(d) ? "Undated" : d.toLocaleDateString([], { year: "numeric", month: "long" });
 }
 // A memory id is a file path such as "people/sister"; "#", "?" and "%" in a name you gave
 // a file by hand must not end the address.
@@ -95,6 +135,10 @@ async function loadSkills() {
       if (s.status !== "approved") row.appendChild(act("Approve", "approve", "ok"));
       if (s.status !== "rejected") row.appendChild(act("Reject", "reject"));
       row.appendChild(act("Undo last change", "rollback"));
+      const share = el("a", "", "Export");
+      share.href = `/api/skills/${encodeURIComponent(s.name)}/export`; share.download = "";
+      share.className = "button-link";
+      row.appendChild(share);
       const del = el("button", "danger", "Delete");
       del.onclick = async () => {
         if (!confirm("Delete the skill " + s.name + "?")) return;
@@ -107,6 +151,18 @@ async function loadSkills() {
   });
   if (!data.skills.length) box.appendChild(el("div", "dim small", "No skills yet. Starlight drafts one when the same kind of task works twice."));
 }
+
+document.getElementById("importskill").onchange = async (e) => {
+  const file = e.target.files[0];
+  if (!file) return;
+  try {
+    const data = JSON.parse(await file.text());
+    const r = await api("/api/skills/import", { method: "POST", body: data });
+    toast(`${r.name} v${r.version} added as a draft: read it, then approve it`);
+    loadSkills();
+  } catch (err) { toast("Could not import it: " + err.message); }
+  e.target.value = "";
+};
 
 (async () => {
   try { const s = await api("/api/status"); remote = !s.local; if (remote) document.body.classList.add("remote"); } catch (e) { /* */ }

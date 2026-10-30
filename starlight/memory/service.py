@@ -41,9 +41,14 @@ Answer with JSON only, a list like
 [{"topic": "a specific topic", "fact": "one or two sentences", "confidence": 0.9}]
 or [] if nothing is worth keeping. A fact on the same topic replaces the old one, so make \
 topics specific ("Sister's name", "Preferred editor"), not broad ("Family", "Tools").
+Add "kind": "person" for a fact about a person, "kind": "place" for one about a place. \
+A fact that only holds for a while ("my sister visits until Friday", "the office is \
+closed this week") gets "until": the last day it holds, as YYYY-MM-DD. Today is {today}.
 
 User: {request}
 Assistant: {answer}"""
+
+KINDS = ("person", "place")
 
 
 def _signature(files: list[Path]) -> int:
@@ -76,6 +81,15 @@ def parse_facts(text: str) -> list[dict[str, Any]]:
         ):
             facts.append(item)
     return facts
+
+
+def _date(value: Any) -> str:
+    """A YYYY-MM-DD date from what the model or the user gave, or "" if it is not one."""
+    text = str(value or "").strip()[:10]
+    try:
+        return dt.date.fromisoformat(text).isoformat()
+    except ValueError:
+        return ""
 
 
 class Memory:
@@ -115,9 +129,11 @@ class Memory:
     # -- reading -----------------------------------------------------------------------
 
     async def recall(self, query: str, top_k: int | None = None) -> list[Hit]:
+        """The memories that fit the query best; ones that expired are left out."""
         await self.sync()
         k = self.config.top_k if top_k is None else top_k
-        return await self.index.search(query, k, self.config.min_score)
+        hits = await self.index.search(query, k + 5, self.config.min_score)
+        return [h for h in hits if not h.entry.expired()][:k]
 
     async def enrich(self, request: str) -> str | None:
         """Agent enricher: relevant memories as an extra system message."""
@@ -141,6 +157,7 @@ class Memory:
         source: str = "user",
         confidence: float = 1.0,
         tags: list[str] | None = None,
+        expires: str = "",
     ) -> tuple[MemoryEntry, bool]:
         """Store a fact. Returns (entry, merged) where merged means an existing file was
         updated instead of creating a new one."""
@@ -159,6 +176,7 @@ class Memory:
             and not existing.id.startswith(CONVERSATIONS + "/")
         ):
             entry = self._merge(existing, content, source, confidence, tags)
+            entry.expires = expires  # the newest statement says how long it holds
             merged = True
         else:
             entry = MemoryEntry(
@@ -168,6 +186,7 @@ class Memory:
                 source=source,
                 confidence=confidence,
                 tags=tags or [],
+                expires=expires,
             )
             merged = False
         self.store.write(entry)
@@ -238,14 +257,21 @@ class Memory:
             await self.sync(force=True)
         return removed
 
-    async def extract(self, request: str, answer: str, request_id: str = "") -> list[MemoryEntry]:
-        """Ask the model what from this exchange is worth keeping, and keep it."""
+    async def extract(
+        self, request: str, answer: str, request_id: str = "", conversation: str = ""
+    ) -> list[MemoryEntry]:
+        """Ask the model what from this exchange is worth keeping, and keep it. Each fact
+        names the conversation it came from (memory.forget_conversation uses that)."""
         if not self.config.auto_extract or self.provider is None or not answer.strip():
             return []
         model = getattr(self.provider, "summarizer", self.provider)
         # Not str.format(): the prompt contains a JSON example with braces.
-        values = {"request": request[:4000], "answer": answer[:4000]}
-        prompt = re.sub(r"\{(request|answer)\}", lambda m: values[m.group(1)], EXTRACT_PROMPT)
+        values = {
+            "request": request[:4000],
+            "answer": answer[:4000],
+            "today": dt.date.today().isoformat(),
+        }
+        prompt = re.sub(r"\{(request|answer|today)\}", lambda m: values[m.group(1)], EXTRACT_PROMPT)
         response = await model.chat([Message("user", prompt)], [])
         saved = []
         for fact in parse_facts(response.content)[:6]:
@@ -256,14 +282,67 @@ class Memory:
                 confidence = float(fact.get("confidence", 0.8))
             except (TypeError, ValueError):
                 confidence = 0.8
+            kind = str(fact.get("kind") or "").lower()
             entry, _ = await self.remember(
                 str(fact["fact"]),
                 topic=str(fact.get("topic") or "") or None,
-                source=f"conversation {request_id}".strip(),
+                source=f"conversation {conversation or request_id}".strip(),
                 confidence=min(1.0, max(0.0, confidence)),
+                tags=[kind] if kind in KINDS else None,
+                expires=_date(fact.get("until")),
             )
             saved.append(entry)
         return saved
+
+    async def prune_expired(self) -> int:
+        """Delete the memories whose "expires" date has passed. Returns how many."""
+        removed = 0
+        for entry in self.store.all():
+            if entry.expired() and self.store.delete(entry.id):
+                removed += 1
+        if removed:
+            self._log.info("expired memories removed", removed=removed)
+            await self.sync(force=True)
+        return removed
+
+    def learned_in(self, conversation: str) -> tuple[list[MemoryEntry], list[MemoryEntry]]:
+        """The memories learned in a conversation: (only from it, also from elsewhere)."""
+        mark = f"conversation {conversation}"
+        only: list[MemoryEntry] = []
+        shared: list[MemoryEntry] = []
+        for entry in self.store.all():
+            sources = [s.strip() for s in entry.source.split(";") if s.strip()]
+            if mark in sources:
+                (only if all(s == mark for s in sources) else shared).append(entry)
+        return only, shared
+
+    async def forget_conversation(self, conversation: str) -> dict[str, Any]:
+        """Delete what was learned only in this conversation. A memory that other
+        conversations (or you) also said is kept, and named."""
+        only, shared = self.learned_in(conversation)
+        for entry in only:
+            self.store.delete(entry.id)
+        if only:
+            await self.sync(force=True)
+        return {
+            "forgotten": [e.topic for e in only],
+            "kept_because_also_said_elsewhere": [e.topic for e in shared],
+        }
+
+    def people_and_places(self) -> dict[str, list[dict[str, str]]]:
+        """The memories about people and about places (tagged person / place)."""
+        found: dict[str, list[dict[str, str]]] = {"people": [], "places": []}
+        for entry in self.store.all():
+            if entry.expired():
+                continue
+            for kind, group in (("person", "people"), ("place", "places")):
+                if kind in entry.tags:
+                    found[group].append(
+                        {"id": entry.id, "topic": entry.topic, "fact": entry.content[:300]}
+                    )
+        for listed in found.values():
+            listed.sort(key=lambda e: e["topic"].casefold())
+        return found
 
     # -- tidying -----------------------------------------------------------------------
 
@@ -352,11 +431,18 @@ class Memory:
     # -- tools for the AI --------------------------------------------------------------
 
     def tools(self) -> list[Tool]:
-        async def remember(fact: str, topic: str = "") -> str:
-            """Save a fact to long-term memory (merged with an existing note on the same
-            topic). Use for things the user wants you to remember."""
-            entry, merged = await self.remember(fact, topic or None, source="assistant")
-            return f"{'Updated' if merged else 'Saved'} memory '{entry.id}'."
+        async def remember(fact: str, topic: str = "", until: str = "", kind: str = "") -> str:
+            """Save a fact to long-term memory (merged with a note on the same topic).
+            until: last day it holds (YYYY-MM-DD), if temporary; kind: person or place."""
+            expires = _date(until)
+            if until.strip() and not expires:
+                raise ToolError("until: a date as YYYY-MM-DD, e.g. 2026-11-03")
+            tags = [kind.lower()] if kind.lower() in KINDS else None
+            entry, merged = await self.remember(
+                fact, topic or None, source="assistant", tags=tags, expires=expires
+            )
+            held = f" (until {expires})" if expires else ""
+            return f"{'Updated' if merged else 'Saved'} memory '{entry.id}'{held}."
 
         async def recall(query: str, limit: int = 5) -> list[dict[str, Any]]:
             """Search long-term memory."""
@@ -411,6 +497,16 @@ class Memory:
             """The user's profile: name, language, home place, time zone, preferences."""
             return self.profile.read()
 
+        def people_and_places() -> dict[str, list[dict[str, str]]]:
+            """The people and places you remember."""
+            return self.people_and_places()
+
+        async def forget_conversation(conversation: str) -> dict[str, Any]:
+            """Forget what was learned only in one conversation (its 12-character id)."""
+            if not re.fullmatch(r"[a-f0-9]{12}", conversation.strip()):
+                raise ToolError("give the conversation's id (12 letters and digits)")
+            return await self.forget_conversation(conversation.strip())
+
         async def set_profile(field: str, value: str) -> dict[str, str]:
             """Set one field of the user's profile (name, language, home, timezone or
             preferences) when they tell you; an empty value clears it."""
@@ -430,6 +526,8 @@ class Memory:
             make_tool(MODULE, about_me),
             make_tool(MODULE, duplicates),
             make_tool(MODULE, tidy, permission=Permission.CONFIRM),
+            make_tool(MODULE, people_and_places),
+            make_tool(MODULE, forget_conversation, permission=Permission.CONFIRM),
         ]
 
     def close(self) -> None:

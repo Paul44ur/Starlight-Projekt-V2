@@ -19,6 +19,7 @@ from collections.abc import Iterator
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
+from urllib.parse import quote
 
 import numpy as np
 import numpy.typing as npt
@@ -336,6 +337,16 @@ class DocsModule(Module):
     def _where(part: Part) -> str:
         return f"{part.path} (page {part.page})" if part.page else part.path
 
+    def indexed(self, path: str) -> bool:
+        """Whether this file is in the knowledge base (the web chat opens only those)."""
+        return bool(self._sql("SELECT 1 FROM parts WHERE path = ? LIMIT 1", (path,)))
+
+    @staticmethod
+    def link(path: str, page: int) -> str:
+        """Where the web chat opens the file, at the page for a PDF."""
+        at = f"#page={page}" if page and path.lower().endswith(".pdf") else ""
+        return f"/docs/file?path={quote(path)}{at}"
+
     # -- tools ---------------------------------------------------------------------------
 
     @tool
@@ -354,9 +365,14 @@ class DocsModule(Module):
             [],
         )
         sources = [
-            {"n": i, "file": p.path, "page": p.page or None} for i, (p, _) in enumerate(hits, 1)
+            {"n": i, "file": p.path, "page": p.page or None, "link": self.link(p.path, p.page)}
+            for i, (p, _) in enumerate(hits, 1)
         ]
-        return {"answer": reply.content.strip(), "sources": sources}
+        return {
+            "answer": reply.content.strip(),
+            "sources": sources,
+            "note": "In the web chat, show each source as a Markdown link to its link.",
+        }
 
     @tool
     async def search(self, query: str, limit: int = 0) -> dict[str, Any]:
@@ -368,6 +384,7 @@ class DocsModule(Module):
                 {
                     "file": p.path,
                     "page": p.page or None,
+                    "link": self.link(p.path, p.page),
                     "score": round(s, 3),
                     "snippet": p.text[:400],
                 }

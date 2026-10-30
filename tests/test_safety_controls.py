@@ -249,7 +249,7 @@ async def test_nothing_is_learned_from_a_private_conversation(paths: Paths) -> N
     async with Kernel(paths) as k:
         learned: list[str] = []
 
-        async def extract(request: str, answer: str, request_id: str) -> None:
+        async def extract(request: str, answer: str, request_id: str, **_: Any) -> None:
             learned.append(request)
 
         k.memory.extract = extract  # type: ignore[method-assign]

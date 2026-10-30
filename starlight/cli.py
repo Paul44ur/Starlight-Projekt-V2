@@ -522,6 +522,23 @@ def cmd_skills(paths: Paths, args: argparse.Namespace) -> int:
                 f"Module started at {target} (disabled). Turn the steps into tools, then "
                 f"`starlight modules enable {target.name}`."
             )
+        elif action == "export":
+            data = skills.export_data(name)
+            folder = Path(args.revision).expanduser() if args.revision else Path.cwd()
+            target = folder / f"{data['skill']['name']}.skill.json"
+            target.write_text(json.dumps(data, indent=2, ensure_ascii=False), encoding="utf-8")
+            print(f"Saved {target}. `starlight skills import` adds it to another Starlight.")
+        elif action == "import":
+            try:
+                data = json.loads(Path(name).expanduser().read_text(encoding="utf-8"))
+                skill = skills.import_data(data, source=f"imported from {Path(name).name}")
+            except (OSError, ValueError) as exc:
+                print(f"Could not import {name}: {exc}", file=sys.stderr)
+                return 1
+            print(
+                f"{skill.name} v{skill.version} added as a draft. Read it "
+                f"(`starlight skills show {skill.name}`), then approve it to use it."
+            )
     except (KeyError, FileExistsError, GitError) as exc:
         print(exc.args[0] if exc.args else str(exc), file=sys.stderr)
         return 1
@@ -849,14 +866,21 @@ def build_parser() -> argparse.ArgumentParser:
     vault.add_argument("key", nargs="?")
 
     skills = sub.add_parser(
-        "skills", help="learned skills: list, show, approve, reject, history, rollback, promote"
+        "skills",
+        help="learned skills: list, show, approve, reject, history, rollback, promote, "
+        "export, import",
     )
     skills.add_argument(
         "action",
-        choices=["list", "show", "approve", "reject", "history", "rollback", "promote"],
+        choices=[
+            "list", "show", "approve", "reject", "history", "rollback", "promote",
+            "export", "import",
+        ],
+    )  # fmt: skip
+    skills.add_argument("name", nargs="?", help="the skill (import: the .skill.json file)")
+    skills.add_argument(
+        "revision", nargs="?", help="rollback: revision from `history`; export: the folder"
     )
-    skills.add_argument("name", nargs="?")
-    skills.add_argument("revision", nargs="?", help="rollback: revision from `history`")
 
     sub.add_parser("serve", help="run the core in the background (WhatsApp, watchers)")
     sub.add_parser("viewer", help="the statistics viewer (a separate web app)")

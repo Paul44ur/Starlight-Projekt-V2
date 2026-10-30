@@ -112,6 +112,9 @@ def _parse_json(text: str) -> dict[str, Any] | None:
     return value if isinstance(value, dict) else None
 
 
+SHARE_FORMAT = "starlight-skill/1"  # a skill file made by export_data
+
+
 class SkillManager:
     def __init__(
         self,
@@ -201,6 +204,52 @@ class SkillManager:
 
     def reject(self, name: str) -> Skill:
         return self._set_status(name, "rejected")
+
+    # -- sharing ---------------------------------------------------------------------------
+
+    def export_data(self, name: str) -> dict[str, Any]:
+        """A skill as one JSON-ready dict, to keep or to give to another Starlight."""
+        skill = self.store.get(slugify(name))
+        if skill is None:
+            raise KeyError(f"no skill named '{name}'")
+        return {
+            "format": SHARE_FORMAT,
+            "skill": {
+                "name": skill.name,
+                "description": skill.description,
+                "instructions": skill.instructions,
+                "triggers": skill.triggers,
+                "tools": skill.tools,
+                "example": skill.example,
+                "code": skill.code,
+            },
+        }
+
+    def import_data(self, data: Any, source: str = "imported") -> Skill:
+        """Add a shared skill, always as a draft: it is used only after you approve it,
+        like one Starlight learned itself (read its instructions and code first)."""
+        if not isinstance(data, dict) or data.get("format") != SHARE_FORMAT:
+            raise ValueError("this is not a Starlight skill file")
+        raw = data.get("skill")
+        if not isinstance(raw, dict):
+            raise ValueError("the skill file has no skill in it")
+        name = str(raw.get("name") or "").strip()
+        instructions = str(raw.get("instructions") or "").strip()
+        if not name or not instructions:
+            raise ValueError("the skill needs a name and instructions")
+        code = raw.get("code") or {}
+        if not isinstance(code, dict) or len(code) > 50:
+            raise ValueError("the skill's code files are not readable")
+        return self.draft(
+            name,
+            str(raw.get("description") or ""),
+            instructions,
+            triggers=[str(t) for t in raw.get("triggers") or []][:20],
+            tools=[str(t) for t in raw.get("tools") or []][:50],
+            example=str(raw.get("example") or ""),
+            code={str(k): str(v) for k, v in code.items()},
+            source=source,
+        )
 
     def delete(self, name: str) -> None:
         """Remove a skill. Its earlier versions stay in the skill history (rollback)."""

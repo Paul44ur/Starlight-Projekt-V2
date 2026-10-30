@@ -843,6 +843,14 @@ function conversationMenu(c, anchor) {
       if (folder !== null) changeConversation(c.id, { folder });
     }],
     ["🗄", c.archived ? "Take out of the archive" : "Archive", () => changeConversation(c.id, { archived: !c.archived })],
+    ["🧠", "Forget what it learned here", async () => {
+      if (!confirm("Forget the memories Starlight learned in \"" + c.title + "\"? The conversation stays.")) return;
+      try {
+        const r = await api(base + "/forget-learned", { method: "POST" });
+        const kept = r.kept_because_also_said_elsewhere.length;
+        toast(`Forgot ${r.forgotten.length} ${r.forgotten.length === 1 ? "memory" : "memories"}` + (kept ? ` (kept ${kept} also said elsewhere)` : ""));
+      } catch (e) { toast(e.message); }
+    }],
     ["⤓", "Download as Markdown", () => download(base + "/export")],
     ["⤓", "Download as a web page", () => download(base + "/export?format=html")],
     ["🖨", "Print or save as PDF", () => window.open(base + "/export?format=html&show=true", "_blank")],

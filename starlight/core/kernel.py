@@ -13,7 +13,7 @@ from typing import Any
 
 import httpx
 
-from starlight.core.agent import Agent, AgentResult, private_request
+from starlight.core.agent import Agent, AgentResult, private_request, request_conversation
 from starlight.core.config import ConfigError, ModelConfig, StarlightConfig, load_config
 from starlight.core.context import SUMMARY_PREFIX, ContextManager
 from starlight.core.conversations import ConversationStore
@@ -324,6 +324,7 @@ class Kernel:
                     str(event.data.get("request", "")),
                     str(event.data.get("answer", "")),
                     str(event.data.get("request_id", "")),
+                    conversation=str(event.data.get("conversation") or ""),
                 )
             except Exception:
                 self.log.exception("memory extraction failed")
@@ -428,10 +429,14 @@ class Kernel:
             except Exception:
                 self.log.exception("housekeeping step failed", step=name)
         if self.config.memory.enabled:
-            try:
-                await self.memory.prune_summaries()
-            except Exception:
-                self.log.exception("housekeeping step failed", step="summaries")
+            for name, prune in (
+                ("summaries", self.memory.prune_summaries),
+                ("expired memories", self.memory.prune_expired),
+            ):
+                try:
+                    await prune()
+                except Exception:
+                    self.log.exception("housekeeping step failed", step=name)
 
     async def _heartbeat(self) -> None:
         """The primary core tells the viewer it is running and samples GPU use and VRAM.
@@ -534,9 +539,11 @@ class Kernel:
     ) -> AgentResult:
         history = self._history_of(conversation)
         private = private_request.set(self.conversations.is_private(conversation))
+        named = request_conversation.set(conversation)
         try:
             result = await self.agent.run(request, history, on_token=stream, images=images)
         finally:
+            request_conversation.reset(named)
             private_request.reset(private)
         if not (result.stopped or result.failed):  # a failed turn is not kept: retrying works
             # Keep the conversation (and summaries), not the system prompt or recalled memories.

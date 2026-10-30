@@ -235,7 +235,8 @@ async def test_context_is_summarized_not_cut() -> None:
 async def test_summary_goes_to_memory_and_agent_streams(paths: Paths) -> None:
     paths.config_file.write_text(
         paths.config_file.read_text()
-        + "model:\n  context_window: 1024\n  reserve_tokens: 256\n  keep_recent: 2\n"
+        # small enough that six long turns need a summary, with room for the core tools
+        + "model:\n  context_window: 1280\n  reserve_tokens: 256\n  keep_recent: 2\n"
     )
 
     class Streaming(ScriptedProvider):

@@ -27,7 +27,40 @@ from starlight.core import Module, ModuleContext, ToolError, tool
 from starlight.core.safepaths import PathGuard, expand
 
 RATE = 16000  # whisper wants 16 kHz mono
+SUMMARY = (
+    "Summarize this transcript of a recording in the language it is in. Start with two or "
+    "three sentences on what it was about, then the main points as a list, then "
+    "'Decisions' and 'To-dos' (who does what, by when) if there are any. Do not invent "
+    "anything that was not said."
+)
+CHUNK = 12000  # characters of transcript the model reads at once
+PIECE_SECONDS = 300  # of a recording, sent to speech recognition at once
 MAX_SPEAK_CHARS = 4000
+
+
+async def summarize_long(model: Any, text: str) -> str:
+    """A summary of a transcript of any length: a long one in parts first, then those."""
+    from starlight.core.model import Message
+
+    async def once(part: str) -> str:
+        reply = await model.chat([Message("system", SUMMARY), Message("user", part)], [])
+        return str(reply.content).strip()
+
+    if len(text) <= CHUNK:
+        return await once(text)
+    parts = [text[i : i + CHUNK] for i in range(0, len(text), CHUNK)]
+    notes = [await once(part) for part in parts]
+    return await once("Summaries of consecutive parts of one recording:\n\n" + "\n\n".join(notes))
+
+
+def free_output(folder: Path, name: str) -> Path:
+    """``folder/name``, or ``name (2)`` ... when that is taken: nothing is overwritten."""
+    target = folder / name
+    n = 2
+    while target.exists():
+        target = folder / f"{Path(name).stem} ({n}){Path(name).suffix}"
+        n += 1
+    return target
 
 
 class Config(BaseModel):
@@ -216,6 +249,70 @@ class VoiceModule(Module):
             raise ToolError("that recording is too large (over 200 MB)")
         text = await self.transcribe_audio(file.read_bytes(), language)
         return {"file": str(file), "text": text}
+
+    def _pieces(self, file: Path) -> list[bytes]:
+        """The recording as WAV pieces of at most PIECE_SECONDS each (one request each,
+        so a long meeting never runs into a time limit): a .wav as it is, anything else
+        (mp3, m4a, ogg, a video ...) through ffmpeg when it is installed."""
+        if file.suffix.lower() == ".wav":
+            try:
+                with wave.open(str(file), "rb") as source:
+                    params = source.getparams()
+                    step = source.getframerate() * PIECE_SECONDS
+                    pieces = []
+                    while frames := source.readframes(step):
+                        buffer = io.BytesIO()
+                        with wave.open(buffer, "wb") as piece:
+                            piece.setparams(params)
+                            piece.writeframes(frames)
+                        pieces.append(buffer.getvalue())
+                    return pieces
+            except (wave.Error, EOFError):  # a WAV this module cannot read: send it whole
+                return [file.read_bytes()]
+        ffmpeg = shutil.which("ffmpeg")
+        if ffmpeg is None:
+            raise ToolError(
+                f"{file.suffix or 'this'} files need ffmpeg to be read (on Windows: "
+                "winget install ffmpeg); a .wav file works without it"
+            )
+        done = subprocess.run(
+            [ffmpeg, "-nostdin", "-loglevel", "error", "-i", str(file),
+             "-ar", str(RATE), "-ac", "1", "-f", "s16le", "pipe:1"],
+            capture_output=True, timeout=1800, check=False,
+            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+        )  # fmt: skip
+        if done.returncode != 0 or not done.stdout:
+            detail = done.stderr.decode("utf-8", "replace").strip()[-200:]
+            raise ToolError(f"ffmpeg could not read {file.name}: {detail or 'no sound found'}")
+        step = RATE * 2 * PIECE_SECONDS  # 16-bit mono
+        return [wav_bytes(done.stdout[i : i + step]) for i in range(0, len(done.stdout), step)]
+
+    @tool(own_timeout=True)
+    async def summarize_recording(self, path: str, language: str = "") -> dict[str, Any]:
+        """Transcribe a recording (a meeting, a voice memo, a lecture; .wav, or mp3/m4a/
+        ogg/video with ffmpeg installed) and summarize it: the main points, decisions and
+        to-dos. Both are saved as a Markdown file in your Starlight folder."""
+        file = PathGuard(self.ctx.paths.root, self.ctx.output_dir).resolve(path).path
+        if not file.is_file():
+            raise ToolError(f"{file} does not exist")
+        if file.stat().st_size > 2 * 1024**3:
+            raise ToolError("that recording is too large (over 2 GB)")
+        pieces = await asyncio.to_thread(self._pieces, file)
+        heard = [await self.transcribe_audio(piece, language) for piece in pieces]
+        text = " ".join(part for part in heard if part)
+        if not text:
+            raise ToolError("nothing was understood in that recording")
+        model = self.ctx.model_for("summary")
+        if model is None:
+            raise ToolError("no model is configured")
+        summary = await summarize_long(model, text)
+        target = free_output(self.ctx.output_dir / "Recordings", f"{file.stem} summary.md")
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text(
+            f"# {file.stem}\n\n## Summary\n\n{summary}\n\n## Transcript\n\n{text}\n",
+            encoding="utf-8",
+        )
+        return {"summary": summary, "saved": str(target), "transcript_chars": len(text)}
 
     def record(self, seconds: float) -> bytes:
         """Record from the default microphone (needs the 'voice' extra: sounddevice)."""

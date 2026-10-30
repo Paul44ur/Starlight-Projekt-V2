@@ -53,6 +53,7 @@ class MemoryEntry:
     date: str = field(default_factory=lambda: dt.date.today().isoformat())
     confidence: float = 1.0
     tags: list[str] = field(default_factory=list)
+    expires: str = ""  # a date (YYYY-MM-DD) after which it no longer holds; "" never
 
     def to_markdown(self) -> str:
         header: dict[str, Any] = {
@@ -63,6 +64,8 @@ class MemoryEntry:
         }
         if self.tags:
             header["tags"] = self.tags
+        if self.expires:
+            header["expires"] = self.expires
         front = yaml.safe_dump(header, sort_keys=False, allow_unicode=True).strip()
         return f"---\n{front}\n---\n{self.content.strip()}\n"
 
@@ -70,6 +73,15 @@ class MemoryEntry:
     def text(self) -> str:
         """What gets embedded and shown to the model."""
         return f"{self.topic}: {self.content}".strip()
+
+    def expired(self, today: dt.date | None = None) -> bool:
+        """Its "expires" date has passed (a fact that only held until then)."""
+        if not self.expires:
+            return False
+        try:
+            return dt.date.fromisoformat(self.expires[:10]) < (today or dt.date.today())
+        except ValueError:
+            return False
 
 
 class MemoryStore:
@@ -108,6 +120,7 @@ class MemoryStore:
             date=str(header.get("date") or dt.date.today().isoformat()),
             confidence=confidence,
             tags=[str(t) for t in tags] if isinstance(tags, list) else [str(tags)],
+            expires=str(header.get("expires") or ""),
         )
 
     def files(self) -> list[Path]:

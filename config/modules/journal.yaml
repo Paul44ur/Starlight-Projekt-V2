@@ -1,0 +1,7 @@
+# The journal module (modules/journal): one Markdown file per day in your Starlight folder
+# (Documents\Starlight\Journal), and weekly reviews in Journal\Weekly.
+folder: Journal
+# What the weekly review also looks at, when those modules are on: done and open to-dos
+# and the coming week's calendar.
+review_uses_todos: true
+review_uses_calendar: true

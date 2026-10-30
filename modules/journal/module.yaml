@@ -1,0 +1,8 @@
+name: journal
+version: 0.1.0
+description: A journal - write down how the day went, read it back, and get a weekly review of your week
+keywords: ["journal", "diary", "day", "week", "weekly review", "reflect", "Tagebuch", "Woche", "Wochenrückblick", "Rückblick", "heute war"]
+entrypoint: module:JournalModule
+permissions: [safe]
+dependencies: []
+enabled_by_default: true

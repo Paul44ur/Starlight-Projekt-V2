@@ -32,7 +32,7 @@ and answer you on WhatsApp. It will ask you before it does anything risky. And o
 | --- | --- |
 | **Chat in a browser or the terminal** | A clean web chat (the default) or a colored terminal chat. Both stream answers and ask before risky actions. |
 | **Chat with a local model** | Runs a model such as Qwen2.5-14B on your GPU. Long conversations are summarized, not cut off. |
-| **Remember** | Keeps what it learns as plain text files in the `memory` folder. You can read, edit or delete them. Knows your name, language and home town from your profile, tells you what it knows about you, and tidies up memories that say the same thing (asks first). |
+| **Remember** | Keeps what it learns as plain text files in the `memory` folder. You can read, edit or delete them. Knows your name, language and home town from your profile, tells you what it knows about you, and tidies up memories that say the same thing (asks first). Something that only holds for a while ("my sister visits until Friday") is forgotten after that date. The **Memory** page has a **Timeline** (by month) and **People & places**; ⋯ → *Forget what it learned here* on a conversation removes what was learned only there. |
 | **Use the web** | Searches, reads pages and logs in to your accounts. It makes at most 10 requests per second, with a short pause between pages of the same site. A page you ask for is read like a browser would; crawling several pages (research, page watches) respects robots.txt. |
 | **Check your servers** | Pings and checks any server, runs commands over SSH, and alerts you when one of yours goes down. |
 | **Scan your network** | On hosts you own or are authorized to test: open ports, services, TLS certs, HTTP headers, DNS. Asks first; recon only, never attacks. |
@@ -65,17 +65,19 @@ and answer you on WhatsApp. It will ask you before it does anything risky. And o
 | **Word and Excel** | Reads .docx and .xlsx files and makes new ones (letters, lists, tables). |
 | **Developer tools** | Git status/log/diff/commit, Docker containers and their logs, and which program uses which network port. Changes ask first. |
 | **Research** | "Find out whether …" — searches, reads several pages and writes a short report with numbered sources you can check. |
-| **Your own knowledge base** | "What does my rental contract say about pets?" — answers from folders you choose (text, Word, Excel, PDF), naming the file and page. Everything stays on your PC. |
+| **Your own knowledge base** | "What does my rental contract say about pets?" — answers from folders you choose (text, Word, Excel, PDF), naming the file and page; in the web chat a source opens the PDF at that page. Everything stays on your PC. |
+| **Journal** | "Journal: a long hike today, tired but happy" — one file a day in `Documents\Starlight\Journal`; read a day back or search it. "My weekly review" writes up the last seven days (with your to-dos and next week's calendar): what happened, what got done, what is open, what to focus on. Schedule it with an automation ("every Sunday at 18:00"). |
 | **Notes** | Quick notes as plain files ("note: …", "add eggs to my shopping note"), searchable and part of your knowledge base. |
 | **YouTube summaries** | Summarizes a video or answers a question about it from its captions, with the times it was said. |
 | **Talk to it** | Speak instead of typing and hear the answers — 🎤 and 🔊 in the web chat (on your phone too), `/talk` in the terminal. Speech recognition (whisper.cpp) and the voices (Piper, German and English) run on your PC. Install with `Starlight.exe --voice`. |
+| **Summarize recordings** | "Summarize meeting.m4a" — transcribes a meeting, voice memo or lecture on your PC and writes the main points, decisions and to-dos; both are saved in `Documents\Starlight\Recordings`. Any length (it works in five-minute pieces). .wav works as it is; mp3, m4a, ogg or a video need ffmpeg (`winget install ffmpeg`). |
 | **Smart home** | "Turn off the living room lights", "is the front door locked?" — through your Home Assistant. Lights, plugs and scenes switch at once; locks, alarms, doors and heating ask first. |
 | **Your home network** | Which devices are on your WiFi (with names you give them), and a warning when an unknown one joins. Only ever looks at your own network. |
 | **Backups** | Versioned backups of folders you choose (e.g. to an external drive), checked with checksums; restoring asks first and never overwrites without your say. Schedule them with an automation. |
 | **Use your desktop** | Reads the screen, then clicks and types for you, with a red banner on screen while it does. |
 | **Save files** | Saves letters, notes, tables (CSV) and web pages it makes for you in `Documents\Starlight`. |
 | **Write code** | Writes small programs, tests them in a sandbox and fixes them until the tests pass. |
-| **Learn skills** | Turns tasks that worked into reusable skills, but only after you approve them. |
+| **Learn skills** | Turns tasks that worked into reusable skills, but only after you approve them. **Export** one on the Memory page (or `starlight skills export NAME`) to give it to another Starlight; an imported skill comes in as a draft for you to read and approve. |
 | **Manage access from chat** | Add servers, logins and API keys, and set what runs without asking — all by typing, no files to edit. |
 | **Answer on WhatsApp** | Lets you send tasks from your phone and stop everything with `/kill`. |
 | **Show statistics** | Shows tasks, errors, model speed and GPU use in a separate viewer in your browser. |

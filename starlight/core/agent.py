@@ -24,6 +24,8 @@ from starlight.core.toolroute import ToolRouter, active_tools
 #: The request belongs to a private conversation: the task events say so, and nothing is
 #: learned from it (memory, skills).
 private_request: ContextVar[bool] = ContextVar("private_request", default=False)
+#: The conversation the request belongs to ("" outside one): memories learned from it name it.
+request_conversation: ContextVar[str] = ContextVar("request_conversation", default="")
 
 #: Adds context before the model sees a request (e.g. recalled memories). Returns text
 #: for an extra system message, or None.
@@ -185,6 +187,7 @@ class Agent:
                 "tools": [r.tool for r in result.tool_results],
                 "tool_results": list(result.tool_results),
                 "private": private_request.get(),
+                "conversation": request_conversation.get(),
             },
         )
         if self.stats is not None:

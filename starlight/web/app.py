@@ -19,6 +19,7 @@ import asyncio
 import contextlib
 import html
 import json
+import mimetypes
 import re
 import time
 import unicodedata
@@ -30,7 +31,7 @@ from typing import Any
 from urllib.parse import quote, unquote, urlsplit
 
 from fastapi import FastAPI, HTTPException, Request, Response, WebSocket, WebSocketDisconnect
-from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse
 
 from starlight.core import AgentResult, Event, Kernel, Paths, ToolError
 from starlight.core.activity import read_activity
@@ -329,6 +330,28 @@ def create_app(paths: Paths | None = None) -> Any:
     def memory_page(request: Request) -> str:
         viewer(request)
         return page("memory.html")
+
+    @app.get("/docs/file")
+    def knowledge_file(path: str, request: Request) -> Response:
+        """A file from your knowledge base (docs module), so a source in an answer opens
+        in the browser (a PDF at its page). Only files the knowledge base indexed."""
+        viewer(request)
+        record = kernel().modules.records.get("docs")
+        docs = record.instance if record is not None else None
+        indexed = getattr(docs, "indexed", None)
+        if not callable(indexed) or not indexed(path):
+            raise HTTPException(status_code=404, detail="not in your knowledge base")
+        file = Path(path)
+        if not file.is_file():
+            raise HTTPException(status_code=404, detail="the file is gone")
+        media = mimetypes.guess_type(file.name)[0] or "application/octet-stream"
+        inline = media in ("application/pdf", "text/plain") or media.startswith("image/")
+        return FileResponse(
+            file,
+            media_type=media,
+            filename=file.name,
+            content_disposition_type="inline" if inline else "attachment",
+        )
 
     @app.get("/activity", response_class=HTMLResponse)
     def activity_page(request: Request) -> str:
@@ -757,12 +780,26 @@ def create_app(paths: Paths | None = None) -> Any:
                 "date": str(e.date),
                 "source": e.source,
                 "tags": e.tags,
+                "expires": e.expires,
+                "expired": e.expired(),
             }
             for e in kernel().memory.store.all()
             if not wanted or wanted in e.text.lower()
         ]
         entries.sort(key=lambda e: str(e["date"]), reverse=True)
         return {"count": len(entries), "memories": entries}
+
+    @app.post("/api/conversations/{conversation}/forget-learned")
+    async def forget_learned(conversation: str, request: Request) -> dict[str, Any]:
+        """Delete the memories learned only in this conversation."""
+        viewer(request)
+        if not re.fullmatch(r"[a-f0-9]{12}", conversation):
+            raise HTTPException(status_code=400, detail="bad id")
+        k = kernel()
+        result = await k.memory.forget_conversation(conversation)
+        k.audit.record("memory.forget_conversation", conversation=conversation,
+                       forgotten=len(result["forgotten"]))  # fmt: skip
+        return result
 
     @app.put("/api/memory/{entry_id:path}")
     async def edit_memory(entry_id: str, request: Request) -> dict[str, Any]:
@@ -794,6 +831,33 @@ def create_app(paths: Paths | None = None) -> Any:
         if not removed:
             raise HTTPException(status_code=404, detail="no such memory")
         return {"deleted": entry_id}
+
+    @app.get("/api/skills/{name}/export")
+    def export_skill(name: str, request: Request) -> Response:
+        """One skill as a file, to keep or give to another Starlight."""
+        viewer(request)
+        try:
+            data = kernel().skills.export_data(name)
+        except (KeyError, ValueError) as exc:
+            raise HTTPException(status_code=404, detail="no such skill") from exc
+        file = f"{data['skill']['name']}.skill.json"
+        return Response(
+            json.dumps(data, indent=2, ensure_ascii=False),
+            media_type="application/json",
+            headers={"Content-Disposition": f'attachment; filename="{file}"'},
+        )
+
+    @app.post("/api/skills/import")
+    async def import_skill(request: Request) -> dict[str, Any]:
+        """Add a skill from a file: always as a draft, used only after you approve it."""
+        local_only(request)
+        data = await body(request)
+        try:
+            skill = kernel().skills.import_data(data, source="imported in the web chat")
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        kernel().audit.record("skill.imported", skill=skill.name, version=skill.version)
+        return {"name": skill.name, "version": skill.version, "status": skill.status}
 
     @app.get("/api/skills")
     def skills(request: Request) -> dict[str, Any]:

@@ -55,7 +55,8 @@ NAME_PATTERN = r"^[a-z][a-z0-9_]*$"
 SHIPPED = frozenset({
     "access", "apps", "automations", "backup", "breach", "briefing", "calc", "calendar",
     "certs", "clipboard", "code", "commands", "cve", "desktop", "dev", "docs", "files",
-    "filesearch", "finance", "focus", "game", "hello", "home", "lan", "login", "mail", "media",
+    "filesearch", "finance", "focus", "game", "hello", "home", "journal", "lan", "login", "mail",
+    "media",
     "network", "news", "notes", "notify", "office", "pdf", "recon", "reminders", "research",
     "system", "todo", "trains", "transcripts", "translate", "voice", "watch", "weather", "web",
     "whatsapp",
