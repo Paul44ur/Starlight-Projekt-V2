@@ -7,14 +7,64 @@
 <link rel="icon" href="/icon.svg" type="image/svg+xml" />
 <link rel="stylesheet" href="/style.css" />
 <style>
-  .setting { display: flex; flex-wrap: wrap; gap: 4px; }
-  .setting button { padding: 3px 8px; font-size: 12px; }
-  .setting button.sel { outline: 2px solid var(--accent); }
-  td.name { font-family: ui-monospace, Consolas, monospace; font-size: 13px; }
   #code { font-size: 32px; letter-spacing: .3em; font-weight: 700; }
   .locked { display: none; }
   body.remote .locked { display: block; }
-  body.remote .local-only button, body.remote .local-only input { pointer-events: none; opacity: .5; }
+  body.remote .local-only button, body.remote .local-only input, body.remote .local-only .switch {
+    pointer-events: none; opacity: .5; }
+  .card.mods { overflow-x: visible; }
+  #filter { width: 100%; margin: 4px 0 6px; }
+  #summary { margin-bottom: 8px; }
+  /* A module: one line you can open to see its tools. */
+  details.mod { border-top: 1px solid var(--border); }
+  details.mod > summary { list-style: none; display: grid; grid-template-columns: 14px minmax(0, 1fr) auto;
+    gap: 2px 10px; align-items: center; padding: 9px 2px; cursor: pointer; }
+  details.mod > summary::-webkit-details-marker { display: none; }
+  details.mod > summary::before { content: "▸"; color: var(--dim); font-size: 12px; transition: transform .15s; }
+  details.mod[open] > summary::before { transform: rotate(90deg); }
+  details.mod > summary:hover .mname { color: var(--accent); }
+  .mhead { min-width: 0; }
+  .mname { font-weight: 600; }
+  .mcount { color: var(--dim); font-size: 12px; margin-left: 6px; white-space: nowrap; }
+  .mcount b { color: var(--warn); font-weight: 600; } .mcount b.blocked { color: var(--bad); }
+  .mdesc { color: var(--dim); font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  details.mod[open] .mdesc { white-space: normal; }
+  .merror { color: var(--bad); font-size: 13px; }
+  .mtools { padding: 0 0 10px 24px; }
+  .mtools .dim { padding: 4px 0; }
+  .trow { display: flex; align-items: center; gap: 10px; padding: 6px 0; border-top: 1px dashed var(--border); }
+  .trow:first-child { border-top: 0; }
+  .tinfo { flex: 1; min-width: 0; }
+  .tname { font-family: ui-monospace, Consolas, "Cascadia Mono", monospace; font-size: 13px; }
+  .tdesc { color: var(--dim); font-size: 12.5px; }
+  /* Runs / Asks first / Blocked: one choice, the chosen one lit. */
+  .seg { display: inline-flex; flex: none; border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
+  .seg button { border: 0; border-radius: 0; padding: 3px 10px; font-size: 12.5px; background: var(--panel2);
+                color: var(--dim); }
+  .seg button + button { border-left: 1px solid var(--border); }
+  .seg button:hover { color: var(--text); }
+  .seg button.sel.safe { background: var(--ok); color: #06240f; }
+  .seg button.sel.confirm { background: var(--warn); color: #2b1d00; }
+  .seg button.sel.blocked { background: var(--bad); color: #fff; }
+  .reset { flex: none; width: 46px; font-size: 12px; padding: 0; background: none; border: 0; color: var(--accent); }
+  .reset:hover { text-decoration: underline; }
+  /* An on/off switch */
+  .switch { position: relative; display: inline-block; width: 38px; height: 22px; flex: none; }
+  .switch input { opacity: 0; width: 0; height: 0; position: absolute; }
+  .switch span { position: absolute; inset: 0; border-radius: 999px; background: var(--panel2);
+                 border: 1px solid var(--border); transition: background .15s; }
+  .switch span::before { content: ""; position: absolute; width: 16px; height: 16px; left: 2px; top: 2px;
+                         border-radius: 50%; background: var(--dim); transition: transform .15s, background .15s; }
+  .switch input:checked + span { background: var(--ok); border-color: var(--ok); }
+  .switch input:checked + span::before { transform: translateX(16px); background: #fff; }
+  .switch input:focus-visible + span { outline: 2px solid var(--accent); outline-offset: 2px; }
+  details.advanced { margin-top: 12px; border-top: 1px solid var(--border); padding-top: 10px; }
+  details.advanced summary { cursor: pointer; color: var(--dim); font-size: 13px; }
+  @media (max-width: 600px) {
+    .trow { flex-wrap: wrap; row-gap: 4px; }
+    .tinfo { flex-basis: 100%; }
+    .mtools { padding-left: 4px; }
+  }
 </style>
 </head>
 <body>
@@ -35,73 +85,129 @@
     <table id="devices"><thead><tr><th>Device</th><th>Paired</th><th>Last used</th><th></th></tr></thead><tbody></tbody></table>
   </div>
 
-  <div class="card local-only">
-    <h2>What runs without asking</h2>
-    <p class="dim small">Each tool runs on its own (<b>safe</b>), asks you first (<b>confirm</b>) or never runs
-      (<b>blocked</b>). "default" goes back to what the tool itself says. Changes are saved in
+  <div class="card local-only mods">
+    <h2>Modules and what they may do</h2>
+    <p class="dim small">Turn a module off and its tools are gone. Open one to choose, tool by tool,
+      whether it <b>runs</b> on its own, <b>asks first</b>, or is <b>blocked</b>. Changes are saved in
       config/permissions.chat.yaml.</p>
-    <div class="row"><input id="filter" type="search" class="grow" placeholder="Filter tools, e.g. desktop or files.save" /></div>
-    <table id="tools"><thead><tr><th>Tool</th><th>Now</th><th>Change</th></tr></thead><tbody></tbody></table>
-    <h2 style="margin-top:14px">Rule for a group</h2>
-    <div class="row"><input id="pattern" type="text" placeholder="e.g. network.* or desktop.click" class="grow" />
-      <select id="setting"><option>confirm</option><option>safe</option><option>blocked</option><option>default</option></select>
-      <button id="apply">Apply</button></div>
-  </div>
-
-  <div class="card local-only">
-    <h2>Modules</h2>
-    <table id="modules"><thead><tr><th>Module</th><th>What it does</th><th>State</th><th></th></tr></thead><tbody></tbody></table>
+    <input id="filter" type="search" placeholder="Find a module or tool, e.g. desktop, mail or save" />
+    <div id="summary" class="dim small"></div>
+    <div id="mods"></div>
+    <details class="advanced">
+      <summary>Advanced: one rule for several tools</summary>
+      <p class="dim small">A pattern such as <code>network.*</code> or <code>desktop.click*</code>.
+        "Default" removes the rule again.</p>
+      <div class="row"><input id="pattern" type="text" placeholder="e.g. network.* or desktop.click" class="grow" />
+        <select id="setting"><option value="confirm">Asks first</option><option value="safe">Runs</option>
+          <option value="blocked">Blocked</option><option value="default">Default</option></select>
+        <button id="apply">Apply</button></div>
+    </details>
   </div>
 </div>
 <script src="/common.js"></script>
 <script>
-let tools = [];
+const CHOICES = [["safe", "Runs"], ["confirm", "Asks first"], ["blocked", "Blocked"]];
+let tools = [], modules = [];
 
-async function loadPermissions() {
-  const data = await api("/api/permissions");
-  tools = data.tools; showTools();
+async function load() {
+  const [perms, mods] = await Promise.all([api("/api/permissions"), api("/api/modules")]);
+  tools = perms.tools; modules = mods.modules; show();
 }
-function showTools() {
-  const wanted = document.getElementById("filter").value.toLowerCase();
-  const body = document.querySelector("#tools tbody"); body.innerHTML = "";
-  tools.filter(t => t.name.includes(wanted)).forEach(t => {
-    const row = el("tr");
-    row.appendChild(el("td", "name", t.name));
-    const now = el("td"); now.appendChild(el("span", "pill " + (t.now === "safe" ? "on" : t.now === "confirm" ? "warn" : "off"), t.now)); row.appendChild(now);
-    const cell = el("td"); const box = el("div", "setting");
-    ["safe", "confirm", "blocked", "default"].forEach(s => {
-      const b = el("button", s === t.now ? "sel" : "", s);
-      b.onclick = () => setRule(t.name, s);
-      box.appendChild(b);
-    });
-    cell.appendChild(box); row.appendChild(cell); body.appendChild(row);
+
+function toolsOf(name) { return tools.filter(t => t.name.split(".")[0] === name); }
+
+function show() {
+  const wanted = document.getElementById("filter").value.trim().toLowerCase();
+  const box = document.getElementById("mods");
+  const open = new Set([...box.querySelectorAll("details[open]")].map(d => d.dataset.name));
+  box.replaceChildren();
+  let shown = 0;
+  for (const m of modules) {
+    const own = toolsOf(m.name);
+    const moduleHit = !wanted || m.name.includes(wanted) || (m.description || "").toLowerCase().includes(wanted);
+    const toolHits = wanted ? own.filter(t => (t.name + " " + t.description).toLowerCase().includes(wanted)) : own;
+    if (!moduleHit && !toolHits.length) continue;
+    shown++;
+    box.appendChild(moduleRow(m, moduleHit ? own : toolHits, open.has(m.name) || (wanted && !moduleHit)));
+  }
+  const asks = tools.filter(t => t.now === "confirm").length, blocked = tools.filter(t => t.now === "blocked").length;
+  const loaded = modules.filter(m => m.status === "loaded").length;
+  document.getElementById("summary").textContent = wanted
+    ? `${shown} of ${modules.length} modules match`
+    : `${loaded} of ${modules.length} modules on · ${tools.length} tools: ${asks} ask first, ${blocked} blocked, the rest run on their own`;
+  if (wanted && !shown) box.appendChild(el("p", "dim small", "Nothing matches."));
+}
+
+function moduleRow(m, list, open) {
+  const d = el("details", "mod"); d.dataset.name = m.name; d.open = open;
+  const s = el("summary");
+  const head = el("div", "mhead");
+  const title = el("div");
+  title.appendChild(el("span", "mname", m.name));
+  const own = toolsOf(m.name);
+  const count = el("span", "mcount", m.status === "loaded" ? `${own.length} tools` : m.status);
+  const asks = own.filter(t => t.now === "confirm").length, blocked = own.filter(t => t.now === "blocked").length;
+  if (asks) { count.append(" · "); count.appendChild(el("b", "", `${asks} ask first`)); }
+  if (blocked) { count.append(" · "); count.appendChild(el("b", "blocked", `${blocked} blocked`)); }
+  title.appendChild(count);
+  head.append(title, el("div", "mdesc", m.description || ""));
+  if (m.error) head.appendChild(el("div", "merror", "⚠ " + m.error));
+  const sw = el("label", "switch"); sw.title = m.status === "loaded" ? "On: click to turn off" : "Off: click to turn on";
+  const box = el("input"); box.type = "checkbox"; box.checked = m.status === "loaded";
+  box.setAttribute("aria-label", "Module " + m.name);
+  sw.append(box, el("span"));
+  sw.onclick = (e) => e.stopPropagation();  // the switch, not the row: it does not open the list
+  box.onchange = () => toggleModule(m.name, box.checked, box);
+  s.append(head, sw);
+  d.appendChild(s);
+  const body = el("div", "mtools");
+  if (m.status !== "loaded") body.appendChild(el("div", "dim small", "Turn it on to see its tools."));
+  else if (!list.length) body.appendChild(el("div", "dim small", "It has no tools."));
+  list.forEach(t => body.appendChild(toolRow(t)));
+  d.appendChild(body);
+  return d;
+}
+
+function toolRow(t) {
+  const row = el("div", "trow");
+  const info = el("div", "tinfo");
+  info.append(el("div", "tname", t.name), el("div", "tdesc", t.description || ""));
+  const seg = el("div", "seg"); seg.setAttribute("role", "group"); seg.setAttribute("aria-label", t.name);
+  CHOICES.forEach(([value, label]) => {
+    const b = el("button", value + (t.now === value ? " sel" : ""), label);
+    b.setAttribute("aria-pressed", t.now === value ? "true" : "false");
+    b.onclick = () => { if (t.now !== value) setRule(t.name, value); };
+    seg.appendChild(b);
   });
+  const reset = el("button", "reset", t.now !== t.tag ? "Reset" : "");
+  reset.title = "Back to the tool's own setting (" + CHOICES.find(c => c[0] === t.tag)[1].toLowerCase() + ")";
+  reset.disabled = t.now === t.tag;
+  reset.onclick = () => setRule(t.name, "default");
+  row.append(info, seg, reset);
+  return row;
 }
+
 async function setRule(pattern, setting) {
-  if (setting !== "confirm" && setting !== "blocked" && !confirm(`Let ${pattern} ${setting === "safe" ? "run without asking" : "use its default"}?`)) return;
-  try { await api("/api/permissions", { method: "POST", body: { pattern, setting } }); toast("Saved"); loadPermissions(); }
+  // Only letting something run without asking is asked about: that is the risky way round.
+  if (setting === "safe" && !confirm(`Let ${pattern} run without asking you first?`)) return;
+  try { await api("/api/permissions", { method: "POST", body: { pattern, setting } }); toast("Saved"); await load(); }
   catch (e) { toast(e.message); }
 }
-document.getElementById("filter").oninput = showTools;
+
+async function toggleModule(name, on, box) {
+  box.disabled = true;
+  try {
+    const r = await api("/api/modules/" + name, { method: "POST", body: { enabled: on } });
+    toast(on ? (r.status === "loaded" ? name + " is on" : name + " could not start") : name + " is off");
+  } catch (e) { toast(e.message); }
+  await load();
+}
+
+document.getElementById("filter").oninput = show;
 document.getElementById("apply").onclick = () => {
   const pattern = document.getElementById("pattern").value.trim();
   if (pattern) setRule(pattern, document.getElementById("setting").value);
 };
-
-async function loadModules() {
-  const data = await api("/api/modules");
-  const body = document.querySelector("#modules tbody"); body.innerHTML = "";
-  data.modules.forEach(m => {
-    const row = el("tr");
-    row.appendChild(el("td", "name", m.name));
-    const what = el("td", "small", m.description); if (m.error) what.appendChild(el("div", "small", "⚠ " + m.error)); row.appendChild(what);
-    const st = el("td"); st.appendChild(el("span", "pill " + (m.status === "loaded" ? "on" : "off"), m.status)); row.appendChild(st);
-    const act = el("td"); const on = m.status === "loaded";
-    const b = el("button", "", on ? "Turn off" : "Turn on");
-    b.onclick = async () => { if (!confirm((on ? "Turn off " : "Turn on ") + m.name + "?")) return; try { await api("/api/modules/" + m.name, { method: "POST", body: { enabled: !on } }); loadModules(); loadPermissions(); } catch (e) { toast(e.message); } };
-    act.appendChild(b); row.appendChild(act); body.appendChild(row);
-  });
-}
 
 async function loadDevices() {
   let data;
@@ -122,7 +228,8 @@ async function loadDevices() {
     };
     act.appendChild(b); row.appendChild(act); body.appendChild(row);
   });
-  if (!data.devices.length) body.appendChild(el("tr")).appendChild(el("td", "dim small", "No paired devices."));
+  document.getElementById("devices").hidden = !data.devices.length;
+  if (!data.devices.length) state.textContent += " No devices are paired yet.";
 }
 let pairTimer = null;  // a new code replaces the old one, and so does its timer
 document.getElementById("pair").onclick = async () => {
@@ -137,7 +244,7 @@ document.getElementById("pair").onclick = async () => {
 
 (async () => {
   try { const s = await api("/api/status"); if (!s.local) document.body.classList.add("remote"); } catch (e) { /* */ }
-  loadPermissions(); loadModules(); loadDevices();
+  load(); loadDevices();
 })();
 </script>
 </body>

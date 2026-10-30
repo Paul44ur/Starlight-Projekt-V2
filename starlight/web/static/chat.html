@@ -91,6 +91,15 @@
           font-size: 20px; }
   body.dragging #drop { display: flex; }
   #menu { display: none; }
+  .narrow, .drawer-nav { display: none; }
+  #kill.kill { color: var(--bad); border-color: var(--bad); background: none; }
+  #kill.kill:hover { background: var(--bad); color: #fff; }
+  #send.stop { color: #fff; background: #b3231d; border-color: #b3231d; }
+  /* Regenerate only on the latest answer (only that one can be), and no buttons on an
+     answer that has not begun. */
+  .msg.bot .regen { display: none; }
+  .msg.bot.latest .regen { display: inline-block; }
+  .msg.bot:has(.body:empty) .tools { visibility: hidden; }
   #mic.on { color: var(--bad); border-color: var(--bad); }
   @media (max-width: 1100px) { #side { display: none; } }
   @media (max-width: 760px) {
@@ -99,7 +108,13 @@
              transition: transform .2s; box-shadow: var(--shadow); }
     body.drawer #convs { transform: none; }
     #log { padding: 12px; }
-    header.top nav a.wide { display: none; }
+    /* one row on a phone: the links and the theme are in the drawer (☰) */
+    header.top { flex-wrap: nowrap; gap: 8px; }
+    header.top .wide { display: none; }
+    .narrow { display: inline; }
+    .drawer-nav { display: flex; gap: 14px; align-items: center; padding: 12px 14px;
+                  border-top: 1px solid var(--border); font-size: 14px; }
+    #conn { width: 10px; height: 10px; padding: 0; font-size: 0; flex: none; }
   }
 </style>
 </head>
@@ -110,6 +125,8 @@
       <button id="new" title="New conversation">＋</button>
     </div>
     <div id="list"></div>
+    <nav class="drawer-nav"><a href="/memory">Memory</a><a href="/settings">Settings</a>
+      <button class="icon" onclick="cycleTheme()" id="theme2" title="Theme">◐ Theme</button></nav>
   </aside>
   <div id="main">
     <header class="top">
@@ -118,11 +135,10 @@
       <span id="conn" class="pill off">connecting…</span>
       <span id="where" class="pill off" hidden></span>
       <span class="spacer"></span>
-      <nav><a href="/memory">Memory</a><a href="/settings">Settings</a></nav>
+      <nav class="wide"><a href="/memory">Memory</a><a href="/settings">Settings</a></nav>
       <button id="speaker" class="icon" title="Read answers aloud">🔇</button>
-      <button id="theme" class="icon" title="Theme" onclick="cycleTheme()">◐</button>
-      <button id="stop" title="Stop the current answer (Esc)">Stop</button>
-      <button id="kill" class="danger" title="Stop everything">Kill</button>
+      <button id="theme" class="icon wide" title="Theme" onclick="cycleTheme()">◐</button>
+      <button id="kill" class="kill" title="Kill switch: stop everything Starlight does on this PC, until you resume (also Ctrl+Alt+J)"><span class="wide">Kill switch</span><span class="narrow">Kill</span></button>
     </header>
     <div id="log"></div>
     <footer>
@@ -184,8 +200,13 @@ function addMsg(who, text, files, plain) {
     m.appendChild(tools);
   }
   log.appendChild(m);
+  markLatest();
   if (stick) scroll();
   return body;
+}
+function markLatest() {
+  const answers = log.querySelectorAll(".msg.bot");
+  answers.forEach((a, i) => a.classList.toggle("latest", i === answers.length - 1));
 }
 // Only the latest answer can be regenerated: it replaces that answer. An answer the server
 // kept (or the old one it keeps after a failed regenerate) is asked again with "regenerate";
@@ -199,7 +220,7 @@ function regenerate(msg) {
   while (q && !q.classList.contains("you")) q = q.previousElementSibling;
   const question = q ? q.querySelector(".body").textContent : "";
   if (msg.dataset.kept || msg.dataset.regen) {
-    msg.remove(); regenPending = true;
+    msg.remove(); markLatest(); regenPending = true;
     // The question tells the server which exchange is meant: another window may have
     // asked something since this page last showed the conversation.
     ws.send(JSON.stringify({ type: "regenerate", conversation, question }));
@@ -207,7 +228,8 @@ function regenerate(msg) {
   }
   const text = question || lastQuestion;
   if (!text) { toast("Nothing to ask again"); return; }
-  msg.remove();
+  msg.remove(); markLatest();
+  asking = true; syncSend();
   ws.send(JSON.stringify({ type: "ask", text, conversation }));
 }
 // An answer's text (body.raw), drawn at once; while it streams in, at most once a frame.
@@ -251,11 +273,16 @@ function connect() {
     if (current || answering) addSys("Connection lost: the answer was interrupted.");
     if (regenPending) resync = true;
     doneWaiting(current);
-    current = null; answering = null; regenPending = false;
+    current = null; answering = null; regenPending = false; asking = false; syncSend();
     log.querySelectorAll(".confirm").forEach(card => card.remove());
     setTimeout(connect, 1500);
   };
-  ws.onmessage = (ev) => handle(JSON.parse(ev.data));
+  ws.onmessage = (ev) => {
+    const m = JSON.parse(ev.data);
+    if (["start", "busy", "error", "stopped", "answer"].includes(m.type)) asking = false;
+    handle(m);
+    syncSend();
+  };
 }
 
 // Until the first word arrives the answer shows that Starlight is at work, and after a few
@@ -356,6 +383,7 @@ function showPrompt(m) {
 function ask(text, files) {
   if (!ws || ws.readyState !== 1) { toast("Not connected yet"); return; }
   lastQuestion = text;
+  asking = true; syncSend();
   addMsg("you", text, files.map(f => f.name));
   ws.send(JSON.stringify({ type: "ask", text, conversation, attachments: files.map(f => f.id) }));
 }
@@ -375,6 +403,7 @@ function starfall() {
 
 document.getElementById("form").onsubmit = (e) => {
   e.preventDefault();
+  if (busy()) { stopAnswer(); return; }
   const text = input.value.trim();
   if (!text) return;
   if (text === "/stars") { input.value = ""; starfall(); return; }
@@ -383,7 +412,12 @@ document.getElementById("form").onsubmit = (e) => {
   ask(text, files);
 };
 input.onkeydown = (e) => {
-  if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); document.getElementById("form").requestSubmit(); }
+  if (e.key === "Enter" && !e.shiftKey) {
+    e.preventDefault();
+    // Enter never stops an answer (you may be typing the next question): that is Esc or Stop.
+    if (busy()) toast("Starlight is still answering: Esc or Stop ends it");
+    else document.getElementById("form").requestSubmit();
+  }
   else if (e.key === "ArrowUp" && !input.value) {
     // Up in an empty box brings back the last question, to change it or send it again.
     const asked = log.querySelectorAll(".msg.you .body");
@@ -396,7 +430,15 @@ input.onkeydown = (e) => {
 };
 input.oninput = () => { input.style.height = "44px"; input.style.height = Math.min(input.scrollHeight, 180) + "px"; };
 function stopAnswer() { if (ws && ws.readyState === 1) ws.send(JSON.stringify({ type: "stop" })); }
-document.getElementById("stop").onclick = stopAnswer;
+// While an answer is being written, the Send button stops it.
+let asking = false;  // a question was sent and its answer has not begun yet
+function busy() { return Boolean(asking || current || answering); }
+function syncSend() {
+  const b = document.getElementById("send");
+  b.textContent = busy() ? "Stop" : "Send";
+  b.className = busy() ? "stop" : "ok";
+  b.title = busy() ? "Stop this answer (Esc)" : "Send (Enter)";
+}
 // Esc stops the answer that is being written (as the Stop button does).
 document.addEventListener("keydown", (e) => {
   if (e.key === "Escape" && (current || answering) && !e.target.closest(".confirm")) {
@@ -557,8 +599,13 @@ async function refresh() {
     const k = document.getElementById("kill");
     if (s.kill.engaged) {
       k.textContent = "Resume"; k.className = "ok"; k.dataset.on = "1"; k.disabled = !s.local;
-      if (!s.local) k.title = "Release the kill switch on the PC";
-    } else { k.textContent = "Kill"; k.className = "danger"; k.dataset.on = "0"; k.disabled = false; }
+      k.title = s.local ? "The kill switch is on: Starlight does nothing until you resume"
+                        : "Release the kill switch on the PC";
+    } else if (k.dataset.on !== "0") {
+      k.replaceChildren(el("span", "wide", "Kill switch"), el("span", "narrow", "Kill"));
+      k.className = "kill"; k.dataset.on = "0"; k.disabled = false;
+      k.title = "Kill switch: stop everything Starlight does on this PC, until you resume (also Ctrl+Alt+J)";
+    }
     fill("servers", s.access.servers || []); fill("logins", s.access.login_sites || []); fill("secrets", s.access.secrets || []);
     document.getElementById("saves").textContent = s.saves_files || "";
   } catch (e) { /* server starting */ }

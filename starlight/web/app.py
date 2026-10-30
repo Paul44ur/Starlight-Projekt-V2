@@ -228,6 +228,15 @@ def extract_text(name: str, data: bytes) -> str:
             raise ValueError(f"reading {suffix} files needs the '{extra}' extra") from exc
 
 
+def first_sentence(text: str, limit: int = 160) -> str:
+    """The first sentence of a tool's description (they wrap over several lines), cut to
+    ``limit`` characters."""
+    paragraph = " ".join(text.strip().split("\n\n", 1)[0].split())
+    found = re.match(r"(.+?[.!?])(?=\s+[A-Z(\"']|$)", paragraph)  # not "e.g. the"
+    sentence = found.group(1) if found else paragraph
+    return sentence if len(sentence) <= limit else sentence[: limit - 1].rstrip() + "…"
+
+
 def create_app(paths: Paths | None = None) -> Any:
     paths = paths or Paths.discover()
     state: dict[str, Any] = {}
@@ -580,6 +589,7 @@ def create_app(paths: Paths | None = None) -> Any:
         tools = [
             {
                 "name": t.qualified_name,
+                "description": first_sentence(t.description),
                 "tag": t.permission.value,
                 "now": k.policy.resolve(t.qualified_name, t.permission).value,
             }

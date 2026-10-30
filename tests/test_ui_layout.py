@@ -41,7 +41,7 @@ def test_message_bubbles_never_wider_than_their_column() -> None:
 def test_the_bar_wraps_and_a_wide_table_scrolls_inside_its_card() -> None:
     assert "flex-wrap: wrap" in read("style.css")
     assert "overflow-x: auto" in read("style.css")
-    assert ".setting { display: flex; flex-wrap: wrap;" in read("settings.html")
+    assert ".trow { flex-wrap: wrap;" in read("settings.html")  # (a tool's row, on a phone)
 
 
 def test_the_input_hint_is_short_on_a_phone() -> None:

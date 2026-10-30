@@ -247,3 +247,139 @@ async def test_slash_stars(static_site: str, monkeypatch: pytest.MonkeyPatch) ->
             await page.wait_for_function("() => !document.querySelector('.star')", timeout=9000)
         finally:
             await browser.close()
+
+
+async def test_send_turns_into_stop_and_only_the_latest_answer_regenerates(
+    static_site: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    async_api = pytest.importorskip("playwright.async_api")
+    monkeypatch.setenv("NO_PROXY", "127.0.0.1")
+    async with async_api.async_playwright() as playwright:
+        browser, page = await open_chat(playwright, static_site)
+        try:
+            await page.evaluate(
+                "() => { const s = window.sockets[window.sockets.length - 1];"
+                " s.readyState = 1; s.sent = []; s.send = d => s.sent.push(JSON.parse(d).type); }"
+            )
+            sent = "() => window.sockets.at(-1).sent"
+            send, box = page.locator("#send"), page.locator("#input")
+            for n in (1, 2):
+                await box.fill(f"question {n}")
+                await box.press("Enter")
+                assert await send.text_content() == "Stop"  # at once, before the answer begins
+                await page.evaluate(SEND, {"type": "start", "conversation": "c1"})
+                await box.fill("my next question")
+                await box.press("Enter")  # Enter does not stop the answer
+                assert "stop" not in await page.evaluate(sent)
+                await box.fill("")
+                if n == 1:
+                    await page.evaluate(
+                        SEND, {"type": "answer", "text": "one", "conversation": "c1"}
+                    )
+                else:
+                    await send.click()  # Stop
+                    assert (await page.evaluate(sent))[-1] == "stop"
+                    await page.evaluate(SEND, {"type": "stopped", "conversation": "c1"})
+                assert await send.text_content() == "Send"
+            regenerate = page.locator(".msg.bot .regen")
+            visible = await regenerate.evaluate_all(
+                "bs => bs.map(b => getComputedStyle(b).display !== 'none')"
+            )
+            assert visible == [False, True]  # only the latest answer
+        finally:
+            await browser.close()
+
+
+async def test_the_phone_header_is_one_row(
+    static_site: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    async_api = pytest.importorskip("playwright.async_api")
+    monkeypatch.setenv("NO_PROXY", "127.0.0.1")
+    async with async_api.async_playwright() as playwright:
+        browser, page = await open_chat(playwright, static_site)
+        try:
+            await page.set_viewport_size({"width": 360, "height": 740})
+            header = await page.locator("#main header.top").bounding_box()
+            assert header is not None and header["height"] < 60  # no second row
+            assert await page.locator("#kill").is_visible()
+            await page.locator("#menu").click()  # the links are in the drawer
+            assert await page.locator(".drawer-nav a[href='/settings']").is_visible()
+        finally:
+            await browser.close()
+
+
+SETTINGS_API = """
+window.posted = [];
+const TOOLS = [
+  {name: "desktop.click", description: "Click at a screen position.", tag: "safe", now: "safe"},
+  {name: "desktop.type_text", description: "Type text.", tag: "confirm", now: "safe"},
+  {name: "mail.send", description: "Send an email.", tag: "confirm", now: "confirm"},
+  {name: "mail.inbox", description: "The newest messages.", tag: "safe", now: "blocked"},
+];
+const MODULES = [
+  {name: "desktop", status: "loaded", description: "Read the screen and use mouse and keyboard"},
+  {name: "mail", status: "loaded", description: "Read and send email from your own mailbox"},
+  {name: "weather", status: "disabled", description: "Current weather and a forecast"},
+];
+window.fetch = async (url, init) => {
+  const json = (data) => new Response(JSON.stringify(data),
+                                      {headers: {"content-type": "application/json"}});
+  if (init && init.method === "POST") {
+    window.posted.push([url, JSON.parse(init.body)]);
+    return json({});
+  }
+  if (url === "/api/permissions") return json({tools: TOOLS, rules: {}});
+  if (url === "/api/modules") return json({modules: MODULES});
+  if (url === "/api/devices") return json({remote: {enabled: false, hosts: []}, devices: []});
+  return json({local: true});
+};
+window.confirm = () => true;
+"""
+
+
+async def test_settings_groups_tools_under_their_modules_and_fits_a_phone(
+    static_site: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    async_api = pytest.importorskip("playwright.async_api")
+    monkeypatch.setenv("NO_PROXY", "127.0.0.1")
+    executable = os.environ.get("STARLIGHT_CHROMIUM") or (
+        CHROMIUM if Path(CHROMIUM).exists() else None
+    )
+    if executable is None and not os.environ.get("CI"):
+        pytest.skip("no Chromium for Playwright")
+    async with async_api.async_playwright() as playwright:
+        browser = await playwright.chromium.launch(executable_path=executable)
+        try:
+            page = await browser.new_page(viewport={"width": 360, "height": 740})
+            await page.add_init_script(SETTINGS_API)
+            await page.goto(f"{static_site}/settings.html")
+            await page.wait_for_selector("details.mod")
+            assert await page.locator("details.mod").count() == 3
+            mail = page.locator("details.mod[data-name=mail]")
+            assert "1 ask first" in await mail.locator(".mcount").inner_text()
+            assert "1 blocked" in await mail.locator(".mcount").inner_text()
+            await mail.locator("summary").click()
+            row = mail.locator(".trow").filter(has_text="mail.inbox")
+            assert await row.locator(".seg button.sel").inner_text() == "Blocked"
+            assert await row.locator(".reset").is_enabled()  # it differs from its own setting
+            # nothing sticks out sideways on a phone
+            assert await page.evaluate("document.documentElement.scrollWidth") <= 360
+            await row.locator(".seg button", has_text="Asks first").click()
+            await page.wait_for_function("window.posted.length > 0")
+            assert await page.evaluate("window.posted") == [
+                ["/api/permissions", {"pattern": "mail.inbox", "setting": "confirm"}]
+            ]
+            # a search opens the module that has the tool, and hides the rest
+            await page.locator("#filter").fill("type")
+            assert await page.locator("details.mod").count() == 1
+            assert await page.locator("details.mod[data-name=desktop]").get_attribute("open") == ""
+            # the switch turns a module on, without opening its list
+            await page.locator("#filter").fill("")
+            await page.locator("details.mod[data-name=weather] .switch").click()
+            await page.wait_for_function("window.posted.length > 1")
+            assert (await page.evaluate("window.posted"))[-1] == [
+                "/api/modules/weather",
+                {"enabled": True},
+            ]
+        finally:
+            await browser.close()

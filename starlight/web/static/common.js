@@ -4,9 +4,16 @@
   if (saved === "light" || saved === "dark") document.documentElement.dataset.theme = saved;
 })();
 
+const THEMES = { system: ["◐", "like your system"], light: ["☀", "light"], dark: ["☾", "dark"] };
+// The theme button(s) show the theme in use; the tooltip says it in words.
 function showTheme() {
-  const b = document.getElementById("theme");
-  if (b) b.textContent = { system: "◐", light: "☀", dark: "☾" }[document.documentElement.dataset.theme || "system"];
+  const now = document.documentElement.dataset.theme || "system";
+  ["theme", "theme2"].forEach(id => {
+    const b = document.getElementById(id);
+    if (!b) return;
+    b.textContent = THEMES[now][0] + (id === "theme2" ? " Theme" : "");
+    b.title = "Theme: " + THEMES[now][1] + " (click to change)";
+  });
 }
 document.addEventListener("DOMContentLoaded", showTheme);
 
@@ -17,8 +24,7 @@ function cycleTheme() {
   if (next === "system") delete document.documentElement.dataset.theme;
   else document.documentElement.dataset.theme = next;
   try { localStorage.setItem("starlight-theme", next); } catch (e) { /* private window */ }
-  const b = document.getElementById("theme");
-  if (b) b.textContent = { system: "◐", light: "☀", dark: "☾" }[next];
+  showTheme();
 }
 
 function el(tag, cls, text) {

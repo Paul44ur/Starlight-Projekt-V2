@@ -1264,8 +1264,7 @@ class App:
             self._draw_mark(glyph, "done", self.c.ok)
             label.configure(fg=self.c.dim)
         self._step_row(text)
-        self.p_title.configure(text=text)
-        self.p_sub.configure(text="")
+        self.p_sub.configure(text=text)  # (the title stays: what is being done overall)
         self.bar.configure(mode="indeterminate")
         self.bar.start(14)
 
@@ -1640,9 +1639,10 @@ class App:
         self._button(buttons, "Open logs folder", self.open_logs).grid(
             row=0, column=1, padx=self.px(6)
         )
-        self._button(
-            buttons, "Copy details", lambda: self._copy(self.err_text.get("1.0", "end"))
-        ).grid(row=0, column=2, padx=self.px(6))
+        self.err_report = ""
+        self._button(buttons, "Copy details", lambda: self._copy(self.err_report)).grid(
+            row=0, column=2, padx=self.px(6)
+        )
         self._button(buttons, "Quit", self.quit_app).grid(row=0, column=3, padx=self.px(6))
         self._button(buttons, "Try again", self.try_again, "Accent.TButton").grid(row=0, column=4)
 
@@ -1657,12 +1657,15 @@ class App:
                 .splitlines()
             )
             log_tail = "\n".join(lines[-25:])
-        report = "\n\n".join(
-            part for part in (message, details, log_tail and "Recent log:\n" + log_tail) if part
+        # The message shows above; the box holds the details and the log behind it, and
+        # "Copy details" copies all three.
+        extra = "\n\n".join(
+            part for part in (details, log_tail and "Recent log:\n" + log_tail) if part
         )
+        self.err_report = "\n\n".join(part for part in (message, extra) if part)
         self.err_text.configure(state="normal")
         self.err_text.delete("1.0", "end")
-        self.err_text.insert("1.0", report)
+        self.err_text.insert("1.0", extra or "No more details.")
         self.bar.stop()
         self.show("error")
 
