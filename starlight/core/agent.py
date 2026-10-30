@@ -6,6 +6,7 @@ from __future__ import annotations
 import asyncio
 import uuid
 from collections.abc import Awaitable, Callable
+from contextvars import ContextVar
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -19,6 +20,10 @@ from starlight.core.model import Message, ModelProvider, ModelResponse, TokenCal
 from starlight.core.permissions import Taint, request_taint
 from starlight.core.stats import Stats
 from starlight.core.toolroute import ToolRouter, active_tools
+
+#: The request belongs to a private conversation: the task events say so, and nothing is
+#: learned from it (memory, skills).
+private_request: ContextVar[bool] = ContextVar("private_request", default=False)
 
 #: Adds context before the model sees a request (e.g. recalled memories). Returns text
 #: for an extra system message, or None.
@@ -154,7 +159,12 @@ class Agent:
             self.audit.record("task.failed", request_id=request_id, steps=result.steps)
             await self.bus.publish(
                 "task.failed",
-                {"request_id": request_id, "request": request, "answer": result.answer},
+                {
+                    "request_id": request_id,
+                    "request": request,
+                    "answer": result.answer,
+                    "private": private_request.get(),
+                },
             )
             log.warning("task failed", steps=result.steps)  # (counted as an error above)
             return result
@@ -174,6 +184,7 @@ class Agent:
                 "answer": result.answer,
                 "tools": [r.tool for r in result.tool_results],
                 "tool_results": list(result.tool_results),
+                "private": private_request.get(),
             },
         )
         if self.stats is not None:

@@ -172,6 +172,12 @@ permissions:
   # Starlight folder, granting access (access.*, always asks).
   confirm: []
   blocked: []
+  # How often an action may run on its own. Past the limit it asks you first, until the
+  # window has room again (a pattern counts all the tools it matches together). Units:
+  # minute, hour, day. Example: "network.*": 200/hour
+  limits:
+    mail.send: 20/hour
+    mail.reply: 20/hour
   # The injection guard: once a request has read outside content (the tools below: web
   # pages, mail, PDFs, the screen ...), the tools above that normally ask ask again for
   # the rest of that request, with a note saying why. Hidden text in a page or an email

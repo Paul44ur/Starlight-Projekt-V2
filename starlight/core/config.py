@@ -157,6 +157,32 @@ class PermissionsConfig(_Strict):
             "watch.check_now",
         ]
     )
+    # How often a tool may run on its own: {"mail.send": "20/hour"}. A pattern counts all
+    # the tools it matches together; past the limit they ask first until the window has
+    # room again. Units: minute, hour, day.
+    limits: dict[str, str] = Field(default_factory=dict)
+
+    @field_validator("limits")
+    @classmethod
+    def _limits_readable(cls, value: dict[str, str]) -> dict[str, str]:
+        for pattern, limit in value.items():
+            if parse_limit(limit) is None:
+                raise ValueError(
+                    f"limits: '{pattern}: {limit}' should look like 20/hour (minute, hour, day)"
+                )
+        return value
+
+
+LIMIT_UNITS = {"minute": 60, "hour": 3600, "day": 86400}
+
+
+def parse_limit(text: str) -> tuple[int, int] | None:
+    """ "20/hour" -> (20, 3600): how many runs in how many seconds; None if unreadable."""
+    count, _, unit = str(text).replace(" ", "").lower().partition("/")
+    seconds = LIMIT_UNITS.get(unit.removeprefix("per").rstrip("s"))
+    if not count.isdigit() or seconds is None:
+        return None
+    return int(count), seconds
 
 
 class ToolsConfig(_Strict):

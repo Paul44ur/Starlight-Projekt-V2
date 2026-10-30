@@ -100,8 +100,12 @@ class Dispatcher:
             return self._finish(ToolResult(name, False, error=f"unknown tool '{name}'"), request_id)
 
         permission = self.policy.resolve(name, tool.permission)
-        guard = self.policy.guarded(name, tool.permission, permission)
+        why, guard = "", self.policy.guarded(name, tool.permission, permission)
         if guard:  # the injection guard: ask, although it would run on its own
+            why = "injection guard"
+        elif permission is Permission.SAFE and (guard := self.policy.over_limit(name)):
+            why = "limit"  # it ran as often as you allow on its own
+        if guard:
             permission = Permission.CONFIRM
         if permission is Permission.BLOCKED:
             self.audit.record("tool.denied", tool=name, reason="blocked", request_id=request_id)
@@ -111,6 +115,19 @@ class Dispatcher:
         except ValidationError as exc:
             return self._finish(
                 ToolResult(name, False, error=f"invalid arguments: {exc.errors()}"), request_id
+            )
+        if self.policy.practice and tool.permission is Permission.CONFIRM:
+            # Practice mode: an action that changes something is described, not done.
+            self.audit.record("tool.practice", tool=name, args=redact(args), request_id=request_id)
+            shown = json.dumps(redact(args), default=str, ensure_ascii=False)
+            return self._finish(
+                ToolResult(
+                    name,
+                    True,
+                    output=f"Practice mode: {name} did NOT run. It would have run with {shown}. "
+                    "Tell the user what would have happened; nothing was changed.",
+                ),
+                request_id,
             )
         if permission is Permission.CONFIRM:
             reason = confirm_reason.set(guard)
@@ -122,7 +139,7 @@ class Dispatcher:
                 self.audit.record(
                     "tool.denied",
                     tool=name,
-                    reason="not confirmed" + (" (injection guard)" if guard else ""),
+                    reason="not confirmed" + (f" ({why})" if why else ""),
                     request_id=request_id,
                 )
                 return self._finish(
@@ -169,6 +186,8 @@ class Dispatcher:
             self._log.exception("tool failed", tool=name, module=tool.module)
             result = ToolResult(name, False, error=f"{type(exc).__name__}: {exc}")
         result.duration_ms = round((time.perf_counter() - started) * 1000, 2)
+        if result.ok:
+            self.policy.count_run(name)
         taint = request_taint.get()
         if result.ok and taint is not None and self.policy.is_untrusted_source(name):
             taint.sources.append(name)  # from now on in this request, the guard is up

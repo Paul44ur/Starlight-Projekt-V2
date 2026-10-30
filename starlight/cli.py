@@ -28,8 +28,8 @@ from starlight.core.killswitch import KillSwitch
 from starlight.core.logging import setup_logging
 from starlight.core.model import TokenCallback, create_provider
 from starlight.core.modelpause import pause_model, resume_model
-from starlight.core.modules import NAME_PATTERN, ModuleState, discover
-from starlight.core.output import describe_output_folder
+from starlight.core.modules import NAME_PATTERN, ModuleState, discover, outside_warning
+from starlight.core.output import describe_output_folder, resolve_output_folder
 from starlight.core.paths import Paths
 from starlight.core.permissions import PermissionPolicy
 from starlight.core.stats import Stats
@@ -126,11 +126,15 @@ async def cmd_ask(paths: Paths, args: argparse.Namespace) -> int:
     return 0
 
 
-async def _ask(kernel: Kernel, line: str, on_token: TokenCallback) -> AgentResult | None:
+async def _ask(
+    kernel: Kernel, line: str, on_token: TokenCallback, conversation: str | None = None
+) -> AgentResult | None:
     """Run one request. Ctrl+C while Starlight answers stops that answer, not Starlight
     (it returns None then)."""
     loop = asyncio.get_running_loop()
-    task = asyncio.ensure_future(kernel.ask(line, keep_history=True, on_token=on_token))
+    task = asyncio.ensure_future(
+        kernel.ask(line, keep_history=True, on_token=on_token, conversation=conversation)
+    )
 
     def stop(signum: int, frame: FrameType | None) -> None:
         loop.call_soon_threadsafe(task.cancel)
@@ -159,6 +163,8 @@ HELP = """\
 - `/reload NAME` / `/enable NAME` / `/disable NAME` - manage a module
 - `/kill [REASON]` / `/resume` - stop everything, and continue
 - `/new` (or `/clear`) - start a new conversation (the old one stays saved)
+- `/private` - a private conversation: never saved, nothing learned from it
+- `/practice` - practice mode on or off: actions are described, not done
 - `/talk [SECONDS]` - say your request into the microphone (voice module)
 - `/quit` - leave
 - `!module.tool {json}` - call a tool directly (test model)
@@ -207,7 +213,7 @@ async def cmd_run(paths: Paths, args: argparse.Namespace) -> int:
                 streamed.append(token)
                 emit(token)
 
-            result = await _ask(kernel, line, on_token)
+            result = await _ask(kernel, line, on_token, view.conversation)
             if result is None:
                 view.end_answer(bool(streamed))
                 view.info("[Stopped. Ask something else, or /quit to leave.]")
@@ -265,6 +271,8 @@ async def _repl_command(kernel: Kernel, line: str, view: ChatView) -> bool:
                 await kernel.modules.disable(rest)
                 view.info(f"{rest}: disabled")
             else:
+                if command == "enable" and outside_warning(rest):
+                    view.info("Note: " + outside_warning(rest))
                 op = kernel.modules.reload if command == "reload" else kernel.modules.enable
                 record = await op(rest)
                 view.info(f"{rest}: {record.status.value} {record.error or ''}")
@@ -277,8 +285,21 @@ async def _repl_command(kernel: Kernel, line: str, view: ChatView) -> bool:
         kernel.kill_switch.reset()
         view.info("Kill switch released.")
     elif command in ("clear", "new"):
+        if view.conversation is not None:  # leaving a private one: it is gone
+            kernel.forget_conversation(view.conversation)
+            view.conversation = None
         kernel.new_conversation()
         view.info("Started a new conversation.")
+    elif command == "private":
+        view.conversation = kernel.new_conversation(private=True)
+        view.info("Private conversation: never saved, nothing is learned from it. /new ends it.")
+    elif command == "practice":
+        kernel.policy.practice = not kernel.policy.practice
+        view.info(
+            "Practice mode ON: actions that change something are described, not done."
+            if kernel.policy.practice
+            else "Practice mode off: actions run for real again."
+        )
     else:
         view.error(f"Unknown command: /{command}. Try /help.")
     return False
@@ -350,6 +371,8 @@ def cmd_modules(paths: Paths, args: argparse.Namespace) -> int:
     if args.name not in found:
         print(f"No module named '{args.name}' in {paths.modules}", file=sys.stderr)
         return 1
+    if args.action == "enable" and outside_warning(args.name):
+        print("Note: " + outside_warning(args.name))
     state.set(args.name, args.action == "enable")
     print(f"{args.name}: {args.action}d (a running core picks this up before its next task)")
     return 0
@@ -631,6 +654,51 @@ def cmd_logs(paths: Paths, args: argparse.Namespace) -> int:
     return 0
 
 
+async def cmd_rules(paths: Paths, args: argparse.Namespace) -> int:
+    """What Starlight may do, in plain words (the same lists as on the settings page)."""
+    async with _kernel(paths) as kernel:
+        tools = [(t.qualified_name, t.permission) for t in kernel.dispatcher.tools()]
+        summary = kernel.policy.summary(tools)
+        limits = kernel.policy.config.limits
+    for title, key in (
+        ("Runs without asking", "safe"),
+        ("Asks you first", "confirm"),
+        ("Never runs", "blocked"),
+    ):
+        print(f"{title}:")
+        print("  " + (", ".join(summary[key]) or "nothing"))
+    print("Limits (past them it asks first):")
+    print("  " + (", ".join(f"{p} {n}" for p, n in limits.items()) or "none"))
+    return 0
+
+
+def cmd_support_bundle(paths: Paths, args: argparse.Namespace) -> int:
+    from starlight.doctor import format_checks, run_checks
+    from starlight.support import make_bundle
+
+    vault = Vault(paths.config / "vault_index.yaml")
+    try:
+        secrets = [v for k in vault.names() if (v := vault.get(k))]
+    except Exception:
+        secrets = []  # the patterns still hide what looks like a key or password
+    try:
+        checks = format_checks(run_checks(paths))
+    except Exception as exc:
+        checks = f"(the checks did not run: {type(exc).__name__}: {exc})"
+    if args.out:
+        folder = Path(args.out).expanduser()
+    else:
+        try:
+            folder = resolve_output_folder(load_config(paths).output.folder, paths.root)
+        except Exception:  # a broken config is one reason to make a bundle
+            folder = resolve_output_folder("", paths.root)
+    target = make_bundle(paths, folder, secrets, checks, activity=not args.no_activity)
+    print(f"Support bundle: {target}")
+    print("It holds the logs, settings and checks; your memory, conversations and secrets")
+    print("are not in it. Look inside before you send it to anyone.")
+    return 0
+
+
 def cmd_service(paths: Paths, args: argparse.Namespace) -> int:
     from starlight import service
     from starlight.core.corelock import core_running
@@ -813,6 +881,15 @@ def build_parser() -> argparse.ArgumentParser:
     service_cmd.add_argument("action", choices=["install", "uninstall", "start", "stop", "status"])
     service_cmd.add_argument("--print-only", action="store_true", help="only show what it does")
 
+    sub.add_parser("rules", help="what Starlight may do, in plain words")
+    bundle = sub.add_parser(
+        "support-bundle", help="a zip of logs, settings and checks to send for help"
+    )
+    bundle.add_argument("--out", help="the folder for the zip (default: your Starlight folder)")
+    bundle.add_argument(
+        "--no-activity", action="store_true", help="leave out the audit log (what it did)"
+    )
+
     model = sub.add_parser(
         "model", help="the local model: info, serve, bench, exam (tool use), pause, resume"
     )
@@ -872,6 +949,10 @@ def _main(argv: Sequence[str] | None) -> int:
                 return asyncio.run(cmd_connect(paths, args))
             case "logs":
                 return cmd_logs(paths, args)
+            case "support-bundle":
+                return cmd_support_bundle(paths, args)
+            case "rules":
+                return asyncio.run(cmd_rules(paths, args))
             case "remote":
                 return cmd_remote(paths, args)
             case "service":

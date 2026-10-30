@@ -51,6 +51,28 @@ MANIFEST = "module.yaml"
 PACKAGE_ROOT = "starlight_modules"
 NAME_PATTERN = r"^[a-z][a-z0-9_]*$"
 
+#: The modules that come with Starlight (a test checks this against the modules folder).
+SHIPPED = frozenset({
+    "access", "apps", "automations", "backup", "breach", "briefing", "calc", "calendar",
+    "certs", "clipboard", "code", "commands", "cve", "desktop", "dev", "docs", "files",
+    "filesearch", "finance", "focus", "game", "hello", "home", "lan", "login", "mail", "media",
+    "network", "news", "notes", "notify", "office", "pdf", "recon", "reminders", "research",
+    "system", "todo", "trains", "transcripts", "translate", "voice", "watch", "weather", "web",
+    "whatsapp",
+})  # fmt: skip
+
+
+def outside_warning(name: str) -> str:
+    """For a module that did not come with Starlight: what turning it on means. "" else."""
+    if name in SHIPPED:
+        return ""
+    return (
+        f"'{name}' did not come with Starlight. A module's code runs with your rights: it "
+        "can read your files and reach the internet whatever the permission rules say (they "
+        "only cover the tools it offers the model). Turn it on only if you wrote it or trust "
+        "where it came from."
+    )
+
 
 # Programs a module starts for you (e.g. Notepad) keep running when the module reloads or
 # Starlight stops; their handles live here, outside any module, for the whole process.

@@ -203,3 +203,35 @@ def test_the_model_s_thinking_is_shown_apart_and_not_kept(tmp_path: Path) -> Non
     assert [m["type"] for m in seen].index("thought") < [m["type"] for m in seen].index("token")
     assert seen[-1]["text"] == "Hello!" and "Hello!" in str(messages)
     assert "Answer kindly" not in str(messages)
+
+
+def test_a_private_chat_from_the_page_is_listed_but_never_saved(tmp_path: Path) -> None:
+    root = web_home(tmp_path / "h")
+    with client(root) as c, c.websocket_connect("/ws", headers=LOCAL) as ws:  # type: ignore[attr-defined]
+        made = c.post("/api/conversations", json={"private": True}).json()
+        plain = c.post("/api/conversations").json()
+        assert made["private"] is True and plain["private"] is False
+        ws.send_json({"type": "ask", "text": "a secret", "conversation": made["id"]})
+        assert _until_answer(ws)["text"] == "You said: a secret"
+        listed = {x["id"]: x for x in c.get("/api/conversations").json()["conversations"]}
+        assert listed[made["id"]]["private"] and not listed[plain["id"]].get("private")
+        assert c.get(f"/api/conversations/{made['id']}").json()["private"] is True
+    saved = (root / "data" / "conversations").glob("*.json")
+    assert all("a secret" not in f.read_text() for f in saved)
+
+
+def test_the_activity_and_rules_pages(tmp_path: Path) -> None:
+    with client(web_home(tmp_path / "h")) as c, c.websocket_connect("/ws", headers=LOCAL) as ws:  # type: ignore[attr-defined]
+        assert "What Starlight did" in c.get("/activity").text
+        ws.send_json({"type": "ask", "text": '!hello.greet {"name": "Paul"}'})
+        _until_answer(ws)
+        entries = c.get("/api/activity?kind=action").json()["entries"]
+        assert entries[0]["text"].startswith("ran hello.greet")
+        perms = c.get("/api/permissions").json()
+        assert (
+            "hello.greet" in perms["summary"]["safe"]
+            and "hello.shout" in perms["summary"]["confirm"]
+        )
+        assert perms["practice"] is False and perms["limits"] == {} and perms["timed"] == {}
+        modules = {m["name"]: m for m in c.get("/api/modules").json()["modules"]}
+        assert modules["hello"]["outside"] == ""

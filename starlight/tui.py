@@ -40,6 +40,7 @@ class ChatView:
 
     def __init__(self, assume_yes: bool = False) -> None:
         self.assume_yes = assume_yes
+        self.conversation: str | None = None  # a private one (/private); None: the current
         self.rich = _rich_available()
         self._console: Any = None
         if self.rich:

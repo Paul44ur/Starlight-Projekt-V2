@@ -32,9 +32,11 @@ from fastapi import FastAPI, HTTPException, Request, Response, WebSocket, WebSoc
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 
 from starlight.core import AgentResult, Event, Kernel, Paths, ToolError
+from starlight.core.activity import read_activity
 from starlight.core.config import RemoteConfig, load_config
 from starlight.core.model import thought_sink
 from starlight.core.modelpause import read_pause, resume_model
+from starlight.core.modules import outside_warning
 from starlight.core.output import describe_output_folder
 from starlight.core.permissions import Permission, extra_blocked, extra_confirm, save_rule
 from starlight.core.ui import current_ui
@@ -326,6 +328,11 @@ def create_app(paths: Paths | None = None) -> Any:
         viewer(request)
         return page("memory.html")
 
+    @app.get("/activity", response_class=HTMLResponse)
+    def activity_page(request: Request) -> str:
+        viewer(request)
+        return page("activity.html")
+
     @app.get("/pair", response_class=HTMLResponse)
     def pair_page(request: Request) -> Any:
         if gate.remote_host(request.headers) is None:
@@ -419,6 +426,7 @@ def create_app(paths: Paths | None = None) -> Any:
             "home": str(paths.root) if who.local else None,
             "saves_files": describe_output_folder(k.config.output.folder, paths.root),
             "kill": {"engaged": k.kill_switch.engaged, "reason": k.kill_switch.reason},
+            "practice": k.policy.practice,
             "paused": None if pause is None else str(pause.get("reason") or "paused"),
             "access": access,
             "local": who.local,
@@ -430,6 +438,25 @@ def create_app(paths: Paths | None = None) -> Any:
         who = viewer(request)
         kernel().kill_switch.trigger("web /kill", source="web" if who.local else "web-remote")
         return {"engaged": True}
+
+    @app.get("/api/activity")
+    def activity(
+        request: Request, kind: str = "", search: str = "", limit: int = 300
+    ) -> dict[str, Any]:
+        """What Starlight did (logs/audit.log in plain words), newest first."""
+        viewer(request)
+        return {"entries": read_activity(paths.logs, max(1, min(limit, 2000)), kind, search)}
+
+    @app.post("/api/practice")
+    async def practice(request: Request) -> dict[str, Any]:
+        """Practice mode on or off. Off only at the PC: it makes actions real again."""
+        on = (await body(request)).get("on") is True
+        if not on:
+            local_only(request)
+        k = kernel()
+        k.policy.practice = on
+        k.audit.record("web.practice", on=on)
+        return {"practice": on}
 
     @app.post("/api/resume")
     def resume(request: Request) -> dict[str, Any]:
@@ -455,9 +482,14 @@ def create_app(paths: Paths | None = None) -> Any:
         return {"current": store.current, "conversations": store.list(search)}
 
     @app.post("/api/conversations")
-    def new_conversation(request: Request) -> dict[str, Any]:
+    async def new_conversation(request: Request) -> dict[str, Any]:
+        """A new conversation; {"private": true}: never saved, nothing learned from it."""
         viewer(request)
-        return {"id": kernel().new_conversation()}
+        body: Any = {}
+        with contextlib.suppress(ValueError):  # no body: an ordinary conversation
+            body = await request.json()
+        private = isinstance(body, dict) and body.get("private") is True
+        return {"id": kernel().new_conversation(private=private), "private": private}
 
     @app.get("/api/conversations/{conversation}")
     def get_conversation(conversation: str, request: Request) -> dict[str, Any]:
@@ -608,7 +640,19 @@ def create_app(paths: Paths | None = None) -> Any:
             }
             for t in k.dispatcher.tools()
         ]
-        return {"rules": k.policy.rules(), "tools": tools}
+        now = time.time()
+        return {
+            "rules": k.policy.rules(),
+            "tools": tools,
+            "summary": k.policy.summary(
+                (t.qualified_name, t.permission) for t in k.dispatcher.tools()
+            ),
+            "limits": dict(k.policy.config.limits),
+            "timed": {
+                p: max(1, round((until - now) / 60)) for p, until in k.policy.timed_rules().items()
+            },
+            "practice": k.policy.practice,
+        }
 
     @app.post("/api/permissions")
     async def set_permission(request: Request) -> dict[str, Any]:
@@ -641,6 +685,7 @@ def create_app(paths: Paths | None = None) -> Any:
                     "description": r.manifest.description,
                     "error": r.error,
                     "tools": len(r.tools),
+                    "outside": outside_warning(n),  # did not come with Starlight
                 }
                 for n, r in sorted(records.items())
             ]

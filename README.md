@@ -510,6 +510,8 @@ before Starlight asks "Allow?" never counts as the answer.
 | Command | What it does |
 | --- | --- |
 | `/new` (or `/clear`) | Start a new conversation (the old one stays saved). |
+| `/private` | A private conversation: never saved, nothing learned from it. `/new` ends it. |
+| `/practice` | Practice mode on or off: actions are described, not done. |
 | `/talk [seconds]` | Say your request into the microphone (needs voice, see `--voice`). |
 | `/tools` | Show what Starlight can use. |
 | `/modules` | Show which modules are on or off. |
@@ -622,6 +624,25 @@ off with `starlight remote disable`.
   content is `permissions: untrusted_sources:` in `config\starlight.yaml`;
   `guard_after_untrusted: false` turns the guard off. The kill switch (Ctrl+Alt+J or a
   screen corner) and `logs\audit.log` remain either way.
+- **Limits.** `permissions: limits:` in `config\starlight.yaml` caps how often an action
+  runs on its own; past the limit it asks you first until the window has room again.
+  Out of the box: at most 20 emails sent and 20 replies an hour.
+- **Allowed for a while.** "Let desktop.* run without asking for 30 minutes" — after that
+  it asks again (`access.allow_action_for`; a restart ends it too).
+- **Practice mode.** Try something out without consequences: actions that change
+  something (sending mail, clicking, running code, commands …) are only described, not
+  done; looking things up still works. Turn it on in Settings, with `/practice` in the
+  terminal, or by asking. Turning it off asks first, and only works at the PC.
+- **Private conversations.** 🔒 in the web chat (or `/private` in the terminal) starts a
+  conversation that is never saved and that nothing is learned from (no memories, no
+  skills). It is gone when Starlight stops. The audit log still records the actions taken.
+- **See what it did.** The **Activity** page lists every action Starlight took or was
+  refused, newest first, in plain words (from `logs\audit.log`). **Settings** shows the
+  rules in plain words: what runs without asking, what asks first, what never runs, the
+  limits and what is allowed for a while (also `starlight rules`).
+- **Modules from elsewhere.** A module that did not come with Starlight is marked as such,
+  and turning it on warns you first: its code runs with your rights, whatever the
+  permission rules say.
 - **Passwords stay out of files.** Passwords and keys are kept in the Windows Credential
   Manager, never in config files. They are hidden in every log line, and
   `starlight logs scan` checks for leaks.
@@ -761,6 +782,8 @@ If you installed with `Starlight.exe`, uv isn't on your PATH. Either install it 
 | `starlight tools` | Everything Starlight can use, and whether it asks first. |
 | `starlight modules list / enable / disable` | Turn modules on and off. |
 | `starlight model info / serve / bench` | The model: settings, start its server, measure its speed. |
+| `starlight rules` | What Starlight may do, in plain words: runs without asking, asks first, never runs, and the limits. |
+| `starlight support-bundle [--out FOLDER] [--no-activity]` | One zip with the logs, settings and `starlight doctor`'s checks, to send to someone helping you. Your memory, conversations and secrets are not in it; secret values, anything that looks like a password or key, and your user folder's path are hidden. Look inside before you send it. |
 | `starlight model exam` | The tool-use exam: eight small tasks (pick a tool, fill in its arguments, use what it found, know when no tool is needed, German too) that show whether a model gets on with Starlight's tools. Nothing really runs; it takes a minute or two. |
 | `starlight model pause / resume` | Free the graphics card by hand (as game mode does), and bring the model back. |
 | `starlight memory list / search / add / forget` | What Starlight remembers. |

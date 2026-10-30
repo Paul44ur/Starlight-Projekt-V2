@@ -13,7 +13,7 @@ from typing import Any
 
 import httpx
 
-from starlight.core.agent import Agent, AgentResult
+from starlight.core.agent import Agent, AgentResult, private_request
 from starlight.core.config import ConfigError, ModelConfig, StarlightConfig, load_config
 from starlight.core.context import SUMMARY_PREFIX, ContextManager
 from starlight.core.conversations import ConversationStore
@@ -309,8 +309,13 @@ class Kernel:
                 self.log.exception("could not save the summary to memory")
 
     async def _after_task(self, event: Event) -> None:
-        """Let the model pick what to keep, in the background so the answer is not delayed."""
-        if self.kill_switch.engaged or getattr(self.provider, "stand_in", False):
+        """Let the model pick what to keep, in the background so the answer is not delayed.
+        Nothing is kept from a private conversation."""
+        if (
+            self.kill_switch.engaged
+            or getattr(self.provider, "stand_in", False)
+            or event.data.get("private")
+        ):
             return
 
         async def extract() -> None:
@@ -332,7 +337,11 @@ class Kernel:
         return task
 
     async def _learn_skill(self, event: Event) -> None:
-        if self.kill_switch.engaged or getattr(self.provider, "stand_in", False):
+        if (
+            self.kill_switch.engaged
+            or getattr(self.provider, "stand_in", False)
+            or event.data.get("private")
+        ):
             return
 
         async def learn() -> None:
@@ -524,7 +533,11 @@ class Kernel:
         images: list[bytes] | None,
     ) -> AgentResult:
         history = self._history_of(conversation)
-        result = await self.agent.run(request, history, on_token=stream, images=images)
+        private = private_request.set(self.conversations.is_private(conversation))
+        try:
+            result = await self.agent.run(request, history, on_token=stream, images=images)
+        finally:
+            private_request.reset(private)
         if not (result.stopped or result.failed):  # a failed turn is not kept: retrying works
             # Keep the conversation (and summaries), not the system prompt or recalled memories.
             kept = [
@@ -579,9 +592,10 @@ class Kernel:
             if removed and len(history) == length:
                 self._histories[name] = [*history, *removed]
 
-    def new_conversation(self, title: str = "") -> str:
-        """Start a fresh conversation and make it the current one."""
-        return self.conversations.create(title)
+    def new_conversation(self, title: str = "", private: bool = False) -> str:
+        """Start a fresh conversation and make it the current one. A private one is never
+        saved, nothing is learned from it, and it ends when Starlight stops."""
+        return self.conversations.create(title, private=private)
 
     def forget_conversation(self, conversation: str) -> None:
         self.conversations.delete(conversation)

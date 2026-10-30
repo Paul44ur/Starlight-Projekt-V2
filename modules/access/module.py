@@ -11,6 +11,7 @@ module (login.add_site). This module ties them together and shows the whole pict
 from __future__ import annotations
 
 import re
+import time
 from typing import Any
 
 from starlight.core import Module, ToolError, tool
@@ -93,10 +94,68 @@ class AccessModule(Module):
         )
 
     @tool
+    async def allow_action_for(self, pattern: str, minutes: int = 30) -> dict[str, Any]:
+        """Let an action run without asking for a while (e.g. "desktop.*" for 30 minutes),
+        then it asks again. Not kept over a restart. Asks once now."""
+        pattern = pattern.strip()
+        if not PATTERN.match(pattern):
+            raise ToolError("give a tool name or pattern, e.g. 'network.ping' or 'recon.*'")
+        minutes = max(1, min(int(minutes), 24 * 60))
+        question = f"Let '{pattern}' run WITHOUT asking for the next {minutes} minutes?"
+        if not await self.ctx.ui.confirm(question):
+            raise ToolError("not confirmed, so nothing changed")
+        self.ctx.kill_switch.check()
+        self.ctx.policy.allow_for(pattern, minutes * 60)
+        self.ctx.logger.info("permission for a while", pattern=pattern, minutes=minutes)
+        return {"rule": pattern, "runs_without_asking_for_minutes": minutes}
+
+    @tool
+    async def practice_mode(self, on: bool = True) -> dict[str, Any]:
+        """Practice mode: actions that change something (sending mail, clicking, running
+        code, commands ...) are only described, not done; looking things up still works.
+        Turning it off asks first."""
+        leaving = not on and self.ctx.policy.practice
+        if leaving and not await self.ctx.ui.confirm(
+            "Leave practice mode, so actions run for real?"
+        ):
+            raise ToolError("not confirmed, so practice mode stays on")
+        self.ctx.policy.practice = on
+        self.ctx.logger.info("practice mode", on=on)
+        return {"practice_mode": on}
+
+    @tool
+    def rules_in_plain_words(self) -> dict[str, Any]:
+        """What Starlight may do right now, in three lists: runs without asking, asks
+        first, never runs (a whole module shown as "module.*"), plus limits, actions
+        allowed for a while and practice mode."""
+        lookup, names = self.ctx.services.tool_lookup, self.ctx.services.tool_names
+        tools = [
+            (name, found.permission)
+            for name in (names() if names is not None else [])
+            if lookup is not None and (found := lookup(name)) is not None
+        ]
+        policy = self.ctx.policy
+        summary = policy.summary(tools)
+        now = time.time()
+        return {
+            "runs without asking": summary["safe"],
+            "asks first": summary["confirm"],
+            "never runs": summary["blocked"],
+            "limits": dict(policy.config.limits),
+            "allowed for a while": {
+                p: f"{max(1, round((until - now) / 60))} more minutes"
+                for p, until in policy.timed_rules().items()
+            },
+            "practice mode": policy.practice,
+        }
+
+    @tool
     async def clear_rule(self, pattern: str) -> dict[str, Any]:
         """Remove a permission rule set earlier, back to the action's default. Removing a
         block or an always-ask rule asks first, since the action may then run."""
         pattern = pattern.strip()
+        if self.ctx.policy.end_timed(pattern):  # allowed for a while: it asks again now
+            return {"cleared": pattern}
         rules = self.ctx.policy.rules()
         if not any(pattern in listed for listed in rules.values()):
             raise ToolError(f"no rule for '{pattern}'")

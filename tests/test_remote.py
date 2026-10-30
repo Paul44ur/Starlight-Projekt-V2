@@ -349,3 +349,22 @@ def test_oversized_uploads_and_unpacking_bombs_are_refused(tmp_path: Path) -> No
             "/api/upload", headers={**LOCAL, "x-filename": "bomb.docx"}, content=bomb.getvalue()
         )
         assert response.status_code == 415 and "200 MB" in response.json()["detail"]
+
+
+def test_practice_mode_goes_on_from_the_phone_but_off_only_at_the_pc(tmp_path: Path) -> None:
+    with client(home(tmp_path / "h")) as c:
+        token = pair(c)
+        assert c.post("/api/practice", headers=phone(token), json={"on": True}).json() == {
+            "practice": True
+        }
+        refused = c.post("/api/practice", headers=phone(token), json={"on": False})
+        assert refused.status_code == 403
+        assert c.get("/api/status", headers=phone(token)).json()["practice"] is True
+        assert (
+            c.post("/api/practice", headers=LOCAL, json={"on": False}).json()["practice"] is False
+        )
+        activity = c.get("/api/activity", headers=phone(token)).json()["entries"]
+        assert [e["text"] for e in activity if e["kind"] == "practice"][:2] == [
+            "practice mode off",
+            "practice mode on",
+        ]

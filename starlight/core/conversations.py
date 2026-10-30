@@ -1,6 +1,9 @@
 """Saved conversations: each one a JSON file in data/conversations/, so a chat survives a
 restart and the web chat can list, reopen, rename and delete them. Pictures sent in a
-conversation are not saved (only a note that there was one)."""
+conversation are not saved (only a note that there was one).
+
+A private conversation is never written to disk: it lives in this program's memory until
+you delete it or Starlight stops, and nothing is learned from it (the kernel)."""
 
 from __future__ import annotations
 
@@ -60,6 +63,11 @@ class ConversationStore:
         self._lock = threading.Lock()
         # What the sidebar shows per file, kept until the file changes (see ``list``).
         self._summaries: dict[Path, tuple[tuple[int, int, int], dict[str, Any]]] = {}
+        self._private: dict[str, dict[str, Any]] = {}  # id -> its data, only in memory
+        self._private_changes: dict[str, int] = {}  # its stamp: one more on every save
+
+    def is_private(self, conversation: str) -> bool:
+        return conversation in self._private
 
     def _file(self, conversation: str) -> Path:
         if not ID.match(conversation):
@@ -67,6 +75,8 @@ class ConversationStore:
         return self.folder / f"{conversation}.json"
 
     def _read(self, conversation: str) -> dict[str, Any]:
+        if conversation in self._private:
+            return dict(self._private[conversation])
         try:
             data = json.loads(self._file(conversation).read_text("utf-8"))
         except (OSError, json.JSONDecodeError) as exc:
@@ -74,6 +84,10 @@ class ConversationStore:
         return data if isinstance(data, dict) else {}
 
     def _write(self, conversation: str, data: dict[str, Any]) -> None:
+        if conversation in self._private:
+            self._private[conversation] = data
+            self._private_changes[conversation] = self._private_changes.get(conversation, 0) + 1
+            return
         target = self._file(conversation)
         with self._lock:
             write_atomic(target, json.dumps(data, ensure_ascii=False, indent=1))
@@ -90,30 +104,36 @@ class ConversationStore:
         return self.create()
 
     def set_current(self, conversation: str) -> None:
+        if conversation in self._private:
+            return  # the terminal and a fresh page never continue a private one
         self._file(conversation)  # validates
         self.folder.mkdir(parents=True, exist_ok=True)
         (self.folder / CURRENT).write_text(conversation, encoding="utf-8")
 
     # -- operations -----------------------------------------------------------------------
 
-    def create(self, title: str = "") -> str:
+    def create(self, title: str = "", private: bool = False) -> str:
+        """A new conversation; it becomes the current one, unless it is private."""
         conversation = uuid.uuid4().hex[:12]
-        self._write(
-            conversation,
-            {
-                "id": conversation,
-                "title": title.strip(),
-                "created": _now(),
-                "updated": _now(),
-                "messages": [],
-            },
-        )
+        data: dict[str, Any] = {
+            "id": conversation,
+            "title": title.strip(),
+            "created": _now(),
+            "updated": _now(),
+            "messages": [],
+        }
+        if private:
+            self._private[conversation] = {**data, "private": True}
+            return conversation
+        self._write(conversation, data)
         self.set_current(conversation)
         return conversation
 
     def stamp(self, conversation: str) -> tuple[int, int] | None:
         """Changes whenever the file does, e.g. when another Starlight (the terminal and
         the web chat as separate programs) saved a turn to it."""
+        if conversation in self._private:
+            return self._private_changes.get(conversation, 0), 0
         try:
             info = self._file(conversation).stat()
         except (OSError, KeyError):
@@ -138,6 +158,9 @@ class ConversationStore:
         self._write(conversation, data)
 
     def delete(self, conversation: str) -> None:
+        if self._private.pop(conversation, None) is not None:
+            self._private_changes.pop(conversation, None)
+            return
         self._file(conversation).unlink(missing_ok=False)
 
     def get(self, conversation: str) -> dict[str, Any]:
@@ -147,6 +170,7 @@ class ConversationStore:
             "title": data.get("title") or "New conversation",
             "created": data.get("created"),
             "updated": data.get("updated"),
+            "private": bool(data.get("private")),
             "messages": [
                 m
                 for m in data.get("messages", [])
@@ -172,8 +196,24 @@ class ConversationStore:
         time, size and inode, as in ``stamp``."""
         wanted = search.strip().casefold()
         found: list[dict[str, Any]] = []
+        for conversation, data in self._private.items():
+            messages = data.get("messages", [])
+            if (
+                wanted
+                and wanted not in (data.get("title") or "").casefold()
+                and not any(wanted in str(m.get("content", "")).casefold() for m in messages)
+            ):
+                continue
+            found.append({
+                "id": conversation,
+                "title": data.get("title") or "Private conversation",
+                "updated": data.get("updated") or "",
+                "count": sum(1 for m in messages if m.get("role") == "user"),
+                "private": True,
+            })  # fmt: skip
         if not self.folder.is_dir():
-            return found
+            found.sort(key=lambda c: c["updated"], reverse=True)
+            return found[:limit]
         known: dict[Path, tuple[tuple[int, int, int], dict[str, Any]]] = {}
         for path in self.folder.glob("*.json"):
             try:

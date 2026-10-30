@@ -1,0 +1,81 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Starlight activity</title>
+<link rel="icon" href="/icon.svg" type="image/svg+xml" />
+<link rel="stylesheet" href="/style.css" />
+<style>
+  .filters { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin-bottom: 10px; }
+  .filters button.on { background: var(--accent); border-color: var(--accent); color: #fff; }
+  .entry { display: grid; grid-template-columns: 9.5em 7.5em 1fr; gap: 10px; padding: 7px 0;
+           border-bottom: 1px solid var(--border); align-items: baseline; }
+  .entry:last-child { border-bottom: none; }
+  .entry .when { color: var(--dim); font-size: 12px; font-variant-numeric: tabular-nums; }
+  .entry .text { overflow-wrap: anywhere; }
+  .kind { font-size: 12px; justify-self: start; }
+  .kind.denied, .kind.failed { color: var(--bad); border-color: var(--bad); }
+  .kind.kill-switch { color: #fff; background: var(--bad); border-color: var(--bad); }
+  .kind.practice, .kind.setting { color: var(--warn); border-color: var(--warn); }
+  @media (max-width: 640px) {
+    .entry { grid-template-columns: 1fr auto; gap: 2px 8px; }
+    .entry .text { grid-column: 1 / -1; }
+  }
+</style>
+</head>
+<body>
+<header class="top">
+  <h1><img class="logo" src="/icon.svg" alt="" width="22" height="22" />Activity</h1><span class="spacer"></span>
+  <nav><a href="/">Chat</a><a href="/memory">Memory</a><a href="/settings">Settings</a></nav>
+  <button id="theme" class="icon" onclick="cycleTheme()">◐</button>
+</header>
+<div class="page">
+  <div class="card">
+    <h2>What Starlight did</h2>
+    <p class="dim small">Every action it took or was refused, newest first, from <code>logs/audit.log</code>.
+      Passwords and keys are hidden there.</p>
+    <div class="filters" id="filters"></div>
+    <div class="row"><input id="search" type="search" class="grow" placeholder="Search, e.g. mail.send" /><span id="count" class="dim small"></span></div>
+    <div id="entries"></div>
+  </div>
+</div>
+<script src="/common.js"></script>
+<script>
+const KINDS = [["", "All"], ["action", "Actions"], ["denied", "Refused"], ["failed", "Failed"],
+               ["practice", "Practice"], ["kill switch", "Kill switch"], ["setting", "Settings"],
+               ["answer", "Answers"]];
+let kind = "";
+const filters = document.getElementById("filters");
+KINDS.forEach(([value, label]) => {
+  const b = el("button", value === kind ? "on" : "", label);
+  b.onclick = () => { kind = value; filters.querySelectorAll("button").forEach(x => x.classList.remove("on")); b.classList.add("on"); load(); };
+  filters.appendChild(b);
+});
+function when(stamp) {
+  const d = new Date(stamp);
+  return isNaN(d) ? stamp : d.toLocaleString([], { dateStyle: "short", timeStyle: "medium" });
+}
+async function load() {
+  const search = document.getElementById("search").value;
+  let data;
+  try { data = await api(`/api/activity?kind=${encodeURIComponent(kind)}&search=${encodeURIComponent(search)}`); }
+  catch (e) { toast(e.message); return; }
+  const box = document.getElementById("entries");
+  box.replaceChildren();
+  data.entries.forEach(e => {
+    const row = el("div", "entry");
+    const label = e.kind === "denied" ? "refused" : e.kind;
+    row.append(el("span", "when", when(e.time)), el("span", "pill kind " + e.kind.replace(" ", "-"), label), el("span", "text", e.text));
+    box.appendChild(row);
+  });
+  if (!data.entries.length) box.appendChild(el("p", "dim", "Nothing yet."));
+  document.getElementById("count").textContent = data.entries.length + " shown";
+}
+let typing;
+document.getElementById("search").oninput = () => { clearTimeout(typing); typing = setTimeout(load, 250); };
+load();
+setInterval(() => { if (!document.hidden && !document.getElementById("search").value) load(); }, 10000);
+</script>
+</body>
+</html>

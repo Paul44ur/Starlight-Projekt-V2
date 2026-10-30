@@ -60,6 +60,10 @@
   .switch input:focus-visible + span { outline: 2px solid var(--accent); outline-offset: 2px; }
   details.advanced { margin-top: 12px; border-top: 1px solid var(--border); padding-top: 10px; }
   details.advanced summary { cursor: pointer; color: var(--dim); font-size: 13px; }
+  .plain h3 { font-size: 14px; margin: 12px 0 4px; }
+  .plain .names { display: flex; flex-wrap: wrap; gap: 4px; }
+  .plain .names code { font-size: 12px; }
+  .plain .practice { display: flex; gap: 10px; align-items: center; margin-top: 12px; }
   @media (max-width: 600px) {
     .trow { flex-wrap: wrap; row-gap: 4px; }
     .tinfo { flex-basis: 100%; }
@@ -70,7 +74,7 @@
 <body>
 <header class="top">
   <h1><img class="logo" src="/icon.svg" alt="" width="22" height="22" />Settings</h1><span class="spacer"></span>
-  <nav><a href="/">Chat</a><a href="/memory">Memory</a></nav>
+  <nav><a href="/">Chat</a><a href="/memory">Memory</a><a href="/activity">Activity</a></nav>
   <button id="theme" class="icon" onclick="cycleTheme()">◐</button>
 </header>
 <div class="page">
@@ -83,6 +87,16 @@
     <div class="row"><button id="pair" class="ok">Show a pairing code</button><span id="code"></span>
       <span class="dim small" id="code-note"></span></div>
     <table id="devices"><thead><tr><th>Device</th><th>Paired</th><th>Last used</th><th></th></tr></thead><tbody></tbody></table>
+  </div>
+
+  <div class="card plain">
+    <h2>In plain words</h2>
+    <p class="dim small">What Starlight may do right now. A whole module is shown as
+      <code>module.*</code>; open it below to see each tool.</p>
+    <div id="plain"></div>
+    <label class="practice"><span class="switch"><input type="checkbox" id="practice" /><span></span></span>
+      <span><b>Practice mode</b> <span class="dim small">— actions that change something (sending
+      mail, clicking, running code, commands …) are described, not done. Looking things up still works.</span></span></label>
   </div>
 
   <div class="card local-only mods">
@@ -111,8 +125,33 @@ let tools = [], modules = [];
 
 async function load() {
   const [perms, mods] = await Promise.all([api("/api/permissions"), api("/api/modules")]);
-  tools = perms.tools; modules = mods.modules; show();
+  tools = perms.tools; modules = mods.modules; show(); plain(perms);
 }
+
+function plain(perms) {
+  const box = document.getElementById("plain");
+  box.replaceChildren();
+  const group = (title, names, empty) => {
+    box.appendChild(el("h3", "", title));
+    const list = el("div", "names");
+    if (!names.length) list.appendChild(el("span", "dim small", empty));
+    names.forEach(n => list.appendChild(el("code", "", n)));
+    box.appendChild(list);
+  };
+  group("Runs without asking", perms.summary.safe, "nothing");
+  group("Asks you first", perms.summary.confirm, "nothing");
+  group("Never runs", perms.summary.blocked, "nothing");
+  const limits = Object.entries(perms.limits || {}).map(([p, l]) => `${p}: ${l}`);
+  group("Limits (past them it asks first)", limits, "none — set them under permissions: limits: in config/starlight.yaml");
+  const timed = Object.entries(perms.timed || {}).map(([p, m]) => `${p}: ${m} more min`);
+  if (timed.length) group("Allowed for a while", timed, "");
+  document.getElementById("practice").checked = !!perms.practice;
+}
+document.getElementById("practice").onchange = async (e) => {
+  const on = e.target.checked;
+  try { await api("/api/practice", { method: "POST", body: { on } }); toast(on ? "Practice mode on" : "Practice mode off"); }
+  catch (err) { e.target.checked = !on; toast("Only at the PC: " + err.message); }
+};
 
 function toolsOf(name) { return tools.filter(t => t.name.split(".")[0] === name); }
 
@@ -144,6 +183,7 @@ function moduleRow(m, list, open) {
   const head = el("div", "mhead");
   const title = el("div");
   title.appendChild(el("span", "mname", m.name));
+  if (m.outside) { const tag = el("span", "pill warn", "not from Starlight"); tag.title = m.outside; title.appendChild(tag); }
   const own = toolsOf(m.name);
   const count = el("span", "mcount", m.status === "loaded" ? `${own.length} tools` : m.status);
   const asks = own.filter(t => t.now === "confirm").length, blocked = own.filter(t => t.now === "blocked").length;
@@ -195,6 +235,8 @@ async function setRule(pattern, setting) {
 }
 
 async function toggleModule(name, on, box) {
+  const m = modules.find(x => x.name === name);
+  if (on && m && m.outside && !confirm(m.outside + "\n\nTurn it on?")) { box.checked = false; return; }
   box.disabled = true;
   try {
     const r = await api("/api/modules/" + name, { method: "POST", body: { enabled: on } });

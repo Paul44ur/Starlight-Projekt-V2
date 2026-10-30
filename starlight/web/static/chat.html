@@ -127,9 +127,10 @@
     <div class="head">
       <input id="search" type="search" placeholder="Search chats" />
       <button id="new" title="New conversation">＋</button>
+      <button id="newprivate" title="New private conversation: never saved, nothing learned from it, gone when Starlight stops">🔒</button>
     </div>
     <div id="list"></div>
-    <nav class="drawer-nav"><a href="/memory">Memory</a><a href="/settings">Settings</a>
+    <nav class="drawer-nav"><a href="/memory">Memory</a><a href="/activity">Activity</a><a href="/settings">Settings</a>
       <button class="icon" onclick="cycleTheme()" id="theme2" title="Theme">◐ Theme</button></nav>
   </aside>
   <div id="main">
@@ -138,9 +139,11 @@
       <h1><img class="logo" src="/icon.svg" alt="" width="22" height="22" />Starlight</h1>
       <span id="conn" class="pill off">connecting…</span>
       <span id="where" class="pill off" hidden></span>
+      <button id="practice" class="pill warn" hidden title="Practice mode: actions that change something are described, not done. Press to turn it off"><span class="wide">practice mode · Off</span><span class="narrow">Practice</span></button>
+      <span id="privacy" class="pill" hidden title="A private conversation: never saved, nothing is learned from it, and it is gone when Starlight stops">private</span>
       <button id="paused" class="pill warn" hidden title="Game mode: the model is off the graphics card. Press to bring it back now"><span class="wide">model paused · Resume</span><span class="narrow">Paused ▶</span></button>
       <span class="spacer"></span>
-      <nav class="wide"><a href="/memory">Memory</a><a href="/settings">Settings</a></nav>
+      <nav class="wide"><a href="/memory">Memory</a><a href="/activity">Activity</a><a href="/settings">Settings</a></nav>
       <button id="speaker" class="icon" title="Read answers aloud">🔇</button>
       <button id="theme" class="icon wide" title="Theme" onclick="cycleTheme()">◐</button>
       <button id="kill" class="kill" title="Kill switch: stop everything Starlight does on this PC, until you resume (also Ctrl+Alt+J)"><span class="wide">Kill switch</span><span class="narrow">Kill</span></button>
@@ -479,6 +482,12 @@ document.addEventListener("keydown", (e) => {
     e.preventDefault(); stopAnswer(); toast("Stopping …");
   }
 });
+document.getElementById("practice").onclick = async () => {
+  if (!confirm("Leave practice mode? Actions will run for real again.")) return;
+  try { await api("/api/practice", { method: "POST", body: { on: false } }); toast("Practice mode is off"); }
+  catch (e) { toast("Turn it off at the PC: " + e.message); }
+  refresh();
+};
 document.getElementById("paused").onclick = async () => {
   try {
     const r = await api("/api/model/resume", { method: "POST" });
@@ -595,7 +604,7 @@ async function loadList() {
   const list = document.getElementById("list"); list.innerHTML = "";
   data.conversations.forEach(c => {
     const row = el("div", "conv" + (c.id === conversation ? " active" : ""));
-    const t = el("span", "t", c.title); t.title = c.title + " — " + c.updated.replace("T", " ").slice(0, 16);
+    const t = el("span", "t", (c.private ? "🔒 " : "") + c.title); t.title = c.title + " — " + c.updated.replace("T", " ").slice(0, 16);
     const acts = el("span", "acts");
     const ren = el("button", "icon", "✎"); ren.title = "Rename";
     ren.onclick = async (e) => { e.stopPropagation(); const title = prompt("New name", c.title); if (title) { await api("/api/conversations/" + c.id, { method: "PATCH", body: { title } }); loadList(); } };
@@ -618,14 +627,18 @@ async function open(id) {
   let data;
   try { data = await api("/api/conversations/" + id); } catch (e) { toast(e.message); return; }
   conversation = id; log.innerHTML = ""; current = null;
+  document.getElementById("privacy").hidden = !data.private;
   data.messages.forEach(m => {
     const body = addMsg(m.role === "user" ? "you" : "bot", m.content);
     if (m.role !== "user") body.parentElement.dataset.kept = "1";
   });
-  if (!data.messages.length) addSys("New conversation. Ask anything.");
+  if (!data.messages.length) addSys(data.private
+    ? "Private conversation: it is never saved and nothing is learned from it. It is gone when Starlight stops."
+    : "New conversation. Ask anything.");
   loadList(); scroll();
 }
 document.getElementById("new").onclick = async () => { const d = await api("/api/conversations", { method: "POST" }); await open(d.id); input.focus(); };
+document.getElementById("newprivate").onclick = async () => { const d = await api("/api/conversations", { method: "POST", body: { private: true } }); await open(d.id); input.focus(); };
 document.getElementById("search").oninput = () => loadList();
 document.getElementById("menu").onclick = () => document.body.classList.toggle("drawer");
 log.addEventListener("click", () => document.body.classList.remove("drawer"));
@@ -647,6 +660,7 @@ async function refresh() {
       k.className = "kill"; k.dataset.on = "0"; k.disabled = false;
       k.title = "Kill switch: stop everything Starlight does on this PC, until you resume (also Ctrl+Alt+J)";
     }
+    document.getElementById("practice").hidden = !s.practice;
     const paused = document.getElementById("paused");
     paused.hidden = !s.paused;
     if (s.paused) paused.title = `Game mode (${s.paused}): the model is off the graphics card. Press to bring it back now`;
