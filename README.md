@@ -418,7 +418,8 @@ searches and deletes them (the terminal continues the most recent one). Drop pic
 documents (PDF, Word, Excel, text) onto the chat, or press 📎, to send them with your
 message. Answers show their formatting: headings, lists, tables, links and code blocks
 (each with its own **Copy**). Until the first word arrives, the answer shows that Starlight
-is working, and for how long. Every answer has **Copy** (the text as written, Markdown
+is working, and for how long. **Esc** stops an answer, and **Up** in the empty box brings back
+your last question. Every answer has **Copy** (the text as written, Markdown
 included), and the latest one **Regenerate** (asks the same
 question again and replaces that answer); under it you see how fast it was written
 (tokens per second) and how long it took. ⤓ next to a conversation downloads it as a

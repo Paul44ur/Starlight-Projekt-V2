@@ -196,3 +196,34 @@ async def test_an_answer_on_its_way_shows_that_starlight_is_working(
             assert await page.locator(".body.waiting").count() == 0  # never left waiting
         finally:
             await browser.close()
+
+
+async def test_esc_stops_an_answer_and_up_brings_back_the_last_question(
+    static_site: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    async_api = pytest.importorskip("playwright.async_api")
+    monkeypatch.setenv("NO_PROXY", "127.0.0.1")
+    async with async_api.async_playwright() as playwright:
+        browser, page = await open_chat(playwright, static_site)
+        try:
+            await page.evaluate(
+                "() => { const s = window.sockets[window.sockets.length - 1];"
+                " s.readyState = 1; s.sent = []; s.send = d => s.sent.push(JSON.parse(d)); }"
+            )
+            sent = "() => window.sockets[window.sockets.length - 1].sent.map(m => m.type)"
+            box = page.locator("#input")
+            await box.fill("How warm is it in Berlin?")
+            await box.press("Enter")
+            assert await page.evaluate(sent) == ["ask"]
+            await page.evaluate(SEND, {"type": "start", "conversation": "c1"})
+            await page.keyboard.press("Escape")
+            assert await page.evaluate(sent) == ["ask", "stop"]
+            await page.evaluate(SEND, {"type": "stopped", "conversation": "c1"})
+            await page.keyboard.press("Escape")  # nothing is being written: nothing to stop
+            assert await page.evaluate(sent) == ["ask", "stop"]
+            await box.press("ArrowUp")
+            assert await box.input_value() == "How warm is it in Berlin?"
+            await box.press("ArrowUp")  # (only from an empty box: the text stays)
+            assert await box.input_value() == "How warm is it in Berlin?"
+        finally:
+            await browser.close()

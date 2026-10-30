@@ -116,7 +116,7 @@
       <nav><a href="/memory">Memory</a><a href="/settings">Settings</a></nav>
       <button id="speaker" class="icon" title="Read answers aloud">🔇</button>
       <button id="theme" class="icon" title="Theme" onclick="cycleTheme()">◐</button>
-      <button id="stop" title="Stop the current answer">Stop</button>
+      <button id="stop" title="Stop the current answer (Esc)">Stop</button>
       <button id="kill" class="danger" title="Stop everything">Kill</button>
     </header>
     <div id="log"></div>
@@ -363,9 +363,27 @@ document.getElementById("form").onsubmit = (e) => {
   input.value = ""; input.style.height = "44px";
   ask(text, files);
 };
-input.onkeydown = (e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); document.getElementById("form").requestSubmit(); } };
+input.onkeydown = (e) => {
+  if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); document.getElementById("form").requestSubmit(); }
+  else if (e.key === "ArrowUp" && !input.value) {
+    // Up in an empty box brings back the last question, to change it or send it again.
+    const asked = log.querySelectorAll(".msg.you .body");
+    const last = lastQuestion || (asked.length ? asked[asked.length - 1].textContent : "");
+    if (!last) return;
+    e.preventDefault();
+    input.value = last; input.oninput();
+    input.setSelectionRange(last.length, last.length);
+  }
+};
 input.oninput = () => { input.style.height = "44px"; input.style.height = Math.min(input.scrollHeight, 180) + "px"; };
-document.getElementById("stop").onclick = () => ws && ws.readyState === 1 && ws.send(JSON.stringify({ type: "stop" }));
+function stopAnswer() { if (ws && ws.readyState === 1) ws.send(JSON.stringify({ type: "stop" })); }
+document.getElementById("stop").onclick = stopAnswer;
+// Esc stops the answer that is being written (as the Stop button does).
+document.addEventListener("keydown", (e) => {
+  if (e.key === "Escape" && (current || answering) && !e.target.closest(".confirm")) {
+    e.preventDefault(); stopAnswer(); toast("Stopping …");
+  }
+});
 document.getElementById("kill").onclick = async () => {
   const k = document.getElementById("kill");
   try { await api(k.dataset.on === "1" ? "/api/resume" : "/api/kill", { method: "POST" }); }
