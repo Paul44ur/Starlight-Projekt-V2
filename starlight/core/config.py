@@ -213,6 +213,12 @@ class StatsConfig(_Strict):
     gpu_sample_interval: float = Field(default=30, ge=0)  # 0 = off
 
 
+class DiagnosticsConfig(_Strict):
+    # Crashes are always written to logs/crash.log, on this PC. With this on, Starlight
+    # also tells you at its next start and offers a support bundle (nothing is sent).
+    crash_reports: bool = False
+
+
 class RemoteConfig(_Strict):
     """Using the web chat from your other devices (through Tailscale). Off by default;
     `starlight remote enable` sets it up in config/starlight.remote.yaml."""
@@ -283,6 +289,7 @@ class StarlightConfig(_Strict):
     viewer: ViewerConfig = Field(default_factory=ViewerConfig)
     web: WebConfig = Field(default_factory=WebConfig)
     output: OutputConfig = Field(default_factory=OutputConfig)
+    diagnostics: DiagnosticsConfig = Field(default_factory=DiagnosticsConfig)
 
 
 def read_yaml(path: Path) -> dict[str, Any]:

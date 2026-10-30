@@ -23,7 +23,7 @@ from starlight.core.permissions import (
     confirm_reason,
     request_taint,
 )
-from starlight.core.stats import Stats
+from starlight.core.stats import Stats, current_model
 from starlight.core.tools import Tool, ToolError
 
 type Confirmer = Callable[[Tool, dict[str, Any]], Awaitable[bool]]
@@ -221,7 +221,10 @@ class Dispatcher:
         )
         if self.stats is not None:
             module = result.tool.split(".", 1)[0]
-            self.stats.record("tool.calls", 1, module=module, tool=result.tool, ok=result.ok)
+            model = {"model": current_model.get()} if current_model.get() else {}
+            self.stats.record(
+                "tool.calls", 1, module=module, tool=result.tool, ok=result.ok, **model
+            )
             if result.duration_ms:
                 self.stats.record("tool.duration_ms", result.duration_ms, tool=result.tool)
         self.audit.record(

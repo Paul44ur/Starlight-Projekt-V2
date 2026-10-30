@@ -13,6 +13,7 @@ from typing import Any
 
 import httpx
 
+from starlight.core import crashes
 from starlight.core.agent import Agent, AgentResult, private_request, request_conversation
 from starlight.core.config import ConfigError, ModelConfig, StarlightConfig, load_config
 from starlight.core.context import SUMMARY_PREFIX, ContextManager
@@ -201,6 +202,7 @@ class Kernel:
         self._housekeeping_at = 0.0
         self._hotkey = hotkey
         self._watcher: asyncio.Task[None] | None = None
+        self._crash_note: asyncio.TimerHandle | None = None
         self._background: set[asyncio.Task[Any]] = set()
         self.hotkey_active = False
 
@@ -289,6 +291,15 @@ class Kernel:
                 reason=self.services.output_error,
             )
         await self.bus.publish("core.started")
+        if self.services.primary and self.config.diagnostics.crash_reports:
+            what = crashes.unseen(self.paths.logs)
+            if what is not None:
+                crashes.mark_seen(self.paths.logs)
+                # a little later: the chat page or the terminal is there to see it by then
+                self._crash_note = asyncio.get_running_loop().call_later(
+                    self.CRASH_NOTE_AFTER,
+                    lambda: self._spawn(self.deliver(crashes.message(what), "Starlight"), "note"),
+                )
 
     async def _warmup(self) -> None:
         warmup = getattr(self.provider, "warmup", None)
@@ -414,6 +425,7 @@ class Kernel:
         add_secret_values(v for v in values if v)
 
     HOUSEKEEPING_EVERY = 6 * 3600.0
+    CRASH_NOTE_AFTER = 20.0  # seconds after the start: "it crashed last time"
 
     async def _housekeeping(self) -> None:
         """Keep what grows from growing forever: old statistics, cached web pages and old
@@ -639,6 +651,8 @@ class Kernel:
         await self.bus.settle(timeout)
 
     async def stop(self) -> None:
+        if self._crash_note is not None:
+            self._crash_note.cancel()
         await self.bus.publish("core.stopping")
         await self.drain(timeout=10)
         for task in list(self._background):

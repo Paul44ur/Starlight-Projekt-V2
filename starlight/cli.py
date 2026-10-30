@@ -20,6 +20,7 @@ from typing import Any
 import httpx
 
 from starlight import __version__, console
+from starlight.core import crashes
 from starlight.core.agent import AgentResult
 from starlight.core.config import ConfigError, load_config
 from starlight.core.dispatcher import Confirmer
@@ -36,10 +37,11 @@ from starlight.core.stats import Stats
 from starlight.core.tools import Tool
 from starlight.core.vault import Vault, VaultError
 from starlight.memory import Memory
-from starlight.models.bench import benchmark
+from starlight.models.bench import benchmark, table_row
 from starlight.models.exam import TASKS as EXAM_TASKS
 from starlight.models.exam import Result as ExamResult
 from starlight.models.exam import exam
+from starlight.models.nightly import cron_line, nightly, schedule_command
 from starlight.models.serve import ServeError, run_server, serve_command
 from starlight.skills import SkillManager
 from starlight.skills.git import GitError
@@ -780,7 +782,9 @@ async def cmd_model(paths: Paths, args: argparse.Namespace) -> int:
     if args.action == "resume":
         print("Resumed: the model comes back." if resume_model(paths) else "It was not paused.")
         return 0
-    # bench or exam
+    if args.action == "nightly" and (args.schedule or args.unschedule):
+        return _schedule_nightly(paths, remove=args.unschedule)
+    # bench, exam or nightly
     paths.ensure()
     setup_logging(paths.logs, config.logging.level)
     provider = create_provider(config.model)
@@ -789,6 +793,12 @@ async def cmd_model(paths: Paths, args: argparse.Namespace) -> int:
         warmup = getattr(provider, "warmup", None)
         if warmup is not None:
             await warmup()
+        if args.action == "nightly":
+            report = await nightly(provider, paths.logs, stats=stats)
+            print(json.dumps(report, indent=2))
+            for line in report["worse"]:
+                print(f"WORSE than last time: {line}", file=sys.stderr)
+            return 2 if report["worse"] else 0
         if args.action == "exam":
             print(f"Tool-use exam for {provider.name} ({len(EXAM_TASKS)} tasks) ...")
             report = await exam(provider, stats=stats, on_result=_print_exam_result)
@@ -801,6 +811,30 @@ async def cmd_model(paths: Paths, args: argparse.Namespace) -> int:
         if close is not None:
             await close()
     print(json.dumps(report, indent=2))
+    model_name = Path(config.model.server.model_path).stem or str(
+        config.model.options.get("model") or provider.name
+    )
+    print(
+        "\nFor the benchmark table in the README (card | model | context | tokens/s | first token):"
+    )
+    print(table_row(report, model_name, config.model.context_window, args.card))
+    return 0
+
+
+def _schedule_nightly(paths: Paths, remove: bool) -> int:
+    if sys.platform != "win32":
+        if remove:
+            print("Remove the 'starlight model nightly' line with `crontab -e`.")
+        else:
+            print("Add this line with `crontab -e`:\n" + cron_line(paths.root))
+        return 0
+    command = schedule_command(paths.root, remove=remove)
+    done = subprocess.run(command, capture_output=True, text=True, check=False)
+    if done.returncode != 0:
+        print((done.stderr or done.stdout).strip(), file=sys.stderr)
+        return 1
+    on = "Every night at 03:15: logs/nightly.log (the model server has to be running)."
+    print("The nightly check is off." if remove else on)
     return 0
 
 
@@ -915,9 +949,17 @@ def build_parser() -> argparse.ArgumentParser:
     )
 
     model = sub.add_parser(
-        "model", help="the local model: info, serve, bench, exam (tool use), pause, resume"
+        "model",
+        help="the local model: info, serve, bench, exam (tool use), nightly, pause, resume",
     )
-    model.add_argument("action", choices=["info", "serve", "bench", "exam", "pause", "resume"])
+    model.add_argument(
+        "action", choices=["info", "serve", "bench", "exam", "nightly", "pause", "resume"]
+    )
+    model.add_argument("--schedule", action="store_true", help="nightly: run it every night")
+    model.add_argument(
+        "--card", default="", help='bench: your graphics card, e.g. "RX 9060 XT 16 GB"'
+    )
+    model.add_argument("--unschedule", action="store_true", help="nightly: stop running it")
     model.add_argument("--runs", type=int, default=3, help="benchmark runs")
     model.add_argument("--print-only", action="store_true", help="serve: only print the command")
     return parser
@@ -941,6 +983,8 @@ def _main(argv: Sequence[str] | None) -> int:
         parser.error(f"vault {args.action} needs a key name")
     paths = Paths.discover(args.home)
     _ensure_console(paths)
+    if args.command in ("run", "web", "serve", "connect", "viewer"):  # the ones that keep running
+        crashes.watch(paths.logs)
     try:
         match args.command:
             case "ask":

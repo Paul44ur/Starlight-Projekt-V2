@@ -167,7 +167,63 @@ class StatsReader:
                 {"module": str(m or "?"), "calls": int(c)} for m, c in by_module
             ],
             "recent_errors": errors[:10],
+            "models": self.models(since),
         }
+
+    def models(self, since: float) -> list[dict[str, Any]]:
+        """Each model used in the period, side by side: answers, speed, time per answer,
+        tool calls and how many of them failed, and its last tool-use exam score."""
+        speed = {
+            str(m): (int(n), float(avg))
+            for m, n, avg in self._rows(
+                "SELECT json_extract(labels, '$.model') AS m, COUNT(*), AVG(value) FROM metrics "
+                "WHERE name = 'model.tokens_per_second' AND ts >= ? AND m IS NOT NULL "
+                "GROUP BY m",
+                (since,),
+            )
+        }
+        seconds = {
+            str(m): float(avg)
+            for m, avg in self._rows(
+                "SELECT json_extract(labels, '$.model') AS m, AVG(value) FROM metrics "
+                "WHERE name = 'model.duration_s' AND ts >= ? AND m IS NOT NULL GROUP BY m",
+                (since,),
+            )
+        }
+        tools = {
+            str(m): (int(calls), int(bad or 0))
+            for m, calls, bad in self._rows(
+                "SELECT json_extract(labels, '$.model') AS m, COUNT(*), "
+                "SUM(json_extract(labels, '$.ok') = 0) FROM metrics "
+                "WHERE name = 'tool.calls' AND ts >= ? AND m IS NOT NULL GROUP BY m",
+                (since,),
+            )
+        }
+        exams = {
+            str(m): f"{int(score)}/{of}"
+            for m, score, of in self._rows(
+                "SELECT json_extract(labels, '$.provider') AS m, value, "
+                "json_extract(labels, '$.of') FROM metrics e WHERE name = 'model.exam_score' "
+                "AND ts = (SELECT MAX(ts) FROM metrics WHERE name = 'model.exam_score' "
+                "AND json_extract(labels, '$.provider') = json_extract(e.labels, '$.provider'))"
+            )
+        }
+        out = []
+        for name in sorted(set(speed) | set(tools)):
+            answers, tps = speed.get(name, (0, 0.0))
+            calls, failed = tools.get(name, (0, 0))
+            out.append(
+                {
+                    "model": name,
+                    "answers": answers,
+                    "tokens_per_second": round(tps, 1) if answers else None,
+                    "seconds_per_answer": round(seconds[name], 1) if name in seconds else None,
+                    "tool_calls": calls,
+                    "tool_failures_percent": round(100 * failed / calls, 1) if calls else None,
+                    "exam": exams.get(name),
+                }
+            )
+        return out
 
     def prometheus(self) -> str:
         """All-time counters and current gauges in the Prometheus text format."""

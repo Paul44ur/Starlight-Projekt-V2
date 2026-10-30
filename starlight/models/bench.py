@@ -153,3 +153,14 @@ async def benchmark(
         if fraction is not None:
             stats.record("model.bench.gpu_fraction", fraction, provider=provider.name)
     return report
+
+
+def table_row(report: dict[str, Any], model: str, context: int, card: str = "") -> str:
+    """One line for the benchmark table in the README: card, model, context, speed."""
+    gpu = report.get("gpu_memory") or {}
+    total = gpu.get("total_bytes")
+    where = card or (f"{total / 2**30:.0f} GB card ({gpu.get('source')})" if total else "your card")
+    return (
+        f"| {where} | {model} | {context // 1024}k | {report['tokens_per_second']:.1f} | "
+        f"{report['ttft_s']:.2f} s |"
+    )

@@ -7,8 +7,13 @@ import json
 import sqlite3
 import threading
 import time
+from contextvars import ContextVar
 from pathlib import Path
 from typing import Any
+
+#: The model answering the request being handled: tool calls are counted for it, so the
+#: viewer can compare models by how well they use tools.
+current_model: ContextVar[str] = ContextVar("current_model", default="")
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS metrics (

@@ -18,7 +18,7 @@ from starlight.core.killswitch import KillSwitch, KillSwitchEngaged
 from starlight.core.logging import AuditLog, get_logger
 from starlight.core.model import Message, ModelProvider, ModelResponse, TokenCallback
 from starlight.core.permissions import Taint, request_taint
-from starlight.core.stats import Stats
+from starlight.core.stats import Stats, current_model
 from starlight.core.toolroute import ToolRouter, active_tools
 
 #: The request belongs to a private conversation: the task events say so, and nothing is
@@ -304,6 +304,7 @@ class Agent:
         if self.stats is None:
             return
         model = str(response.usage.get("model", self.provider.name))
+        current_model.set(model)
         for key in ("tokens_per_second", "prompt_tokens", "completion_tokens", "duration_s"):
             value = response.usage.get(key)
             if isinstance(value, int | float):

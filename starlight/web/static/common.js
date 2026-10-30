@@ -13,6 +13,7 @@ function showTheme() {
     if (!b) return;
     b.textContent = THEMES[now][0] + (id === "theme2" ? " Theme" : "");
     b.title = "Theme: " + THEMES[now][1] + " (click to change)";
+    b.setAttribute("aria-label", b.title);
   });
 }
 document.addEventListener("DOMContentLoaded", showTheme);
@@ -49,6 +50,7 @@ async function api(path, options = {}) {
 
 function toast(text) {
   const t = el("div", "toast", text);
+  t.setAttribute("role", "status");  // read out by screen readers too
   document.body.appendChild(t);
   setTimeout(() => t.remove(), 2600);
 }

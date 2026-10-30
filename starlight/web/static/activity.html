@@ -6,6 +6,7 @@
 <title>Starlight activity</title>
 <link rel="icon" href="/icon.svg" type="image/svg+xml" />
 <link rel="stylesheet" href="/style.css" />
+<script src="/i18n.js"></script>
 <style>
   .filters { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin-bottom: 10px; }
   .filters button.on { background: var(--accent); border-color: var(--accent); color: #fff; }
@@ -33,7 +34,7 @@
 <header class="top">
   <h1><img class="logo" src="/icon.svg" alt="" width="22" height="22" />Activity</h1><span class="spacer"></span>
   <nav><a href="/">Chat</a><a href="/memory">Memory</a><a href="/automations">Automations</a><a href="/settings">Settings</a></nav>
-  <button id="theme" class="icon" onclick="cycleTheme()">◐</button>
+  <button id="theme" class="icon" onclick="cycleTheme()" aria-label="Theme">◐</button>
 </header>
 <div class="page">
   <div class="card" id="approvals" hidden>
@@ -47,7 +48,7 @@
     <p class="dim small">Every action it took or was refused, newest first, from <code>logs/audit.log</code>.
       Passwords and keys are hidden there.</p>
     <div class="filters" id="filters"></div>
-    <div class="row"><input id="search" type="search" class="grow" placeholder="Search, e.g. mail.send" /><span id="count" class="dim small"></span></div>
+    <div class="row"><input id="search" type="search" class="grow" placeholder="Search, e.g. mail.send" aria-label="Search the activity" /><span id="count" class="dim small"></span></div>
     <div id="entries"></div>
   </div>
 </div>

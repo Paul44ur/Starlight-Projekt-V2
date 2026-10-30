@@ -6,6 +6,7 @@
 <title>Starlight settings</title>
 <link rel="icon" href="/icon.svg" type="image/svg+xml" />
 <link rel="stylesheet" href="/style.css" />
+<script src="/i18n.js"></script>
 <style>
   #code { font-size: 32px; letter-spacing: .3em; font-weight: 700; }
   .locked { display: none; }
@@ -75,7 +76,7 @@
 <header class="top">
   <h1><img class="logo" src="/icon.svg" alt="" width="22" height="22" />Settings</h1><span class="spacer"></span>
   <nav><a href="/">Chat</a><a href="/memory">Memory</a><a href="/activity">Activity</a><a href="/automations">Automations</a></nav>
-  <button id="theme" class="icon" onclick="cycleTheme()">◐</button>
+  <button id="theme" class="icon" onclick="cycleTheme()" aria-label="Theme">◐</button>
 </header>
 <div class="page">
   <div class="card locked"><b>Viewing from another device.</b> <span class="dim">Permissions, modules,
@@ -87,6 +88,13 @@
     <div class="row"><button id="pair" class="ok">Show a pairing code</button><span id="code"></span>
       <span class="dim small" id="code-note"></span></div>
     <table id="devices"><thead><tr><th>Device</th><th>Paired</th><th>Last used</th><th></th></tr></thead><tbody></tbody></table>
+  </div>
+
+  <div class="card" id="language-card">
+    <h2>Language</h2>
+    <div class="row"><label for="language">Language</label>
+      <select id="language"><option value="">Automatic (like the browser)</option>
+        <option value="en">English</option><option value="de">Deutsch</option></select></div>
   </div>
 
   <div class="card local-only" id="voice-card" hidden>
@@ -118,15 +126,15 @@
     <p class="dim small">Turn a module off and its tools are gone. Open one to choose, tool by tool,
       whether it <b>runs</b> on its own, <b>asks first</b>, or is <b>blocked</b>. Changes are saved in
       config/permissions.chat.yaml.</p>
-    <input id="filter" type="search" placeholder="Find a module or tool, e.g. desktop, mail or save" />
+    <input id="filter" type="search" aria-label="Find a module or tool" placeholder="Find a module or tool, e.g. desktop, mail or save" />
     <div id="summary" class="dim small"></div>
     <div id="mods"></div>
     <details class="advanced">
       <summary>Advanced: one rule for several tools</summary>
       <p class="dim small">A pattern such as <code>network.*</code> or <code>desktop.click*</code>.
         "Default" removes the rule again.</p>
-      <div class="row"><input id="pattern" type="text" placeholder="e.g. network.* or desktop.click" class="grow" />
-        <select id="setting"><option value="confirm">Asks first</option><option value="safe">Runs</option>
+      <div class="row"><input id="pattern" type="text" placeholder="e.g. network.* or desktop.click" class="grow" aria-label="Pattern" />
+        <select id="setting" aria-label="Setting"><option value="confirm">Asks first</option><option value="safe">Runs</option>
           <option value="blocked">Blocked</option><option value="default">Default</option></select>
         <button id="apply">Apply</button></div>
     </details>
@@ -352,6 +360,14 @@ async function tryVoice(name, code) {
     new Audio(URL.createObjectURL(await response.blob())).play();
   } catch (e) { toast("Could not speak"); }
 }
+
+// The language of these pages, for this browser (the answers follow what you write).
+const language = document.getElementById("language");
+try { language.value = localStorage.getItem("starlight-lang") || ""; } catch (e) { /* */ }
+language.onchange = () => {
+  try { if (language.value) localStorage.setItem("starlight-lang", language.value); else localStorage.removeItem("starlight-lang"); } catch (e) { /* */ }
+  location.reload();
+};
 
 (async () => {
   try { const s = await api("/api/status"); if (!s.local) document.body.classList.add("remote"); } catch (e) { /* */ }

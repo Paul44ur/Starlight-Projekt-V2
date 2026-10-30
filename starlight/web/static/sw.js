@@ -2,8 +2,8 @@
 // is off or asleep the page still opens and says so (with "Wake the PC" when that is set
 // up) instead of the browser's error page. Everything else always goes to the PC: answers,
 // conversations and settings are never kept here.
-const SHELL = "starlight-shell-v1";
-const FILES = ["/", "/style.css", "/common.js", "/markdown.js", "/icon.svg", "/kill"];
+const SHELL = "starlight-shell-v2";
+const FILES = ["/", "/style.css", "/common.js", "/i18n.js", "/markdown.js", "/icon.svg", "/kill"];
 
 self.addEventListener("install", (event) => {
   event.waitUntil(caches.open(SHELL).then((cache) => cache.addAll(FILES)).catch(() => {}));

@@ -213,6 +213,186 @@ CONTEXT_NAMES = {
 }
 
 
+def window_language() -> str:
+    """ "de" when Windows (or the system) speaks German, else "en"; STARLIGHT_LANG=de/en
+    chooses."""
+    chosen = os.environ.get("STARLIGHT_LANG", "").strip().lower()[:2]
+    if chosen in ("de", "en"):
+        return chosen
+    if sys.platform == "win32":
+        with contextlib.suppress(Exception):
+            import ctypes
+
+            windll: Any = ctypes.windll  # type: ignore[attr-defined,unused-ignore]
+            return "de" if windll.kernel32.GetUserDefaultUILanguage() & 0x3FF == 0x07 else "en"
+    import locale
+
+    system = (locale.getlocale()[0] or os.environ.get("LANG", "")).lower()
+    return "de" if system.startswith("de") else "en"
+
+
+GERMAN = {
+    "Downloading uv (installs Python and Starlight's packages)": (
+        "Lade uv herunter (installiert Python und Starlights Pakete)"
+    ),
+    "Downloading whisper.cpp (speech to text)": "Lade whisper.cpp herunter (Sprache zu Text)",
+    "Downloading Piper (text to speech)": "Lade Piper herunter (Text zu Sprache)",
+    "Setting up Python and Starlight's packages": "Richte Python und Starlights Pakete ein",
+    "Installing the Chromium browser": "Installiere den Chromium-Browser",
+    "Getting LM Studio ready": "Bereite LM Studio vor",
+    "Checking the model server": "Prüfe den Modell-Server",
+    "Starting the model server on the GPU": "Starte den Modell-Server auf der Grafikkarte",
+    "Precise: sticks closely to the facts": "Genau: bleibt eng bei den Fakten",
+    "Balanced (the usual)": "Ausgewogen (üblich)",
+    "Creative: more varied wording": "Kreativ: abwechslungsreichere Worte",
+    "Auto: as much as fits your graphics card": (
+        "Automatisch: so viel, wie auf deine Grafikkarte passt"
+    ),
+    "8k tokens: fastest, remembers the least": (
+        "8k Tokens: am schnellsten, merkt sich am wenigsten"
+    ),
+    "16k tokens": "16k Tokens",
+    "32k tokens (the usual)": "32k Tokens (üblich)",
+    "48k tokens": "48k Tokens",
+    "64k tokens": "64k Tokens",
+    "96k tokens": "96k Tokens",
+    "128k tokens: remembers the most, needs much video memory": (
+        "128k Tokens: merkt sich am meisten, braucht viel Grafikspeicher"
+    ),
+    "MODEL": "MODELL",
+    "OPTIONS": "OPTIONEN",
+    (
+        "Starlight's built-in test model is used (started with --no-model). It only repeats "
+        "what you say, so nothing is downloaded."
+    ): (
+        "Starlights eingebautes Testmodell wird benutzt (gestartet mit --no-model). Es "
+        "wiederholt nur, was du sagst; es wird nichts heruntergeladen."
+    ),
+    "Graphics card: looking ...": "Grafikkarte: suche ...",
+    "Model in LM Studio:": "Modell in LM Studio:",
+    "Find more models on Hugging Face ...": "Weitere Modelle auf Hugging Face finden ...",
+    "Search Hugging Face for other GGUF models and use one of them": (
+        "Andere GGUF-Modelle auf Hugging Face suchen und eines davon nutzen"
+    ),
+    "Your choices are saved in config/launcher.json.": (
+        "Deine Auswahl wird in config/launcher.json gespeichert."
+    ),
+    "Cancel": "Abbrechen",
+    "Quit": "Beenden",
+    "Install and start": "Installieren und starten",
+    "Run the model on the graphics card (turn off only if there is none: much slower)": (
+        "Das Modell auf der Grafikkarte laufen lassen (nur ausschalten, wenn keine da ist: viel "
+        "langsamer)"
+    ),
+    "Speech: talk to Starlight and hear its answers (adds about 0.6 GB)": (
+        "Sprache: mit Starlight sprechen und die Antworten hören (etwa 0,6 GB mehr)"
+    ),
+    "Read the screen: install Tesseract OCR (Windows asks for administrator approval)": (
+        "Bildschirm lesen: Tesseract OCR installieren (Windows fragt nach Administrator-Zustimmung)"
+    ),
+    "Statistics page with charts about what Starlight is doing": (
+        "Statistikseite mit Diagrammen dazu, was Starlight tut"
+    ),
+    "Let the model think before it answers (better at hard questions, slower)": (
+        "Das Modell vor der Antwort nachdenken lassen (besser bei schweren Fragen, langsamer)"
+    ),
+    "Start Starlight when I log in to Windows": (
+        "Starlight starten, wenn ich mich bei Windows anmelde"
+    ),
+    "Answers:": "Antworten:",
+    "Context:": "Kontext:",
+    (
+        "How freely the model chooses its words: precise for facts and tools, creative for stories "
+        "and ideas."
+    ): (
+        "Wie frei das Modell seine Worte wählt: genau für Fakten und Werkzeuge, kreativ für "
+        "Geschichten und Ideen."
+    ),
+    (
+        "How much of the conversation (and of long texts) the model keeps in mind at once. More "
+        "needs more video memory; Auto works it out from the model file and your graphics card."
+    ): (
+        "Wie viel vom Gespräch (und von langen Texten) das Modell auf einmal im Kopf behält. "
+        "Mehr braucht mehr Grafikspeicher; Automatisch rechnet es aus Modelldatei und "
+        "Grafikkarte aus."
+    ),
+    "Find a model on Hugging Face": "Ein Modell auf Hugging Face finden",
+    "Models (most downloaded first)": "Modelle (meistgeladene zuerst)",
+    "Files (pick one size)": "Dateien (eine Größe wählen)",
+    "Asking Hugging Face ...": "Frage Hugging Face ...",
+    "Pick a file first": "Erst eine Datei wählen",
+    "Search": "Suchen",
+    "Use this model": "Dieses Modell nutzen",
+    "Models not from the list are not tested with Starlight: try the tool-use exam once it runs.": (
+        "Modelle außerhalb der Liste sind nicht mit Starlight getestet: Probier den "
+        "Werkzeug-Test, sobald es läuft."
+    ),
+    "From Hugging Face. Downloaded when you start.": (
+        "Von Hugging Face. Wird beim Start heruntergeladen."
+    ),
+    "Download link not found": "Download-Link nicht gefunden",
+    "Recommended for your PC": "Empfohlen für deinen PC",
+    "Too big for your graphics card": "Zu groß für deine Grafikkarte",
+    "Downloaded": "Heruntergeladen",
+    "Remove": "Entfernen",
+    "Running": "Läuft",
+    "Settings": "Einstellungen",
+    "Changes apply after Starlight restarts.": (
+        "Änderungen gelten nach einem Neustart von Starlight."
+    ),
+    "Save and restart": "Speichern und neu starten",
+    "Show details": "Details zeigen",
+    "Pause download": "Download pausieren",
+    "Resume download": "Download fortsetzen",
+    "Open chat": "Chat öffnen",
+    "Statistics": "Statistik",
+    "Stop everything": "Alles anhalten",
+    "Restart model server": "Modell-Server neu starten",
+    "Check everything": "Alles prüfen",
+    "Open logs folder": "Log-Ordner öffnen",
+    "Speed test": "Geschwindigkeitstest",
+    "How fast the model answers (tokens per second)": (
+        "Wie schnell das Modell antwortet (Tokens pro Sekunde)"
+    ),
+    "Tool-use exam": "Werkzeug-Test",
+    "Eight small tasks: does this model use Starlight's tools well?": (
+        "Acht kleine Aufgaben: Nutzt dieses Modell Starlights Werkzeuge gut?"
+    ),
+    "Disk space": "Speicherplatz",
+    "What takes space: models and folders; remove unused models": (
+        "Was Platz braucht: Modelle und Ordner; ungenutzte Modelle entfernen"
+    ),
+    "Open Starlight's folder": "Starlights Ordner öffnen",
+    "Settings ...": "Einstellungen ...",
+    "Quit Starlight": "Starlight beenden",
+    "Copy": "Kopieren",
+    "Close": "Schließen",
+    "Open": "Öffnen",
+    "Starlight could not start": "Starlight konnte nicht starten",
+    "Copy details": "Details kopieren",
+    "Try again": "Nochmal versuchen",
+    "Stopping ...": "Halte an ...",
+    "setup": "Einrichtung",
+    "getting ready": "wird vorbereitet",
+    "could not start": "konnte nicht starten",
+}
+LANGUAGE = window_language()
+
+
+def tr(text: str) -> str:
+    """The window's words in German when Windows speaks German; English otherwise."""
+    if LANGUAGE != "de":
+        return text
+    if text.startswith("What's new in "):
+        return "Neu in " + text.removeprefix("What's new in ")
+    return GERMAN.get(text, text)
+
+
+if LANGUAGE == "de":  # (the choice lists show these; they are matched back by value)
+    STYLE_NAMES.update({k: tr(v) for k, v in STYLE_NAMES.items()})
+    CONTEXT_NAMES.update({k: tr(v) for k, v in CONTEXT_NAMES.items()})
+
+
 class GuiUi:
     """The launcher's Ui for the window: everything goes into a queue the window reads."""
 
@@ -238,7 +418,7 @@ class GuiUi:
 
     def step(self, text: str) -> None:
         self._write_log(f"== {text}")
-        self.events.put(("step", text))
+        self.events.put(("step", tr(text)))
 
     def progress(self, done: int, total: int | None, started: float) -> None:
         self.events.put(("progress", done, total, started))
@@ -249,6 +429,11 @@ class GuiUi:
     def run_output(self, line: str) -> None:
         self._write_log(line)
         self.events.put(("say", line))
+
+    def news(self, title: str, text: str) -> None:
+        """What's new after an update: in a box of its own."""
+        self._write_log(title)
+        self.events.put(("note", f"{tr(title)}\n\n{text}"))
 
     def ask(self, question: str, default: bool) -> bool:
         if self.assume_yes:
@@ -270,7 +455,7 @@ class Tooltip:
     """A short note that appears when the pointer rests on a widget for a moment."""
 
     def __init__(self, app: App, widget: tk.Misc, text: str) -> None:
-        self.app, self.widget, self.text = app, widget, text
+        self.app, self.widget, self.text = app, widget, tr(text)
         self.window: tk.Toplevel | None = None
         self.job: str | None = None
         widget.bind("<Enter>", self._soon, add="+")
@@ -322,7 +507,7 @@ class CheckRow(tk.Frame):
         size = app.px(18)
         self.mark = tk.Canvas(self, width=size, height=size, bg=c.bg, highlightthickness=0)
         self.mark.pack(side="left", padx=(app.px(2), app.px(8)), pady=app.px(3))
-        self.label = tk.Label(self, text=text, bg=c.bg, fg=c.text, font=app.f, anchor="w",
+        self.label = tk.Label(self, text=tr(text), bg=c.bg, fg=c.text, font=app.f, anchor="w",
                               justify="left")  # fmt: skip
         self.label.pack(side="left", fill="x")
         for widget in (self, self.mark, self.label):
@@ -648,7 +833,7 @@ class App:
         self.page = name
         titles = {"setup": "setup", "progress": "getting ready", "error": "could not start"}
         if name in titles:
-            self.root.title(f"Starlight · {titles[name]}")
+            self.root.title(f"Starlight · {tr(titles[name])}")
         if changed:
             self.scroller.yview_moveto(0)
             self.root.after_idle(self._fit_body)
@@ -671,7 +856,7 @@ class App:
         if wrap:
             kwargs.setdefault("wraplength", self._page_width())
             kwargs.setdefault("justify", "left")
-        label = ttk.Label(parent, text=text, style=style, **kwargs)
+        label = ttk.Label(parent, text=tr(text), style=style, **kwargs)
         if wrap:
             self.wrapping.append(label)
         return label
@@ -684,7 +869,7 @@ class App:
     def _button(
         self, parent: tk.Misc, text: str, command: Any, style: str = "TButton"
     ) -> ttk.Button:
-        return ttk.Button(parent, text=text, command=command, style=style, cursor="hand2")
+        return ttk.Button(parent, text=tr(text), command=command, style=style, cursor="hand2")
 
     # -- setup page -----------------------------------------------------------------------------
 

@@ -213,3 +213,9 @@ permissions:
 tools:
   timeout: 120   # seconds before a tool call is aborted
   max_result_chars: 12000   # longer tool results are cut before the model sees them
+
+diagnostics:
+  # Crashes are always written to logs/crash.log, on this PC. With true, Starlight also
+  # tells you the next time it starts and offers a support bundle to send for help
+  # (passwords and keys taken out; nothing is sent by itself).
+  crash_reports: false

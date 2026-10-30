@@ -408,6 +408,10 @@ def create_app(paths: Paths | None = None) -> Any:
     def common() -> Response:
         return Response(page("common.js"), media_type="text/javascript")
 
+    @app.get("/i18n.js")
+    def i18n() -> Response:
+        return Response(page("i18n.js"), media_type="text/javascript")
+
     @app.get("/markdown.js")
     def markdown() -> Response:
         return Response(page("markdown.js"), media_type="text/javascript")

@@ -1072,6 +1072,67 @@ def folder_size(folder: Path) -> int:
     return total
 
 
+def release_notes(root: Path) -> tuple[str, str] | None:
+    """(the version, its notes) from docs/release-notes.md, which every release carries."""
+    try:
+        text = (root / "docs" / "release-notes.md").read_text(encoding="utf-8")
+    except OSError:
+        return None
+    match = re.search(r"^##\s+(.+?)\s*$", text, re.MULTILINE)
+    if match is None:
+        return None
+    notes = text[match.end() :].strip()
+    return match.group(1).strip(), notes
+
+
+def whats_new(root: Path) -> tuple[str, str] | None:
+    """The release notes, once, the first time a new version starts. A first install only
+    takes note of its version (there is nothing "new" to tell yet)."""
+    found = release_notes(root)
+    if found is None:
+        return None
+    version, notes = found
+    seen_file = root / "data" / "launcher" / "seen-version.txt"
+    try:
+        seen = seen_file.read_text(encoding="utf-8").strip()
+    except OSError:
+        seen = ""
+    if seen == version:
+        return None
+    with contextlib.suppress(OSError):
+        seen_file.parent.mkdir(parents=True, exist_ok=True)
+        seen_file.write_text(version + "\n", encoding="utf-8")
+    return (version, notes) if seen else None
+
+
+def short_notes(notes: str, lines: int = 18) -> str:
+    """The notes as plain text for a window or a console: no Markdown marks, not too long."""
+    out: list[str] = []
+    for line in notes.splitlines():
+        line = re.sub(r"\*\*(.+?)\*\*", r"\1", line)
+        line = re.sub(r"\[([^\]]+)\]\([^)]+\)", r"\1", line)
+        line = re.sub(r"^#+\s*", "", line).replace("`", "")
+        if line.strip() or (out and out[-1]):
+            out.append(line.rstrip())
+    if len(out) > lines:
+        out = [*out[:lines], "…"]
+    return "\n".join(out).strip()
+
+
+def tell_whats_new(root: Path, ui: Ui) -> None:
+    found = whats_new(root)
+    if found is None:
+        return
+    version, notes = found
+    show = getattr(ui, "news", None)
+    if callable(show):  # the window shows it in a box of its own
+        show(f"What's new in {version}", short_notes(notes))
+        return
+    ui.step(f"What's new in {version}")
+    for line in short_notes(notes).splitlines():
+        ui.say("   " + line)
+
+
 def snapshot_before_update(settings: Settings, ui: Ui) -> Path | None:
     """Copy config/, data/ and memory/ to backups/update-<time>/ before --update changes
     anything, and keep only the newest BACKUPS_KEEP of these copies."""
@@ -2787,6 +2848,8 @@ class Services:
 
 def start(settings: Settings, ui: Ui, installed: Installed, ask: str | None) -> int:
     uv = installed.uv
+    if ask is None:
+        tell_whats_new(settings.root, ui)
     group = ProcessGroup()
     logs = settings.root / "logs"
     watchdog: ModelServerWatchdog | None = None

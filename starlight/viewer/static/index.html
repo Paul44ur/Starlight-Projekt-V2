@@ -137,6 +137,8 @@
       <div class="chart" id="c-tasks"></div><details><summary>Show data</summary><div id="t-tasks"></div></details></article>
     <article class="card"><h2>Tool calls per module</h2><p class="sub">In the selected range</p>
       <div class="chart" id="c-modules"></div><details><summary>Show data</summary><div id="t-modules"></div></details></article>
+    <article class="card wide"><h2>Models compared</h2><p class="sub">Each model used in the selected range: speed, time per answer, and how well it uses tools (its last <code>starlight model exam</code> too)</p>
+      <div id="t-models"></div></article>
     <article class="card wide"><h2>Recent errors</h2><p class="sub">Failed tool calls and other errors</p>
       <ul class="errors" id="errors"></ul></article>
   </section>
@@ -353,6 +355,11 @@ function render() {
   table("t-vram", ["Time", "GB"], rows(S.vram_used_gb));
   table("t-tasks", ["Time", "Tasks"], rows(S.tasks));
   table("t-modules", ["Module", "Calls"], s.tool_calls_by_module.map(m => [m.module, compact(m.calls)]));
+  const esc = (v) => String(v).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
+  const dash = (v, unit = "") => (v === null || v === undefined ? "–" : v + unit);
+  table("t-models", ["Model", "Answers", "Tokens/s", "Seconds per answer", "Tool calls", "Tools failed", "Exam"],
+    (s.models || []).map(m => [esc(m.model), compact(m.answers), dash(m.tokens_per_second), dash(m.seconds_per_answer),
+                               compact(m.tool_calls), dash(m.tool_failures_percent, " %"), esc(dash(m.exam))]));
 
   const errors = document.getElementById("errors");
   errors.innerHTML = s.recent_errors.length

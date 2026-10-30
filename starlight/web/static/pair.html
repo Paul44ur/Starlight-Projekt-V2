@@ -7,6 +7,7 @@
 <link rel="manifest" href="/manifest.webmanifest" />
 <link rel="icon" href="/icon.svg" type="image/svg+xml" />
 <link rel="stylesheet" href="/style.css" />
+<script src="/i18n.js"></script>
 <style>
   .box { max-width: 380px; margin: 12vh auto 0; padding: 0 16px; text-align: center; }
   input { width: 100%; margin: 8px 0; text-align: center; }
@@ -19,8 +20,8 @@
   <h1><img class="logo" src="/icon.svg" alt="" width="22" height="22" />Starlight</h1>
   <p class="dim">This device isn't paired yet. On your PC, open Starlight's <b>Settings</b> and press
     <b>Show a pairing code</b> (or run <code>starlight remote pair</code>), then enter the code here.</p>
-  <input id="code" inputmode="numeric" autocomplete="one-time-code" maxlength="6" placeholder="000000" />
-  <input id="name" type="text" placeholder="Name for this device (e.g. My phone)" />
+  <input id="code" aria-label="Pairing code" inputmode="numeric" autocomplete="one-time-code" maxlength="6" placeholder="000000" />
+  <input id="name" type="text" placeholder="Name for this device (e.g. My phone)" aria-label="Name for this device" />
   <button id="go" class="ok">Pair</button>
   <p id="msg" class="dim small"></p>
 </div>

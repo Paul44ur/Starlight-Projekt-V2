@@ -90,7 +90,9 @@ and answer you on WhatsApp. It will ask you before it does anything risky. And o
 | **Learn skills** | Turns tasks that worked into reusable skills, but only after you approve them. **Export** one on the Memory page (or `starlight skills export NAME`) to give it to another Starlight; an imported skill comes in as a draft for you to read and approve. |
 | **Manage access from chat** | Add servers, logins and API keys, and set what runs without asking — all by typing, no files to edit. |
 | **Answer on WhatsApp** | Lets you send tasks from your phone and stop everything with `/kill`. |
-| **Show statistics** | Shows tasks, errors, model speed and GPU use in a separate viewer in your browser. |
+| **Show statistics** | Shows tasks, errors, model speed and GPU use in a separate viewer in your browser. **Models compared** puts every model you used side by side: answers, tokens per second, seconds per answer, how many of its tool calls failed, and its last tool-use exam. |
+| **In German** | The web chat and its pages are in German when your browser is (or choose under **Settings → Language**), and the launcher window when Windows is (or set `STARLIGHT_LANG=de`). Your conversation is never changed: the model answers in the language you write in. |
+| **For keyboards and screen readers** | Every button and field has a name a screen reader can say, the conversation is announced as it arrives, Tab shows a clear focus ring, a "Skip to the message box" link comes first, and the pages follow the system's high-contrast and reduced-motion settings. |
 
 ## What you need
 
@@ -318,6 +320,16 @@ download link of the `.gguf` file and start `Starlight.exe --model-url <link>`. 
 `"model_url": "<link>"` into `config\launcher.json` (a link wins over a `model` name).
 Models you no longer use stay in `models\`; delete their `.gguf` files to free the space.
 
+#### How fast on which card
+
+Measure your own: `starlight model bench --card "RX 9060 XT 16 GB"` (three short answers;
+the model server must be running) prints a line for this table. Send yours (an issue on
+GitHub) to have it added; only numbers someone really measured go in here.
+
+| Card | Model | Context | Tokens per second | First token |
+| --- | --- | --- | --- | --- |
+| *(none measured for this table yet)* | | | | |
+
 #### Using LM Studio instead
 
 If you already run models in [LM Studio](https://lmstudio.ai), Starlight can use the
@@ -406,7 +418,8 @@ then connect a model as in [docs/setup-windows.md](docs/setup-windows.md#2-the-m
 
 1. Download the new version.
 2. Unpack it over your Starlight folder.
-3. Start `Starlight.exe`. It installs whatever changed.
+3. Start `Starlight.exe`. It installs whatever changed, and shows once what is new in this
+   version (from `docs\release-notes.md`).
 
 Your `memory`, `skills`, `data`, `logs`, `models` and `tools` folders, your
 `config\starlight.local.yaml` and the permission rules you set from the chat
@@ -733,6 +746,12 @@ its server, the settings files, free disk space, whether Starlight can write its
 folders, the password store and the modules, and says in plain words what is wrong and
 what to try. It changes nothing.
 
+**Starlight closed by itself?** What went wrong is in `logs\crash.log` (on this PC only).
+With `diagnostics: crash_reports: true` in `config\starlight.local.yaml`, Starlight tells you
+the next time it starts and offers a support bundle - the logs and settings with passwords
+and keys taken out - to send to someone helping you. Nothing is sent by itself, and closing
+the window or the kill switch is not counted as a crash.
+
 **A mistake in a settings file** is explained with the file, the line and the setting, for
 example `config\starlight.yaml, line 5: web.prot - 'prot' is not a setting that exists here -
 did you mean 'port'?`. Fix that line (or delete it to use the default). A YAML slip such as
@@ -838,7 +857,8 @@ If you installed with `Starlight.exe`, uv isn't on your PATH. Either install it 
 | `starlight status` | Settings, kill switch and modules at a glance. |
 | `starlight tools` | Everything Starlight can use, and whether it asks first. |
 | `starlight modules list / enable / disable` | Turn modules on and off. |
-| `starlight model info / serve / bench` | The model: settings, start its server, measure its speed. |
+| `starlight model info / serve / bench [--card "RX 9060 XT 16 GB"]` | The model: settings, start its server, measure its speed (it also prints a line for the benchmark table below). |
+| `starlight model nightly [--schedule / --unschedule]` | The tool-use exam and the speed test against your real model, compared with the last run: anything worse is listed (and the exit code is 2). Results go to `logs\nightly\` and one line to `logs\nightly.log`. `--schedule` runs it every night at 03:15 (Windows Task Scheduler, your account; the model server has to be running then). A local CI for your own PC. |
 | `starlight rules` | What Starlight may do, in plain words: runs without asking, asks first, never runs, and the limits. |
 | `starlight support-bundle [--out FOLDER] [--no-activity]` | One zip with the logs, settings and `starlight doctor`'s checks, to send to someone helping you. Your memory, conversations and secrets are not in it; secret values, anything that looks like a password or key, and your user folder's path are hidden. Look inside before you send it. |
 | `starlight model exam` | The tool-use exam: eight small tasks (pick a tool, fill in its arguments, use what it found, know when no tool is needed, German too) that show whether a model gets on with Starlight's tools. Nothing really runs; it takes a minute or two. |
@@ -860,6 +880,8 @@ If you installed with `Starlight.exe`, uv isn't on your PATH. Either install it 
   and what each step of the build plan added.
 - [docs/writing-modules.md](docs/writing-modules.md): add your own module
   (`starlight modules new <name>`).
+- [docs/module-examples.md](docs/module-examples.md): three worked modules, from simple
+  tools to a timer with events and a tool that asks first (the tests run them as written).
 - Tests and checks:
 
   ```bash

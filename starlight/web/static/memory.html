@@ -6,6 +6,7 @@
 <title>Starlight memory</title>
 <link rel="icon" href="/icon.svg" type="image/svg+xml" />
 <link rel="stylesheet" href="/style.css" />
+<script src="/i18n.js"></script>
 <style>
   .mem { border-bottom: 1px solid var(--border); padding: 10px 0; }
   .mem:last-child { border-bottom: none; }
@@ -30,14 +31,14 @@
 <header class="top">
   <h1><img class="logo" src="/icon.svg" alt="" width="22" height="22" />Memory &amp; skills</h1><span class="spacer"></span>
   <nav><a href="/">Chat</a><a href="/automations">Automations</a><a href="/settings">Settings</a></nav>
-  <button id="theme" class="icon" onclick="cycleTheme()">◐</button>
+  <button id="theme" class="icon" onclick="cycleTheme()" aria-label="Theme">◐</button>
 </header>
 <div class="page">
   <div class="card">
     <h2>What Starlight remembers about you</h2>
     <p class="dim small">Each memory is a plain text file in the <code>memory</code> folder. Edit or delete
       anything that is wrong or that you don't want kept.</p>
-    <div class="row"><input id="search" type="search" class="grow" placeholder="Search memories" /><span id="count" class="dim small"></span></div>
+    <div class="row"><input id="search" type="search" class="grow" placeholder="Search memories" aria-label="Search memories" /><span id="count" class="dim small"></span></div>
     <div class="views" id="views"></div>
     <div id="memories"></div>
   </div>
