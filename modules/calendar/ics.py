@@ -6,13 +6,21 @@ from __future__ import annotations
 
 import contextlib
 import re
+from collections.abc import Iterator
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 from typing import Any
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
-_DAYS = ["MO", "TU", "WE", "TH", "FR", "SA", "SU"]
+_DAYS = ["MO", "TU", "WE", "TH", "FR", "SA", "SU"]  # in datetime.weekday() order: MO is 0
 MAX_OCCURRENCES = 2000  # safety net for endless repeat rules
+# A step of a repeat rule can give no time at all (a DAILY rule that BYDAY filters, the 31st
+# in a short month), so up to this many steps per wanted occurrence are tried before an odd
+# rule is given up on.
+MAX_STEPS_PER_OCCURRENCE = 7
+# RFC 5545 3.1: a line is at most 75 octets (bytes, not characters). A longer one is folded:
+# it goes on in the next line, which starts with one space or tab.
+LINE_OCTETS = 75
 
 
 @dataclass
@@ -49,6 +57,8 @@ class Event:
 
 
 def _unfold(text: str) -> list[str]:
+    """The lines of the file with folded lines joined again (see LINE_OCTETS): a line that
+    starts with a space or tab continues the one before."""
     lines: list[str] = []
     for raw in text.replace("\r\n", "\n").replace("\r", "\n").split("\n"):
         if raw[:1] in (" ", "\t") and lines:
@@ -71,7 +81,7 @@ def _split(line: str) -> tuple[str, dict[str, str], str]:
             begin = i + 1
             if char == ":":
                 break
-    else:
+    else:  # no ":" outside quotes: not a NAME:value line
         return line.upper(), {}, ""
     name, *params = parts
     options = {}
@@ -182,11 +192,13 @@ def _build(data: dict[str, Any], source: str) -> Event | None:
 
 
 def parse_duration(value: str) -> timedelta:
+    """An RFC 5545 DURATION such as "PT1H30M", "P2D" or "-P1W". ValueError if it is not one:
+    the event then gets the default length (_build), as if it had no DURATION."""
     match = re.fullmatch(
         r"([+-])?P(?:(\d+)W)?(?:(\d+)D)?(?:T(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?)?", value.strip()
     )
     if not match:
-        return timedelta(hours=1)
+        raise ValueError(f"not a duration: {value!r}")
     sign, weeks, days, hours, minutes, seconds = match.groups()
     span = timedelta(
         weeks=int(weeks or 0),
@@ -226,6 +238,8 @@ def _skip(start: datetime, after: datetime | None, freq: str, interval: int) -> 
         turns = after.year - start.year
     else:
         turns = (after - start).days
+    # One period early, as a margin; repeats that end before the window are filtered out by
+    # Event.occurrences anyway.
     return max(0, turns // interval - 1)
 
 
@@ -233,22 +247,27 @@ def _month_days(month: datetime, by_day: list[tuple[int, int]], at: datetime) ->
     """The days of ``month`` a MONTHLY rule's BYDAY names: 2TU is the second Tuesday, -1FR
     the last Friday, TU every Tuesday. At the time of day of ``at``."""
     first = month.replace(day=1, hour=at.hour, minute=at.minute, second=at.second)
-    days_in_month = (_add_months(first, 1) or first + timedelta(days=31)) - first
+    # The 1st exists in every month, so _add_months only gives None past the year 9999.
+    month_length = (_add_months(first, 1) or first + timedelta(days=31)) - first
     by_weekday: dict[int, list[datetime]] = {}
-    for offset in range(days_in_month.days):
+    for offset in range(month_length.days):
         day = first + timedelta(days=offset)
         by_weekday.setdefault(day.weekday(), []).append(day)
     found: list[datetime] = []
     for ordinal, weekday in by_day:
         days = by_weekday.get(weekday, [])
-        if not ordinal:
+        if ordinal == 0:  # "TU": every Tuesday
             found += days
-        elif 0 < ordinal <= len(days) or 0 < -ordinal <= len(days):
-            found.append(days[ordinal - 1 if ordinal > 0 else ordinal])
+        elif 0 < ordinal <= len(days):  # "2TU": the second Tuesday (counted from 1)
+            found.append(days[ordinal - 1])
+        elif 0 < -ordinal <= len(days):  # "-1FR": the last Friday (Python's negative index)
+            found.append(days[ordinal])
     return sorted(found)
 
 
-def _expand(start: datetime, rule: dict[str, str], after: datetime | None = None) -> Any:
+def _expand(
+    start: datetime, rule: dict[str, str], after: datetime | None = None
+) -> Iterator[datetime]:
     """The start times of a repeating event, in order. ``after``: only times after it are
     wanted, so earlier repeats are skipped instead of walked through (unless the rule has
     a COUNT, which counts from the first)."""
@@ -259,7 +278,7 @@ def _expand(start: datetime, rule: dict[str, str], after: datetime | None = None
     if rule.get("UNTIL"):
         with contextlib.suppress(ValueError):
             until = parse_time(rule["UNTIL"], {})[0]
-            if len(rule["UNTIL"]) == 8:
+            if len(rule["UNTIL"]) == len("YYYYMMDD"):  # a date only: that whole day counts
                 until += timedelta(days=1) - timedelta(seconds=1)
     by_ordinal = [
         (int(m.group(1) or 0), _DAYS.index(m.group(2)))
@@ -268,8 +287,11 @@ def _expand(start: datetime, rule: dict[str, str], after: datetime | None = None
     ]
     by_day = [weekday for _, weekday in by_ordinal]
     produced = 0
-    step = first_step = 0 if count is not None else _skip(start, after, freq, interval)
-    while produced < (count or MAX_OCCURRENCES) and step < first_step + MAX_OCCURRENCES * 7:
+    # With a COUNT the repeats are counted from the first one, so none may be skipped.
+    first_step = 0 if count is not None else _skip(start, after, freq, interval)
+    last_step = first_step + MAX_OCCURRENCES * MAX_STEPS_PER_OCCURRENCE
+    step = first_step
+    while produced < (count or MAX_OCCURRENCES) and step < last_step:
         if freq == "WEEKLY":
             week_start = start + timedelta(weeks=step * interval)
             monday = week_start - timedelta(days=week_start.weekday())
@@ -313,10 +335,13 @@ def _escape(value: str) -> str:
 
 
 def _fold(line: str) -> list[str]:
+    """``line`` folded into pieces of at most LINE_OCTETS bytes; every piece after the first
+    starts with a space. The line is cut by characters but measured in UTF-8 bytes, so a
+    character is never split; the cut leaves a byte to spare."""
     out = []
-    while len(line.encode("utf-8")) > 75:
-        cut = 74
-        while len(line[:cut].encode("utf-8")) > 74:
+    while len(line.encode("utf-8")) > LINE_OCTETS:
+        cut = LINE_OCTETS - 1
+        while len(line[:cut].encode("utf-8")) > LINE_OCTETS - 1:
             cut -= 1
         out.append(line[:cut])
         line = " " + line[cut:]

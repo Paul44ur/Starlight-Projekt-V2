@@ -188,9 +188,12 @@ def power_command(action: str, minutes: int, platform_name: str) -> list[str]:
             "cancel": ["shutdown", "/a"],
         }[action]
     if platform_name == "darwin":
-        if action in ("shutdown", "restart", "cancel") and (minutes or action == "cancel"):
+        delayed = action in ("shutdown", "restart") and minutes != 0
+        if action == "cancel" or delayed:  # no delayed shutdown on a Mac, so nothing to cancel
             raise ToolError("on a Mac, Starlight can only shut down or restart right away")
         return {
+            # Turns the display off: that locks the Mac only when it asks for the password
+            # after the display sleeps (System Settings > Lock Screen).
             "lock": ["pmset", "displaysleepnow"],
             "sleep": ["pmset", "sleepnow"],
             "shutdown": ["osascript", "-e", 'tell app "System Events" to shut down'],
@@ -219,8 +222,13 @@ class SystemModule(Module):
             saved = json.loads(self._pending_file.read_text("utf-8"))
         except (OSError, ValueError):
             saved = None
-        if isinstance(saved, dict) and float(saved.get("due", 0)) > time.time():
-            self._set_pending(str(saved.get("action", "shutdown")), float(saved["due"]))
+        try:  # a damaged "due" (text, null) counts as nothing pending
+            due = float(saved.get("due", 0)) if isinstance(saved, dict) else 0.0
+        except (TypeError, ValueError):
+            ctx.logger.warning("damaged pending_shutdown.json ignored")
+            due = 0.0
+        if isinstance(saved, dict) and due > time.time():
+            self._set_pending(str(saved.get("action", "shutdown")), due)
         else:
             self._clear_pending()
 

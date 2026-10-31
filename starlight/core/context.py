@@ -27,9 +27,12 @@ SUMMARIZE_PROMPT = (
 type SummaryListener = Callable[[str], Awaitable[None]]
 
 
+CHARS_PER_TOKEN = 3.5  # the rough ratio estimate_tokens counts with (and shorten undoes)
+
+
 def estimate_tokens(messages: list[Message], tools: list[dict[str, Any]] | None = None) -> int:
-    """Rough count (about 3.5 characters per token, plus per-message overhead). Errs on the
-    high side, so summarizing starts a little early rather than overflowing."""
+    """Rough count (about CHARS_PER_TOKEN characters per token, plus per-message overhead).
+    Errs on the high side, so summarizing starts a little early rather than overflowing."""
     chars = 0
     for m in messages:
         chars += len(m.content) + 16
@@ -38,10 +41,15 @@ def estimate_tokens(messages: list[Message], tools: list[dict[str, Any]] | None 
         chars += 1500 * len(m.images)  # images cost roughly a fixed number of tokens
     if tools:
         chars += len(json.dumps(tools))
-    return int(chars / 3.5) + 1
+    return int(chars / CHARS_PER_TOKEN) + 1
 
 
 SUMMARY_ROOM = 800  # tokens a summary takes, at most, in what is left
+
+# How `shorten` cuts a message, in characters:
+MIN_CUTTABLE_CHARS = 2000  # a shorter message is never cut
+MIN_KEPT_CHARS = 1000  # what is kept of a cut message, at least
+CUT_MARGIN_CHARS = 500  # cut this much more than the overflow: room for CUT_NOTE, and slack
 
 
 class ContextManager:
@@ -60,23 +68,43 @@ class ContextManager:
     def budget(self) -> int:
         return max(512, self.config.context_window - self.config.reserve_tokens)
 
-    def _cut_index(self, messages: list[Message]) -> int:
-        """Index of the first message to keep: at least keep_recent from the end, moved
-        back so a tool result is never kept without the call that asked for it."""
-        cut = max(1, len(messages) - self.config.keep_recent)
-        while cut > 1 and messages[cut].role == "tool":
+    @staticmethod
+    def _head_length(messages: list[Message]) -> int:
+        """How many messages at the start are the system prompt and this request's context:
+        the system messages right after the prompt, up to the first that is not one (an
+        earlier summary is not: it is old turns, and is summarized again)."""
+        length = 1
+        while (
+            length < len(messages)
+            and messages[length].role == "system"
+            and not messages[length].content.startswith(SUMMARY_PREFIX)
+        ):
+            length += 1
+        return length
+
+    def _cut_index(self, messages: list[Message], start: int = 1) -> int:
+        """Index of the first message to keep: at least keep_recent from the end (and never
+        before ``start``), moved back so a tool result is never kept without the call that
+        asked for it."""
+        cut = max(start, len(messages) - self.config.keep_recent)
+        while cut > start and messages[cut].role == "tool":
             cut -= 1
         return cut
 
     async def compact(self, messages: list[Message], tools: list[dict[str, Any]]) -> list[Message]:
         """Over the budget: the older turns as one summary, the recent ones as they are.
-        This is what the conversation keeps from then on."""
+        This is what the conversation keeps from then on.
+
+        Never summarized: the system prompt and this request's own context right after it
+        (the agent's enrichers: date and time, recalled memories, skills) - see _head_length.
+        An earlier summary is summarized again with the old turns."""
         if estimate_tokens(messages, tools) <= self.budget:
             return messages
-        cut = self._cut_index(messages)
-        if cut <= 1:
+        start = self._head_length(messages)
+        cut = self._cut_index(messages, start)
+        if cut <= start:
             return messages
-        head, old, recent = messages[:1], messages[1:cut], messages[cut:]
+        head, old, recent = messages[:start], messages[start:cut], messages[cut:]
         if (
             estimate_tokens([*head, *recent], tools) + min(SUMMARY_ROOM, self.budget // 4)
             > self.budget
@@ -100,11 +128,14 @@ class ContextManager:
             return messages
         messages = list(messages)
         while over > 0:
-            index = max(range(1, len(messages)), key=lambda i: len(messages[i].content), default=0)
-            if index == 0 or len(messages[index].content) < 2000:
+            if len(messages) < 2:
+                break  # only the system prompt, which is never cut
+            index = max(range(1, len(messages)), key=lambda i: len(messages[i].content))
+            if len(messages[index].content) < MIN_CUTTABLE_CHARS:
                 break  # nothing big left to cut
             message = messages[index]
-            keep = max(1000, len(message.content) - int(over * 3.5) - 500)
+            overflow_chars = int(over * CHARS_PER_TOKEN)
+            keep = max(MIN_KEPT_CHARS, len(message.content) - overflow_chars - CUT_MARGIN_CHARS)
             text = message.content[:keep] + CUT_NOTE.format(more=len(message.content) - keep)
             messages[index] = replace(message, content=text)
             self._log.warning("message cut to fit the context", role=message.role, kept=keep)

@@ -40,7 +40,16 @@ from starlight.core.config import ConfigError, read_yaml, write_yaml_config
 from .readonly import is_read_only
 
 SERVERS_FILE = "servers.yaml"
+# The round-trip time in ping's output: "time=0.412 ms" (Linux), "time=12ms" or "time<1ms"
+# (Windows; "<1ms" reads as 1), "Zeit=3ms" (German Windows); a decimal comma is allowed.
 PING_TIME = re.compile(r"(?:time|zeit)\s*[=<]\s*([\d.,]+)\s*ms", re.IGNORECASE)
+
+
+def echo_reply(returncode: int | None, output: str) -> bool:
+    """Whether ping got a real answer. Windows' ping also exits with 0 when a router
+    answers "Destination host unreachable"; only a real echo reply carries a TTL (or a
+    time). recon and lan make the same check (modules do not import each other)."""
+    return returncode == 0 and ("ttl=" in output.lower() or PING_TIME.search(output) is not None)
 
 
 class NotAllowed(ToolError):
@@ -282,7 +291,7 @@ class NetworkModule(Module):
             return {"up": False, "method": "icmp", "error": "ping unavailable or timed out"}
         text = out.decode(errors="replace")
         match = PING_TIME.search(text)
-        up = proc.returncode == 0 and ("ttl=" in text.lower() or match is not None)
+        up = echo_reply(proc.returncode, text)
         latency = float(match.group(1).replace(",", ".")) if match else None
         if up and latency is None:
             latency = round((time.perf_counter() - started) * 1000, 1)
@@ -346,12 +355,14 @@ class NetworkModule(Module):
     async def status(self, server: str) -> dict[str, Any]:
         """Everything at once: ping, DNS, configured ports and health check."""
         name, srv = self._server(server)
-        checks = [self.ping(name), self.dns_lookup(name)]
-        checks += [self.port_check(name, p) for p in srv.ports]
+        port_checks = [self.port_check(name, p) for p in srv.ports]
+        checks = [self.ping(name), self.dns_lookup(name), *port_checks]
         if srv.http:
             checks.append(self.http_check(name))
         results = await asyncio.gather(*checks)
-        up = bool(results[0].get("up")) or any(r.get("open") for r in results[2:])
+        ping, ports = results[0], results[2 : 2 + len(port_checks)]
+        # Up: it answers ping, or one of its ports accepts connections.
+        up = bool(ping.get("up")) or any(r.get("open") for r in ports)
         return {"server": name, "up": up, "checks": results}
 
     def _latency(self, server: str, check: str, value: float | None) -> None:

@@ -229,6 +229,8 @@ class WatchModule(Module):
                 item["last_error"] = "no price found on the page (try a 'part' selector)"
             else:
                 met = price < value if kind == "below" else price > value
+                # Also on the first look (met is None), unlike contains/gone below: add()
+                # then says the price is "already" past the limit.
                 if met and not item.get("met"):
                     seen["hit"] = True
                     word = "below" if kind == "below" else "above"
@@ -240,7 +242,8 @@ class WatchModule(Module):
         else:  # contains / gone
             present = value.lower() in text.lower()
             met = present if kind == "contains" else not present
-            if met and item.get("met") is False:  # only a change counts, not the first look
+            # Only a change counts, not the first look (met is None): keep "is False".
+            if met and item.get("met") is False:
                 seen["hit"] = True
                 verb = "now shows" if kind == "contains" else "no longer shows"
                 message = f"{item['name']} {verb} '{value}': {item['url']}"
@@ -293,7 +296,7 @@ class WatchModule(Module):
                     "watch check failed", watch=item.get("name"), error=repr(exc)
                 )
                 item["last_error"] = f"check failed: {exc!r}"
-                if item.get("due", 0) <= now:  # not again on the next round
+                if item.get("due", 0) <= now:  # not again on the next round: in an hour
                     item["due"] = now + 3600
                 seen = {"name": item.get("name"), "error": item["last_error"], "hit": False}
             results.append(seen)

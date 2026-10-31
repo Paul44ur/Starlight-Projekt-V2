@@ -206,13 +206,16 @@ class VoiceModule(Module):
 
     async def _ensure_server(self) -> None:
         async with self._starting:
-            running = self._server is not None and self._server.poll() is None
-            if self._ready and (running or self._server is None):
+            ours = self._server is not None  # this process started one
+            ours_alive = self._server is not None and self._server.poll() is None
+            # It answered before and nothing says it went away: our process still runs, or
+            # the server belongs to another Starlight process (a failed request resets _ready).
+            if self._ready and (ours_alive or not ours):
                 return
-            if not running and await self._answers():  # another Starlight process started it
+            if not ours_alive and await self._answers():  # another Starlight process started it
                 self._ready = True
                 return
-            if not running:
+            if not ours_alive:  # never started here, or ours stopped: start it
                 command = self._server_command()
                 flags = 0x08000000 if sys.platform == "win32" else 0  # no console window
                 log = (self.ctx.paths.logs / "whisper-server.log").open("ab")
@@ -416,7 +419,7 @@ class VoiceModule(Module):
         with tempfile.TemporaryDirectory() as folder:
             out = Path(folder) / "speech.wav"
             command = self._piper_command(self._voice(language, voice), out)
-            flags = 0x08000000 if sys.platform == "win32" else 0
+            flags = 0x08000000 if sys.platform == "win32" else 0  # no console window
             process = await asyncio.create_subprocess_exec(
                 *command,
                 stdin=asyncio.subprocess.PIPE, stdout=asyncio.subprocess.DEVNULL,

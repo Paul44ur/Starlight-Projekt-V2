@@ -34,7 +34,7 @@ class CveModule(Module):
             response = await self.ctx.http.get(f"{NVD}?{query}", respect_robots=False)
         except HttpError as exc:
             raise ToolError(f"could not reach the NVD service: {exc}") from exc
-        if response.status == 404:
+        if response.status == 404:  # how NVD may answer a query that finds nothing
             return {"vulnerabilities": []}
         if not response.ok:
             raise ToolError(f"the NVD service returned HTTP {response.status}")
@@ -57,7 +57,9 @@ class CveModule(Module):
     @tool
     async def search(self, product: str, version: str = "", limit: int = 0) -> dict[str, Any]:
         """Search vulnerabilities by product (and optional version), e.g.
-        search("openssl", "3.0.0"). Returns the most relevant CVEs, newest first."""
+        search("openssl", "3.0.0"). Returns up to `limit` matches (0: max_results from the
+        config; at most 50) in the order NVD lists them, not ranked by relevance, then sorted
+        newest first. `total` is how many NVD has in all."""
         terms = f"{product} {version}".strip()
         if not terms:
             raise ToolError("give a product to search for, e.g. 'openssl'")
@@ -84,6 +86,7 @@ def _severity(cve: dict[str, Any]) -> dict[str, Any]:
         entries = metrics.get(key) or []
         if entries:
             data = entries[0].get("cvssData") or {}
+            # CVSS 3.x has baseSeverity inside cvssData; CVSS 2 has it on the entry itself
             severity = data.get("baseSeverity") or entries[0].get("baseSeverity")
             return {"score": data.get("baseScore"), "severity": severity, "metric": key}
     return {"score": None, "severity": None, "metric": None}

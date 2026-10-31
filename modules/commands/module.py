@@ -7,7 +7,8 @@ parsed by a shell, never starting with "-"). A command asks before it runs unles
 `ask: false` for it. Adding or changing a command always asks you.
 
 `commands.shell` runs any command line (PowerShell on Windows, /bin/sh elsewhere). It is
-off unless `shell: true` is set in commands.yaml, and it asks before every command, showing
+off unless `shell: true` is set in commands.yaml (the shipped commands.yaml sets it), and
+it asks before every command, showing
 it exactly. It can do anything you could type in a terminal, including changing
 Starlight's own settings, so from a phone it never runs (`web.remote.blocked`).
 
@@ -139,7 +140,8 @@ def kill_tree(process: asyncio.subprocess.Process, job: Job | None = None) -> No
     """Stop a program and everything it started. A shell's children would otherwise keep
     running, and keep its output open - also when the shell itself has already exited."""
     if sys.platform == "win32":
-        if not (job is not None and job.kill()) and process.returncode is None:
+        stopped_by_job = job is not None and job.kill()  # the job object ends the whole tree
+        if not stopped_by_job and process.returncode is None:
             import subprocess
 
             subprocess.run(
@@ -245,6 +247,7 @@ class CommandsModule(Module):
     async def shell(self, command: str, cwd: str = "", timeout: float = 120) -> dict[str, Any]:
         """Run any command line (PowerShell on Windows, sh on Linux/macOS) and return its
         exit code and output. `cwd`: the folder to run in (default: your home folder).
+        `timeout`: seconds, at most shell_timeout from the config (110 as shipped).
         Prefer a named command (commands.run) when one fits."""
         if not self.config.shell:
             raise ToolError(
@@ -288,6 +291,10 @@ class CommandsModule(Module):
             try:
                 async with asyncio.timeout(command.timeout):
                     # The output ends when the program and all it started are done.
+                    # shield: a timeout must not cancel the reader. It goes on collecting
+                    # while the program is stopped, and the rest is awaited below. A cancel
+                    # from outside (kill switch, tool time limit) lands in the outer
+                    # except, which stops the reader itself.
                     await asyncio.shield(reader)
                     await process.wait()
             except TimeoutError:

@@ -5,7 +5,7 @@ from __future__ import annotations
 import difflib
 import logging
 from pathlib import Path
-from typing import Any
+from typing import Any, get_origin
 
 import yaml
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator, model_validator
@@ -415,20 +415,28 @@ def _defines(path: Path, loc: tuple[Any, ...]) -> bool:
         return False
 
 
+def _settings_model(annotation: Any) -> tuple[type[BaseModel] | None, bool]:
+    """The settings model a field holds - its own type, or the one inside ``X | None``,
+    ``list[X]`` or ``dict[str, X]`` - and whether it holds several of them by name or
+    index (a dict or list): then the next part of a setting's path is an entry's name or
+    index, not a setting."""
+    for arg in (annotation, *getattr(annotation, "__args__", ())):
+        if isinstance(arg, type) and issubclass(arg, BaseModel):
+            return arg, arg is not annotation and get_origin(annotation) in (dict, list)
+    return None, False
+
+
 def _known_names(model: type[BaseModel], parents: tuple[Any, ...]) -> list[str]:
     """The setting names that are valid inside ``parents`` (for "did you mean ...?")."""
     current: Any = model
+    entry_key_next = False
     for key in parents:
+        if entry_key_next:  # e.g. "code" in roles.code.<setting>: still the same model
+            entry_key_next = False
+            continue
         field = current.model_fields.get(str(key)) if hasattr(current, "model_fields") else None
         annotation = field.annotation if field is not None else None
-        current = next(
-            (
-                arg
-                for arg in (annotation, *getattr(annotation, "__args__", ()))
-                if isinstance(arg, type) and issubclass(arg, BaseModel)
-            ),
-            None,
-        )
+        current, entry_key_next = _settings_model(annotation)
         if current is None:
             return []
     return list(current.model_fields) if hasattr(current, "model_fields") else []

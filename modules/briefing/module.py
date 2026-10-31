@@ -62,7 +62,7 @@ class BriefingModule(Module):
             return ["Calendar: nothing planned today."]
         lines = ["Today:"]
         for event in out["events"]:
-            when = "all day" if event.get("all_day") else event["start"][-5:]
+            when = "all day" if event.get("all_day") else _clock(event["start"])
             place = f" @ {event['location']}" if event.get("location") else ""
             lines.append(f"  • {when} {event['title']}{place}")
         return lines
@@ -73,7 +73,7 @@ class BriefingModule(Module):
             return []
         lines = [f"To do ({out['count']}):"]
         for task in out["overdue"]:
-            lines.append(f"  • {task['text']} (overdue since {task['due'][:10]})")
+            lines.append(f"  • {task['text']} (overdue since {_date(task['due'])})")
         for task in out["due"]:
             lines.append(f"  • {task['text']}")
         return lines
@@ -83,10 +83,10 @@ class BriefingModule(Module):
         if not out:
             return []
         today = datetime.now().strftime("%Y-%m-%d")
-        todays = [r for r in out["reminders"] if (r.get("next") or "").startswith(today)]
+        todays = [r for r in out["reminders"] if _date(r.get("next") or "") == today]
         if not todays:
             return []
-        return ["Reminders today:"] + [f"  • {r['next'][-5:]} {r['text']}" for r in todays]
+        return ["Reminders today:"] + [f"  • {_clock(r['next'])} {r['text']}" for r in todays]
 
     async def _weather(self) -> list[str]:
         out = await self._use("weather.now", place=self.config.place)
@@ -141,7 +141,8 @@ class BriefingModule(Module):
         now = datetime.now()
         header = f"Good {_daytime(now.hour)}! {now:%A, %d %B %Y}"
         blocks = [block for block in results if block]
-        text = "\n\n".join(["\n".join(b) for b in [[header], *blocks]])
+        paragraphs = [header] + ["\n".join(block) for block in blocks]
+        text = "\n\n".join(paragraphs)
         return {"text": text, "sections": [n for n, b in zip(names, results, strict=True) if b]}
 
     async def _safe(self, name: str) -> list[str]:
@@ -179,6 +180,18 @@ def spoken_text(text: str) -> str:
     text = "".join(c for c in text if unicodedata.category(c) != "So" and c not in "#*_`|")
     lines = [ln.strip() for ln in text.splitlines() if ln.strip()]
     return " ".join(ln if ln[-1] in ".!?:" else ln + "." for ln in lines)
+
+
+# The other modules' times are text. calendar.agenda's "start" and reminders.list's "next"
+# are "YYYY-MM-DD HH:MM"; a todo's "due" starts with "YYYY-MM-DD". These two read them.
+def _clock(stamp: str) -> str:
+    """ "HH:MM" from "YYYY-MM-DD HH:MM"."""
+    return stamp[-5:]
+
+
+def _date(stamp: str) -> str:
+    """ "YYYY-MM-DD" from a date or a date and time."""
+    return stamp[:10]
 
 
 def _cert_line(cert: dict[str, Any]) -> str:

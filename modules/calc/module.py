@@ -30,7 +30,7 @@ _FUNCTIONS: dict[str, Callable[..., Any]] = {
     "asin": lambda x: math.degrees(math.asin(x)),
     "acos": lambda x: math.degrees(math.acos(x)),
     "atan": lambda x: math.degrees(math.atan(x)),
-    "log": math.log10,
+    "log": math.log10,  # calculator convention: log is base 10, ln the natural logarithm
     "log10": math.log10,
     "log2": math.log2,
     "ln": math.log,
@@ -61,6 +61,10 @@ _UNARY: dict[type[ast.unaryop], Callable[[Any], Any]] = {
 }
 MAX_EXPONENT = 10_000
 MAX_FACTORIAL = 1_000
+# Below this a whole-numbered float is still an exact integer (floats hold every integer up
+# to 2**53, about 9e15), so it is shown as one; from here on format_number writes floats
+# in scientific notation.
+EXACT_FLOAT_INT = 1e15
 
 
 class Config(BaseModel):
@@ -79,7 +83,8 @@ class CalcModule(Module):
     @tool
     def calculate(self, expression: str) -> dict[str, Any]:
         """Work out a formula exactly, e.g. "(17.5 * 3) / 4", "2^10", "sqrt(2)",
-        "15% of 80", "19% * 249.90", "sin(30)" (degrees), "log(1000)", "factorial(20)".
+        "15% of 80", "19% * 249.90", "sin(30)" (degrees), "log(1000)" (base 10; ln is
+        natural), "factorial(20)", "17 mod 5" (remainder; % always means percent).
         Use this for any arithmetic instead of working it out in your head."""
         result = evaluate(expression, self.config.max_digits)
         return {"expression": expression.strip(), "result": result, "text": format_number(result)}
@@ -100,10 +105,12 @@ class CalcModule(Module):
     @tool
     def days_between(self, start: str, end: str = "today") -> dict[str, Any]:
         """Days between two dates ("2026-01-01", "24.12.", "24.12.2026", "today",
-        "friday"), with weeks and weekdays (Monday-Friday) counted too."""
+        "friday"), with weeks too. `weekdays` counts Monday-Friday from the earlier date up
+        to, not including, the later one (Monday to Friday of one week is 4)."""
         first, second = parse_date(start, self._today()), parse_date(end, self._today())
         days = (second - first).days
         low, high = sorted((first, second))
+        # weekday() < 5: Monday (0) to Friday (4); range() leaves the later date out
         workdays = sum(1 for n in range((high - low).days) if (low + timedelta(n)).weekday() < 5)
         return {
             "from": first.isoformat(),
@@ -165,13 +172,19 @@ def _round_half_up(value: float, digits: int = 0) -> int | float:
 def _prepare(expression: str) -> str:
     text = expression.strip().replace("^", "**").replace("\u00d7", "*").replace("÷", "/")
     text = text.replace("\u2212", "-").rstrip("=").strip()
-    # "15% of 80" -> (15/100*80); "249.90 + 19%" -> 249.90 plus 19% of it, as on a
-    # calculator; a lone "19%" -> (19/100)
+    # Percentages, in this order (each step must not see what a later one handles):
+    # 1. "15% of 80"     -> (15/100)*80
+    # 2. "249.90 + 19%"  -> (249.90)*(1+19/100): a +/- N% at the very end applies to
+    #    everything before it, as on a calculator ("100 / 4 + 25%" is 25 plus 25%).
+    #    [\w).]: the part before it must end in a number, a name or ")"; .* is greedy, so
+    #    the last + or - is the one taken.
+    # 3. any other "19%" -> (19/100)
+    # 4. "17 mod 5"      -> 17 % 5 (the remainder), last, so steps 1-3 never see that "%".
+    #    A "%" typed by the user is always a percentage, never the remainder.
     text = re.sub(r"(\d+(?:\.\d+)?)\s*%\s*of\s*", r"(\1/100)*", text, flags=re.IGNORECASE)
-    # (as on a calculator, of everything before it: "100 / 4 + 25%" is 25 plus 25%)
     text = re.sub(r"^(.*[\w).])\s*([+-])\s*(\d+(?:\.\d+)?)\s*%\s*$", r"(\1)*(1\2\3/100)", text)
     text = re.sub(r"(\d+(?:\.\d+)?)\s*%", r"(\1/100)", text)
-    return re.sub(r"\bmod\b", "%", text)  # "17 mod 5" is the remainder
+    return re.sub(r"\bmod\b", "%", text)
 
 
 def evaluate(expression: str, max_digits: int = 4000) -> int | float:
@@ -226,7 +239,7 @@ def evaluate(expression: str, max_digits: int = 4000) -> int | float:
         raise ToolError("the result is too large (or not defined)")
     if isinstance(result, int) and result.bit_length() * math.log10(2) > max_digits:
         raise ToolError(f"the result has more than {max_digits} digits")
-    if isinstance(result, float) and result.is_integer() and abs(result) < 1e15:
+    if isinstance(result, float) and result.is_integer() and abs(result) < EXACT_FLOAT_INT:
         return int(result)
     return result  # type: ignore[no-any-return]
 
@@ -234,7 +247,7 @@ def evaluate(expression: str, max_digits: int = 4000) -> int | float:
 def format_number(value: float) -> str:
     if isinstance(value, int):
         return f"{value:,}".replace(",", " ") if abs(value) >= 10_000 else str(value)
-    if value != 0 and (abs(value) >= 1e15 or abs(value) < 1e-6):
+    if value != 0 and (abs(value) >= EXACT_FLOAT_INT or abs(value) < 1e-6):
         return f"{value:.6e}"
     return f"{value:.10f}".rstrip("0").rstrip(".")
 

@@ -145,6 +145,7 @@
   const PATTERNS = [
     [/^(\d+) waiting for your OK$/, "$1 warten auf dein OK"],
     [/^(\d+) shown$/, "$1 angezeigt"],
+    [/^works once, for (\d+) minutes$/, "gilt einmal, $1 Minuten lang"],
     [/^Done: (.+)$/, "Erledigt: $1"],
     [/^It did not work: (.+)$/, "Hat nicht geklappt: $1"],
     [/^Approving runs (.+)$/, "Erlauben führt aus: $1"],

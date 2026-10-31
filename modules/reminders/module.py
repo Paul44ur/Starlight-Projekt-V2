@@ -104,7 +104,7 @@ class RemindersModule(Module):
         on the 1st at 9:00". `text` is the reminder."""
         if not text.strip():
             raise ToolError("what should the reminder say?")
-        plan = parse_schedule(schedule if any(c.isalpha() for c in schedule) else f"at {schedule}")
+        plan = parse_schedule(schedule)  # a bare time like "8:00" means every day at 8:00
         self._refresh()
         if len(self.items) >= self.config.max_reminders:
             raise ToolError(f"too many reminders (limit {self.config.max_reminders}); cancel some")

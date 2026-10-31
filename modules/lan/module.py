@@ -26,6 +26,8 @@ from starlight.core.jsonfile import load_json, save_json
 MAC = re.compile(r"([0-9a-f]{2}[:-]){5}[0-9a-f]{2}", re.IGNORECASE)
 IPV4 = re.compile(r"\b(\d{1,3}(?:\.\d{1,3}){3})\b")
 SWEEP_LIMIT = 64  # pings at once
+# A ping round-trip time: "time=0.4 ms", "time<1ms", "Zeit=3ms" (German Windows).
+_PING_TIME = re.compile(r"(?:time|zeit)\s*[=<]\s*[\d.,]+\s*ms", re.IGNORECASE)
 
 
 class Config(BaseModel):
@@ -62,6 +64,13 @@ def own_networks() -> list[ipaddress.IPv4Network]:
         if ip.is_private and not ip.is_loopback and not ip.is_link_local:
             networks.append(ipaddress.IPv4Network(f"{ip}/24", strict=False))
     return sorted(set(networks))
+
+
+def echo_reply(returncode: int | None, output: str) -> bool:
+    """Whether ping got a real answer. Windows' ping also exits with 0 when a router
+    answers "Destination host unreachable"; only a real echo reply carries a TTL (or a
+    time). The same check as the network module's (modules do not import each other)."""
+    return returncode == 0 and ("ttl=" in output.lower() or _PING_TIME.search(output) is not None)
 
 
 def parse_neighbours(text: str) -> dict[str, str]:
@@ -125,17 +134,19 @@ class LanModule(Module):
         return parse_neighbours(done.stdout)
 
     async def ping(self, address: str) -> bool:
+        # one ping; Windows' -w waits in milliseconds, Linux' -W in seconds
         once = ["-n", "1", "-w", "700"] if sys.platform == "win32" else ["-c", "1", "-W", "1"]
         command = ["ping", *once, address]
-        flags = 0x08000000 if sys.platform == "win32" else 0
+        flags = 0x08000000 if sys.platform == "win32" else 0  # no console window
         try:
             process = await asyncio.create_subprocess_exec(
-                *command, stdout=asyncio.subprocess.DEVNULL, stderr=asyncio.subprocess.DEVNULL,
+                *command, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.STDOUT,
                 creationflags=flags,
             )  # fmt: skip
-            return await asyncio.wait_for(process.wait(), 5) == 0
+            out, _ = await asyncio.wait_for(process.communicate(), 5)
         except (OSError, TimeoutError):
             return False
+        return echo_reply(process.returncode, out.decode(errors="replace"))
 
     async def _sweep(self) -> int:
         """Ping every address of the PC's own home network(s), politely."""
