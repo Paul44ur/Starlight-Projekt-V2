@@ -247,12 +247,20 @@ class RemoteConfig(_Strict):
     # this address: something on your network that stays on and can send Wake-on-LAN,
     # e.g. a Home Assistant webhook ("https://ha.local:8123/api/webhook/wake-pc").
     wake_url: str = ""
+    # False: every device that reaches one of the hosts above (your Tailscale network) may
+    # use Starlight without a pairing code. Settings still change only at the PC.
+    require_pairing: bool = True
+    pairing_minutes: int = Field(default=5, ge=1, le=60)  # how long a pairing code works
+    max_wrong_codes: int = Field(default=5, ge=1, le=50)  # then 15 minutes locked out
 
 
 class WebConfig(_Strict):
     host: str = "127.0.0.1"  # local only; the chat can run actions, keep it off the network
     port: int = 8700
     remote: RemoteConfig = Field(default_factory=RemoteConfig)
+    # Pages from these addresses (e.g. "http://homeassistant.local:8123") may show the chat
+    # in a frame and use it as you, in a browser on this PC. Empty: only Starlight's own.
+    allowed_origins: list[str] = Field(default_factory=list)
 
 
 class OutputConfig(_Strict):
@@ -263,6 +271,15 @@ class OutputConfig(_Strict):
     # existing file outside the Starlight folder, and reading one, still ask). Starlight's
     # own folder stays off-limits either way.
     write_anywhere: bool = False
+    # Starlight's own folder (settings, data, logs) is off-limits to files, documents and
+    # the code sandbox. False: they may read and change it, these settings included.
+    protect_starlight_folder: bool = True
+    # Reading, replacing or adding to a file outside the Starlight folder (and the trusted
+    # folders) asks first. False: no question for any of your files.
+    ask_outside: bool = True
+    # Programs and scripts (.exe, .bat, .ps1 ...): saving one outside the Starlight folder
+    # asks, and opening one as a file is refused. False: like any other file.
+    ask_runnable: bool = True
 
 
 class ViewerConfig(_Strict):
@@ -331,8 +348,17 @@ def _yaml_problem(path: Path, exc: yaml.YAMLError) -> str:
 # Merged over config/starlight.yaml, in this order (later wins):
 #   starlight.launcher.yaml  written by Starlight.exe (model server, model file)
 #   starlight.remote.yaml    written by `starlight remote enable/disable` (Tailscale access)
+#   starlight.safety.yaml    the safety limits from the Settings page (core/safety.py; not
+#                            merged as it is: it holds a level and switches, applied by
+#                            safety.core_layer)
 #   starlight.local.yaml     your own changes, never touched by any tool
-OVERLAYS = ("starlight.launcher.yaml", "starlight.remote.yaml", "starlight.local.yaml")
+SAFETY_OVERLAY = "starlight.safety.yaml"
+OVERLAYS = (
+    "starlight.launcher.yaml",
+    "starlight.remote.yaml",
+    SAFETY_OVERLAY,
+    "starlight.local.yaml",
+)
 
 
 def deep_merge(base: dict[str, Any], extra: dict[str, Any]) -> dict[str, Any]:
@@ -357,13 +383,19 @@ def write_yaml_config(path: Path, data: dict[str, Any], header: str = "") -> Non
 
 def load_config(paths: Paths) -> StarlightConfig:
     """Load config/starlight.yaml plus its overlays. Missing files mean defaults."""
+    from starlight.core.safety import core_layer
+
     data = read_yaml(paths.config_file)
     used = [paths.config_file]
     for name in OVERLAYS:
         overlay = paths.config / name
-        if overlay.is_file():
+        if not overlay.is_file():
+            continue
+        if name == SAFETY_OVERLAY:
+            data = core_layer(data, paths.config)
+        else:
             data = deep_merge(data, read_yaml(overlay))
-            used.append(overlay)
+        used.append(overlay)
     try:
         return StarlightConfig.model_validate(data)
     except ValidationError as exc:
@@ -486,9 +518,14 @@ def describe_errors(
 def load_module_config[T: BaseModel](
     paths: Paths, module: str, schema: type[T] | None
 ) -> T | dict[str, Any]:
-    """Load config/modules/<module>.yaml, validated against the module's schema if it has one."""
+    """Load config/modules/<module>.yaml, validated against the module's schema if it has
+    one, with the safety limits chosen on the Settings page applied (core/safety.py)."""
+    from starlight.core.safety import module_layer
+
     path = paths.module_configs / f"{module}.yaml"
     raw = read_yaml(path)
+    if (paths.config / SAFETY_OVERLAY).is_file():
+        raw = module_layer(raw, paths.config, module)
     if schema is None:
         return raw
     try:

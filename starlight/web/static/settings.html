@@ -65,7 +65,29 @@
   .plain .names { display: flex; flex-wrap: wrap; gap: 4px; }
   .plain .names code { font-size: 12px; }
   .plain .practice { display: flex; gap: 10px; align-items: center; margin-top: 12px; }
+  /* Safety limits: a level, then one row per protection. */
+  .seg.levels { margin: 6px 0 4px; }
+  .seg.levels button { padding: 5px 14px; font-size: 13.5px; }
+  .seg button.sel.strict { background: var(--ok); color: #06240f; }
+  .seg button.sel.balanced { background: var(--accent); color: #fff; }
+  .seg button.sel.relaxed { background: var(--warn); color: #2b1d00; }
+  .safety h3 { font-size: 14px; margin: 16px 0 2px; }
+  .srow { display: flex; align-items: flex-start; gap: 12px; padding: 8px 0; border-top: 1px dashed var(--border); }
+  .sinfo { flex: 1; min-width: 0; }
+  .stitle { font-weight: 600; font-size: 14px; }
+  .stitle .pill { margin-left: 6px; vertical-align: 1px; }
+  .sdesc { color: var(--dim); font-size: 12.5px; }
+  .swarn { color: var(--bad); font-size: 12.5px; margin-top: 2px; }
+  .sctl { flex: none; display: flex; align-items: center; gap: 6px; }
+  .sctl input[type=number] { width: 84px; }
+  .sctl .unit { min-width: 64px; }  /* every number box lines up, with a unit or without */
+  .sctl textarea { width: 260px; min-height: 64px; font-family: ui-monospace, Consolas, monospace; font-size: 12.5px; }
+  .sctl.wide { flex-direction: column; align-items: flex-end; }
+  .always { margin-top: 14px; border-top: 1px solid var(--border); padding-top: 10px; }
   @media (max-width: 600px) {
+    .srow { flex-wrap: wrap; }
+    .sctl, .sctl textarea { width: 100%; }
+    .sctl.wide { align-items: stretch; }
     .trow { flex-wrap: wrap; row-gap: 4px; }
     .tinfo { flex-basis: 100%; }
     .mtools { padding-left: 4px; }
@@ -121,6 +143,17 @@
       mail, clicking, running code, commands …) are described, not done. Looking things up still works.</span></span></label>
   </div>
 
+  <div class="card local-only safety" id="safety-card">
+    <h2>Safety limits</h2>
+    <p class="dim small">How careful Starlight is. Pick a level, then change any single protection. Saved in config/starlight.safety.yaml.</p>
+    <div class="seg levels" id="levels" role="group" aria-label="Safety level"></div>
+    <p class="dim small" id="level-help"></p>
+    <p class="dim small" id="level-changed" hidden></p>
+    <p class="small swarn" id="local-file" hidden>config/starlight.local.yaml exists: a setting in it wins over this page.</p>
+    <div id="safety"></div>
+    <p class="dim small always"><b>Always on:</b> the kill switch (Ctrl+Alt+J, the Kill button), passwords and keys masked in the logs, the activity log, and that these limits change only at this PC.</p>
+  </div>
+
   <div class="card local-only mods">
     <h2>Modules and what they may do</h2>
     <p class="dim small">Turn a module off and its tools are gone. Open one to choose, tool by tool,
@@ -164,7 +197,7 @@ function plain(perms) {
   group("Asks you first", perms.summary.confirm, "nothing");
   group("Never runs", perms.summary.blocked, "nothing");
   const limits = Object.entries(perms.limits || {}).map(([p, l]) => `${p}: ${l}`);
-  group("Limits (past them it asks first)", limits, "none — set them under permissions: limits: in config/starlight.yaml");
+  group("Limits (past them it asks first)", limits, "none — set them under Safety limits below");
   const timed = Object.entries(perms.timed || {}).map(([p, m]) => `${p}: ${m} more min`);
   if (timed.length) group("Allowed for a while", timed, "");
   document.getElementById("practice").checked = !!perms.practice;
@@ -306,6 +339,126 @@ document.getElementById("pair").onclick = async () => {
   } catch (e) { toast(e.message); }
 };
 
+// -- safety limits -----------------------------------------------------------------------
+const LEVELS = { strict: "Strict", balanced: "Balanced", relaxed: "Relaxed" };
+const LEVEL_HELP = {
+  strict: "Strict: everything that changes something asks first, tighter limits, and other devices ask before every action.",
+  balanced: "Balanced: Starlight as it came, as your settings files say.",
+  relaxed: "Relaxed: fewer questions. No second question after reading web pages or mail, no limits, your files anywhere without asking, and the code sandbox may go online.",
+};
+const tr = (text) => (window.starlightTranslate ? window.starlightTranslate(text) : text);
+let safetyState = null;
+
+async function loadSafety() {
+  try { safetyState = await api("/api/safety"); } catch (e) { return; }
+  showSafety();
+}
+
+function showSafety() {
+  const s = safetyState;
+  const levels = document.getElementById("levels");
+  levels.replaceChildren();
+  s.levels.forEach(level => {
+    const b = el("button", level + (s.level === level ? " sel" : ""), LEVELS[level]);
+    b.setAttribute("aria-pressed", s.level === level ? "true" : "false");
+    b.onclick = () => chooseLevel(level);
+    levels.appendChild(b);
+  });
+  document.getElementById("level-help").textContent = LEVEL_HELP[s.level];
+  const changed = document.getElementById("level-changed");
+  changed.hidden = !s.changed;
+  changed.textContent = s.changed === 1 ? "1 protection is set differently below." : `${s.changed} protections are set differently below.`;
+  document.getElementById("local-file").hidden = !s.local_file;
+  const box = document.getElementById("safety");
+  box.replaceChildren();
+  const german = window.starlightLanguage === "de";
+  s.groups.forEach(g => {
+    box.appendChild(el("h3", "", german ? g.de : g.title));
+    g.switches.forEach(sw => box.appendChild(safetyRow(sw, german && sw.de.title ? sw.de : sw)));
+  });
+}
+
+// A protection that is off (or, for other web pages, a list that is not empty) shows why it matters.
+function loosened(sw) {
+  if (sw.kind === "bool") return sw.value === false;
+  return sw.kind === "list" && sw.key === "origins" && (sw.value || []).length > 0;
+}
+
+function safetyRow(sw, words) {
+  const row = el("div", "srow");
+  const info = el("div", "sinfo");
+  const title = el("div", "stitle");
+  const name = el("span", "", words.title);
+  name.setAttribute("translate", "no");  // (already in the page's language)
+  title.appendChild(name);
+  if (sw.changed) title.appendChild(el("span", "pill warn", "changed"));
+  if (!sw.live) title.appendChild(el("span", "pill off", "after a restart"));
+  if (!sw.module_on) title.appendChild(el("span", "pill off", `${sw.module} is off`));
+  const help = el("div", "sdesc", words.help); help.setAttribute("translate", "no");
+  info.append(title, help);
+  if (loosened(sw) && words.warning) {
+    const warn = el("div", "swarn", "⚠ " + words.warning); warn.setAttribute("translate", "no");
+    info.appendChild(warn);
+  }
+  const control = el("div", "sctl");
+  if (sw.kind === "bool") {
+    const label = el("label", "switch");
+    const box = el("input"); box.type = "checkbox"; box.checked = !!sw.value;
+    box.setAttribute("aria-label", words.title);
+    box.onchange = () => {
+      if (!box.checked && words.warning && !confirm(tr("Switch this off?") + "\n\n" + words.title + "\n" + words.warning)) {
+        box.checked = true; return;
+      }
+      setSafety({ key: sw.key, value: box.checked });
+    };
+    label.append(box, el("span"));
+    control.appendChild(label);
+  } else if (sw.kind === "int" || sw.kind === "float") {
+    const input = el("input"); input.type = "number"; input.value = sw.value ?? "";
+    if (sw.low !== null) input.min = sw.low;
+    if (sw.high !== null) input.max = sw.high;
+    input.step = sw.kind === "int" ? "1" : "any";
+    input.setAttribute("aria-label", words.title);
+    input.onchange = () => setSafety({ key: sw.key, value: Number(input.value) });
+    control.append(input, el("span", "dim small unit", sw.unit || ""));
+  } else {
+    control.classList.add("wide");
+    const area = el("textarea"); area.rows = 3; area.setAttribute("aria-label", words.title);
+    area.value = sw.kind === "limits"
+      ? Object.entries(sw.value || {}).map(([p, l]) => `${p}: ${l}`).join("\n")
+      : (sw.value || []).join("\n");
+    const save = el("button", "", "Save"); save.type = "button";
+    save.onclick = () => {
+      if (sw.key === "origins" && area.value.trim() && !confirm(tr("Let these pages use Starlight as you?") + "\n\n" + area.value.trim())) return;
+      setSafety({ key: sw.key, value: area.value });
+    };
+    control.append(area, save);
+  }
+  if (sw.changed) {
+    const reset = el("button", "reset", "Reset");
+    reset.title = "Back to the level's setting";
+    reset.onclick = () => setSafety({ key: sw.key, reset: true });
+    control.appendChild(reset);
+  }
+  row.append(info, control);
+  return row;
+}
+
+async function setSafety(change) {
+  try { safetyState = await api("/api/safety", { method: "POST", body: change }); toast(tr("Saved")); load(); }
+  catch (e) { toast(e.message); }
+  showSafety();
+}
+
+async function chooseLevel(level) {
+  const s = safetyState;
+  if (level === s.level && !s.changed) return;
+  let question = tr(LEVEL_HELP[level]);
+  if (s.changed) question += "\n\n" + tr("The protections you set differently go back to this level.");
+  if ((level === "relaxed" || s.changed) && !confirm(question + "\n\n" + tr("Choose this level?"))) return;
+  await setSafety({ level });
+}
+
 // -- voices ------------------------------------------------------------------------------
 const LANGUAGES = { de: "German", en: "English" };
 async function loadVoices() {
@@ -371,7 +524,7 @@ language.onchange = () => {
 
 (async () => {
   try { const s = await api("/api/status"); if (!s.local) document.body.classList.add("remote"); } catch (e) { /* */ }
-  load(); loadDevices(); loadVoices();
+  load(); loadSafety(); loadDevices(); loadVoices();
 })();
 </script>
 </body>

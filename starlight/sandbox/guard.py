@@ -13,6 +13,9 @@ import sys
 _settings = json.loads(os.environ.get("STARLIGHT_SANDBOX", "{}"))
 _DENY = [os.path.normcase(p) for p in _settings.get("deny", [])]
 _NETWORK = bool(_settings.get("network", False))
+# Safety limits (Settings -> Safety limits): both on unless switched off there.
+_PROGRAMS = bool(_settings.get("programs", False))  # may start other programs
+_PROTECT = bool(_settings.get("protect", True))  # the vault and Starlight stay out
 _WORKDIR = os.path.normcase(os.path.realpath(_settings.get("workdir") or os.getcwd()))
 _BLOCKED_MODULES = {"keyring", "win32cred", "secretstorage", "jeepney", "starlight"}
 _NO_NETWORK = {"socket.connect", "socket.getaddrinfo", "socket.sendto", "socket.bind"}
@@ -51,16 +54,16 @@ def _denied_path(path: object) -> bool:
 
 
 def _hook(event: str, args: tuple[object, ...]) -> None:
-    if event in _NO_PROGRAMS:
+    if not _PROGRAMS and event in _NO_PROGRAMS:
         raise PermissionError(f"sandbox: starting programs is not allowed ({event})")
     # CPython's audit events "ctypes.dlsym" (library, name) and "ctypes.dlsym/handle"
     # (handle, name) both pass the function's name second.
     symbol = args[1] if event.startswith("ctypes.dlsym") and len(args) > 1 else None
-    if isinstance(symbol, str) and _PROGRAM_FUNCTIONS.fullmatch(symbol):
+    if not _PROGRAMS and isinstance(symbol, str) and _PROGRAM_FUNCTIONS.fullmatch(symbol):
         raise PermissionError(f"sandbox: starting programs is not allowed ({symbol})")
     if not _NETWORK and event in _NO_NETWORK:
         raise PermissionError("sandbox: network access is not allowed")
-    if event == "import" and args and str(args[0]).split(".")[0] in _BLOCKED_MODULES:
+    if _PROTECT and event == "import" and args and str(args[0]).split(".")[0] in _BLOCKED_MODULES:
         raise PermissionError(f"sandbox: importing {args[0]} is not allowed")
     if event in _FILE_EVENTS and args and _denied_path(args[0]):
         raise PermissionError("sandbox: that path is outside the sandbox")
@@ -80,7 +83,8 @@ def _no_fork_exec(*args: object, **kwargs: object) -> None:
 try:  # below subprocess on Linux/macOS, without an audit event of its own
     import _posixsubprocess
 
-    _posixsubprocess.__dict__["fork_exec"] = _no_fork_exec
+    if not _PROGRAMS:
+        _posixsubprocess.__dict__["fork_exec"] = _no_fork_exec
 except ImportError:  # Windows
     pass
 

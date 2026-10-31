@@ -21,7 +21,7 @@ from pydantic import BaseModel, Field
 
 from starlight.core import Module, ModuleContext, ToolError, tool
 from starlight.core.output import known_folders
-from starlight.core.safepaths import expand, inside
+from starlight.core.safepaths import expand, inside, protects_starlight
 
 # Folders not worth searching: huge, and never what the user means (folders starting with a
 # dot, like .git and .venv, are skipped as well).
@@ -82,7 +82,7 @@ class FileSearchModule(Module):
     # -- path safety ---------------------------------------------------------------------
 
     def _in_starlight(self, path: Path) -> bool:
-        return inside(path, self.star_root)
+        return protects_starlight() and inside(path, self.star_root)
 
     def _allowed(self, path: Path) -> bool:
         return any(inside(path, folder) for folder in self.allowed)

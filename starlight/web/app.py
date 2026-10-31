@@ -25,7 +25,7 @@ import re
 import time
 import unicodedata
 import uuid
-from collections.abc import Awaitable, Callable
+from collections.abc import Awaitable, Callable, Iterable
 from dataclasses import dataclass
 from email.parser import BytesParser
 from pathlib import Path
@@ -34,18 +34,25 @@ from urllib.parse import parse_qsl, quote, unquote, urlencode, urlsplit
 
 from fastapi import FastAPI, HTTPException, Request, Response, WebSocket, WebSocketDisconnect
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse
+from pydantic import BaseModel, ValidationError
 
-from starlight.core import AgentResult, Event, Kernel, Paths, ToolError
+from starlight.core import AgentResult, Event, Kernel, Paths, ToolError, safety
 from starlight.core.activity import read_activity
-from starlight.core.config import RemoteConfig, load_config
+from starlight.core.config import ConfigError, RemoteConfig, WebConfig, load_config
 from starlight.core.dispatcher import tool_sink
 from starlight.core.model import thought_sink
 from starlight.core.modelpause import read_pause, resume_model
 from starlight.core.modules import outside_warning
 from starlight.core.output import describe_output_folder
-from starlight.core.permissions import Permission, extra_blocked, extra_confirm, save_rule
+from starlight.core.permissions import (
+    Permission,
+    apply_saved_rules,
+    extra_blocked,
+    extra_confirm,
+    save_rule,
+)
 from starlight.core.ui import current_ui
-from starlight.web.auth import CODE_SECONDS, COOKIE, Device, Devices
+from starlight.web.auth import COOKIE, Device, Devices
 
 STATIC = Path(__file__).with_name("static")
 LOOPBACK = {"127.0.0.1", "localhost", "::1"}
@@ -74,14 +81,20 @@ def _hostname(value: str) -> str:
     return (urlsplit(f"//{value}").hostname or "").lower()
 
 
-def allowed_request(headers: Any, peer: str | None) -> bool:
+def _origin_key(origin: str) -> str:
+    return origin.strip().rstrip("/").lower()
+
+
+def allowed_request(headers: Any, peer: str | None, origins: Iterable[str] = ()) -> bool:
     """Only this machine's own chat page (or a non-browser client such as the terminal) may
     talk to the backend as the local user. Browsers let any web page open a WebSocket to
     localhost or send it a plain POST, so a page you visit could otherwise ask Starlight to
     do things and approve its own confirmations. The Host must be this machine (stops
     DNS-rebinding tricks), and an Origin, which every browser sends, must be that same host.
     The connection itself must come from this PC, and a request that came through a proxy
-    (Tailscale) is never local. Pages are never shown inside another site's frame."""
+    (Tailscale) is never local. Pages are never shown inside another site's frame.
+    ``origins``: other pages you allowed (web.allowed_origins, Settings -> Safety limits),
+    which count as this PC's own."""
     if peer not in LOOPBACK_PEERS:
         return False
     if any(name in headers for name in FORWARDED):
@@ -93,7 +106,13 @@ def allowed_request(headers: Any, peer: str | None) -> bool:
     if not origin:
         return True  # not a browser (the terminal client, curl, tests)
     parts = urlsplit(origin)
-    return parts.scheme in ("http", "https") and parts.netloc == headers.get("host")
+    if parts.scheme in ("http", "https") and parts.netloc == headers.get("host"):
+        return True
+    return _origin_key(origin) in {_origin_key(o) for o in origins}
+
+
+# Who an unpaired device is while "Devices must be paired" is off (Settings -> Safety limits).
+UNPAIRED = Device(id="unpaired", name="a device on your Tailscale network", token_hash="", paired=0)
 
 
 @dataclass
@@ -107,9 +126,16 @@ class Viewer:
 class Gate:
     """Decides, for each request, whether it is the local user, a paired device, or nobody."""
 
-    def __init__(self, devices: Devices, remote: RemoteConfig) -> None:
+    def __init__(
+        self, devices: Devices, remote: RemoteConfig, web: WebConfig | None = None
+    ) -> None:
         self.devices = devices
         self.remote = remote
+        self.web = web  # web.allowed_origins (read at each request: it can change)
+
+    def origins(self) -> list[str]:
+        """Other pages allowed to use Starlight as you (Settings -> Safety limits)."""
+        return list(self.web.allowed_origins) if self.web is not None else []
 
     def remote_host(self, headers: Any) -> str | None:
         """The address a request was sent to, if it is one of your Tailscale addresses."""
@@ -129,7 +155,7 @@ class Gate:
         return forwarded.split(",")[-1].strip() or peer or "?"
 
     def viewer(self, headers: Any, cookies: dict[str, str], peer: str | None) -> Viewer | None:
-        if allowed_request(headers, peer):
+        if allowed_request(headers, peer, self.origins()):
             return Viewer(local=True)
         host = self.remote_host(headers)
         if host is None:
@@ -138,6 +164,8 @@ class Gate:
         if origin and _hostname(urlsplit(origin).netloc) != host:
             return None  # another site's page
         device = self.devices.check(cookies.get(COOKIE), self.client(headers, peer))
+        if device is None and not self.remote.require_pairing:  # (a safety limit, off)
+            device = UNPAIRED
         return Viewer(local=False, device=device) if device else None
 
 
@@ -306,14 +334,30 @@ def create_app(paths: Paths | None = None) -> Any:
 
     app = FastAPI(title="Starlight chat", docs_url=None, redoc_url=None, lifespan=lifespan)
     config = load_config(paths)
-    devices = Devices(paths.data / "devices")
-    gate = Gate(devices, config.web.remote)
+    devices = Devices(paths.data / "devices", config.web.remote)
+    gate = Gate(devices, config.web.remote, config.web)
 
     @app.middleware("http")
     async def security_headers(request: Request, call_next: Any) -> Any:
-        response = await call_next(request)
+        allowed = gate.origins()
+        origin = request.headers.get("origin", "")
+        cors = bool(origin) and _origin_key(origin) in {_origin_key(o) for o in allowed}
+        if cors and request.method == "OPTIONS":  # a page you allowed asks before it calls
+            response: Response = Response(status_code=204)
+            response.headers["Access-Control-Allow-Methods"] = "GET, POST, DELETE"
+            response.headers["Access-Control-Allow-Headers"] = "Content-Type"
+        else:
+            response = await call_next(request)
         for name, value in SECURITY_HEADERS.items():
             response.headers.setdefault(name, value)
+        if allowed:  # pages you allowed may show the chat in a frame (Settings -> Safety limits)
+            del response.headers["X-Frame-Options"]
+            response.headers["Content-Security-Policy"] = "frame-ancestors 'self' " + " ".join(
+                _origin_key(o) for o in allowed
+            )
+        if cors:
+            response.headers["Access-Control-Allow-Origin"] = origin
+            response.headers["Vary"] = "Origin"
         return response
 
     def kernel() -> Kernel:
@@ -479,7 +523,7 @@ def create_app(paths: Paths | None = None) -> Any:
     @app.post("/api/pair/code")
     def pair_code(request: Request) -> dict[str, Any]:
         local_only(request)
-        return {"code": devices.new_code(), "valid_seconds": CODE_SECONDS}
+        return {"code": devices.new_code(), "valid_seconds": devices.code_seconds}
 
     @app.get("/api/devices")
     def list_devices(request: Request) -> dict[str, Any]:
@@ -975,6 +1019,52 @@ def create_app(paths: Paths | None = None) -> Any:
         save_rule(paths.config, pattern, setting)
         k.audit.record("web.permission", pattern=pattern, setting=setting)
         return {"rules": k.policy.rules()}
+
+    # -- settings: safety limits (starlight/core/safety.py) ---------------------------------
+
+    def module_settings(k: Kernel) -> dict[str, Any]:
+        """The running modules' settings objects, by module name."""
+        found: dict[str, Any] = {}
+        for name, record in k.modules.records.items():
+            settings = getattr(getattr(record.instance, "ctx", None), "config", None)
+            if isinstance(settings, BaseModel):
+                found[name] = settings
+        return found
+
+    def safety_view(k: Kernel) -> dict[str, Any]:
+        local_file = (paths.config / "starlight.local.yaml").is_file()
+        return safety.page_state(paths.config, k.config, module_settings(k), local_file)
+
+    @app.get("/api/safety")
+    def safety_limits(request: Request) -> dict[str, Any]:
+        viewer(request)  # other devices may look, not change
+        return safety_view(kernel())
+
+    @app.post("/api/safety")
+    async def set_safety_limits(request: Request) -> dict[str, Any]:
+        local_only(request)  # at the PC only, like every rule
+        data = await body(request)
+        k = kernel()
+        try:
+            choice, what = safety.change(paths.config, data)
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        file = paths.config / safety.SAFETY_FILE
+        before = file.read_bytes() if file.is_file() else None
+        safety.save_choice(paths.config, choice)
+        try:
+            safety.refresh(paths, [k.config, config], module_settings(k))
+        except (ConfigError, ValidationError) as exc:  # e.g. starlight.yaml broke meanwhile
+            if before is None:
+                file.unlink(missing_ok=True)
+            else:
+                file.write_bytes(before)
+            safety.refresh(paths, [k.config, config], module_settings(k))
+            raise HTTPException(status_code=400, detail=f"not saved: {exc}") from exc
+        finally:
+            apply_saved_rules(k.policy, paths.config)  # the rules made tool by tool stay
+        k.audit.record("web.safety", **what)
+        return safety_view(k)
 
     @app.get("/api/modules")
     def modules(request: Request) -> dict[str, Any]:

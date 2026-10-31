@@ -610,9 +610,9 @@ def cmd_remote(paths: Paths, args: argparse.Namespace) -> int:
     """Use the web chat from your phone through Tailscale (private, nothing opened on your
     router), with every device paired by a one-time code."""
     from starlight.web import remote
-    from starlight.web.auth import CODE_SECONDS, Devices
+    from starlight.web.auth import Devices
 
-    devices = Devices(paths.data / "devices")
+    devices = Devices(paths.data / "devices", load_config(paths).web.remote)
     try:
         if args.action == "enable":
             url = remote.enable(paths, load_config(paths).web.port)
@@ -634,7 +634,7 @@ def cmd_remote(paths: Paths, args: argparse.Namespace) -> int:
                 print(f"  paired: {device['name']} (id {device['id']}, since {device['paired']})")
         elif args.action == "pair":
             code = devices.new_code()
-            print(f"Pairing code: {code}  (works once, for {CODE_SECONDS // 60} minutes)")
+            print(f"Pairing code: {code}  (works once, for {devices.code_seconds // 60} minutes)")
             print("Open the chat address on your phone and enter it there.")
         elif args.action == "devices":
             # nothing paired: one "(none)" row, printed in the same columns

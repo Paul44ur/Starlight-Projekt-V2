@@ -14,6 +14,8 @@ import re
 import time
 from typing import Any
 
+from pydantic import BaseModel
+
 from starlight.core import Module, ToolError, tool
 from starlight.core.config import read_yaml
 from starlight.core.permissions import Permission, save_rule
@@ -22,7 +24,22 @@ KEY = re.compile(r"^[a-z0-9][a-z0-9_.-]*$")
 PATTERN = re.compile(r"^[a-z0-9_.][a-z0-9_.*?-]*$")
 
 
+class Config(BaseModel):
+    # Letting an action run without asking, blocking it, removing a rule and leaving
+    # practice mode ask you first (Settings -> Safety limits). Secrets always ask.
+    ask_before_changes: bool = True
+
+
 class AccessModule(Module):
+    Config = Config
+
+    async def _agreed(self, question: str) -> bool:
+        """Yes to a change of the rules: asked, unless that question is switched off."""
+        config = self.ctx.config
+        if isinstance(config, Config) and not config.ask_before_changes:
+            return True
+        return await self.ctx.ui.confirm(question)
+
     # -- secrets -------------------------------------------------------------------------
 
     @tool
@@ -62,7 +79,7 @@ class AccessModule(Module):
         pattern = pattern.strip()
         if not PATTERN.match(pattern):
             raise ToolError("give a tool name or pattern, e.g. 'network.ping' or 'recon.*'")
-        if not await self.ctx.ui.confirm(question):
+        if not await self._agreed(question):
             raise ToolError("not confirmed, so the rule was not changed")
         self.ctx.kill_switch.check()
         self.ctx.policy.set_rule(pattern, permission)
@@ -102,7 +119,7 @@ class AccessModule(Module):
             raise ToolError("give a tool name or pattern, e.g. 'network.ping' or 'recon.*'")
         minutes = max(1, min(int(minutes), 24 * 60))
         question = f"Let '{pattern}' run WITHOUT asking for the next {minutes} minutes?"
-        if not await self.ctx.ui.confirm(question):
+        if not await self._agreed(question):
             raise ToolError("not confirmed, so nothing changed")
         self.ctx.kill_switch.check()
         self.ctx.policy.allow_for(pattern, minutes * 60)
@@ -115,9 +132,7 @@ class AccessModule(Module):
         code, commands ...) are only described, not done; looking things up still works.
         Turning it off asks first."""
         leaving = not on and self.ctx.policy.practice
-        if leaving and not await self.ctx.ui.confirm(
-            "Leave practice mode, so actions run for real?"
-        ):
+        if leaving and not await self._agreed("Leave practice mode, so actions run for real?"):
             raise ToolError("not confirmed, so practice mode stays on")
         self.ctx.policy.practice = on
         self.ctx.logger.info("practice mode", on=on)
@@ -163,7 +178,7 @@ class AccessModule(Module):
         if loosening:
             was = "blocked" if pattern in rules["blocked"] else "set to always ask"
             question = f"'{pattern}' is {was}. Remove that rule, so it may run again?"
-            if not await self.ctx.ui.confirm(question):
+            if not await self._agreed(question):
                 raise ToolError("not confirmed, so the rule was kept")
         self.ctx.kill_switch.check()
         self.ctx.policy.clear_rule(pattern)

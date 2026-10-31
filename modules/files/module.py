@@ -24,7 +24,7 @@ from pydantic import BaseModel, Field
 from starlight.core import Module, ModuleContext, ToolError, tool
 from starlight.core.fsutil import write_atomic
 from starlight.core.output import known_folders
-from starlight.core.safepaths import PathGuard, UserPath, expand
+from starlight.core.safepaths import PathGuard, UserPath, asks_runnable, expand
 from starlight.text import decode_text
 
 _INVALID = re.compile(r'[<>:"/\\|?*\x00-\x1f]')  # not allowed in Windows file names
@@ -178,9 +178,14 @@ class FilesModule(Module):
         # No question inside the Starlight or a trusted folder (target.free). A new file
         # anywhere else is fine too (write_anywhere: target.new_free), but never one Windows
         # can run when it is opened: in the wrong folder (Startup) that runs at every login.
+        # (Both are safety limits: output.ask_outside makes every folder free, but a program
+        # or script still asks outside the free folders while output.ask_runnable is on.)
         creates_file = mode in ("new", "rename")
-        safe_type = dest.suffix.lower() not in _RUNNABLE
-        no_question = target.free or (target.new_free and creates_file and safe_type)
+        safe_type = not asks_runnable() or dest.suffix.lower() not in _RUNNABLE
+        in_free_folder = self.guard.in_free_folder(dest)
+        no_question = (target.free and (safe_type or in_free_folder)) or (
+            target.new_free and creates_file and safe_type
+        )
         question = self._save_question(dest, mode, size, no_question)
         if question is not None and not await self.ctx.ui.confirm(question):
             raise FileError(f"the user did not allow this, so nothing was saved to {dest}")

@@ -134,6 +134,30 @@
     ". Changes are saved in config/permissions.chat.yaml.": ". Änderungen landen in config/permissions.chat.yaml.",
     "Advanced: one rule for several tools": "Erweitert: eine Regel für mehrere Werkzeuge", "A pattern such as": "Ein Muster wie",
     '. "Default" removes the rule again.': '. „Standard" entfernt die Regel wieder.',
+    // settings: safety limits (the switches' own texts come from the server in German)
+    "Safety limits": "Sicherheitsgrenzen", "Safety level": "Sicherheitsstufe",
+    "How careful Starlight is. Pick a level, then change any single protection. Saved in config/starlight.safety.yaml.":
+      "Wie vorsichtig Starlight ist. Wähle eine Stufe und ändere dann einzelne Schutzmaßnahmen. Gespeichert in config/starlight.safety.yaml.",
+    "Strict": "Streng", "Balanced": "Ausgewogen", "Relaxed": "Locker",
+    "Strict: everything that changes something asks first, tighter limits, and other devices ask before every action.":
+      "Streng: Alles, was etwas ändert, fragt vorher, engere Grenzen, und andere Geräte fragen vor jeder Aktion.",
+    "Balanced: Starlight as it came, as your settings files say.":
+      "Ausgewogen: Starlight wie geliefert, so wie es in deinen Einstellungsdateien steht.",
+    "Relaxed: fewer questions. No second question after reading web pages or mail, no limits, your files anywhere without asking, and the code sandbox may go online.":
+      "Locker: weniger Fragen. Keine zweite Frage nach Webseiten oder Mails, keine Grenzen, deine Dateien überall ohne Nachfrage, und die Code-Sandbox darf online gehen.",
+    "1 protection is set differently below.": "1 Schutzmaßnahme ist unten anders eingestellt.",
+    "config/starlight.local.yaml exists: a setting in it wins over this page.":
+      "config/starlight.local.yaml gibt es: Eine Einstellung darin hat Vorrang vor dieser Seite.",
+    "Always on:": "Immer an:",
+    "the kill switch (Ctrl+Alt+J, the Kill button), passwords and keys masked in the logs, the activity log, and that these limits change only at this PC.":
+      "der Not-Aus (Strg+Alt+J, der Stopp-Knopf), Passwörter und Schlüssel in den Protokollen unkenntlich, das Aktivitätsprotokoll, und dass sich diese Grenzen nur an diesem PC ändern lassen.",
+    "changed": "geändert", "after a restart": "nach einem Neustart", "seconds": "Sekunden", "minutes": "Minuten",
+    "Back to the level's setting": "Zurück zur Einstellung der Stufe",
+    "Switch this off?": "Das ausschalten?",
+    "Let these pages use Starlight as you?": "Diesen Seiten erlauben, Starlight als du zu nutzen?",
+    "The protections you set differently go back to this level.": "Die Schutzmaßnahmen, die du anders eingestellt hast, gehen auf diese Stufe zurück.",
+    "Choose this level?": "Diese Stufe wählen?",
+    "none — set them under Safety limits below": "keine – unter Sicherheitsgrenzen weiter unten einstellen",
     "Asks first": "Fragt erst", "Runs": "Läuft", "Blocked": "Gesperrt", "Default": "Standard", "Apply": "Anwenden",
     "Find a module or tool": "Modul oder Werkzeug suchen", "Find a module or tool, e.g. desktop, mail or save": "Modul oder Werkzeug suchen, z. B. desktop, mail oder save",
     "e.g. network.* or desktop.click": "z. B. network.* oder desktop.click", "Pattern": "Muster", "Setting": "Einstellung",
@@ -162,6 +186,8 @@
     [/^No microphone access: (.+)$/, "Kein Zugriff aufs Mikrofon: $1"],
     [/^Could not reach Starlight: (.+)$/, "Starlight nicht erreichbar: $1"],
     [/^Installed (.+) \((\d+) MB\)$/, "$1 installiert ($2 MB)"],
+    [/^(\d+) protections are set differently below\.$/, "$1 Schutzmaßnahmen sind unten anders eingestellt."],
+    [/^([a-z0-9_]+) is off$/, "$1 ist aus"],
   ];
   // Never translated: the conversation, code, and what you type.
   const KEEP = ".msg .body, pre, code, textarea, [translate=no], .notranslate";

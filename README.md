@@ -651,9 +651,11 @@ What is different on the phone:
   Starlight also won't loosen its own rules, add secrets, servers, logins, commands,
   automations, backups or knowledge-base folders — even if asked (`web: remote: blocked:`).
 - The chat always listens on this PC only (`127.0.0.1`), and no other website can show it
-  inside a frame. Tailscale is the only way in from outside.
+  inside a frame (unless you list it under **Settings → Safety limits → Other web pages
+  that may use Starlight**). Tailscale is the only way in from outside.
 - A wrong code is counted; after 5 wrong tries that device waits 15 minutes. A code works
-  once and for 5 minutes. Pairing a new device sends you a notice everywhere.
+  once and for 5 minutes (both numbers, and pairing itself, are safety limits). Pairing a
+  new device sends you a notice everywhere.
 
 On the phone, once the page is on the home screen:
 - **📷** takes a photo and offers *Read the text*, *Translate it* or *Describe it* (with a
@@ -672,11 +674,31 @@ off with `starlight remote disable`.
 
 ## Safety and privacy
 
+- **Safety limits: you set them.** **Settings → Safety limits** (at the PC; a phone can
+  look but not change) picks a level, then any single protection:
+  - *Strict*: everything that changes something asks first, tighter limits (10 emails an
+    hour, 30 code runs …), and other devices ask before every action.
+  - *Balanced*: Starlight as it came, as described below.
+  - *Relaxed*: fewer questions: no second question after reading web pages or mail, no
+    limits, your files elsewhere without asking, and the code sandbox may go online.
+
+  Below the level, 27 protections one by one, in three groups. *Limits and the guard*: how
+  often actions may run on their own, steps per request, the time limit of an action, web
+  speed, robots.txt. *What Starlight refuses or asks about by itself*: its own folder, your
+  files elsewhere, programs and scripts, the code sandbox's internet, folders and programs,
+  the screen-corner stop, the red banner, changing permissions from the chat, opening a
+  program the first time, only the servers you listed, scans. *Other devices and web
+  pages*: what always asks or never runs on a phone, pairing, how long a pairing code works
+  and how many wrong tries lock a device out, and other web pages that may use Starlight.
+  Each switch says what can happen while it is off; most apply at once, the others after a
+  restart (the page says which). The choice is kept in `config\starlight.safety.yaml`, and
+  `config\starlight.local.yaml` still wins over it. Always on: the kill switch, passwords
+  masked in the logs, the audit log, and that these limits change only at the PC.
 - **Everything runs on your PC.** The model, your conversations, your memory and
   screenshots never leave it. Only web pages you ask for, and WhatsApp if you set it up,
   use the internet.
 - **You decide what runs.** Every action is *allowed*, *asks first* or *blocked*. You can
-  change this in `config\starlight.yaml` under `permissions`. *Blocked* always wins; a tool
+  change this tool by tool in **Settings**, or in `config\starlight.yaml` under `permissions`. *Blocked* always wins; a tool
   you allow by its exact name (`desktop.click`) runs even while a broader pattern
   (`desktop.*`) asks.
 - **What runs without asking, out of the box.** Desktop clicks and typing, running code
@@ -728,7 +750,8 @@ off with `starlight remote disable`.
   in your Documents by default. Replacing or adding to an existing file outside that
   folder, and reading one, asks first. Its own install folder, which holds its settings
   and data, is off-limits, so it can't change its own permissions that way (a command
-  line could, which is why every command line asks and the phone can't run them).
+  line could, which is why every command line asks and the phone can't run them). Both
+  are safety limits you can switch off.
 - **The model is yours, unchanged.** Starlight sends your messages to the local model
   you chose and returns its answer as-is — it adds no filter of its own. How the model
   behaves is down to the model file, which runs entirely on your PC.

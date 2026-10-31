@@ -250,6 +250,29 @@ lets `web.fetch` read the page asked for like a browser while `fetch_many` (rese
 page watches and news follow robots.txt; a robots.txt answering 401/403 means no rules
 (RFC 9309); `apps.ask_first_open: false`; `agent.max_steps` is 15.
 
+**Safety limits you set (`core/safety.py`).** Settings -> Safety limits chooses a level
+(strict, balanced, relaxed) and any of 27 switches on top, kept in
+`config/starlight.safety.yaml`. Each switch names the real setting it changes, in
+`starlight.yaml` (`permissions.guard_after_untrusted`, `output.protect_starlight_folder`,
+`web.remote.require_pairing` ...) or in a module's settings (`desktop.failsafe`,
+`code.sandbox_protects_folders`, `access.ask_before_changes` ...); a value is said as the
+protection (True: on), with `invert` where the setting means the opposite (`allow_network`).
+`load_config` applies the choice after the remote overlay and before `starlight.local.yaml`
+(`safety.core_layer`, replacing values rather than merging, so a Strict limits table is
+the whole table), and `load_module_config` does the same for module files
+(`safety.module_layer`). Balanced writes nothing. A change on the page saves the file and
+then `safety.refresh` copies the freshly loaded values into the running config objects (the
+kernel's and the web app's, which the gate and the phone rules read) and into each running
+module's settings object, so most switches apply at once; the permission rules made tool by
+tool (`permissions.chat.yaml`) are applied again afterwards. Protections that used to be
+fixed in code now read these settings when they act: the path guard (`safepaths.use_rules`,
+fed the kernel's `output` settings while it runs; all on without one), the process
+sandbox (`protect_folders`, `block_programs`, set by the code module before each run and
+passed to `guard.py`), the gate (`require_pairing`, `allowed_origins`, with CORS answers and
+`frame-ancestors` for those pages only) and `Devices` (pairing minutes, wrong codes).
+Always on, by design: the kill switch, secret masking, the audit log, and that the safety
+limits change only at the PC (`POST /api/safety` is local only; a phone may read them).
+
 **Round 2.** `commands.shell` runs any command line (`powershell -NoProfile -Command` on
 Windows, `/bin/sh -c` elsewhere) through the same runner, kill-switch cleanup and output
 cap as named commands; it is CONFIRM, needs `shell: true` in commands.yaml, and is in

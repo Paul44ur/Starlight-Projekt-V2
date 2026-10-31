@@ -145,6 +145,8 @@ kill_switch:
   poll_interval: 0.2
 
 permissions:
+  # Most of what follows can also be set on the web chat's Settings page (Settings ->
+  # Safety limits, kept in starlight.safety.yaml, which wins over this file).
   # Glob patterns on tool names such as "hello.*" or "web.login".
   # auto_approve: run without asking; confirm: always ask; blocked: never run.
   # Example: let Starlight type and click without asking, but never run SSH commands:

@@ -105,6 +105,10 @@ class ProcessSandbox:
         self.work_root = work_root
         self.deny = [str(p.resolve()) for p in [*deny, *_ssh_folder()]]
         self.memory_mb = memory_mb
+        # Safety limits the code module sets before each run (Settings -> Safety limits):
+        # off, the code may read the denied folders and the vault, or start programs.
+        self.protect_folders = True
+        self.block_programs = True
         self._procs: set[asyncio.subprocess.Process] = set()
 
     def _env(self, folder: Path, network: bool) -> dict[str, str]:
@@ -121,7 +125,9 @@ class ProcessSandbox:
             "PYTHONIOENCODING": "utf-8",
             "STARLIGHT_SANDBOX": json.dumps(
                 {
-                    "deny": self.deny,
+                    "deny": self.deny if self.protect_folders else [],
+                    "protect": self.protect_folders,
+                    "programs": not self.block_programs,
                     "network": network,
                     "workdir": str(folder),
                     "memory_mb": self.memory_mb,

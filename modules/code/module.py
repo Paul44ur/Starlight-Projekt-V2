@@ -46,6 +46,10 @@ class Config(BaseModel):
     timeout: float = 60.0
     max_attempts: int = 4
     allow_network: bool = False  # tasks may still ask; this sets the default
+    # The process sandbox keeps Starlight's folder, ~/.ssh and the vault out, and starts
+    # no other programs (Settings -> Safety limits; Docker shows the code no folders anyway).
+    sandbox_protects_folders: bool = True
+    sandbox_blocks_programs: bool = True
 
 
 def parse_solution(text: str) -> dict[str, Any] | None:
@@ -88,6 +92,15 @@ class CodeModule(Module):
     async def shutdown(self) -> None:
         self.sandbox.kill_all()
 
+    def _limits(self) -> None:
+        """The sandbox follows the safety limits as they are now (they can change)."""
+        for name, value in (
+            ("protect_folders", self.config.sandbox_protects_folders),
+            ("block_programs", self.config.sandbox_blocks_programs),
+        ):
+            if hasattr(self.sandbox, name):  # (the process sandbox; Docker has no such switch)
+                setattr(self.sandbox, name, value)
+
     def _result(self, run: RunResult) -> dict[str, Any]:
         return {
             "ok": run.ok,
@@ -105,6 +118,7 @@ class CodeModule(Module):
     ) -> dict[str, Any]:
         """Run a Python snippet in the sandbox and return its output. Asks first."""
         self.ctx.kill_switch.check()
+        self._limits()
         run = await self.sandbox.run(
             {"main.py": code}, ["python", "main.py"], min(timeout, 600), network
         )
@@ -141,6 +155,7 @@ class CodeModule(Module):
                 "python test_main.py" if "test_main.py" in solution["files"] else "python main.py"
             )
             try:
+                self._limits()
                 run = await self.sandbox.run(
                     solution["files"], shlex.split(command), self.config.timeout, allowed
                 )

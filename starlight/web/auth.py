@@ -65,14 +65,14 @@ class Throttle:
 
     failures: dict[str, list[float]] = field(default_factory=dict)
 
-    def locked(self, client: str, now: float | None = None) -> bool:
+    def locked(self, client: str, now: float | None = None, limit: int = MAX_FAILURES) -> bool:
         moment = now or time.time()
         recent = [t for t in self.failures.get(client, []) if moment - t < LOCKOUT_SECONDS]
         if recent:
             self.failures[client] = recent
         else:
             self.failures.pop(client, None)  # no entry for a client that is in good standing
-        return len(recent) >= MAX_FAILURES
+        return len(recent) >= limit
 
     def fail(self, client: str, now: float | None = None) -> None:
         moment = now or time.time()
@@ -91,10 +91,24 @@ class Throttle:
 class Devices:
     """Paired devices and the one-time pairing code, stored under data/."""
 
-    def __init__(self, folder: Path) -> None:
+    def __init__(self, folder: Path, remote: Any = None) -> None:
         self.folder = folder
         self._lock = threading.Lock()
         self.throttle = Throttle()
+        # web.remote (RemoteConfig): pairing_minutes and max_wrong_codes, safety limits that
+        # can change while Starlight runs. None: the defaults.
+        self.remote = remote
+
+    @property
+    def code_seconds(self) -> int:
+        """How long a new pairing code works."""
+        minutes = getattr(self.remote, "pairing_minutes", None)
+        return int(minutes) * 60 if minutes else CODE_SECONDS
+
+    @property
+    def max_failures(self) -> int:
+        """Wrong codes from one device before it is locked out for a while."""
+        return int(getattr(self.remote, "max_wrong_codes", None) or MAX_FAILURES)
 
     # -- storage ---------------------------------------------------------------------------
 
@@ -116,14 +130,14 @@ class Devices:
         """A fresh one-time code (replaces any earlier one). Shown on the PC only."""
         code = f"{secrets.randbelow(1_000_000):06d}"
         self.folder.mkdir(parents=True, exist_ok=True)
-        data = {"hash": _hash(code), "expires": time.time() + CODE_SECONDS}
+        data = {"hash": _hash(code), "expires": time.time() + self.code_seconds}
         (self.folder / CODE_FILE).write_text(json.dumps(data), encoding="utf-8")
         return code
 
     def pair(self, code: str, name: str, client: str) -> str | None:
         """Exchange a valid code for a device token (returned once, never stored)."""
         with self._lock:
-            if self.throttle.locked(client):
+            if self.throttle.locked(client, limit=self.max_failures):
                 return None
             path = self.folder / CODE_FILE
             try:

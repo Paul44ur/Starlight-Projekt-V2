@@ -56,6 +56,9 @@ class Config(BaseModel):
     banner_bytes: int = Field(default=512, ge=0, le=MAX_BANNER)
     top_ports: int = Field(default=100, ge=1, le=len(COMMON))  # default breadth
     max_ports: int = Field(default=2048, ge=1, le=65535)  # hard cap per scan
+    # A host you allowed before asks again before each scan (Settings -> Safety limits).
+    # A host not allowed yet always asks, a public one with a warning.
+    ask_again_for_known: bool = True
 
 
 class ReconModule(Module):
@@ -121,6 +124,8 @@ class ReconModule(Module):
         """Make sure the user is allowed to scan this host before anything is sent."""
         known = self._allowed_hosts() | self._authorized()
         if target in known or ip in known:
+            if not self.config.ask_again_for_known:
+                return
             ok = await self.ctx.ui.confirm(
                 f"Scan {target} ({ip}) now? Ports: {ports_desc}. (You allowed this host before.)"
             )

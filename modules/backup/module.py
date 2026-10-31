@@ -28,7 +28,7 @@ from pydantic import BaseModel, Field, ValidationError
 from starlight.core import Module, ModuleContext, Permission, ToolError, tool
 from starlight.core.config import write_yaml_config
 from starlight.core.fsutil import replace_file
-from starlight.core.safepaths import expand, inside
+from starlight.core.safepaths import expand, inside, protects_starlight
 
 NAME = re.compile(r"^[a-z0-9][a-z0-9_-]{0,40}$")
 MANIFEST = "starlight-backup.json"
@@ -342,7 +342,7 @@ class BackupModule(Module):
         key, plan = self._set(name)
         archive_path = self._pick(key, plan, version)
         destination = expand(to)
-        if inside(destination, self.ctx.paths.root.resolve()):
+        if protects_starlight() and inside(destination, self.ctx.paths.root.resolve()):
             raise ToolError("Starlight's own folder is off-limits")
         return await asyncio.to_thread(self._restore, archive_path, destination, overwrite)
 

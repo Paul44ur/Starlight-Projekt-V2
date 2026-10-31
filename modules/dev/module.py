@@ -25,7 +25,7 @@ from pydantic import BaseModel, Field
 
 from starlight.core import Module, ModuleContext, Permission, ToolError, tool
 from starlight.core.model import Message
-from starlight.core.safepaths import expand, inside
+from starlight.core.safepaths import expand, inside, protects_starlight
 
 REVIEW = (
     "You review a code change (a git diff) like a careful senior colleague. List, most "
@@ -137,7 +137,7 @@ class DevModule(Module):
         return path
 
     def _writable(self, path: Path) -> None:
-        if inside(path, self.ctx.paths.root.resolve()):
+        if protects_starlight() and inside(path, self.ctx.paths.root.resolve()):
             raise ToolError("Starlight does not change its own folder; do that yourself")
 
     async def _git(self, repo: str, *args: str) -> str:

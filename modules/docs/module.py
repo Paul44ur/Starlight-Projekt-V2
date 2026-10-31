@@ -27,7 +27,7 @@ from pydantic import BaseModel, Field
 
 from starlight.core import KillSwitchEngaged, Message, Module, ModuleContext, ToolError, tool
 from starlight.core.config import ConfigError, write_yaml_config
-from starlight.core.safepaths import expand, inside
+from starlight.core.safepaths import expand, inside, protects_starlight
 from starlight.text import decode_text
 
 TEXT = {".txt", ".md", ".markdown", ".csv", ".log", ".json", ".yaml", ".yml", ".ini", ".rst"}
@@ -177,7 +177,11 @@ class DocsModule(Module):
             with contextlib.suppress(ConfigError, OSError):
                 roots.append(self.ctx.output_dir / "Notes")
         own = self.ctx.paths.root.resolve()
-        return [r for r in dict.fromkeys(roots) if r.is_dir() and not inside(r, own)]
+        return [
+            r
+            for r in dict.fromkeys(roots)
+            if r.is_dir() and not (protects_starlight() and inside(r, own))
+        ]
 
     def _files(self) -> Iterator[Path]:
         own = self.ctx.paths.root.resolve()
@@ -186,7 +190,7 @@ class DocsModule(Module):
         for root in self._roots():
             for folder, dirs, names in os.walk(root):
                 here = Path(folder)
-                if inside(here, own):
+                if protects_starlight() and inside(here, own):
                     dirs[:] = []
                     continue
                 dirs[:] = [d for d in dirs if d not in SKIP_DIRS and not d.startswith(".")]
@@ -409,7 +413,7 @@ class DocsModule(Module):
         folder = expand(path)
         if not folder.is_dir():
             raise ToolError(f"{folder} is not a folder")
-        if inside(folder, self.ctx.paths.root.resolve()):
+        if protects_starlight() and inside(folder, self.ctx.paths.root.resolve()):
             raise ToolError("Starlight's own folder is off-limits")
         if str(folder) in [str(expand(f)) for f in self.config.folders]:
             raise ToolError(f"{folder} is already in the knowledge base")

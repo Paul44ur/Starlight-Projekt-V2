@@ -21,7 +21,7 @@ from pydantic import BaseModel, Field
 
 from starlight.core import Module, ModuleContext, Permission, ToolError, tool
 from starlight.core.jsonfile import load_json, save_json
-from starlight.core.safepaths import PathGuard, expand
+from starlight.core.safepaths import PathGuard, asks_runnable, expand
 
 from .backends import AppsUnavailable, Backend, Program, Window, detect
 
@@ -183,7 +183,7 @@ class AppsModule(Module):
         target = found.path
         if not target.exists():
             raise ToolError(f"{target} does not exist")
-        if target.suffix.lower() in RUNNABLE:
+        if asks_runnable() and target.suffix.lower() in RUNNABLE:  # (a safety limit)
             raise ToolError(f"{target.name} is a program or script; use apps.open for programs")
         if not found.free and not await self.ctx.ui.confirm(f"Open {target}?"):
             raise ToolError("not confirmed")

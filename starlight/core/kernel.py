@@ -37,6 +37,7 @@ from starlight.core.modules import ModuleManager, Services
 from starlight.core.output import resolve_output_folder
 from starlight.core.paths import Paths
 from starlight.core.permissions import PermissionPolicy, apply_saved_rules, confirm_reason
+from starlight.core.safepaths import use_rules
 from starlight.core.situation import Situation
 from starlight.core.stats import Stats
 from starlight.core.toolroute import ToolRouter
@@ -270,6 +271,8 @@ class Kernel:
         return self._role_models[role]
 
     async def start(self) -> None:
+        # The folder rules modules follow (safety limits that can change while running).
+        use_rules(self.config.output)
         # First: is this the process that runs the webhook, watchers and heartbeat?
         self.services.primary = self.core_lock.acquire()
         if not self.services.primary:
@@ -689,6 +692,7 @@ class Kernel:
                 with contextlib.suppress(Exception):
                     await close_role()
         await self.modules.unload_all()
+        use_rules(None)
         self.kill_switch.stop_hotkey()
         if self._watcher is not None:
             self._watcher.cancel()
