@@ -18,7 +18,7 @@ command -v tesseract >/dev/null 2>&1 || echo "Optional: install tesseract-ocr fo
 command -v docker >/dev/null 2>&1 || echo "Optional: install Docker so generated code runs in a container."
 
 uv run starlight status
-uv run starlight logs scan || true
+uv run starlight logs scan || true  # exits 1 when it finds secrets: list them, finish the install
 
 if [[ "${1:-}" == "--service" ]]; then
     echo "Starting core and viewer with systemd --user..."

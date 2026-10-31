@@ -30,7 +30,7 @@ from starlight.core.tools import Tool, make_tool
 from starlight.memory.embed import Embedder, HashEmbedder
 from starlight.memory.store import slugify
 from starlight.skills.git import GitError, SkillHistory
-from starlight.skills.store import Skill, SkillStore
+from starlight.skills.store import Skill, SkillStore, today
 
 MODULE = "skills"
 IGNORED_TOOLS = ("memory.", "skills.")
@@ -178,7 +178,7 @@ class SkillManager:
             instructions=instructions.strip(),
             status="draft",
             version=existing.version + 1 if existing else 1,
-            created=existing.created if existing else Skill("", "", "").created,
+            created=existing.created if existing else today(),
             source=source,
             triggers=triggers or [],
             tools=tools or [],
@@ -194,7 +194,7 @@ class SkillManager:
         skill = self.store.get(name)
         if skill is None:
             raise KeyError(f"no skill named '{name}'")
-        updated = replace(skill, status=status, updated=Skill("", "", "").updated)  # type: ignore[arg-type]
+        updated = replace(skill, status=status, updated=today())  # type: ignore[arg-type]
         self.store.write(updated)
         self._commit(f"{status} {skill.name} v{skill.version}", skill.name)
         return updated
@@ -271,7 +271,7 @@ class SkillManager:
         if revision is None:
             if len(log) < 2:
                 raise KeyError(f"'{slug}' has no earlier version")
-            revision = log[1][0]
+            revision, _date, _message = log[1]  # newest first: the version before the last
         folder = self.store.folder(slug)
         backup = folder.with_name(folder.name + ".rollback")
         if folder.exists():
@@ -373,6 +373,7 @@ class SkillManager:
             }
         code: dict[str, str] = {}
         for result in results:  # keep code that was written and tested in the sandbox
+            # the result of code.write_code (modules/code/module.py): {"success", "files", ...}
             output = getattr(result, "output", None)
             if isinstance(output, dict) and output.get("success") and output.get("files"):
                 code.update({str(k): str(v) for k, v in output["files"].items()})

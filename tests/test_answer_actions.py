@@ -154,7 +154,7 @@ def test_a_conversation_downloads_as_markdown(tmp_path: Path) -> None:
     assert "**You:**\n\nGrüße aus Wien 日本" in got.text
     assert "**Starlight:**\n\nYou said: Grüße aus Wien 日本" in got.text
     disposition = got.headers["content-disposition"]
-    assert 'filename="Grue aus Wien.md"' in disposition  # plain ASCII for old browsers
+    assert 'filename="Grusse aus Wien.md"' in disposition  # plain ASCII for old browsers
     assert unquote(disposition.split("filename*=UTF-8''")[1]) == "Grüße aus Wien 日本.md"
     assert missing.status_code == 404
 

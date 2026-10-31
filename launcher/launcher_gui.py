@@ -5,8 +5,12 @@ choose the model and options, a progress page while things download, and a statu
 with buttons while Starlight runs. It drives the same code as the text version through the
 launcher's ``Ui`` interface, so what happens is identical; only how it is shown differs.
 
-Everything that touches tkinter runs on the main thread. The work (downloads, starting
-programs) runs in a worker thread that only talks to the window through a queue.
+Everything that touches tkinter runs on the main thread. Slow work runs in short daemon
+threads (setup, lookups, hf, poll, restart, restart-model, kill, shutdown, and one per
+`starlight` command) that report by putting (name, *args) on App.events (see App._pump).
+A few plain attributes are shared without a lock: App.services (set by the setup thread
+before it posts "running", cleared by _stop_services) and App._poll_busy (cleared by the
+poll thread).
 """
 
 from __future__ import annotations
@@ -397,7 +401,7 @@ class GuiUi:
     """The launcher's Ui for the window: everything goes into a queue the window reads."""
 
     captures_output = True
-    assume_yes = True  # the setup page was the question; nothing else is asked
+    assume_yes = True  # the setup page asked everything; launcher questions get their default
 
     def __init__(self, events: queue.Queue[tuple[Any, ...]], log: Path | None = None) -> None:
         self.events = events
@@ -436,11 +440,7 @@ class GuiUi:
         self.events.put(("note", f"{tr(title)}\n\n{text}"))
 
     def ask(self, question: str, default: bool) -> bool:
-        if self.assume_yes:
-            return default
-        reply: queue.Queue[bool] = queue.Queue(maxsize=1)
-        self.events.put(("ask", question, default, reply))
-        return reply.get()
+        return default  # (no second question in a box: see assume_yes)
 
 
 def rounded_rect(canvas: tk.Canvas, x0: float, y0: float, x1: float, y1: float, r: float,
@@ -570,6 +570,7 @@ class App:
         self.root = tk.Tk()  # raises TclError when there is no screen
         self.root.withdraw()
         self.c = LIGHT if system_uses_light_theme() else DARK
+        # 96 dots per inch is 100 %. px() scales pixel sizes; fonts in points scale by themselves.
         self.scale = max(1.0, self.root.winfo_fpixels("1i") / 96)
         self.services: Any = None
         self.group: Any = None
@@ -592,7 +593,7 @@ class App:
         except launcher.LauncherError as exc:
             self.fatal = str(exc)
             self.settings = launcher.Settings(root=Path.cwd())
-        self.settings.assume_yes = True  # the setup page is the question
+        self.settings.assume_yes = True  # (maybe_tesseract: the setup page offered OCR)
         self.ui = GuiUi(self.events, self.settings.root / "logs" / "launcher.log")
         self.root.report_callback_exception = self._callback_failed
         self._init_window()
@@ -616,8 +617,9 @@ class App:
         if sys.platform == "win32":
             import ctypes
 
-            with contextlib.suppress(Exception):
-                ctypes.windll.shcore.SetProcessDpiAwareness(1)
+            process_system_dpi_aware = 1  # sharp text; must come before tk.Tk()
+            with contextlib.suppress(Exception):  # (Windows without shcore)
+                ctypes.windll.shcore.SetProcessDpiAwareness(process_system_dpi_aware)
 
     def px(self, value: int) -> int:
         return int(value * self.scale)
@@ -627,7 +629,7 @@ class App:
         root.title("Starlight")
         root.configure(bg=self.c.bg)
         with contextlib.suppress(tk.TclError):
-            root.iconphoto(True, tk.PhotoImage(data="".join(ICON_PNG)))
+            root.iconphoto(True, tk.PhotoImage(data=ICON_PNG))
         # Never bigger than the screen: a scaled laptop screen would hide the buttons at the
         # bottom. The title bar and the taskbar take about 100 px; the pages scroll instead.
         width = min(self.px(820), root.winfo_screenwidth() - 40)
@@ -873,6 +875,8 @@ class App:
 
     # -- setup page -----------------------------------------------------------------------------
 
+    # The download size of each preset in GB, until the real one is known (self.sizes).
+    # Not the video memory a model needs: that is launcher MODEL_INFO.
     APPROX_GB: ClassVar[dict[str, float]] = {
         "qwen14b-uncensored": 9.0,
         "qwen14b": 9.0,
@@ -1004,7 +1008,8 @@ class App:
             ),
             (self.voice_var, "Speech: talk to Starlight and hear its answers (adds about 0.6 GB)"),
         ]
-        if sys.platform == "win32" and not self._tesseract_installed():
+        self.has_ocr_option = sys.platform == "win32" and not self._tesseract_installed()
+        if self.has_ocr_option:
             rows.append(
                 (
                     self.ocr_var,
@@ -1026,7 +1031,6 @@ class App:
                 self.gpu_check = check  # off with LM Studio: it decides where the model runs
             if variable is self.think_var:
                 self.think_check = check  # only for the models that think first
-        self.has_ocr_option = any(variable is self.ocr_var for variable, _ in rows)
         self.autostart_var = tk.BooleanVar(value=False)
         next_row = len(rows) + 1
         if sys.platform == "win32":
@@ -1200,10 +1204,7 @@ class App:
         self._refresh_cards()
 
     def _tesseract_installed(self) -> bool:
-        import shutil
-
-        installed = Path(r"C:\Program Files\Tesseract-OCR\tesseract.exe").exists()
-        return bool(shutil.which("tesseract")) or installed
+        return bool(self.L.tesseract_found())
 
     def _current_model_key(self) -> str:
         if self.settings.model_server == "lmstudio":
@@ -1635,22 +1636,22 @@ class App:
         need = 0.0
         gone = False  # the chosen model's download link does not work
         if not self._installed():
-            need += 1.6 * gb
+            need += self.L.FIRST_RUN_SIZE
         key = self.model_var.get()
         if self.settings.use_model and key != LMSTUDIO:
             if not self._installed():
-                need += 0.2 * gb
+                need += self.L.LLAMA_SIZE
             if key and not self._model_file_of(key).is_file():
                 known = self.sizes.get(self._model_url_of(key))
                 need += known if known else self.APPROX_GB.get(key, 9.0) * gb
                 gone = self._model_url_of(key) in self.missing
         if self.voice_var.get():
-            need += 0.6 * gb
+            need += self.L.VOICE_SIZE
         try:
             free = shutil.disk_usage(self.settings.root).free
         except OSError:
-            free = 10**15
-        enough = free >= need + gb
+            free = 10**15  # unknown: do not block the button
+        enough = free >= need + self.L.SPARE_SPACE
         if need <= 0:
             text = "Nothing to download."
         else:
@@ -1725,7 +1726,7 @@ class App:
         if settings.use_model and key not in ("custom", LMSTUDIO):
             settings.model_url = L.MODEL_PRESETS[key]
             choices["model"] = key
-            drop = ("model_url",)
+            drop = ("model_url",)  # a saved model_url would win over "model" (load_settings)
         elif settings.use_model and key == "custom":
             choices["model_url"] = settings.model_url
             drop = ("model",)
@@ -1872,18 +1873,16 @@ class App:
     def on_waiting(self, text: str) -> None:
         self.p_sub.configure(text=text)
 
+    MAX_LOG_LINES = 1500  # the progress page's output box keeps the newest lines
+
     def on_say(self, text: str) -> None:
         self.log_text.configure(state="normal")
         self.log_text.insert("end", text + "\n")
-        lines = int(self.log_text.index("end-1c").split(".")[0])
-        if lines > 1500:
-            self.log_text.delete("1.0", f"{lines - 1500}.0")
+        lines = int(self.log_text.index("end-1c").split(".")[0])  # Tk index "line.column"
+        if lines > self.MAX_LOG_LINES:
+            self.log_text.delete("1.0", f"{lines - self.MAX_LOG_LINES}.0")
         self.log_text.see("end")
         self.log_text.configure(state="disabled")
-
-    def on_ask(self, question: str, default: bool, reply: queue.Queue[bool]) -> None:
-        answer = messagebox.askyesno("Starlight", question, default="yes" if default else "no")
-        reply.put(bool(answer))
 
     # -- starting -------------------------------------------------------------------------------
 
@@ -1905,7 +1904,7 @@ class App:
             installed = L.setup(self.settings, self.ui)
             services = L.Services(self.settings, self.ui, installed, group=self.group)
             services.start()
-            self.services = services
+            self.services = services  # before "running": on_running polls it
             self.events.put(("running",))
             L.tell_whats_new(self.settings.root, self.ui)  # once, after an update
         except L.LauncherError as exc:
@@ -1931,7 +1930,7 @@ class App:
                 self.on_error(self.fatal)
                 return
             self.fatal = ""
-            settings.assume_yes = True  # the setup page is the question
+            settings.assume_yes = True  # (maybe_tesseract: the setup page offered OCR)
             self.settings = settings
             self.ui.log = settings.root / "logs" / "launcher.log"
             self.pages["setup"].destroy()
@@ -2170,17 +2169,21 @@ class App:
         status = getattr(self, "last_status", None)
         if status is None or status.kill is None:
             return
+        services = self.services  # ("Save and restart" may clear it before the thread runs)
+        if services is None:
+            return
         engage = not status.kill
         threading.Thread(
-            target=lambda: self.services.set_kill_switch(engage), name="kill", daemon=True
+            target=lambda: services.set_kill_switch(engage), name="kill", daemon=True
         ).start()
 
     def restart_model(self) -> None:
-        if self.services is None:
+        services = self.services  # ("Save and restart" may clear it before the thread runs)
+        if services is None:
             return
         status = getattr(self, "last_status", None)
         if status is not None and status.model == "paused":  # the button says Resume now
-            self.services.resume_model()
+            services.resume_model()
             return
 
         def restart() -> None:
@@ -2188,7 +2191,7 @@ class App:
                 problem = self.L.reload_in_lmstudio(self.settings)
                 if problem:
                     self.events.put(("note", f"The model was not reloaded: {problem}"))
-            elif not self.services.restart_model():
+            elif not services.restart_model():
                 self.events.put(
                     (
                         "note",
@@ -2353,19 +2356,15 @@ class App:
     def on_error(self, message: str, details: str = "") -> None:
         self.polling = False
         self.err_message.configure(text=message)
-        log_tail = ""
+        # The message shows above; the box holds the details and the last lines of the log
+        # (what GuiUi wrote), and "Copy details" copies all three.
+        parts = [details] if details else []
         with contextlib.suppress(OSError):
-            lines = (
-                (self.settings.root / "logs" / "launcher.log")
-                .read_text(encoding="utf-8")
-                .splitlines()
-            )
-            log_tail = "\n".join(lines[-25:])
-        # The message shows above; the box holds the details and the log behind it, and
-        # "Copy details" copies all three.
-        extra = "\n\n".join(
-            part for part in (details, log_tail and "Recent log:\n" + log_tail) if part
-        )
+            if self.ui.log is not None:
+                lines = self.ui.log.read_text(encoding="utf-8").splitlines()[-25:]
+                if lines:
+                    parts.append("Recent log:\n" + "\n".join(lines))
+        extra = "\n\n".join(parts)
         self.err_report = "\n\n".join(part for part in (message, extra) if part)
         self.err_text.configure(state="normal")
         self.err_text.delete("1.0", "end")
@@ -2416,7 +2415,11 @@ class App:
     # -- the loop -------------------------------------------------------------------------------
 
     def _pump(self) -> None:
-        """Handle what the worker threads reported."""
+        """Handle what the threads reported, then look again in 60 ms (the finally re-arms
+        the timer even if something raised). An event is (name, *args) and goes to
+        on_<name>: say, step, progress, waiting, note (GuiUi); lmstudio_found, gpu, size,
+        missing, begin, running, status, note_quiet, doctor, error, exit (App's threads). A
+        name without a method is dropped."""
         try:
             while not self.exited:
                 event = self.events.get_nowait()
@@ -2477,7 +2480,11 @@ class App:
 
 
 def run(launcher: Any, args: Any) -> int | None:
-    """Show the window. None: there is no screen to show it on."""
+    """Show the window. None: there is no screen to show it on.
+
+    launcher is the starlight_launcher module itself: in Starlight.exe it runs as __main__,
+    so importing it here would load a second copy. GuiUi must offer every method the
+    launcher calls on its Ui."""
     try:
         app = App(launcher, args)
     except tk.TclError:

@@ -34,6 +34,9 @@ ANSWER = "\x1b[32m"
 RESET = "\x1b[0m"
 
 
+BOLD_YELLOW = "1;33"  # the terminal (ANSI SGR) code questions are shown in
+
+
 class ChatView:
     """How the chat looks. Also the UserIO the core asks through, so confirmations,
     questions and notices match the rest of the chat."""
@@ -56,17 +59,17 @@ class ChatView:
         if not console.interactive():
             return False
         self._print_question(question)
-        hint = self._style("  [y]es / [n]o: ", "1;33")
+        hint = self._style("  [y]es / [n]o: ", BOLD_YELLOW)
         answer = (await console.lines.read(console.answer, hint)).strip().lower()
-        return answer in ("y", "yes", "j", "ja")
+        return answer in console.YES
 
     async def _permission(self, question: str) -> str:
         self._print_question(question)
-        hint = self._style("  [y]es / [n]o / [a]lways this session: ", "1;33")
+        hint = self._style("  [y]es / [n]o / [a]lways this session: ", BOLD_YELLOW)
         answer = (await console.lines.read(console.answer, hint)).strip().lower()
         if answer in ("a", "always"):
             return "always"
-        return "yes" if answer in ("y", "yes", "j", "ja") else "no"
+        return "yes" if answer in console.YES else "no"
 
     async def ask(self, question: str, secret: bool = False) -> str | None:
         if not console.interactive():
@@ -75,8 +78,12 @@ class ChatView:
 
         if secret:
             console.drop_typeahead()
-            return await console.lines.read(getpass.getpass, self._style(f"\n{question}: ", "1;33"))
-        answer = await console.lines.read(console.answer, self._style(f"\n{question}: ", "1;33"))
+            return await console.lines.read(
+                getpass.getpass, self._style(f"\n{question}: ", BOLD_YELLOW)
+            )
+        answer = await console.lines.read(
+            console.answer, self._style(f"\n{question}: ", BOLD_YELLOW)
+        )
         return answer.strip() or None
 
     async def notify(self, text: str) -> None:

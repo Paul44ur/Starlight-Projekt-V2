@@ -228,8 +228,11 @@ const idleHint = () => (narrow.matches ? "Ask Starlight…" : HINT);
 input.placeholder = idleHint();
 narrow.addEventListener("change", () => { if (!recorder) input.placeholder = idleHint(); });
 const connPill = document.getElementById("conn");
+// current: the .body element of the answer being written into (null between answers);
+// answering: the id of the conversation that answer belongs to (null when none).
 let ws, current = null, conversation = null, lastQuestion = null, attached = [];
 let answering = null, regenPending = false, resync = false;  // see handle() and connect()
+const INPUT_HEIGHT = 44, INPUT_MAX_HEIGHT = 180;  // px: #input's min- and max-height above
 
 function atBottom() { return log.scrollHeight - log.scrollTop - log.clientHeight < 80; }
 function scroll() { log.scrollTop = log.scrollHeight; }
@@ -317,6 +320,8 @@ function sendEdit(text) {
   const old = question.querySelector(".body").textContent;
   let answer = question.nextElementSibling;
   while (answer && !answer.classList.contains("bot")) answer = answer.nextElementSibling;
+  // kept: the server saved this answer; regen: it holds the earlier one while a new one is
+  // asked. Either way the exchange is on the server, so the edit is sent as a regenerate.
   const kept = answer && (answer.dataset.kept || answer.dataset.regen);
   while (question.nextElementSibling) question.nextElementSibling.remove();
   question.remove();
@@ -352,7 +357,7 @@ function regenerate(msg) {
   const answers = log.querySelectorAll(".msg.bot");
   if (msg !== answers[answers.length - 1]) { toast("Only the latest answer can be regenerated"); return; }
   if (current || answering) { toast("Wait until this answer is finished"); return; }
-  if (!ws || ws.readyState !== 1) { toast("Not connected"); return; }
+  if (!ws || ws.readyState !== WebSocket.OPEN) { toast("Not connected"); return; }
   let q = msg.previousElementSibling;
   while (q && !q.classList.contains("you")) q = q.previousElementSibling;
   const question = q ? q.querySelector(".body").textContent : "";
@@ -462,7 +467,9 @@ function thoughtsDone(body) {
 
 // The conversation an answer is coming for: if you open another one meanwhile, its words
 // are not shown there (open the first one again to see the answer).
-function elsewhere(m) { return answering && answering !== conversation; }
+// The answer being written is for another conversation than the one open (by `answering`,
+// set at "start": token, stopped and error messages carry no conversation of their own).
+function answerIsElsewhere() { return answering && answering !== conversation; }
 function handle(m) {
   if (m.type === "start") {
     if (!conversation) conversation = m.conversation;
@@ -472,21 +479,21 @@ function handle(m) {
     if (regenPending) current.parentElement.dataset.regen = "1";
   }
   else if (m.type === "tool") {
-    if (elsewhere(m)) return;
+    if (answerIsElsewhere()) return;
     if (!current) { current = addMsg("bot", ""); waitFor(current); }
     toolStep(current, m.tool, m.state, m.ms, m.error);
   }
   else if (m.type === "thought") {
-    if (elsewhere(m)) return;
+    if (answerIsElsewhere()) return;
     if (!current) { current = addMsg("bot", ""); waitFor(current); }
     addThought(current, m.text);
   }
   else if (m.type === "token") {
-    if (elsewhere(m)) return;
+    if (answerIsElsewhere()) return;
     if (!current) current = addMsg("bot", ""); doneWaiting(current);
     addToAnswer(current, m.text);
   }
-  else if (m.type === "answer" && elsewhere(m)) { answering = null; regenPending = false; current = null; loadList(); }
+  else if (m.type === "answer" && answerIsElsewhere()) { answering = null; regenPending = false; current = null; loadList(); }
   else if (m.type === "answer") {
     // The final answer replaces what streamed in: it is the cleaned one (a reply cut
     // where the model started repeating itself may have streamed a little too far).
@@ -511,14 +518,14 @@ function handle(m) {
   else if (m.type === "stopped") {
     doneWaiting(current); toolsDone(current);
     if (editPending) { editPending = false; setTimeout(() => open(conversation), 300); }
-    if (!elsewhere(m)) addSys("[stopped]");
+    if (!answerIsElsewhere()) addSys("[stopped]");
     current = null; answering = null; regenPending = false;
   }
   else if (m.type === "error") {
     if (talk) talk.waiting = false;
     doneWaiting(current); toolsDone(current);
     if (editPending) { editPending = false; setTimeout(() => open(conversation), 1500); }
-    if (!elsewhere(m)) {
+    if (!answerIsElsewhere()) {
       const b = addMsg("bot", "⚠ " + m.text, null, true); b.style.color = "var(--bad)";
       if (regenPending) b.parentElement.dataset.regen = "1";
     }
@@ -558,7 +565,7 @@ function showPrompt(m) {
 }
 
 function ask(text, files) {
-  if (!ws || ws.readyState !== 1) { toast("Not connected yet"); return; }
+  if (!ws || ws.readyState !== WebSocket.OPEN) { toast("Not connected yet"); return; }
   lastQuestion = text;
   asking = true; syncSend();
   addMsg("you", text, files.map(f => f.name));
@@ -635,10 +642,10 @@ document.getElementById("form").onsubmit = (e) => {
   const text = input.value.trim();
   if (!text) return;
   if (text.startsWith("/") && runCommand(text)) { input.value = ""; input.oninput(); return; }
-  if (editing) { input.value = ""; input.style.height = "44px"; sendEdit(text); return; }
+  if (editing) { input.value = ""; input.style.height = INPUT_HEIGHT + "px"; sendEdit(text); return; }
   const files = attached; attached = []; showFiles();
   document.getElementById("photo-actions").hidden = true;
-  input.value = ""; input.style.height = "44px";
+  input.value = ""; input.style.height = INPUT_HEIGHT + "px";
   ask(text, files);
 };
 input.onkeydown = (e) => {
@@ -671,11 +678,12 @@ input.onkeydown = (e) => {
   }
 };
 input.oninput = () => {
-  input.style.height = "44px"; input.style.height = Math.min(input.scrollHeight, 180) + "px";
+  input.style.height = INPUT_HEIGHT + "px";  // shrink first, then grow with the text
+  input.style.height = Math.min(input.scrollHeight, INPUT_MAX_HEIGHT) + "px";
   if (!input.value.startsWith("/")) slashSel = 0;
   slashMenu();
 };
-function stopAnswer() { if (ws && ws.readyState === 1) ws.send(JSON.stringify({ type: "stop" })); }
+function stopAnswer() { if (ws && ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ type: "stop" })); }
 // While an answer is being written, the Send button stops it.
 let asking = false;  // a question was sent and its answer has not begun yet
 function busy() { return Boolean(asking || current || answering); }
@@ -772,19 +780,27 @@ async function startRecording() {
     return wav(chunks, rate);
   } };
 }
+// A WAV file: a 44-byte RIFF header, then 16 kHz mono 16-bit samples (what whisper reads).
+const WAV_RATE = 16000, WAV_BYTES = 2, WAV_HEADER = 44;
 function wav(chunks, rate) {
   const all = new Float32Array(chunks.reduce((n, c) => n + c.length, 0));
   let at = 0; chunks.forEach(c => { all.set(c, at); at += c.length; });
-  const ratio = rate / 16000, length = Math.floor(all.length / ratio);
-  const buffer = new ArrayBuffer(44 + length * 2), view = new DataView(buffer);
-  const text = (o, s) => [...s].forEach((ch, i) => view.setUint8(o + i, ch.charCodeAt(0)));
-  text(0, "RIFF"); view.setUint32(4, 36 + length * 2, true); text(8, "WAVEfmt ");
-  view.setUint32(16, 16, true); view.setUint16(20, 1, true); view.setUint16(22, 1, true);
-  view.setUint32(24, 16000, true); view.setUint32(28, 32000, true); view.setUint16(32, 2, true);
-  view.setUint16(34, 16, true); text(36, "data"); view.setUint32(40, length * 2, true);
+  const ratio = rate / WAV_RATE, length = Math.floor(all.length / ratio);  // resampled
+  const size = length * WAV_BYTES;
+  const buffer = new ArrayBuffer(WAV_HEADER + size), view = new DataView(buffer);
+  const writeAscii = (o, s) => [...s].forEach((ch, i) => view.setUint8(o + i, ch.charCodeAt(0)));
+  writeAscii(0, "RIFF"); view.setUint32(4, WAV_HEADER - 8 + size, true); writeAscii(8, "WAVEfmt ");
+  view.setUint32(16, 16, true);  // the fmt chunk's length
+  view.setUint16(20, 1, true);  // PCM
+  view.setUint16(22, 1, true);  // mono
+  view.setUint32(24, WAV_RATE, true);  // samples per second
+  view.setUint32(28, WAV_RATE * WAV_BYTES, true);  // bytes per second
+  view.setUint16(32, WAV_BYTES, true);  // bytes per sample (all channels)
+  view.setUint16(34, WAV_BYTES * 8, true);  // bits per sample
+  writeAscii(36, "data"); view.setUint32(40, size, true);
   for (let i = 0; i < length; i++) {
     const v = Math.max(-1, Math.min(1, all[Math.floor(i * ratio)]));
-    view.setInt16(44 + i * 2, v < 0 ? v * 0x8000 : v * 0x7fff, true);
+    view.setInt16(WAV_HEADER + i * WAV_BYTES, v < 0 ? v * 0x8000 : v * 0x7fff, true);
   }
   return new Blob([buffer], { type: "audio/wav" });
 }
@@ -1070,6 +1086,7 @@ async function refresh() {
     const paused = document.getElementById("paused");
     paused.hidden = !s.paused;
     if (s.paused) paused.title = `Game mode (${s.paused}): the model is off the graphics card. Press to bring it back now`;
+    // the access module's status tool (modules/access/module.py), read by /api/status
     fill("servers", s.access.servers || []); fill("logins", s.access.login_sites || []); fill("secrets", s.access.secrets || []);
     document.getElementById("saves").textContent = s.saves_files || "";
     const waiting = document.getElementById("waiting");

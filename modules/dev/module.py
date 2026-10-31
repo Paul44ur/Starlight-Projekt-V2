@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import ipaddress
 import os
 import re
 import shutil
@@ -35,6 +36,14 @@ REVIEW = (
 REVIEW_CHARS = 40000  # of the diff the model reads
 
 CONTAINER = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$")
+
+
+def _loopback(address: str) -> bool:
+    """127.0.0.1, ::1 - and the rest of 127.0.0.0/8 (127.0.0.53, 127.0.1.1): this PC only."""
+    try:
+        return ipaddress.ip_address(address.split("%")[0]).is_loopback
+    except ValueError:
+        return False
 
 
 class Config(BaseModel):
@@ -82,7 +91,12 @@ class DevModule(Module):
         found = shutil.which(program)
         if found is None:
             raise ToolError(f"'{program}' is not installed (or not on PATH)")
-        env = {**os.environ, "GIT_TERMINAL_PROMPT": "0", "GIT_PAGER": "cat", "LC_ALL": "C"}
+        env = {
+            **os.environ,
+            "GIT_TERMINAL_PROMPT": "0",  # never wait for a password typed in a terminal
+            "GIT_PAGER": "cat",  # output comes back whole, not through `less`
+            "LC_ALL": "C",  # English messages, whatever the PC's language: errors are shown
+        }
         flags = 0x08000000 if sys.platform == "win32" else 0  # no console window
         process = await asyncio.create_subprocess_exec(
             found, *args, env=env, creationflags=flags,
@@ -141,9 +155,11 @@ class DevModule(Module):
         """The branch, how far ahead/behind it is, and the changed files of a repository
         (a folder path or a name from dev.repos)."""
         out = await self._git(repo, "status", "--porcelain=v1", "--branch")
+        # porcelain v1: "## branch...upstream [ahead 1, behind 2]" first, then one line per
+        # file: two status letters, a space, the path
         lines = out.splitlines()
-        branch = lines[0][3:] if lines and lines[0].startswith("## ") else ""
-        changes = [{"state": line[:2].strip() or "?", "file": line[3:]} for line in lines[1:]]
+        branch = lines[0].removeprefix("## ") if lines and lines[0].startswith("## ") else ""
+        changes = [{"state": line[:2].strip(), "file": line[3:]} for line in lines[1:]]
         return {"branch": branch, "clean": not changes, "changes": changes[:300]}
 
     @tool
@@ -201,7 +217,8 @@ class DevModule(Module):
         out = await self._git(repo, "branch", "--format=%(HEAD)|%(refname:short)|%(upstream:short)")
         branches = []
         for line in out.splitlines():
-            head, name, upstream = [*line.split("|"), "", ""][:3]
+            fields = [*line.split("|"), "", ""]  # (a branch without an upstream: "*|main|")
+            head, name, upstream = fields[:3]
             branches.append({"name": name, "current": head == "*", "tracks": upstream})
         return {"branches": branches}
 
@@ -313,9 +330,7 @@ class DevModule(Module):
                 "address": conn.laddr.ip,
                 "program": program,
                 "pid": conn.pid,
-                "reachable_from": "this PC only"
-                if conn.laddr.ip in ("127.0.0.1", "::1")
-                else "the network",
+                "reachable_from": "this PC only" if _loopback(conn.laddr.ip) else "the network",
             }
         found = sorted(listening.values(), key=lambda r: (r["port"], r["address"]))
         if port and not found:

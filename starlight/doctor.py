@@ -306,8 +306,11 @@ def check_keyring() -> Check:
         backend = keyring.get_keyring()
     except Exception as exc:
         return warn("password store", f"unavailable ({exc})", "mail/login passwords can't be saved")
-    name = type(backend).__name__
-    if "fail" in name.lower() or "null" in name.lower():
+    # The class is "Keyring" in every backend; its module says which one it is
+    # (keyring.backends.fail / .null: nothing can be stored).
+    module = type(backend).__module__
+    name = f"{module.rsplit('.', 1)[-1]} {type(backend).__name__}"
+    if module.endswith((".fail", ".null")):
         return warn(
             "password store",
             f"no usable keyring ({name})",

@@ -33,6 +33,8 @@ jobs:
         with:
           python-version: "3.12"
       - name: Build Starlight.exe
+        # --icon needs a full path: PyInstaller reads it relative to --specpath.
+        # --hidden-import launcher_gui: imported inside run_window, so PyInstaller can't see it.
         run: >
           uvx --python 3.12 pyinstaller --onefile --console --clean --noconfirm
           --name Starlight --distpath dist --workpath build/pyinstaller
@@ -43,11 +45,13 @@ jobs:
       - name: The setup window can be built (tkinter is inside the exe)
         run: dist\Starlight.exe --gui-selftest
       - name: The default model link works and has a checksum
+        # The default model is about 9 GB: below 5 GB the link gave something else (an error page).
         run: >
           uv run --no-project python -c "import sys; sys.path.insert(0, 'launcher');
           import starlight_launcher as L; r = L.probe(L.DEFAULT_MODEL_URL); print(L.DEFAULT_MODEL_URL, r);
           assert r.size and r.size > 5e9 and r.sha256, 'default model link is broken'"
       - name: Every model preset link works
+        # The smallest preset (qwen7b) is about 4.7 GB: below 3 GB the link gave something else.
         run: >
           uv run --no-project python -c "import sys; sys.path.insert(0, 'launcher');
           import starlight_launcher as L; rs = {n: L.probe(u) for n, u in L.MODEL_PRESETS.items()}; print(rs);
@@ -66,6 +70,8 @@ jobs:
             --ask "Do not use any tools. Reply with one short friendly sentence." `
             | Tee-Object -FilePath launcher-output.txt
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          # starlight/core/agent.py answers "The model (...) is not available: ..." when the
+          # server is down (ask also exits 1 then, caught above). Keep in step with that text.
           if (Select-String -Path launcher-output.txt -Pattern "is not available") {
             throw "the model server did not answer"
           }
@@ -80,11 +86,16 @@ jobs:
             -RedirectStandardOutput chat-run-out.txt -RedirectStandardError chat-run-err.txt `
             -ArgumentList @("--yes", "--variant", "cpu", "--no-viewer", "--context", "16384", "--model-url", "https://huggingface.co/Qwen/Qwen2.5-0.5B-Instruct-GGUF/resolve/main/qwen2.5-0.5b-instruct-q4_k_m.gguf")
           try {
+            # (.venv: made by Starlight.exe --yes in the step before)
             .\.venv\Scripts\python.exe scripts\e2e_chat.py
             if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           } finally {
+            # Stop Starlight.exe and all it started (/T the whole tree, /F forced). taskkill
+            # exits non-zero when part of the tree has ended already, and GitHub ends a pwsh
+            # step with the last exit code: reset it. A failing e2e_chat.py already left
+            # through `exit` above, and that code is kept.
             taskkill /F /T /PID $app.Id 2>$null | Out-Null
-            $global:LASTEXITCODE = 0  # (parts of the tree may have ended already)
+            $global:LASTEXITCODE = 0
           }
       - name: Chat run output
         if: always()
@@ -118,6 +129,7 @@ jobs:
         run: |
           name="Starlight-${VERSION}-windows.zip"
           git archive --format=zip --prefix=Starlight/ -o "$name" HEAD
+          # The exe goes in as Starlight/Starlight.exe, next to the files git archive added
           mkdir -p pkg/Starlight && cp dist/Starlight.exe pkg/Starlight/
           (cd pkg && zip -q "../$name" Starlight/Starlight.exe)
       - uses: softprops/action-gh-release@v2

@@ -53,6 +53,14 @@ _ROLE_LINE = re.compile(rf"\n{_STRAY}{{0,4}}[ \t]*(?:user|assistant|system)[ \t]
 # times. Saying something twice (a function, then the whole file) is not a loop.
 REPEAT = 200
 LOOPS = 3
+# How loops are looked for: a passage of REPEAT characters is tried every SCAN_STRIDE
+# characters (_cut_loop then walks back to where the loop really began); a passage of fewer
+# than MIN_DISTINCT_CHARS different characters (a ===== rule) is never a loop; while
+# streaming, the end is looked at again after every LOOP_CHECK_EVERY new characters.
+SCAN_STRIDE = 20
+MIN_DISTINCT_CHARS = 20
+LOOP_CHECK_EVERY = 40
+REPLACEMENT_CHAR = "\ufffd"  # what a broken UTF-8 byte sequence decodes to: dropped
 
 # A tool call that is still being written is looked at again after this many new characters
 # (a very long call is otherwise scanned from its start at every piece).
@@ -95,13 +103,13 @@ def cut_at_turn_end(text: str) -> str:
     looped = cut_repetition(text)
     if looped is not None:
         text = looped
-    return text.replace("�", "")
+    return text.replace(REPLACEMENT_CHAR, "")
 
 
 def cut_repetition(text: str, size: int = REPEAT, loops: int = LOOPS) -> str | None:
     """The text up to the second turn of a loop - a passage of at least ``size`` characters
     said ``loops`` times in a row - or None when the text does not go round like that."""
-    for start in range(0, len(text) - size * loops + 1, 20):
+    for start in range(0, len(text) - size * loops + 1, SCAN_STRIDE):
         if _loops_at(text, start, size, loops):
             return _cut_loop(text, start, size)
     return None
@@ -120,7 +128,8 @@ def _cut_loop(text: str, at: int, size: int) -> str:
 def _span(period: int, size: int, loops: int) -> int:
     """How long a loop of this period must run: ``loops`` copies of the passage that don't
     overlap, back to back."""
-    step = period * -(-size // period)  # whole turns of the loop that hold one passage
+    turns = (size + period - 1) // period  # ceil(size / period): whole turns holding a passage
+    step = period * turns
     return (loops - 1) * step + size
 
 
@@ -134,7 +143,7 @@ def _loops_at(text: str, start: int, size: int, loops: int) -> bool:
     (a function, then an explanation, then the whole file) is not a loop, and passages of a
     few repeated characters (a ===== rule) never count."""
     chunk = text[start : start + size]
-    if len(set(chunk)) < 20:
+    if len(set(chunk)) < MIN_DISTINCT_CHARS:
         return False
     period = text.find(chunk, start + 1) - start
     if period <= 0:
@@ -147,7 +156,7 @@ def _tail_loop(text: str, size: int = REPEAT, loops: int = LOOPS) -> int:
     """Where a loop that the text ends in began (its last ``size`` characters came
     ``loops`` times in a row, without overlapping), or -1."""
     chunk = text[-size:]
-    if len(chunk) < size or len(set(chunk)) < 20:
+    if len(chunk) < size or len(set(chunk)) < MIN_DISTINCT_CHARS:
         return -1
     before = text.rfind(chunk, 0, len(text) - 1)  # the nearest earlier copy
     if before < 0:
@@ -230,12 +239,14 @@ class StreamFilter:
         piece = self._skip_thinking(piece)
         if not piece:
             return ""
-        self.text += piece.replace("�", "")
+        self.text += piece.replace(REPLACEMENT_CHAR, "")
         cut = _turn_end(self.text)
         if cut >= 0:
             self.text = self.text[:cut].rstrip()
             self.ended = True
-        elif len(self.text) - self._checked >= 40 and len(self.text) >= LOOPS * REPEAT:
+        elif (
+            len(self.text) - self._checked >= LOOP_CHECK_EVERY and len(self.text) >= LOOPS * REPEAT
+        ):
             self._checked = len(self.text)
             at = _tail_loop(self.text)
             if at >= 0:  # the model is going round in circles

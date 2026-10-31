@@ -154,6 +154,8 @@ class CodeModule(Module):
             if run.ok:
                 folder = self._save(task, solution["files"])
                 await self.ctx.publish("code.solved", {"task": task, "attempts": attempt})
+                # starlight/skills/manager.py keeps "files" of a successful run in the skill
+                # it learns from the request: keep these keys in step with it.
                 return {
                     "success": True,
                     "attempts": attempt,

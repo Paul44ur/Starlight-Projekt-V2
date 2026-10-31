@@ -110,10 +110,10 @@ class OfficeModule(Module):
 
     @tool
     async def write_docx(self, name: str, content: str, title: str = "") -> dict[str, Any]:
-        """Make a Word document from text: "# " lines are headings, "## " sub-headings,
-        "- " bullet points, blank lines separate paragraphs. Saved in your Starlight folder
-        unless `name` is a full path elsewhere (a new file there is saved without asking
-        while output.write_anywhere is on)."""
+        """Make a Word document from text: lines starting with # are headings (## one level
+        down, up to ####), "- " bullet points, blank lines separate paragraphs. Saved in
+        your Starlight folder unless `name` is a full path elsewhere (a new file there is
+        saved without asking while output.write_anywhere is on)."""
         docx = self._lib("docx")
         if not content.strip():
             raise OfficeError("give the text for the document")
@@ -236,7 +236,7 @@ def _save_xlsx(
 ) -> None:
     book = openpyxl.Workbook()
     worksheet = book.active
-    worksheet.title = sheet[:31] or "Sheet1"
+    worksheet.title = sheet[:31] or "Sheet1"  # Excel allows 31 characters in a sheet name
     for row in rows:
         worksheet.append([_safe_cell(worksheet, v) for v in row])
     if bold_header:

@@ -23,11 +23,12 @@ from pathlib import Path
 import websockets
 
 WEB = "http://127.0.0.1:8700"
-MODEL = "http://127.0.0.1:8080/health"
+MODEL_HEALTH = "http://127.0.0.1:8080/health"  # llama-server on the launcher's default --port
 ORIGIN = {"Origin": WEB}
 
 
 def fetch(url: str, method: str = "GET") -> dict[str, object] | int:
+    """A local endpoint's JSON object; else its HTTP status; 0 when nothing answers."""
     request = urllib.request.Request(
         url, method=method, headers=ORIGIN, data=b"" if method == "POST" else None
     )
@@ -45,7 +46,8 @@ def wait_until_ready(seconds: float = 900) -> None:
     """The model answers its health check (200) and the chat page is up."""
     deadline = time.monotonic() + seconds
     while time.monotonic() < deadline:
-        model_up = fetch(MODEL) in (200, {"status": "ok"})
+        # llama-server: {"status": "ok"} once loaded, 503 while loading
+        model_up = fetch(MODEL_HEALTH) in (200, {"status": "ok"})
         if model_up and isinstance(fetch(WEB + "/api/status"), dict):
             return
         time.sleep(3)
@@ -66,11 +68,12 @@ def conversation(name: str) -> list[dict[str, str]]:
     return data["messages"]  # type: ignore[return-value]
 
 
-def tool_ran(tool: str) -> bool:
-    """The audit log (logs/audit.log in the folder this runs from) shows the tool's result."""
+def tool_ran(tool: str) -> bool | None:
+    """The audit log (logs/audit.log in the folder this runs from, entries written by
+    starlight/core/dispatcher.py) shows the tool's result. None: there is no log to read."""
     log = Path("logs") / "audit.log"
     if not log.is_file():
-        return True  # run from somewhere else: nothing to check
+        return None  # run from somewhere else
     for line in log.read_text("utf-8", "replace").splitlines():
         try:
             entry = json.loads(line)
@@ -100,7 +103,11 @@ async def main() -> None:
             },
         )
         assert greeted["type"] == "answer" and not greeted["failed"], greeted
-        called = "ran" if tool_ran("hello.greet") else "was not called by this small model"
+        ran = tool_ran("hello.greet")
+        if ran is None:
+            called = "could not be checked (no logs/audit.log here)"
+        else:
+            called = "ran" if ran else "was not called by this small model"
         print(f"note: the hello.greet tool {called}")
 
         question = "Say hi in a few words."

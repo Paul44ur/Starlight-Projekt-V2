@@ -39,7 +39,10 @@ ALIASES = {
     "preference": "preferences",
     "likes": "preferences",
 }
-LONGEST = {"preferences": 1000}  # characters a field may hold; others 300
+MAX_CHARS = {"preferences": 1000}  # characters a field may hold
+DEFAULT_MAX_CHARS = 300  # ... any other field
+# One "field: value" line of the profile file: a name of a letter and up to 20 more letters
+# or spaces, a colon, then the value.
 LINE = re.compile(r"^\s*([A-Za-z][A-Za-z ]{0,20}?)\s*:\s*(.*\S)\s*$")
 
 
@@ -72,7 +75,8 @@ class Profile:
             elif line.strip():
                 extra.append(line.strip().lstrip("-* "))
         if extra:
-            values["preferences"] = "; ".join([*filter(None, [values.get("preferences")]), *extra])
+            known = [values["preferences"]] if values.get("preferences") else []
+            values["preferences"] = "; ".join([*known, *extra])
         return values
 
     def set(self, field: str, value: str) -> dict[str, str]:
@@ -81,7 +85,7 @@ class Profile:
         if key is None:
             raise ValueError(f"unknown profile field '{field}' (known: {', '.join(FIELDS)})")
         values = self.read()
-        value = " ".join(value.split())[: LONGEST.get(key, 300)]
+        value = " ".join(value.split())[: MAX_CHARS.get(key, DEFAULT_MAX_CHARS)]
         if value:
             values[key] = value
         else:

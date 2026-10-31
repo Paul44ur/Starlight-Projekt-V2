@@ -23,7 +23,7 @@ from starlight.core.stats import Stats
 from starlight.core.tools import Tool, ToolError, make_tool
 from starlight.memory.embed import Embedder, create_embedder
 from starlight.memory.index import Hit, MemoryIndex
-from starlight.memory.profile import PROFILE_ID, Profile, field_key
+from starlight.memory.profile import MAX_CHARS, PROFILE_ID, Profile, field_key
 from starlight.memory.store import MemoryEntry, MemoryStore, slugify
 
 MODULE = "memory"
@@ -170,11 +170,8 @@ class Memory:
         if existing is None:
             hits = await self.index.search(f"{topic}: {content}", 1, self.config.merge_threshold)
             existing = hits[0].entry if hits else None
-        if (
-            existing is not None
-            and existing.id != PROFILE_ID  # the profile changes only field by field
-            and not existing.id.startswith(CONVERSATIONS + "/")
-        ):
+        # (the profile changes only field by field; a conversation summary is its own)
+        if existing is not None and self._is_ordinary_memory(existing):
             entry = self._merge(existing, content, source, confidence, tags)
             entry.expires = expires  # the newest statement says how long it holds
             merged = True
@@ -346,7 +343,9 @@ class Memory:
 
     # -- tidying -----------------------------------------------------------------------
 
-    def _tidy_candidates(self, entry: MemoryEntry) -> bool:
+    def _is_ordinary_memory(self, entry: MemoryEntry) -> bool:
+        """Not the profile and not a conversation's summary: a memory that can be merged,
+        tidied and shown as something learned about you."""
         return entry.id != PROFILE_ID and not entry.id.startswith(CONVERSATIONS + "/")
 
     async def duplicates(self) -> list[tuple[MemoryEntry, MemoryEntry, float]]:
@@ -356,7 +355,7 @@ class Memory:
         used: set[str] = set()
         pairs = []
         for a, b, score in self.index.similar_pairs(self.config.merge_threshold):
-            if not (self._tidy_candidates(a) and self._tidy_candidates(b)):
+            if not (self._is_ordinary_memory(a) and self._is_ordinary_memory(b)):
                 continue
             if a.id in used or b.id in used:
                 continue
@@ -408,7 +407,7 @@ class Memory:
             if value.lower() in current.lower():
                 return
             items = [p for p in current.split("; ") if p] + [value]
-            while len(items) > 1 and len("; ".join(items)) > 1000:
+            while len(items) > 1 and len("; ".join(items)) > MAX_CHARS["preferences"]:
                 items.pop(0)  # the oldest go first, so a new one always fits
             value = "; ".join(items)
         self.profile.set(key, value)
@@ -465,7 +464,7 @@ class Memory:
             """Everything you know about the user: their profile and what you remember,
             newest first - for "what do you know about me?"."""
             await self.sync()
-            entries = [e for e in self.store.all() if self._tidy_candidates(e)]
+            entries = [e for e in self.store.all() if self._is_ordinary_memory(e)]
             entries.sort(key=lambda e: e.date, reverse=True)
             return {
                 "profile": self.profile.read(),

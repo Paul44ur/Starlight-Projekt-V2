@@ -16,6 +16,11 @@ type Status = Literal["draft", "approved", "rejected"]
 SKILL_FILE = "SKILL.md"
 
 
+def today() -> str:
+    """Today as YYYY-MM-DD: a skill's created and updated dates."""
+    return dt.date.today().isoformat()
+
+
 @dataclass
 class Skill:
     name: str
@@ -23,8 +28,8 @@ class Skill:
     instructions: str
     status: Status = "draft"
     version: int = 1
-    created: str = field(default_factory=lambda: dt.date.today().isoformat())
-    updated: str = field(default_factory=lambda: dt.date.today().isoformat())
+    created: str = field(default_factory=today)
+    updated: str = field(default_factory=today)
     source: str = "assistant"
     triggers: list[str] = field(default_factory=list)  # words that suggest this skill
     tools: list[str] = field(default_factory=list)  # tool sequence it was learned from

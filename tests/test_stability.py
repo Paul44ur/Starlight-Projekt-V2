@@ -238,7 +238,17 @@ def names(results: list[Check], status: str) -> list[str]:
     return [c.name for c in results if c.status == status]
 
 
-def test_doctor_on_a_fresh_install(paths: Paths) -> None:
+class WindowsKeyring:  # stands in for the real store: this machine's may be the "fail" one
+    pass
+
+
+WindowsKeyring.__module__ = "keyring.backends.Windows"
+
+
+def test_doctor_on_a_fresh_install(paths: Paths, monkeypatch: pytest.MonkeyPatch) -> None:
+    import keyring
+
+    monkeypatch.setattr(keyring, "get_keyring", WindowsKeyring)
     results = run_checks(paths, get=lambda url: (None, "refused"))
     assert names(results, "fail") == []
     assert "model" in names(results, "warn")  # the built-in test model
@@ -312,3 +322,16 @@ def test_the_doctor_command(paths: Paths, capsys: pytest.CaptureFixture[str]) ->
     assert main(["--home", str(paths.root), "doctor"]) == 0
     out = capsys.readouterr().out
     assert "[ok]" in out and "settings" in out and "disk space" in out
+
+
+def test_doctor_sees_a_password_store_that_cannot_store(monkeypatch: pytest.MonkeyPatch) -> None:
+    import keyring
+    from keyring.backends import fail
+
+    from starlight.doctor import check_keyring
+
+    monkeypatch.setattr(keyring, "get_keyring", fail.Keyring)  # "Keyring", like every backend
+    found = check_keyring()
+    assert found.status == "warn" and "fail Keyring" in found.detail
+    monkeypatch.setattr(keyring, "get_keyring", WindowsKeyring)
+    assert check_keyring().status == "ok"

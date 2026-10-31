@@ -119,6 +119,8 @@ class AppsModule(Module):
                 return group[0]
             if group:
                 shortest = min(group, key=lambda p: len(p.name))
+                # "note" means Notepad, not Notepad++: the shortest name is meant when it is
+                # at most three characters longer than what was asked for; else ask
                 if len(shortest.name) <= len(wanted) + 3:
                     return shortest
                 options = ", ".join(p.name for p in group[:8])

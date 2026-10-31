@@ -636,7 +636,7 @@ def create_app(paths: Paths | None = None) -> Any:
         name = re.sub(r"[^\w\- ]+", "", title).strip()[:60] or "conversation"
         # For old browsers, an ASCII name too: "ü" decomposes to "u" + a combining mark,
         # which the ASCII-only pattern then drops (with anything else that is not ASCII).
-        decomposed = unicodedata.normalize("NFKD", name)
+        decomposed = unicodedata.normalize("NFKD", name.replace("ß", "ss"))  # no "ß" to decompose
         plain = re.sub(r"[^\w\- ]+", "", decomposed, flags=re.ASCII).strip() or "conversation"
         suffix, media = (".html", "text/html") if format == "html" else (".md", "text/markdown")
         disposition = "inline" if show else "attachment"

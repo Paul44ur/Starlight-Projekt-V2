@@ -110,7 +110,9 @@ def _ip_reads(args: list[str]) -> bool:
     if not rest:
         return True  # "ip" alone prints its help
     obj = rest.pop(0)
-    if len(obj) >= 2 and "monitor".startswith(obj):  # would never return
+    # `ip monitor` (or "mo", "mon" ...) would never return. One letter is not it: iproute2
+    # reads a lone "m" as maddress.
+    if len(obj) >= 2 and "monitor".startswith(obj):
         return False
     return not rest or rest[0] in _IP_READ
 
@@ -129,10 +131,13 @@ def is_read_only(command: str) -> bool:
         return False
     if any(w in FORBIDDEN_ARGS for w in words[1:]):
         return False
-    if program == "top":
-        return "-b" in words or "-bn1" in words
+    if program == "top":  # never ends on its own: only in batch mode (-b) for -n rounds
+        flags = words[1:]
+        batch = any(w == "-b" or w.startswith("-bn") for w in flags)
+        rounds = any(w.startswith(("-n", "-bn")) for w in flags)
+        return batch and rounds
     if program == "docker" and len(words) > 1 and words[1] == "stats":
-        return "--no-stream" in words
+        return "--no-stream" in words  # docker stats streams until stopped
     if program in SUBCOMMANDS:
         if not (len(words) > 1 and words[1] in SUBCOMMANDS[program]):
             return False

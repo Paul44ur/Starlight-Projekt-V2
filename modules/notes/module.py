@@ -73,8 +73,10 @@ class NotesModule(Module):
         if not text.strip():
             raise ToolError("what should the note say?")
         path = self._file(title)
-        if path.exists():
+        if path.is_file():
             return self.append(title, text)
+        if path.exists():  # (append would come back here: it finds notes as files only)
+            raise ToolError(f"{path} is a folder, not a note; give the note another title")
         if len(text.encode("utf-8")) > MAX_NOTE_BYTES:
             raise ToolError("that is more than 1 MB of text: save it as a file instead of a note")
         path.write_text(f"# {title.strip()}\n\n{text.strip()}\n", encoding="utf-8")

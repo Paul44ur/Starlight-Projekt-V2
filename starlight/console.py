@@ -22,6 +22,10 @@ from concurrent.futures import Future
 PASTE_GAP = 0.05  # seconds: lines that arrive closer together than this were pasted
 
 
+# What counts as "yes" to a question in the terminal: English and German (j, ja).
+YES = ("y", "yes", "j", "ja")
+
+
 def interactive() -> bool:
     try:
         return sys.stdin.isatty()

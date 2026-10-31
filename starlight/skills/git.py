@@ -7,6 +7,8 @@ import shutil
 import subprocess
 from pathlib import Path
 
+FIELD_SEP = "\x1f"  # what %x1f writes in git log --format
+
 
 class GitError(Exception):
     pass
@@ -40,6 +42,9 @@ class SkillHistory:
             ["git", "init", "--quiet", "--bare", str(self.git_dir)],
             capture_output=True, check=True, timeout=30,
         )  # fmt: skip
+        # Only the history lives here; the files are skills/ itself (--work-tree in _git), so
+        # it is set up bare (no checkout of its own) and then told it is not, which lets
+        # add, commit and checkout work on that outside tree.
         self._git("config", "core.bare", "false")
         self._git("config", "user.name", "Starlight")
         self._git("config", "user.email", "starlight@localhost")
@@ -60,8 +65,10 @@ class SkillHistory:
         """(revision, date, message), newest first."""
         if not self.available or not (self.git_dir / "HEAD").exists():
             return []
+        # short hash, committer date (YYYY-MM-DD), subject; split by the ASCII unit separator
+        # (%x1f), which no message contains
         out = self._git("log", f"-{limit}", "--format=%h%x1f%cs%x1f%s", "--", path, check=False)
-        return [tuple(line.split("\x1f", 2)) for line in out.splitlines() if line]  # type: ignore[misc]
+        return [tuple(line.split(FIELD_SEP, 2)) for line in out.splitlines() if line]  # type: ignore[misc]
 
     def restore(self, path: str, revision: str) -> None:
         self._git("checkout", revision, "--", path)

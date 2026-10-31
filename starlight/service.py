@@ -19,7 +19,19 @@ import sys
 from dataclasses import dataclass, field
 from pathlib import Path
 
-TASKS = {"core": "serve", "viewer": "viewer"}
+# kind of background task -> the `starlight` subcommand it runs
+SUBCOMMAND_FOR_KIND = {"core": "serve", "viewer": "viewer"}
+SHUTDOWN_REQUEST = "stop\n"  # what `service stop` writes into a SHUTDOWN.<kind> file
+
+
+def link_name(kind: str) -> str:
+    """The Startup-folder shortcut of a kind (Windows). Existing ones keep this name."""
+    return f"Starlight {kind}.lnk"
+
+
+def unit_name(kind: str) -> str:
+    """The systemd user unit of a kind (Linux). Existing ones keep this name."""
+    return f"starlight-{kind}.service"
 
 
 def shutdown_file(data_dir: Path, kind: str) -> Path:
@@ -47,7 +59,14 @@ def python_for_background() -> str:
 
 
 def background_command(root: Path, kind: str) -> list[str]:
-    return [python_for_background(), "-m", "starlight", "--home", str(root), TASKS[kind]]
+    return [
+        python_for_background(),
+        "-m",
+        "starlight",
+        "--home",
+        str(root),
+        SUBCOMMAND_FOR_KIND[kind],
+    ]
 
 
 def startup_folder() -> Path:
@@ -68,14 +87,14 @@ def shortcut_script(link: Path, command: list[str], workdir: Path) -> str:
         f"$link.TargetPath = {_ps_quote(command[0])}",
         f"$link.Arguments = {_ps_quote(arguments)}",
         f"$link.WorkingDirectory = {_ps_quote(str(workdir))}",
-        "$link.WindowStyle = 7",
+        "$link.WindowStyle = 7",  # 7: minimized
         "$link.Save()",
     ])  # fmt: skip
 
 
 def windows_plan(root: Path, action: str, data_dir: Path, folder: Path | None = None) -> Plan:
     folder = folder or startup_folder()
-    links = {kind: folder / f"Starlight {kind}.lnk" for kind in TASKS}
+    links = {kind: folder / link_name(kind) for kind in SUBCOMMAND_FOR_KIND}
     result = Plan()
     if action == "install":
         for kind, link in links.items():
@@ -84,10 +103,12 @@ def windows_plan(root: Path, action: str, data_dir: Path, folder: Path | None = 
                 ["powershell", "-NoProfile", "-NonInteractive", "-Command", script]
             )
     if action in ("install", "start"):
-        result.remove += [shutdown_file(data_dir, kind) for kind in TASKS]
-        result.spawn += [background_command(root, kind) for kind in TASKS]
+        result.remove += [shutdown_file(data_dir, kind) for kind in SUBCOMMAND_FOR_KIND]
+        result.spawn += [background_command(root, kind) for kind in SUBCOMMAND_FOR_KIND]
     if action in ("stop", "uninstall"):
-        result.files.update({shutdown_file(data_dir, kind): "stop\n" for kind in TASKS})
+        result.files.update(
+            {shutdown_file(data_dir, kind): SHUTDOWN_REQUEST for kind in SUBCOMMAND_FOR_KIND}
+        )
     if action == "uninstall":
         result.remove += list(links.values())
     return result
@@ -122,7 +143,7 @@ WantedBy=default.target
 
 def linux_plan(root: Path, action: str, unit_dir: Path | None = None) -> Plan:
     unit_dir = unit_dir or Path.home() / ".config" / "systemd" / "user"
-    units = {kind: f"starlight-{kind}.service" for kind in TASKS}
+    units = {kind: unit_name(kind) for kind in SUBCOMMAND_FOR_KIND}
     result = Plan()
     systemctl = ["systemctl", "--user"]
     if action == "install":

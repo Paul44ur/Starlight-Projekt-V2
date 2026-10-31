@@ -62,21 +62,23 @@ class MemoryIndex:
     async def _sync(self) -> int:
         entries = self.store.all()
         with self._lock:
-            rows = {
-                row[0]: (row[1], row[2], row[3])
-                for row in self._db.execute("SELECT id, hash, embedder, vector FROM vectors")
+            rows = {  # id -> (hash, embedder, vector)
+                entry_id: (stored_hash, embedder_id, blob)
+                for entry_id, stored_hash, embedder_id, blob in self._db.execute(
+                    "SELECT id, hash, embedder, vector FROM vectors"
+                )
             }
         vectors: dict[str, Vector] = {}
         stale: list[MemoryEntry] = []
+        float_bytes = np.dtype(np.float32).itemsize
         for entry in entries:
-            row = rows.get(entry.id)
+            stored_hash, embedder_id, blob = rows.get(entry.id, (None, None, b""))
             if (
-                row
-                and row[0] == content_hash(entry)
-                and row[1] == self.embedder.id
-                and len(row[2]) % 4 == 0
+                stored_hash == content_hash(entry)
+                and embedder_id == self.embedder.id
+                and len(blob) % float_bytes == 0  # (not a cut-off vector)
             ):
-                vectors[entry.id] = np.frombuffer(row[2], dtype=np.float32)
+                vectors[entry.id] = np.frombuffer(blob, dtype=np.float32)
             else:
                 stale.append(entry)
         for start in range(0, len(stale), 64):

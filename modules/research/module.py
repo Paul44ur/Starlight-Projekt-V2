@@ -27,6 +27,12 @@ WRITE = (
 )
 
 
+DEEP_QUERIES = 4  # searches the model plans for a deep look (beside the question itself)
+HITS_PER_SEARCH = 8
+SPARE_PAGES = 3  # read this many more pages than needed: some fail or say nothing
+MIN_PAGE_CHARS = 200  # less text than this: an error page or a cookie wall, not a source
+
+
 class Config(BaseModel):
     quick_pages: int = Field(default=5, ge=1, le=20)
     deep_pages: int = Field(default=12, ge=2, le=40)
@@ -55,7 +61,7 @@ class ResearchModule(Module):
             queries = [str(q).strip() for q in found if str(q).strip()]
         except (ValueError, TypeError):
             queries = []
-        return list(dict.fromkeys([question, *queries]))[: count + 1]
+        return list(dict.fromkeys([question, *queries]))[: count + 1]  # the question + count
 
     async def _tool(self, name: str, **args: Any) -> Any:
         result = await self.ctx.call(name, args)
@@ -73,21 +79,23 @@ class ResearchModule(Module):
         if not question.strip():
             raise ToolError("what should I research?")
         limit = self.config.deep_pages if depth == "deep" else self.config.quick_pages
-        queries = await self._queries(question.strip(), 4 if depth == "deep" else 1)
+        queries = await self._queries(question.strip(), DEEP_QUERIES if depth == "deep" else 1)
         urls: list[str] = []
         titles: dict[str, str] = {}
         for query in queries:
-            for hit in await self._tool("web.search", query=query, max_results=8):
+            for hit in await self._tool("web.search", query=query, max_results=HITS_PER_SEARCH):
                 url = hit.get("url", "")
                 if url.startswith("http") and url not in titles:
                     titles[url] = hit.get("title", "")
                     urls.append(url)
-            if len(urls) >= limit * 2:
+            if len(urls) >= limit * 2:  # twice as many addresses as pages needed: enough
                 break
         if not urls:
             raise ToolError("the search found nothing; try other words")
         pages = await self._tool(
-            "web.fetch_many", urls=urls[: limit + 3], max_chars_each=self.config.chars_per_page
+            "web.fetch_many",
+            urls=urls[: limit + SPARE_PAGES],
+            max_chars_each=self.config.chars_per_page,
         )
         sources = [
             {
@@ -96,7 +104,7 @@ class ResearchModule(Module):
                 "text": p["text"],
             }
             for p in pages
-            if p.get("text") and len(p["text"].strip()) > 200
+            if p.get("text") and len(p["text"].strip()) > MIN_PAGE_CHARS
         ][:limit]
         if not sources:
             raise ToolError("none of the pages could be read; try again later or other words")

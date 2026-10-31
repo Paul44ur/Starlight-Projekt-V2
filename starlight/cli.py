@@ -64,7 +64,7 @@ def make_confirmer(policy: PermissionPolicy, assume_yes: bool) -> Confirmer:
         if answer in ("a", "always"):
             policy.allow_for_session(tool.qualified_name)
             return True
-        return answer in ("y", "yes")
+        return answer in console.YES
 
     return confirm
 
@@ -81,7 +81,7 @@ class TerminalUI:
         if not sys.stdin.isatty():
             return False
         answer = await console.lines.read(console.answer, f"\n{question} [y/N]: ")
-        return answer.strip().lower() in ("y", "yes")
+        return answer.strip().lower() in console.YES
 
     async def ask(self, question: str, secret: bool = False) -> str | None:
         if not sys.stdin.isatty():
@@ -199,8 +199,9 @@ async def cmd_run(paths: Paths, args: argparse.Namespace) -> int:
                 break
             if not line:
                 continue
-            if line.split(" ", 1)[0] == "/talk":
-                spoken = await _talk(kernel, line[5:].strip(), view)
+            command, _, rest = line.partition(" ")
+            if command == "/talk":
+                spoken = await _talk(kernel, rest.strip(), view)
                 if not spoken:
                     continue
                 line = spoken
@@ -217,18 +218,21 @@ async def cmd_run(paths: Paths, args: argparse.Namespace) -> int:
 
             result = await _ask(kernel, line, on_token, view.conversation)
             if result is None:
-                view.end_answer(bool(streamed))
+                view.end_answer(streamed=bool(streamed))
                 view.info("[Stopped. Ask something else, or /quit to leave.]")
                 continue
             # Streaming already showed the answer (after any text from earlier tool steps).
             if streamed and "".join(streamed).strip().endswith(result.answer.strip()):
-                view.end_answer(True)
+                view.end_answer(streamed=True)
             else:
-                view.end_answer(bool(streamed))
+                view.end_answer(streamed=bool(streamed))
                 view.answer(result.answer)
             if result.stopped:
                 view.info("Kill switch is engaged. Type /resume to continue.")
     return 0
+
+
+MAX_TALK_SECONDS = 120  # the same cap as the voice module's listen tool
 
 
 async def _talk(kernel: Kernel, seconds: str, view: ChatView) -> str | None:
@@ -239,7 +243,8 @@ async def _talk(kernel: Kernel, seconds: str, view: ChatView) -> str | None:
         return None
     voice: Any = record.instance
     duration = float(seconds) if seconds.replace(".", "", 1).isdigit() else 0
-    duration = duration or voice.config.record_seconds
+    # as voice.listen: record_seconds when not said, two minutes at most
+    duration = min(duration or voice.config.record_seconds, MAX_TALK_SECONDS)
     view.info(f"Listening for {duration:g} seconds ...")
     try:
         audio = await asyncio.to_thread(voice.record, duration)
@@ -605,7 +610,7 @@ def cmd_remote(paths: Paths, args: argparse.Namespace) -> int:
     """Use the web chat from your phone through Tailscale (private, nothing opened on your
     router), with every device paired by a one-time code."""
     from starlight.web import remote
-    from starlight.web.auth import Devices
+    from starlight.web.auth import CODE_SECONDS, Devices
 
     devices = Devices(paths.data / "devices")
     try:
@@ -629,9 +634,10 @@ def cmd_remote(paths: Paths, args: argparse.Namespace) -> int:
                 print(f"  paired: {device['name']} (id {device['id']}, since {device['paired']})")
         elif args.action == "pair":
             code = devices.new_code()
-            print(f"Pairing code: {code}  (works once, for 5 minutes)")
+            print(f"Pairing code: {code}  (works once, for {CODE_SECONDS // 60} minutes)")
             print("Open the chat address on your phone and enter it there.")
         elif args.action == "devices":
+            # nothing paired: one "(none)" row, printed in the same columns
             for device in devices.list() or [{"name": "(none)", "id": "-", "last_seen": None}]:
                 seen = device["last_seen"] or "never"
                 print(f"{device['id']:<12} {device['name']:<30} last seen {seen}")
@@ -733,16 +739,18 @@ def cmd_service(paths: Paths, args: argparse.Namespace) -> int:
         print(f"  core:    {'running' if core else 'not running'}")
         print(f"  viewer:  {'running at ' + url.rsplit('/api', 1)[0] if viewer else 'not running'}")
         if sys.platform == "win32":
-            links = sorted(service.startup_folder().glob("Starlight *.lnk"))
+            links = sorted(service.startup_folder().glob(service.link_name("*")))
             print(f"  autostart: {', '.join(p.stem for p in links) or 'off'}")
         else:
             subprocess.run(
-                ["systemctl", "--user", "is-enabled", "starlight-core.service"], check=False
+                ["systemctl", "--user", "is-enabled", service.unit_name("core")], check=False
             )
         return 0
     service_plan = service.plan(paths.root, args.action, paths.data)
     for path, content in service_plan.files.items():
-        print(f"# write {path}" + (f"\n{content}" if content.strip() != "stop" else ""))
+        # (a shutdown request file holds only SHUTDOWN_REQUEST: not worth printing)
+        shown = content != service.SHUTDOWN_REQUEST
+        print(f"# write {path}" + (f"\n{content}" if shown else ""))
     for path in service_plan.remove:
         print(f"# remove {path}")
     for command in service_plan.commands:
@@ -1033,7 +1041,7 @@ def _main(argv: Sequence[str] | None) -> int:
         print(f"Configuration error: {exc}", file=sys.stderr)
         return 1
     except KeyboardInterrupt:
-        return 130
+        return 130  # 128 + SIGINT: the shell's usual exit code for Ctrl+C
     return 0
 
 

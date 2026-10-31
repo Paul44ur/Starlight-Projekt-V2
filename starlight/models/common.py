@@ -53,7 +53,15 @@ def b64(data: bytes) -> str:
 
 
 def image_mime(data: bytes) -> str:
-    return "image/jpeg" if data[:3] == b"\xff\xd8\xff" else "image/png"
+    """A picture's type by its first bytes (the web chat takes JPEG, PNG, GIF and WebP);
+    anything else is sent as PNG."""
+    if data[:3] == b"\xff\xd8\xff":
+        return "image/jpeg"
+    if data[:6] in (b"GIF87a", b"GIF89a"):
+        return "image/gif"
+    if data[:4] == b"RIFF" and data[8:12] == b"WEBP":
+        return "image/webp"
+    return "image/png"
 
 
 def openai_messages(messages: list[Message]) -> list[dict[str, Any]]:

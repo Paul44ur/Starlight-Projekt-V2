@@ -29,6 +29,7 @@ _NO_PROGRAMS = {
 }
 # C functions that start programs, reached through ctypes (e.g. libc's system()). Loading
 # libraries stays allowed: numpy and others load theirs that way.
+# "_?w?": also the Windows C runtime's names (_popen, _wsystem, _wexecv, _wspawnl ...).
 _PROGRAM_FUNCTIONS = re.compile(
     r"_?w?(system|popen|exec\w*|spawn\w*)|fork|vfork|forkpty|posix_spawnp?|clone3?|syscall"
     r"|CreateProcess\w*|WinExec|ShellExecute\w*",
@@ -52,6 +53,8 @@ def _denied_path(path: object) -> bool:
 def _hook(event: str, args: tuple[object, ...]) -> None:
     if event in _NO_PROGRAMS:
         raise PermissionError(f"sandbox: starting programs is not allowed ({event})")
+    # CPython's audit events "ctypes.dlsym" (library, name) and "ctypes.dlsym/handle"
+    # (handle, name) both pass the function's name second.
     symbol = args[1] if event.startswith("ctypes.dlsym") and len(args) > 1 else None
     if isinstance(symbol, str) and _PROGRAM_FUNCTIONS.fullmatch(symbol):
         raise PermissionError(f"sandbox: starting programs is not allowed ({symbol})")

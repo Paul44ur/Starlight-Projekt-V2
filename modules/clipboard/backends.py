@@ -44,7 +44,7 @@ class Backend:
         result = self._run(self.get_cmd)
         if result.returncode != 0:
             raise ClipboardUnavailable(result.stderr.strip() or "could not read the clipboard")
-        return result.stdout.removeprefix("\ufeff")
+        return result.stdout.removeprefix("\ufeff")  # (in case the program starts with a BOM)
 
     def set(self, text: str) -> None:
         result = self._run(self.set_cmd, text)
@@ -63,6 +63,7 @@ def detect() -> Backend | None:
         return Backend(
             "powershell",
             ["powershell", "-NoProfile", "-Command", _UTF8 + "Get-Clipboard -Raw"],
+            # $input: the text Python writes to stdin, line by line; Set-Clipboard joins them
             ["powershell", "-NoProfile", "-Command", _UTF8 + "$input | Set-Clipboard"],
         )
     if sys.platform == "darwin":
