@@ -419,7 +419,10 @@ function safetyRow(sw, words) {
     if (sw.high !== null) input.max = sw.high;
     input.step = sw.kind === "int" ? "1" : "any";
     input.setAttribute("aria-label", words.title);
-    input.onchange = () => setSafety({ key: sw.key, value: Number(input.value) });
+    input.onchange = () => {
+      if (input.value.trim() === "") { showSafety(); return; }  // (emptied: nothing to save)
+      setSafety({ key: sw.key, value: Number(input.value) });
+    };
     control.append(input, el("span", "dim small unit", sw.unit || ""));
   } else {
     control.classList.add("wide");
@@ -445,7 +448,7 @@ function safetyRow(sw, words) {
 }
 
 async function setSafety(change) {
-  try { safetyState = await api("/api/safety", { method: "POST", body: change }); toast(tr("Saved")); load(); }
+  try { safetyState = await api("/api/safety", { method: "POST", body: change }); toast(safetyState.note || tr("Saved")); load(); }
   catch (e) { toast(e.message); }
   showSafety();
 }

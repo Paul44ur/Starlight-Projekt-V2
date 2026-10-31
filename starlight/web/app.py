@@ -81,8 +81,23 @@ def _hostname(value: str) -> str:
     return (urlsplit(f"//{value}").hostname or "").lower()
 
 
+DEFAULT_PORTS = {"http": 80, "https": 443}
+
+
 def _origin_key(origin: str) -> str:
-    return origin.strip().rstrip("/").lower()
+    """An origin as browsers send it: lower case, no "/" at the end, and no port when it is
+    the scheme's default (a browser sends "https://example.com", never ":443")."""
+    parts = urlsplit(origin.strip().rstrip("/").lower())
+    host = parts.hostname or ""
+    try:
+        port = parts.port
+    except ValueError:  # not a port number: compared as written
+        return origin.strip().rstrip("/").lower()
+    if ":" in host:
+        host = f"[{host}]"  # (IPv6)
+    if port is None or port == DEFAULT_PORTS.get(parts.scheme):
+        return f"{parts.scheme}://{host}"
+    return f"{parts.scheme}://{host}:{port}"
 
 
 def allowed_request(headers: Any, peer: str | None, origins: Iterable[str] = ()) -> bool:
@@ -1053,18 +1068,22 @@ def create_app(paths: Paths | None = None) -> Any:
         before = file.read_bytes() if file.is_file() else None
         safety.save_choice(paths.config, choice)
         try:
-            safety.refresh(paths, [k.config, config], module_settings(k))
-        except (ConfigError, ValidationError) as exc:  # e.g. starlight.yaml broke meanwhile
-            if before is None:
+            skipped = safety.refresh(paths, [k.config, config], module_settings(k))
+        except (ConfigError, ValidationError) as exc:  # starlight.yaml has a mistake now
+            if before is None:  # (refresh changed nothing: it reads everything first)
                 file.unlink(missing_ok=True)
             else:
                 file.write_bytes(before)
-            safety.refresh(paths, [k.config, config], module_settings(k))
             raise HTTPException(status_code=400, detail=f"not saved: {exc}") from exc
-        finally:
-            apply_saved_rules(k.policy, paths.config)  # the rules made tool by tool stay
+        apply_saved_rules(k.policy, paths.config)  # the rules made tool by tool stay
         k.audit.record("web.safety", **what)
-        return safety_view(k)
+        view = safety_view(k)
+        if skipped:
+            view["note"] = (
+                f"Saved. Not in use yet for {', '.join(skipped)}: its settings file has a "
+                "mistake (see config/modules); it applies once that module loads again."
+            )
+        return view
 
     @app.get("/api/modules")
     def modules(request: Request) -> dict[str, Any]:

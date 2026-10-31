@@ -188,6 +188,8 @@
     [/^Installed (.+) \((\d+) MB\)$/, "$1 installiert ($2 MB)"],
     [/^(\d+) protections are set differently below\.$/, "$1 Schutzmaßnahmen sind unten anders eingestellt."],
     [/^([a-z0-9_]+) is off$/, "$1 ist aus"],
+    [/^Saved\. Not in use yet for (.+): its settings file has a mistake \(see config\/modules\); it applies once that module loads again\.$/,
+      "Gespeichert. Für $1 noch nicht in Gebrauch: Seine Einstellungsdatei hat einen Fehler (siehe config/modules); es gilt, sobald das Modul wieder lädt."],
   ];
   // Never translated: the conversation, code, and what you type.
   const KEEP = ".msg .body, pre, code, textarea, [translate=no], .notranslate";

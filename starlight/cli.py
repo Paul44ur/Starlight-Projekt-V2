@@ -612,7 +612,11 @@ def cmd_remote(paths: Paths, args: argparse.Namespace) -> int:
     from starlight.web import remote
     from starlight.web.auth import Devices
 
-    devices = Devices(paths.data / "devices", load_config(paths).web.remote)
+    try:  # (pairing minutes and wrong codes; a mistake elsewhere must not stop revoke etc.)
+        remote_settings = load_config(paths).web.remote
+    except ConfigError:
+        remote_settings = None
+    devices = Devices(paths.data / "devices", remote_settings)
     try:
         if args.action == "enable":
             url = remote.enable(paths, load_config(paths).web.port)

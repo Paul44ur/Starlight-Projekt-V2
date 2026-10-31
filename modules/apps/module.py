@@ -177,7 +177,7 @@ class AppsModule(Module):
     async def open_file(self, path: str) -> dict[str, Any]:
         """Open a document, picture, video or folder with its usual program. A name is
         looked up in your Starlight folder; a file elsewhere asks first. Programs and
-        scripts are never opened this way."""
+        scripts are not opened this way (unless the user switched that safety limit off)."""
         guard = PathGuard(self.ctx.paths.root, self.ctx.output_dir)
         found = guard.resolve(path)
         target = found.path

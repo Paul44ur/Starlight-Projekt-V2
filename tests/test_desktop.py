@@ -344,12 +344,19 @@ def xvfb() -> Iterator[str]:
     if not shutil.which("Xvfb"):
         pytest.skip("Xvfb not installed")
     display = ":77"
+    # -noreset: an X server resets when its last client disconnects, and a connection
+    # made during that reset fails ("connection lost"): the screen size and then a
+    # screenshot are two connections in a row, which a busy machine can catch mid-reset.
     proc = subprocess.Popen(
-        ["Xvfb", display, "-screen", "0", "1024x768x24"],
+        ["Xvfb", display, "-screen", "0", "1024x768x24", "-noreset"],
         stdout=subprocess.DEVNULL,
         stderr=subprocess.DEVNULL,
     )
-    time.sleep(0.8)
+    socket = Path("/tmp/.X11-unix") / f"X{display.lstrip(':')}"
+    deadline = time.monotonic() + 10
+    while not socket.exists() and time.monotonic() < deadline:  # ready, also when slow
+        time.sleep(0.05)
+    time.sleep(0.2)
     old = os.environ.get("DISPLAY")
     os.environ["DISPLAY"] = display
     yield display

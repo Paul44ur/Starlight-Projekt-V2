@@ -440,6 +440,11 @@ async def test_the_settings_card_sets_levels_and_single_protections(
             await steps.press("Enter")
             await page.wait_for_timeout(200)
             assert posted[-1] == {"key": "steps", "value": 20}
+            sent = len(posted)
+            await steps.fill("")  # emptied: nothing is sent (it used to send 0)
+            await steps.press("Enter")
+            await page.wait_for_timeout(200)
+            assert len(posted) == sent
             await page.locator("#levels button.strict").click()
             await page.wait_for_function(
                 "() => document.querySelector('#levels button.strict.sel')"
@@ -457,3 +462,70 @@ async def test_the_settings_card_sets_levels_and_single_protections(
             assert "Grenzen und der Wächter" in await german.locator("#safety h3").all_inner_texts()
         finally:
             await browser.close()
+
+
+# -- found by the bug check ------------------------------------------------------------------------
+
+
+def test_a_mistake_in_another_settings_file_does_not_break_a_change(tmp_path: Path) -> None:
+    import shutil
+
+    root = home(tmp_path / "h")
+    shutil.copytree(REPO / "modules" / "recon", root / "modules" / "recon")
+    with client(root) as c:
+        k = c.app.state.kernel  # type: ignore[attr-defined]
+        recon = k.modules.records["recon"].instance
+        (root / "config" / "modules" / "recon.yaml").write_text("max_ports: lots\n")
+        changed = c.post("/api/safety", json={"key": "scan_asks", "value": False}, headers=LOCAL)
+        assert changed.status_code == 200 and "recon" in changed.json()["note"]
+        assert recon.config.ask_again_for_known is True  # it keeps what it runs with
+        steps = c.post("/api/safety", json={"key": "steps", "value": 20}, headers=LOCAL)
+        assert steps.status_code == 200 and k.config.agent.max_steps == 20
+
+        config = root / "config" / "starlight.yaml"
+        good = config.read_text("utf-8")
+        config.write_text(good + "viewer:\n  port: lots\n", "utf-8")  # broken meanwhile
+        refused = c.post("/api/safety", json={"key": "steps", "value": 30}, headers=LOCAL)
+        assert refused.status_code == 400 and "not saved" in refused.json()["detail"]
+        assert k.config.agent.max_steps == 20  # nothing changed half-way
+        assert safety.read_choice(root / "config").settings["steps"] == 20  # file as before
+
+
+def test_starlight_remote_works_while_another_setting_has_a_mistake(paths: Paths) -> None:
+    from starlight.cli import main
+
+    paths.config_file.write_text("agent:\n  max_steps: zero\n", encoding="utf-8")
+    assert main(["--home", str(paths.root), "remote", "devices"]) == 0
+
+
+def test_an_allowed_page_matches_with_or_without_its_default_port() -> None:
+    from starlight.web.app import allowed_request
+
+    local = {"host": "127.0.0.1:8700"}
+    assert allowed_request({**local, "origin": "https://example.com"}, "127.0.0.1",
+                           ["https://example.com:443"])  # fmt: skip
+    assert allowed_request({**local, "origin": "http://ha.local:8123"}, "127.0.0.1",
+                           ["HTTP://HA.local:8123/"])  # fmt: skip
+    assert not allowed_request({**local, "origin": "https://example.com:8443"}, "127.0.0.1",
+                               ["https://example.com"])  # fmt: skip
+
+
+def test_numbers_from_the_page_are_whole_where_they_must_be() -> None:
+    steps = safety.BY_KEY["steps"]
+    assert steps.check(12.0) == 12 and steps.check("12") == 12
+    for wrong in (3.7, True, float("inf"), float("nan")):
+        with pytest.raises(ValueError):
+            steps.check(wrong)
+    assert safety.BY_KEY["web_pause"].check(0.5) == 0.5
+
+
+def test_a_module_that_is_not_running_shows_its_protections_as_they_are(
+    tmp_path: Path,
+) -> None:
+    (tmp_path / "modules").mkdir()
+    (tmp_path / "modules" / "apps.yaml").write_text("ask_first_open: false\n")
+    state = safety.page_state(tmp_path, StarlightConfig(), {})  # no module runs
+    rows = {s["key"]: s for g in state["groups"] for s in g["switches"]}
+    assert rows["failsafe"]["value"] is True and not rows["failsafe"]["module_on"]  # (default)
+    assert rows["access_asks"]["value"] is True  # on, so no warning shown
+    assert rows["first_open"]["value"] is False  # what its file says

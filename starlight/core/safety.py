@@ -31,6 +31,7 @@ They never stop Starlight from doing anything, they only let you stop it or see 
 
 from __future__ import annotations
 
+import math
 import re
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, field
@@ -132,9 +133,17 @@ class Switch:
             return value
         if self.kind in ("int", "float"):
             try:
-                number: float = int(value) if self.kind == "int" else float(value)
+                if isinstance(value, bool):  # (True would count as 1)
+                    raise TypeError
+                number: float = float(value)
             except (TypeError, ValueError) as exc:
                 raise ValueError("a number") from exc
+            if not math.isfinite(number):
+                raise ValueError("a number")
+            if self.kind == "int":
+                if not number.is_integer():
+                    raise ValueError("a whole number")
+                number = int(number)
             low = self.low if self.low is not None else number
             high = self.high if self.high is not None else number
             if not low <= number <= high:
@@ -363,7 +372,8 @@ SWITCHES: tuple[Switch, ...] = (
         "show the chat and use it as you, in a browser on this PC. Empty: only Starlight's own "
         "pages.",
         "web.allowed_origins", kind="list", items=ORIGIN,
-        warning="A page from these addresses can do anything you can do in the chat.",
+        warning="A page from these addresses can do anything you can do in Starlight, these "
+        "settings included.",
     ),
 )
 # fmt: on
@@ -524,7 +534,8 @@ GERMAN: dict[str, tuple[str, str, str]] = {
         "Adressen wie http://homeassistant.local:8123, eine pro Zeile: Seiten von dort dürfen "
         "den Chat zeigen und ihn als du nutzen, in einem Browser auf diesem PC. Leer: nur "
         "Starlights eigene Seiten.",
-        "Eine Seite von diesen Adressen kann alles tun, was du im Chat tun kannst.",
+        "Eine Seite von diesen Adressen kann alles tun, was du in Starlight tun kannst, auch "
+        "diese Einstellungen ändern.",
     ),
 }
 
@@ -618,12 +629,25 @@ def module_layer(data: dict[str, Any], config_dir: Path, module: str) -> dict[st
 # -- what the page shows -----------------------------------------------------------------------
 
 
+def _configured(switch: Switch, config_dir: Path) -> Any:
+    """A module switch's value while its module is not running: what the module's file
+    says, else on (every module protection is on unless its file turns it off)."""
+    try:
+        data: Any = read_yaml(config_dir / "modules" / f"{switch.module}.yaml")
+        for name in switch.path:
+            data = data[name]
+    except (ConfigError, KeyError, TypeError):
+        return True
+    return switch.from_setting(data)
+
+
 def page_state(
     config_dir: Path, config: Any, modules: Mapping[str, Any], local_file: bool = False
 ) -> dict[str, Any]:
     """Everything the Settings page's Safety card shows: the level, then each group with
     its switches (value now, whether it was set apart from the level, what Strict and
-    Relaxed would set ...). ``modules``: module name -> its settings object."""
+    Relaxed would set ...). ``modules``: module name -> its settings object, for the running
+    ones; a module that is not running shows what its file says."""
     choice = read_choice(config_dir)
     groups = []
     for group, title in GROUPS.items():
@@ -631,6 +655,8 @@ def page_state(
         for switch in (s for s in SWITCHES if s.group == group):
             chosen = choice.value(switch)
             running = current(switch, config, modules)
+            if running is None and switch.module is not None:
+                running = _configured(switch, config_dir)
             german = GERMAN.get(switch.key, ("", "", ""))
             rows.append(
                 {
@@ -721,29 +747,40 @@ def current(switch: Switch, config: Any, modules: Mapping[str, Any]) -> Any:
         return None
 
 
-def refresh(paths: Any, configs: Iterable[Any], modules: Mapping[str, Any]) -> None:
+def refresh(paths: Any, configs: Iterable[Any], modules: Mapping[str, Any]) -> list[str]:
     """Bring the running settings in line with the files again (after a change on the page):
     the core config objects in ``configs`` (the kernel's, the web app's) and the modules'
     settings objects. Read from the files, so the order of precedence is the same as at a
-    start (starlight.local.yaml still wins)."""
+    start (starlight.local.yaml still wins).
+
+    Everything is read before anything changes: a mistake in starlight.yaml raises
+    ConfigError and the running settings stay as they were. A module whose own file has a
+    mistake keeps its running settings (it gets the new ones when it loads again); its name
+    is returned."""
     fresh = load_config(paths)
-    targets = list(configs)
     fresh_modules: dict[str, Any] = {}
+    skipped: list[str] = []
+    for name in dict.fromkeys(s.module for s in SWITCHES if s.module):
+        settings = modules.get(name)
+        if settings is None:
+            continue
+        try:
+            fresh_modules[name] = load_module_config(paths, name, type(settings))
+        except ConfigError:
+            skipped.append(name)
+    targets = list(configs)
     for switch in SWITCHES:
         if switch.module is None:
             value = _get(fresh, switch.path)
             for config in targets:
                 _set(config, switch.path, _copy(value))
-            continue
-        settings = modules.get(switch.module)
-        if settings is None:
-            continue
-        if switch.module not in fresh_modules:
-            fresh_modules[switch.module] = load_module_config(paths, switch.module, type(settings))
-        try:
-            _set(settings, switch.path, _copy(_get(fresh_modules[switch.module], switch.path)))
-        except (AttributeError, KeyError):
-            continue  # an older module without this setting
+        elif switch.module in fresh_modules:
+            try:
+                value = _get(fresh_modules[switch.module], switch.path)
+                _set(modules[switch.module], switch.path, _copy(value))
+            except (AttributeError, KeyError):
+                continue  # an older module without this setting
+    return skipped
 
 
 def _copy(value: Any) -> Any:
