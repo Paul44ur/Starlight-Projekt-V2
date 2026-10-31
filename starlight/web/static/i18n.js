@@ -92,6 +92,7 @@
     "only if the step before gave, e.g. count > 0 (optional)": "nur wenn der Schritt davor das ergab, z. B. count > 0 (optional)",
     'arguments as JSON, e.g. {"days": 1}': 'Argumente als JSON, z. B. {"days": 1}',
     "Remove this step": "Diesen Schritt entfernen", "Run now": "Jetzt ausführen", "Switch off": "Ausschalten", "Switch on": "Einschalten",
+    "needs a new schedule": "braucht einen neuen Zeitplan",
     "Delete": "Löschen", "on": "an", "off": "aus",
     "None yet. Make one below, or start from a ready-made one.": "Noch keine. Leg unten eine an oder beginne mit einer Vorlage.",
     // the kill switch page

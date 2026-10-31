@@ -50,12 +50,16 @@ class NotesModule(Module):
             raise ToolError("give the note a title")
         return self.folder / f"{name}.md"
 
+    def _notes(self) -> list[Path]:
+        """The note files (a folder called "Ideas.md" is not one)."""
+        return [p for p in self.folder.glob("*.md") if p.is_file()]
+
     def _find(self, title: str) -> Path:
         exact = self._file(title)
         if exact.is_file():
             return exact
         wanted = title.strip().casefold()
-        matches = [p for p in self.folder.glob("*.md") if wanted in p.stem.casefold()]
+        matches = [p for p in self._notes() if wanted in p.stem.casefold()]
         if len(matches) == 1:
             return matches[0]
         if matches:
@@ -109,7 +113,7 @@ class NotesModule(Module):
     @tool(name="list")
     def list_notes(self) -> dict[str, Any]:
         """Your notes, most recently changed first."""
-        files = sorted(self.folder.glob("*.md"), key=lambda p: p.stat().st_mtime, reverse=True)
+        files = sorted(self._notes(), key=lambda p: p.stat().st_mtime, reverse=True)
         return {
             "count": len(files),
             "notes": [
@@ -128,7 +132,7 @@ class NotesModule(Module):
         if not wanted:
             raise ToolError("what should I look for?")
         hits: list[dict[str, Any]] = []
-        for path in sorted(self.folder.glob("*.md")):
+        for path in sorted(self._notes()):
             for number, line in enumerate(
                 path.read_text("utf-8", errors="replace").splitlines(), 1
             ):

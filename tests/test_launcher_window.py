@@ -479,6 +479,52 @@ def test_the_model_list_folds_tags_flags_and_frees_space(
 
 
 @pytest.mark.skipif(not has_display(), reason="needs tkinter and a display")
+def test_the_window_counts_only_what_will_really_be_downloaded(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from dataclasses import replace
+    from types import SimpleNamespace
+
+    from tests.test_cleanup_launcher import load_gui
+    from tests.test_lmstudio import starlight_root  # (they import this module)
+
+    gui = load_gui()
+    monkeypatch.setattr(gui.App, "_start_background_lookups", lambda self: None)  # no network
+    monkeypatch.setattr(L, "voice_downloads", lambda: True)  # (as on Windows)
+    monkeypatch.setattr(gui.shutil, "disk_usage", lambda path: SimpleNamespace(free=L.GB))
+    root = starlight_root(tmp_path)
+    monkeypatch.setenv("UV_CACHE_DIR", str(root / ".uv-cache"))
+    app = gui.App(L, L.build_parser().parse_args(["--root", str(root)]))
+    try:
+        # Settings, with everything there already: uv, llama.cpp for the GPU, the voice, a model
+        there = replace(app.settings, variant="vulkan", voice=True)
+        voice = L.voice_files(there)
+        for path in [there.tools / "uv" / L.exe("uv"), L.llama_binary(there), *voice,
+                     app._model_file_of("qwen7b")]:  # fmt: skip
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_bytes(b"x")
+        app.open_setup(True)
+        app.select_model("qwen7b", touched=True)
+        app.gpu_var.set(True)
+        app.voice_var.set(True)
+
+        def summary() -> str:
+            app._refresh_summary()
+            return str(app.summary.cget("text"))
+
+        assert summary() == "Nothing to download."  # (it used to count the voice again)
+        assert not app.setup_go.instate(["disabled"])  # 1 GB free is enough for nothing
+        voice[0].unlink()
+        assert summary().startswith("Needs about 0.6 GB")
+        assert app.setup_go.instate(["disabled"])  # 1 GB free keeps no space to spare
+        app.voice_var.set(False)
+        app.gpu_var.set(False)  # the CPU build of llama.cpp is not there yet
+        assert summary().startswith("Needs about 0.2 GB")
+    finally:
+        app.root.destroy()
+
+
+@pytest.mark.skipif(not has_display(), reason="needs tkinter and a display")
 def test_the_install_button_stays_in_view_and_pages_open_at_their_top(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

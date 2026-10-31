@@ -18,14 +18,21 @@ too, each with a test.
 2. **A first attempt was thrown away.** It applied everything in one go without checking
    (commit `a76ab8a`) and was reverted (`4e8a8b4`). Nothing of it was kept unread.
 3. **Apply, file by file.** Each change was read again against today's code (which had moved
-   on by several batches of features) and merged by hand. Behaviour changes got a test, and
-   the tests were run against the old code too, where they fail.
-4. **Check.** Full test suite, `ruff`, `mypy` (Linux, as Windows, modules), `mypy --strict`
+   on by several batches of features) and merged by hand.
+4. **Review the result.** A review of parts 1 and 2 found that most of part 1's fixes had no
+   test, that one fix broke rules saved before it, that the window still had a bug part 1
+   fixed in the text launcher, and that this file claimed more than was done. Part 3 fixed
+   that. Since then every bug below has a test, and each test was run against the code
+   before its fix, where it fails on the bug itself (not only on a name that did not exist
+   yet). `install.ps1` is the exception: there is no PowerShell to run it here.
+5. **Check.** Full test suite, `ruff`, `mypy` (Linux, as Windows, modules), `mypy --strict`
    for the launcher on both platforms.
 
-The work landed in two commits: part 1 (`0b11c52`, the core, the viewer and most modules)
-and part 2 (the rest of `starlight/`, the remaining modules, the launcher window, the
-scripts and the workflows).
+The work landed in three commits: part 1 (`0b11c52`, the core, the viewer and most
+modules), part 2 (`75141ca`, the rest of `starlight/`, the remaining modules, the launcher
+window, the scripts and the workflows) and part 3 (what the review of both found). The
+tests are in `tests/test_obscure_core.py`, `tests/test_obscure_more.py` and
+`tests/test_sweep_fixes.py`.
 
 ## Real bugs fixed
 
@@ -33,7 +40,8 @@ scripts and the workflows).
 - **Context:** when the conversation was shortened, the request's own context (date and
   time, recalled memories) could be folded into the summary of old turns. It now stays at the
   top, and only real turns are summarized.
-- **Schedules:** "weekly at 9:00" ran every day. It now asks which day.
+- **Schedules:** "weekly at 9:00" ran every day. It now asks which day. (Reminders made that
+  way before keep repeating every day; `reminders.list` shows them as "every day at ...".)
 - **Logs:** camelCase keys (`accessToken`, `clientSecret`) and a key called `secrets` were not
   masked.
 - **HTTP:** the per-host list dropped the first host ever seen, not the one used longest ago.
@@ -60,7 +68,8 @@ scripts and the workflows).
 - **dev:** only `127.0.0.1` counted as this PC. Any loopback address (`127.0.0.53`, `::1`)
   does now.
 - **notes:** a folder named like a note (`Ideas.md/`) made `notes.note` and `notes.append`
-  call each other until Python gave up. It is now refused with a clear message.
+  fail with "Is a directory", and `notes.find` fail for every search. Notes are now files
+  only, and such a title is refused with a clear message.
 - **Launcher window:** the kill-switch and restart buttons read `self.services` again in their
   thread. "Save and restart" may clear it meanwhile, and the error died silently. They now
   keep what they had when clicked.
@@ -70,6 +79,25 @@ scripts and the workflows).
   when uv was there already.
 - **`scripts/e2e_chat.py`:** it reported "the hello.greet tool ran" when there was no audit log
   to look in. It now says it could not be checked.
+
+### Part 3 (found by the review)
+- **Automations:** part 1's schedule fix made a rule saved as "every week at 9:00" invalid,
+  and one invalid rule stopped the whole module, so no automation ran. The error named
+  neither the rule nor the file. A saved rule whose schedule is not understood now stays in
+  the file, does not run, and says why (in `automations.list` and on the Automations page);
+  the other rules run. `automations.reschedule` gives it a new schedule (asks first; never
+  from the phone, like `automations.enable`). A new rule is still refused.
+- **Launcher window:** its space estimate still counted the voice files when they were
+  there already and counted llama.cpp only on a first run. On a nearly full drive that
+  disabled the Settings page's button. It now asks the launcher the same questions as
+  `setup()` (`llama_binary`, `voice_will_download`).
+- **Screenshots:** an address written without `http://` ("192.168.1.5:11434") counted as
+  this PC, because no host was found in it; only httpx refusing such an address kept a
+  screenshot from going there. It is now read as host:port, and an empty one is not local.
+- **Logs:** part 1's camelCase masking also hid `tokenCount`, `token_type` and
+  `password_length`. Keys that end in count, type, limit, length or usage are about a
+  secret, not one, and stay readable.
+- **`scripts/install.ps1`** stopped without saying what failed. It now says which step.
 
 ## Made clearer (a selection)
 
@@ -84,7 +112,7 @@ scripts and the workflows).
   `TASKS` → `SUBCOMMAND_FOR_KIND`, `elsewhere(m)` → `answerIsElsewhere()`, `MODEL` →
   `MODEL_HEALTH`; `link_name()`, `unit_name()` and `SHUTDOWN_REQUEST` for the names and the
   file text `starlight service` writes, instead of strings repeated in two files.
-- **Couplings now stated on both sides:** the kernel's "Run <tool> with ..." question that
+- **Couplings now stated on both sides** (the core's two sides in part 3): the kernel's "Run <tool> with ..." question that
   automations and approvals parse; the audit log fields `e2e_chat.py` reads; the core's
   "is not available" text the launcher workflow looks for; the `files` of `code.write_code`
   that skills keep; `model_url` winning over `model` in `launcher.json`.
@@ -106,6 +134,7 @@ scripts and the workflows).
   would touch hundreds of lines for no change in behaviour.
 - **`GuiUi.ask`'s question box** was removed rather than documented: nothing could reach it.
   The setup page asks everything, so launcher questions get their default (as a test checks).
+  The flag that seemed to switch it, `GuiUi.assume_yes`, went too (part 3).
 - **Findings whose clearer version was not identical,** where the difference mattered
   (restructuring the launcher's `main()` would lose the pause after an unexpected error).
 - **Two type errors in `scripts/e2e_chat.py`** that were there before (the `websockets` origin

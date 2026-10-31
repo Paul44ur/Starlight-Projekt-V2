@@ -32,7 +32,7 @@ from contextvars import ContextVar
 from datetime import datetime, timedelta
 from typing import Any
 
-from pydantic import BaseModel, Field, ValidationError, model_validator
+from pydantic import BaseModel, Field, PrivateAttr, ValidationError, ValidationInfo, model_validator
 
 from starlight.core import Event, Module, ModuleContext, ToolError, tool
 from starlight.core.config import write_yaml_config
@@ -47,6 +47,7 @@ MAX_DEPTH = 3  # an automation triggering another one, at most this deep
 MAX_TEXT = 4000
 HISTORY_KEEP = 500
 GRACE = timedelta(minutes=10)  # a run missed by less than this (sleep, restart) still happens
+NEW_RULE = "new_rule"  # validation context: a rule being made now, not one read from the file
 
 # How deeply automations are nested right now: a rule's tool published an event that
 # started another rule. The bus calls _on_event synchronously in the publishing tool's
@@ -91,19 +92,35 @@ class Rule(BaseModel):
     # model pick a tool and its arguments (given with automations.allow).
     allow: list[str] = Field(default_factory=list)
     allow_anywhere: list[str] = Field(default_factory=list)
+    # A saved rule whose schedule is not understood (edited by hand, or "every week at
+    # 9:00", which older versions ran every day): it stays in the file but does not run,
+    # and says what is wrong, so the other rules still load. A new rule is refused instead.
+    _problem: str = PrivateAttr(default="")
 
     @model_validator(mode="after")
-    def _trigger(self) -> Rule:
+    def _trigger(self, info: ValidationInfo) -> Rule:
         if not NAME.match(self.name):
             raise ValueError("a name is lowercase letters, digits, - or _ (max 40)")
         if bool(self.when) == bool(self.on):
             raise ValueError("a rule has either a schedule (when) or an event (on)")
         if self.when:
-            parse_schedule(self.when)  # raises a clear error
+            try:
+                parse_schedule(self.when)
+            except ScheduleError as exc:
+                if (info.context or {}).get(NEW_RULE):
+                    raise  # (_build passes the message on as it is)
+                self._problem = str(exc)
         return self
 
+    @property
+    def problem(self) -> str:
+        """Why this saved rule cannot run (its schedule); empty when it can."""
+        return self._problem
+
     def describe(self) -> str:
-        if self.when:
+        if self.problem:
+            trigger = f'"{self.when}" (does not run until the schedule is fixed: {self.problem})'
+        elif self.when:
             trigger = parse_schedule(self.when).describe()
         else:
             trigger = f"when {self.on} happens" + (
@@ -246,6 +263,9 @@ class AutomationsModule(Module):
         self.state_file = ctx.data_dir / "state.json"
         self.history_file = ctx.data_dir / "history.jsonl"
         self._next: dict[str, datetime] = {}
+        for rule in self.config.rules:
+            if rule.problem:
+                ctx.logger.warning("automation not run", rule=rule.name, problem=rule.problem)
         self._restore()
         self._runs: set[asyncio.Task[Any]] = set()
         # Every event passes here, so the check is cheap and synchronous; only a matching
@@ -276,7 +296,7 @@ class AutomationsModule(Module):
             saved = {}
         now = self._now()
         for rule in self.config.rules:
-            if not rule.when:
+            if not rule.when or rule.problem:
                 continue
             when = _parse_time(saved.get(rule.name))
             if when is None or when < now - GRACE:  # never set, or missed long ago: skip it
@@ -307,7 +327,7 @@ class AutomationsModule(Module):
         moment = now or self._now()
         ran: list[str] = []
         for rule in list(self.config.rules):
-            if not (rule.enabled and rule.when):
+            if not (rule.enabled and rule.when) or rule.problem:
                 continue
             due = self._next.get(rule.name)
             if due is None:
@@ -512,7 +532,7 @@ class AutomationsModule(Module):
     @staticmethod
     def _build(data: dict[str, Any]) -> Rule:
         try:
-            return Rule.model_validate(data)
+            return Rule.model_validate(data, context={NEW_RULE: True})
         except ScheduleError as exc:
             raise ToolError(str(exc)) from exc
         except ValidationError as exc:
@@ -532,6 +552,7 @@ class AutomationsModule(Module):
     async def page_action(self, name: str, action: str) -> dict[str, Any]:
         rule = self._rule(name)
         if action == "enable":
+            self._refuse_broken(rule)
             rule.enabled = True
             if rule.when:
                 self._next[rule.name] = parse_schedule(rule.when).next_after(self._now())
@@ -591,6 +612,7 @@ class AutomationsModule(Module):
                     "does": r.describe(),
                     "next": self._next_text(r),
                     "may_run_without_asking": r.allow,
+                    **({"problem": r.problem} if r.problem else {}),
                 }
                 for r in self.config.rules
             ],
@@ -600,6 +622,7 @@ class AutomationsModule(Module):
     async def enable(self, name: str) -> dict[str, Any]:
         """Switch an automation back on. Asks first."""
         rule = self._rule(name)
+        self._refuse_broken(rule)
         if not await self.ctx.ui.confirm(
             f"Switch on the automation '{rule.name}': {rule.describe()}?"
         ):
@@ -610,6 +633,32 @@ class AutomationsModule(Module):
             self._save_state()
         self._write_rules()
         return {"enabled": rule.name, "next": self._next_text(rule)}
+
+    def _refuse_broken(self, rule: Rule) -> None:
+        if rule.problem:
+            raise ToolError(
+                f"'{rule.name}' can't run until its schedule is fixed ({rule.problem}); "
+                "give it a new one with automations.reschedule"
+            )
+
+    @tool
+    async def reschedule(self, name: str, when: str) -> dict[str, Any]:
+        """Give a scheduled automation a new schedule `when` ("every monday at 9:00"),
+        keeping what it does. Also fixes a saved rule whose schedule is not understood.
+        Asks first."""
+        rule = self._rule(name)
+        if not rule.when:
+            raise ToolError(f"'{rule.name}' runs on an event ({rule.on}), not on a schedule")
+        fixed = self._build({**rule.model_dump(), "when": when})
+        if not await self.ctx.ui.confirm(
+            f"Change the automation '{rule.name}': {fixed.describe()}?"
+        ):
+            raise ToolError("not confirmed, nothing changed")
+        self.config.rules = [fixed if r is rule else r for r in self.config.rules]
+        self._write_rules()
+        self._next[fixed.name] = parse_schedule(fixed.when).next_after(self._now())
+        self._save_state()
+        return {"rescheduled": fixed.name, "rule": fixed.describe(), "next": self._next_text(fixed)}
 
     @tool
     def disable(self, name: str) -> dict[str, Any]:

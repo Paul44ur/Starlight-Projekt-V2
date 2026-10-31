@@ -237,8 +237,8 @@ class RemoteConfig(_Strict):
             "access.allow_action", "access.ask_action", "access.block_action",
             "access.clear_rule", "access.set_secret", "access.forget_secret",
             "automations.add", "automations.use_template", "automations.enable",
-            "automations.allow", "network.allow", "login.add_site", "commands.add",
-            "docs.add_folder", "home.connect", "backup.add",
+            "automations.allow", "automations.reschedule", "network.allow", "login.add_site",
+            "commands.add", "docs.add_folder", "home.connect", "backup.add",
             "commands.shell",  # a shell could rewrite Starlight's own settings
             "voice.wake_word",  # (the PC's microphone is switched on at the PC)
         ]

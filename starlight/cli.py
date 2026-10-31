@@ -167,7 +167,7 @@ HELP = """\
 - `/new` (or `/clear`) - start a new conversation (the old one stays saved)
 - `/private` - a private conversation: never saved, nothing learned from it
 - `/practice` - practice mode on or off: actions are described, not done
-- `/talk [SECONDS]` - say your request into the microphone (voice module)
+- `/talk [SECONDS]` - say your request into the microphone (voice module; 120 s at most)
 - `/quit` - leave
 - `!module.tool {json}` - call a tool directly (test model)
 """

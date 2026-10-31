@@ -5,23 +5,29 @@ name, and the shutdown request files of `starlight service`."""
 from __future__ import annotations
 
 import asyncio
+import sys
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
 
 
 def test_pictures_are_sent_with_their_own_type() -> None:
-    from starlight.models.common import image_mime
+    from starlight.core.model import Message
+    from starlight.models.common import openai_messages
 
-    assert image_mime(b"\xff\xd8\xff\xe0 jpeg") == "image/jpeg"
-    assert image_mime(b"GIF89a....") == "image/gif" and image_mime(b"GIF87a") == "image/gif"
-    assert image_mime(b"RIFF\x10\x00\x00\x00WEBPVP8 ") == "image/webp"
-    assert image_mime(b"\x89PNG\r\n\x1a\n") == "image/png"
-    assert image_mime(b"RIFF\x10\x00\x00\x00WAVEfmt ") == "image/png"  # not a picture: as before
+    def sent_as(picture: bytes) -> str:
+        parts = openai_messages([Message("user", "look", images=[picture])])[0]["content"]
+        return str(parts[1]["image_url"]["url"]).split(";")[0]
+
+    assert sent_as(b"\xff\xd8\xff\xe0 jpeg") == "data:image/jpeg"
+    assert sent_as(b"GIF89a....") == "data:image/gif" and sent_as(b"GIF87a") == "data:image/gif"
+    assert sent_as(b"RIFF\x10\x00\x00\x00WEBPVP8 ") == "data:image/webp"
+    assert sent_as(b"\x89PNG\r\n\x1a\n") == "data:image/png"
+    assert sent_as(b"RIFF\x10\x00\x00\x00WAVEfmt ") == "data:image/png"  # not a picture: as before
 
 
 def test_talk_records_two_minutes_at_most() -> None:
-    from starlight.cli import MAX_TALK_SECONDS, _talk
+    from starlight.cli import _talk
 
     recorded: list[float] = []
 
@@ -40,15 +46,26 @@ def test_talk_records_two_minutes_at_most() -> None:
                                 you=lambda text: None)  # fmt: skip
     for asked in ("999", "", "10"):
         asyncio.run(_talk(kernel, asked, view))
-    assert recorded == [MAX_TALK_SECONDS, 6, 10]
+    assert recorded == [120, 6, 10]  # "/talk 999": two minutes at most
 
 
-def test_yes_is_the_same_word_everywhere_in_the_terminal() -> None:
-    from starlight import console
+def test_ja_is_yes_in_starlight_ask_too(monkeypatch: Any) -> None:
+    from starlight import cli, console
+    from starlight.core.permissions import PermissionPolicy
 
-    assert {"y", "yes", "j", "ja"} == set(console.YES)
-    source = (Path(__file__).parents[1] / "starlight" / "cli.py").read_text(encoding="utf-8")
-    assert 'in ("y", "yes")' not in source  # `starlight ask` takes "j"/"ja" too now
+    answer = ""
+
+    async def typed(reader: Any, prompt: str) -> str:
+        return answer
+
+    monkeypatch.setattr(console.lines, "read", typed)
+    monkeypatch.setattr(cli.sys.stdin, "isatty", lambda: True)
+    ui = cli.TerminalUI()
+    confirm = cli.make_confirmer(PermissionPolicy(), assume_yes=False)
+    tool: Any = SimpleNamespace(qualified_name="files.save")
+    for answer, meant in (("j", True), ("Ja", True), ("yes", True), ("n", False), ("", False)):
+        assert asyncio.run(ui.confirm("Save it?")) is meant, answer
+        assert asyncio.run(confirm(tool, {})) is meant, answer  # "j" and "ja" used to mean no
 
 
 def test_a_download_name_keeps_its_sharp_s(tmp_path: Path) -> None:
@@ -86,14 +103,27 @@ def test_top_must_end_by_itself_to_count_as_read_only() -> None:
     assert not is_read_only("docker stats") and is_read_only("docker stats --no-stream")
 
 
-def test_every_loopback_address_is_this_pc_only() -> None:
-    from modules.dev.module import _loopback
+def test_every_loopback_address_is_this_pc_only(monkeypatch: Any) -> None:
+    from modules.dev.module import DevModule
 
-    assert _loopback("127.0.0.1") and _loopback("127.0.0.53") and _loopback("::1")
-    assert not _loopback("0.0.0.0") and not _loopback("192.168.1.5") and not _loopback("x")
+    addresses = ["127.0.0.1", "127.0.0.53", "::1", "0.0.0.0", "192.168.1.5"]
+    psutil = SimpleNamespace(
+        CONN_LISTEN="LISTEN", AccessDenied=PermissionError, NoSuchProcess=LookupError,
+        net_connections=lambda kind: [
+            SimpleNamespace(status="LISTEN", laddr=SimpleNamespace(ip=ip, port=8000 + n), pid=0)
+            for n, ip in enumerate(addresses)
+        ],
+    )  # fmt: skip
+    monkeypatch.setitem(sys.modules, "psutil", psutil)
+    found = DevModule.ports(object.__new__(DevModule))["listening"]
+    reach = {row["address"]: row["reachable_from"] for row in found}
+    assert reach == {
+        "127.0.0.1": "this PC only", "127.0.0.53": "this PC only", "::1": "this PC only",
+        "0.0.0.0": "the network", "192.168.1.5": "the network",
+    }  # fmt: skip
 
 
-async def test_a_folder_named_like_a_note_is_refused_not_looped(
+async def test_a_folder_named_like_a_note_is_not_taken_for_one(
     paths: Any, use_module: Any, documents: Path
 ) -> None:
     from starlight.core import Kernel
@@ -102,5 +132,12 @@ async def test_a_folder_named_like_a_note_is_refused_not_looped(
     async with Kernel(paths) as k:
         notes = k.modules.records["notes"].instance
         notes._file("Ideas").mkdir(parents=True)  # a folder called "Ideas.md"
-        result = await k.dispatcher.call("notes.note", {"title": "Ideas", "text": "a"})
-    assert not result.ok and "is a folder" in str(result.error)
+        await k.dispatcher.call("notes.note", {"title": "Shopping", "text": "milk"})
+        made = await k.dispatcher.call("notes.note", {"title": "Ideas", "text": "a"})
+        added = await k.dispatcher.call("notes.append", {"title": "Ideas", "text": "a"})
+        listed = await k.dispatcher.call("notes.list", {})
+        found = await k.dispatcher.call("notes.find", {"text": "milk"})
+    for refused in (made, added):  # it used to fail with "Is a directory"
+        assert not refused.ok and "is a folder" in str(refused.error)
+    assert [n["title"] for n in listed.output["notes"]] == ["Shopping"]
+    assert found.ok and found.output["count"] == 1  # the folder used to break every search

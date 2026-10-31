@@ -266,6 +266,8 @@ class Agent:
                         "(a shorter text or fewer files), or start a new conversation."
                     )
                 else:
+                    # .github/workflows/launcher.yml looks for "is not available" in this
+                    # answer to tell a dead model server: keep those words.
                     result.answer = (
                         f"The model ({self.provider.name}) is not available: "
                         f"{type(exc).__name__}: {exc}. Is the model server running? "

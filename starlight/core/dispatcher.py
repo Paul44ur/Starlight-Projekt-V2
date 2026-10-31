@@ -227,6 +227,7 @@ class Dispatcher:
             )
             if result.duration_ms:
                 self.stats.record("tool.duration_ms", result.duration_ms, tool=result.tool)
+        # scripts/e2e_chat.py (tool_ran) reads "event", "tool" and "ok" of these lines.
         self.audit.record(
             "tool.result",
             tool=result.tool,

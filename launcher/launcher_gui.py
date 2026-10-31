@@ -28,7 +28,7 @@ import tkinter as tk
 import traceback
 import urllib.error
 import webbrowser
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from functools import partial
 from pathlib import Path
 from tkinter import font as tkfont
@@ -401,7 +401,6 @@ class GuiUi:
     """The launcher's Ui for the window: everything goes into a queue the window reads."""
 
     captures_output = True
-    assume_yes = True  # the setup page asked everything; launcher questions get their default
 
     def __init__(self, events: queue.Queue[tuple[Any, ...]], log: Path | None = None) -> None:
         self.events = events
@@ -440,7 +439,7 @@ class GuiUi:
         self.events.put(("note", f"{tr(title)}\n\n{text}"))
 
     def ask(self, question: str, default: bool) -> bool:
-        return default  # (no second question in a box: see assume_yes)
+        return default  # the setup page asked everything: no second question in a box
 
 
 def rounded_rect(canvas: tk.Canvas, x0: float, y0: float, x1: float, y1: float, r: float,
@@ -1630,22 +1629,27 @@ class App:
         return bool((self.settings.tools / "uv" / self.L.exe("uv")).is_file())
 
     def _refresh_summary(self) -> None:
-        import shutil
-
         gb = self.L.GB
+        # What would be downloaded with the boxes as they are now: the same checks as the
+        # launcher's own estimate in setup(), so a part already there is not counted.
+        chosen = replace(
+            self.settings,
+            variant="vulkan" if self.gpu_var.get() else "cpu",
+            voice=self.voice_var.get(),
+        )
         need = 0.0
         gone = False  # the chosen model's download link does not work
         if not self._installed():
             need += self.L.FIRST_RUN_SIZE
         key = self.model_var.get()
         if self.settings.use_model and key != LMSTUDIO:
-            if not self._installed():
+            if not self.L.llama_binary(chosen).is_file():
                 need += self.L.LLAMA_SIZE
             if key and not self._model_file_of(key).is_file():
                 known = self.sizes.get(self._model_url_of(key))
                 need += known if known else self.APPROX_GB.get(key, 9.0) * gb
                 gone = self._model_url_of(key) in self.missing
-        if self.voice_var.get():
+        if self.L.voice_will_download(chosen):
             need += self.L.VOICE_SIZE
         try:
             free = shutil.disk_usage(self.settings.root).free

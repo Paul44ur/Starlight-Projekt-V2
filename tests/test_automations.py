@@ -237,3 +237,41 @@ async def test_the_kill_switch_stops_a_rule(project: Paths) -> None:
         k.kill_switch.reset()
         assert module(k, "probe").calls == []
     assert not entry["ok"] and "KillSwitch" in entry["steps"][0]["error"]
+
+
+async def test_a_saved_rule_whose_schedule_is_no_longer_taken_does_not_stop_the_others(
+    project: Paths,
+) -> None:
+    # Older versions saved "every week at 9:00" and ran it every day; now it needs a day.
+    (project.module_configs / "automations.yaml").write_text(
+        "rules:\n"
+        "  - name: review\n    when: every week at 9:00\n    actions: [{say: weekly review}]\n"
+        "  - name: brief\n    when: weekdays 7:30\n    actions: [{say: good morning}]\n",
+        encoding="utf-8",
+    )
+    user = User(True)
+    async with Kernel(project, ui=user) as k:
+        auto = module(k)  # the module loaded, with both rules
+        listed = {r["name"]: r for r in (await call(k, "automations.list")).output["automations"]}
+        assert "say which day" in listed["review"]["problem"]
+        assert "does not run" in listed["review"]["does"] and listed["review"]["next"] is None
+        assert "problem" not in listed["brief"] and listed["brief"]["next"]
+        assert "review" not in auto._next
+        assert await auto.tick(auto._next["brief"]) == ["brief"]  # the other one runs
+        refused = await call(k, "automations.enable", name="review")
+        assert not refused.ok and "automations.reschedule" in str(refused.error)
+        await call(k, "automations.disable", name="brief")  # the file is written again ...
+        assert len(read_yaml(project.module_configs / "automations.yaml")["rules"]) == 2  # kept
+
+        fixed = await call(k, "automations.reschedule", name="review", when="every monday at 9:00")
+        assert fixed.ok, fixed.error
+        assert "Monday at 09:00" in user.questions[-1] and fixed.output["next"]
+        assert await auto.tick(auto._next["review"]) == ["review"]
+    saved = read_yaml(project.module_configs / "automations.yaml")["rules"]
+    assert [r["when"] for r in saved if r["name"] == "review"] == ["every monday at 9:00"]
+
+
+async def test_a_new_rule_still_has_to_say_which_day(project: Paths) -> None:
+    async with Kernel(project, ui=User(True)) as k:
+        made = await call(k, "automations.add", name="review", when="weekly at 9:00", say="hi")
+    assert not made.ok and "say which day" in str(made.error)

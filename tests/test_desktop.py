@@ -256,6 +256,10 @@ def test_local_url_rules() -> None:
     assert is_local_url("http://192.168.1.5:11434", allow_lan=True)
     assert not is_local_url("http://203.0.113.9", allow_lan=True)  # not a home network
     assert not is_local_url("https://api.example.com", allow_lan=True)
+    # without "http://": read as host:port, not as "no host, so local"
+    assert not is_local_url("192.168.1.5:11434") and not is_local_url("api.example.com:443")
+    assert is_local_url("127.0.0.1:11434") and is_local_url("192.168.1.5:11434", allow_lan=True)
+    assert not is_local_url("")
 
 
 def test_ocr_helpers() -> None:

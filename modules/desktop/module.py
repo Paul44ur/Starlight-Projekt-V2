@@ -98,12 +98,12 @@ def start_app(command: list[str]) -> subprocess.Popen[bytes]:
 
 def is_local_url(url: str, allow_lan: bool = False) -> bool:
     """True if ``url`` points at this machine (or, with allow_lan, your home network)."""
-    host = urlsplit(url).hostname or ""
-    # A URL without a host also counts as local. urlsplit finds no host in an empty URL,
-    # and none in an address written without "http://" either ("192.168.1.5:11434"), so
-    # such an address passes here; it is only the model client (httpx), which refuses a
-    # URL without a scheme, that keeps the screenshot from being sent there.
-    if host in ("localhost", ""):
+    # An address written without "http://" ("192.168.1.5:11434") is read as host:port:
+    # urlsplit would find no host in it at all. No host (an empty URL): not local.
+    host = urlsplit(url if "//" in url else f"//{url}").hostname or ""
+    if not host:
+        return False
+    if host == "localhost":
         return True
     try:
         address = ipaddress.ip_address(host)

@@ -239,6 +239,7 @@ async function load() {
     const row = el("div", "rule");
     const head = el("div", "");
     head.append(el("b", "", r.name), el("span", "pill " + (r.enabled ? "on" : "off"), r.enabled ? "on" : "off"));
+    if (r.problem) head.append(el("span", "pill off", "needs a new schedule"));  // (r.does says why)
     if (r.next) head.append(el("span", "dim small", "  next " + r.next));
     const actions = el("div", "actions");
     [["run", "Run now"], [r.enabled ? "disable" : "enable", r.enabled ? "Switch off" : "Switch on"], ["remove", "Delete"]]

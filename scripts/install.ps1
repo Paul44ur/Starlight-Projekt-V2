@@ -6,6 +6,15 @@ param([switch]$Service)
 $ErrorActionPreference = "Stop"
 Set-Location (Split-Path $PSScriptRoot -Parent)
 
+# After a program: stop the install, saying what failed, when it did not succeed.
+function Stop-OnFailure([string]$what) {
+    if ($LASTEXITCODE) {
+        Write-Host ""
+        Write-Host "Starlight was not installed: $what failed (exit code $LASTEXITCODE). See the messages above."
+        exit $LASTEXITCODE
+    }
+}
+
 if (-not (Get-Command uv -ErrorAction SilentlyContinue)) {
     Write-Host "Installing uv..."
     winget install --id astral-sh.uv -e --accept-source-agreements --accept-package-agreements
@@ -14,16 +23,16 @@ if (-not (Get-Command uv -ErrorAction SilentlyContinue)) {
     # Look for uv rather than at winget's exit code: winget also reports a failure when
     # uv was installed already but not on this window's PATH.
     if (-not (Get-Command uv -ErrorAction SilentlyContinue)) {
-        Write-Host "uv could not be installed; see https://docs.astral.sh/uv/"
+        Write-Host "Starlight was not installed: uv could not be installed (see https://docs.astral.sh/uv/)."
         exit 1
     }
 }
 
 Write-Host "Installing Starlight and its dependencies..."
 uv sync --extra all
-if ($LASTEXITCODE) { exit $LASTEXITCODE }
+Stop-OnFailure "uv sync"
 uv run playwright install chromium
-if ($LASTEXITCODE) { exit $LASTEXITCODE }
+Stop-OnFailure "the Chromium download"
 
 if (-not (Get-Command tesseract -ErrorAction SilentlyContinue) -and
     -not (Test-Path "C:\Program Files\Tesseract-OCR\tesseract.exe")) {
@@ -35,13 +44,13 @@ if (-not (Get-Command docker -ErrorAction SilentlyContinue)) {
 }
 
 uv run starlight status
-if ($LASTEXITCODE) { exit $LASTEXITCODE }
+Stop-OnFailure "starlight status"
 uv run starlight logs scan  # exits 1 when it finds secrets: they are listed, the install goes on
 
 if ($Service) {
     Write-Host "Starting core and viewer now and at every logon (Startup folder)..."
     uv run starlight service install
-    if ($LASTEXITCODE) { exit $LASTEXITCODE }
+    Stop-OnFailure "starlight service install"
 }
 Write-Host ""
 Write-Host "Done. Next: docs\setup-windows.md (model, memory, WhatsApp)."

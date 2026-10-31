@@ -31,6 +31,9 @@ _SECRET_KEY = re.compile(
     re.IGNORECASE,
 )
 _CAMEL_CASE_BREAK = re.compile(r"(?<=[a-z0-9])(?=[A-Z])")  # "accessToken" -> "access|Token"
+# ... unless the key ends in one of these: then it is about a secret, not one itself
+# ("token_count", "tokenType": "Bearer", "password_length").
+_ABOUT_A_SECRET = re.compile(r"[_-](count|type|limit|length|usage)$", re.IGNORECASE)
 REDACTED = "***"
 MIN_SECRET_CHARS = 6  # shorter known values are not masked: they would hit ordinary words
 
@@ -39,7 +42,8 @@ _SECRET_VALUES: set[str] = set()
 
 
 def _names_a_secret(key: str) -> bool:
-    return bool(_SECRET_KEY.search(_CAMEL_CASE_BREAK.sub("_", key)))
+    parts = _CAMEL_CASE_BREAK.sub("_", key)
+    return bool(_SECRET_KEY.search(parts)) and not _ABOUT_A_SECRET.search(parts)
 
 
 def add_secret_values(values: Any) -> None:
