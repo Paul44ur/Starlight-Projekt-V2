@@ -273,7 +273,14 @@ needs); `files.save` keeps a version before replacing or appending (text up to 1
 Tools: `files.versions`, `files.changes`, `files.restore` (version 0: before the last
 change; outside the free folders it asks), `notes.trash`, `notes.restore_deleted`,
 `memory.versions`, `memory.undo`. `notebook.keep_versions` and `notebook.versions` are
-safety limits.
+safety limits. Block A3 shows these changes in the chat: the dispatcher's tool report
+carries a result's `changed`; the web app keeps it in `RecentChanges` under a random id and
+sends the page `{"type": "changed", "id", "title", "path", "new", "undoable"}`. The page
+draws a chip under the answer; Undo posts only the id to `POST /api/changes/{id}/undo`
+(PC only, once per change, audited as `web.undo`), never a path. `notebook.undo_change`
+does the work: a new file goes to the trash, a changed one gets its version back. Changes
+made from a phone are shown without Undo and are not kept. The terminal collects the same
+reports and prints "Changed: X (undo: /undo)"; `/undo` goes back one change at a time.
 
 **Safety limits you set (`core/safety.py`).** Settings -> Safety limits chooses a level
 (strict, balanced, relaxed) and any of 29 switches on top, kept in

@@ -700,6 +700,9 @@ off with `starlight remote disable`.
   memory" (`files.restore`, `files.changes`, `files.versions`, `notes.trash`,
   `notes.restore_deleted`, `memory.undo`). A restore keeps the current file too, so it can
   be undone in turn. Up to 20 versions per file, for 90 days (Settings → Safety limits).
+  In the web chat, a chip under the answer names each note or file Starlight changed
+  ("Changed: Shopping") with an **Undo** button (at the PC; a phone only shows the chip).
+  In the terminal, a line says the same and `/undo` puts the last change back.
 - **Everything runs on your PC.** The model, your conversations, your memory and
   screenshots never leave it. Only web pages you ask for, and WhatsApp if you set it up,
   use the internet.

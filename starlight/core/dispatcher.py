@@ -213,11 +213,15 @@ class Dispatcher:
     def _finish(
         self, result: ToolResult, request_id: str | None, state: str | None = None
     ) -> ToolResult:
+        # A tool that changed a note or a file says what (starlight.notebook.Written.changed):
+        # the chat offers to undo it.
+        changed = result.output.get("changed") if isinstance(result.output, dict) else None
         _report(
             result.tool,
             state or ("done" if result.ok else "failed"),
             ms=result.duration_ms,
             **({"error": str(result.error)[:200]} if result.error else {}),
+            **({"changed": changed} if result.ok and isinstance(changed, dict) else {}),
         )
         if self.stats is not None:
             module = result.tool.split(".", 1)[0]

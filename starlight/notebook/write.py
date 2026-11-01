@@ -19,7 +19,7 @@ from pathlib import Path
 
 from starlight.core.fsutil import write_atomic_bytes
 from starlight.core.tools import ToolError
-from starlight.notebook.history import History
+from starlight.notebook.history import History, HistoryError
 
 MISSING = "missing"  # the stamp of a file that does not exist (yet)
 
@@ -97,3 +97,19 @@ def append_note(
     version = history.save(path, reason) if history is not None and existing else None
     write_atomic_bytes(path, existing + _encode(text, newline))
     return Written(stamp(path), version, new=not existing)
+
+
+def undo_change(history: History, change: dict[str, object]) -> str:
+    """Undo a change a tool reported (``Written.changed``): a new file goes to the trash, a
+    changed one gets its earlier version back. The file as it is now is kept first, so the
+    undo can be undone too. What it says it did, in plain words."""
+    path = Path(str(change.get("path") or ""))
+    if change.get("new"):
+        if path.is_file():
+            history.trash(path, "undo")
+        return f"{path.stem} removed (it is in the trash)"
+    version = change.get("version")
+    if not isinstance(version, int):
+        raise HistoryError("no earlier version was kept (keeping versions is switched off)")
+    history.restore(path, version)
+    return f"{path.stem} is back as it was"

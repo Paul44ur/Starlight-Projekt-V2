@@ -134,6 +134,8 @@
     ". Changes are saved in config/permissions.chat.yaml.": ". Änderungen landen in config/permissions.chat.yaml.",
     "Advanced: one rule for several tools": "Erweitert: eine Regel für mehrere Werkzeuge", "A pattern such as": "Ein Muster wie",
     '. "Default" removes the rule again.': '. „Standard" entfernt die Regel wieder.',
+    // the chat: a file the assistant changed
+    "Changed:": "Geändert:", "New:": "Neu:", "Undone:": "Rückgängig gemacht:",
     // settings: safety limits (the switches' own texts come from the server in German)
     "Safety limits": "Sicherheitsgrenzen", "Safety level": "Sicherheitsstufe",
     "How careful Starlight is. Pick a level, then change any single protection. Saved in config/starlight.safety.yaml.":

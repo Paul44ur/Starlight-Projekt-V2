@@ -23,7 +23,7 @@ from starlight import __version__, console
 from starlight.core import crashes
 from starlight.core.agent import AgentResult
 from starlight.core.config import ConfigError, load_config
-from starlight.core.dispatcher import Confirmer
+from starlight.core.dispatcher import Confirmer, tool_sink
 from starlight.core.kernel import Kernel
 from starlight.core.killswitch import KillSwitch
 from starlight.core.logging import setup_logging
@@ -34,7 +34,7 @@ from starlight.core.output import describe_output_folder, resolve_output_folder
 from starlight.core.paths import Paths
 from starlight.core.permissions import PermissionPolicy
 from starlight.core.stats import Stats
-from starlight.core.tools import Tool
+from starlight.core.tools import Tool, ToolError
 from starlight.core.vault import Vault, VaultError
 from starlight.memory import Memory
 from starlight.models.bench import benchmark, table_row
@@ -43,6 +43,7 @@ from starlight.models.exam import Result as ExamResult
 from starlight.models.exam import exam
 from starlight.models.nightly import cron_line, nightly, schedule_command
 from starlight.models.serve import ServeError, run_server, serve_command
+from starlight.notebook import undo_change
 from starlight.skills import SkillManager
 from starlight.skills.git import GitError
 from starlight.tui import ChatView
@@ -129,14 +130,31 @@ async def cmd_ask(paths: Paths, args: argparse.Namespace) -> int:
 
 
 async def _ask(
-    kernel: Kernel, line: str, on_token: TokenCallback, conversation: str | None = None
+    kernel: Kernel,
+    line: str,
+    on_token: TokenCallback,
+    conversation: str | None = None,
+    changes: list[dict[str, Any]] | None = None,
 ) -> AgentResult | None:
     """Run one request. Ctrl+C while Starlight answers stops that answer, not Starlight
-    (it returns None then)."""
+    (it returns None then). A note or file a tool changes is added to ``changes``, so the
+    chat can say so and /undo can put it back."""
     loop = asyncio.get_running_loop()
-    task = asyncio.ensure_future(
-        kernel.ask(line, keep_history=True, on_token=on_token, conversation=conversation)
-    )
+
+    def on_tool(report: dict[str, Any]) -> None:
+        if changes is not None and isinstance(report.get("changed"), dict):
+            changes.append(report["changed"])
+
+    async def run() -> AgentResult:
+        sink = tool_sink.set(on_tool)  # (inside the task: its own copy of the context)
+        try:
+            return await kernel.ask(
+                line, keep_history=True, on_token=on_token, conversation=conversation
+            )
+        finally:
+            tool_sink.reset(sink)
+
+    task = asyncio.ensure_future(run())
 
     def stop(signum: int, frame: FrameType | None) -> None:
         loop.call_soon_threadsafe(task.cancel)
@@ -167,14 +185,45 @@ HELP = """\
 - `/new` (or `/clear`) - start a new conversation (the old one stays saved)
 - `/private` - a private conversation: never saved, nothing learned from it
 - `/practice` - practice mode on or off: actions are described, not done
+- `/undo` - undo the last change Starlight made to a note or file (again: the one before)
 - `/talk [SECONDS]` - say your request into the microphone (voice module; 120 s at most)
 - `/quit` - leave
 - `!module.tool {json}` - call a tool directly (test model)
 """
 
 
+MAX_UNDO = 50  # changes /undo remembers, newest last
+
+
+def _show_changes(view: ChatView, changes: list[dict[str, Any]], since: int) -> None:
+    """Say which notes and files the last answer changed (the terminal's Undo chip)."""
+    for change in changes[since:]:
+        what = "New" if change.get("new") else "Changed"
+        undoable = change.get("new") or change.get("version") is not None
+        hint = " (undo: /undo)" if undoable else ""
+        view.info(f"{what}: {change.get('title') or change.get('path')}{hint}")
+
+
+def _undo(kernel: Kernel, view: ChatView, changes: list[dict[str, Any]]) -> None:
+    """/undo: put the newest change back; another /undo goes one further back."""
+    while changes:
+        change = changes.pop()
+        if change.get("new") or change.get("version") is not None:
+            break
+    else:
+        view.info("Nothing to undo.")
+        return
+    try:
+        view.info(undo_change(kernel.file_history, change).capitalize() + ".")
+    except (ToolError, OSError) as exc:
+        view.error(f"Could not undo: {exc}")
+        return
+    kernel.audit.record("cli.undo", path=str(change.get("path")), new=bool(change.get("new")))
+
+
 async def cmd_run(paths: Paths, args: argparse.Namespace) -> int:
     view = ChatView(assume_yes=args.yes)
+    changes: list[dict[str, Any]] = []  # what /undo can put back
     kernel = Kernel(paths, hotkey=True)
     kernel.set_ui(view)
     kernel.set_confirmer(view.permission_confirmer(kernel.policy))
@@ -205,6 +254,9 @@ async def cmd_run(paths: Paths, args: argparse.Namespace) -> int:
                 if not spoken:
                     continue
                 line = spoken
+            elif line == "/undo":
+                _undo(kernel, view, changes)
+                continue
             elif line.startswith("/"):
                 if await _repl_command(kernel, line, view):
                     break
@@ -216,9 +268,14 @@ async def cmd_run(paths: Paths, args: argparse.Namespace) -> int:
                 streamed.append(token)
                 emit(token)
 
-            result = await _ask(kernel, line, on_token, view.conversation)
+            since = len(changes)
+            result = await _ask(kernel, line, on_token, view.conversation, changes)
+            dropped = max(0, len(changes) - MAX_UNDO)  # the oldest are forgotten
+            del changes[:dropped]
+            since = max(0, since - dropped)
             if result is None:
                 view.end_answer(streamed=bool(streamed))
+                _show_changes(view, changes, since)
                 view.info("[Stopped. Ask something else, or /quit to leave.]")
                 continue
             # Streaming already showed the answer (after any text from earlier tool steps).
@@ -227,6 +284,7 @@ async def cmd_run(paths: Paths, args: argparse.Namespace) -> int:
             else:
                 view.end_answer(streamed=bool(streamed))
                 view.answer(result.answer)
+            _show_changes(view, changes, since)
             if result.stopped:
                 view.info("Kill switch is engaged. Type /resume to continue.")
     return 0

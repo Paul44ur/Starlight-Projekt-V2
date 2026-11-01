@@ -35,6 +35,14 @@
   .msg .who { font-size: 11px; color: var(--dim); margin-bottom: 3px; text-transform: uppercase;
               letter-spacing: .04em; }
   .msg .tools { display: flex; gap: 4px; margin-top: 6px; }
+  /* A file the assistant changed: one chip each, with Undo. */
+  .changerow { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+  .change { display: inline-flex; align-items: center; gap: 6px; font-size: 12.5px;
+            border: 1px solid var(--border); border-radius: 999px; padding: 2px 3px 2px 10px;
+            background: var(--panel2); color: var(--dim); }
+  .change b { color: var(--text); font-weight: 600; }
+  .change button { padding: 1px 9px; font-size: 12px; border-radius: 999px; }
+  .change.undone { padding-right: 10px; }
   .msg .att { font-size: 12px; color: var(--dim); margin-top: 4px; }
   .msg .thoughts { margin: 0 0 6px; font-size: 13px; color: var(--dim); }
   .msg .thoughts summary { cursor: pointer; user-select: none; width: fit-content; }
@@ -295,6 +303,28 @@ function toolStep(body, tool, state, ms, error) {
   chip.textContent = `${TOOL_MARK[state] || "•"} ${tool}${time}`;
   chip.title = error || TOOL_SAYS[state] || "";
 }
+// A note or file the assistant changed: a chip under the answer. Undo sends only the id the
+// server gave the change (never a path), and the server keeps the current file as a version.
+function changeChip(body, m) {
+  let row = body.changeRow;
+  if (!row) { row = body.changeRow = el("div", "changerow"); body.after(row); }
+  const chip = el("span", "change");
+  chip.title = m.path;
+  const label = el("span", "", m.new ? "New:" : "Changed:");
+  chip.append(label, el("b", "", m.title));
+  if (m.undoable) {
+    const undo = el("button", "", "Undo"); undo.type = "button";
+    undo.onclick = async () => {
+      undo.disabled = true;
+      try {
+        await api("/api/changes/" + encodeURIComponent(m.id) + "/undo", { method: "POST" });
+        label.textContent = "Undone:"; undo.remove(); chip.classList.add("undone");
+      } catch (e) { toast(e.message); undo.disabled = false; }
+    };
+    chip.appendChild(undo);
+  }
+  row.appendChild(chip);
+}
 function toolsDone(body) {  // the answer ended: a tool still "running" was stopped
   if (body && body.toolRow) body.toolRow.querySelectorAll('[data-state="running"]').forEach(c => {
     c.dataset.state = "stopped"; c.textContent = `${TOOL_MARK.stopped} ${c.dataset.tool}`; c.title = TOOL_SAYS.stopped;
@@ -482,6 +512,11 @@ function handle(m) {
     if (answerIsElsewhere()) return;
     if (!current) { current = addMsg("bot", ""); waitFor(current); }
     toolStep(current, m.tool, m.state, m.ms, m.error);
+  }
+  else if (m.type === "changed") {
+    if (answerIsElsewhere()) return;
+    if (!current) { current = addMsg("bot", ""); waitFor(current); }
+    changeChip(current, m);
   }
   else if (m.type === "thought") {
     if (answerIsElsewhere()) return;

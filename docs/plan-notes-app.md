@@ -13,8 +13,8 @@ Work goes block by block (section 9). One block is one session and one commit; m
 |---|---|---|---|---|
 | A1 | Shared base: safe writing and history | M | – | **done** 2026-11-01 ("Notes plan A1: …") |
 | A2 | Every writer through the safe path; undo tools; safety limit | M | A1 | **done** 2026-11-01 ("Notes plan A2: …") |
-| A3 | "Changed · Open · Undo" chip in the chat | S | A2 | **next** |
-| B1 | Editor build (CodeMirror bundle, licences, hash test) | S | – | open |
+| A3 | "Changed · Open · Undo" chip in the chat | S | A2 | **done** 2026-11-01 ("Notes plan A3: …") |
+| B1 | Editor build (CodeMirror bundle, licences, hash test) | S | – | **next** |
 | B2 | Parser and index (Markdown, SQLite, full-text search) | M | A1 | open |
 | B3 | Notes API (list, read, save, rename, trash, versions, pictures) | M | A2, B2 | open |
 | B4 | Renderer extension (`render.js`) | M | – | open |
@@ -38,7 +38,11 @@ Work goes block by block (section 9). One block is one session and one commit; m
 | F4 | Board view on the page | L | F3, B6 | open |
 | G1–G6 | Extras (export, Kanban, flashcards, live preview, Mermaid, deep links) | S–M each | see 9 | optional |
 
-Last updated: 2026-11-01 (A1 and A2 done. A2: notes, journal, recipes, files.save and memory
+Last updated: 2026-11-01 (A1, A2 and A3 done. A3: the undo endpoint is
+`POST /api/changes/{id}/undo` with a server-given id (not `/api/notes/undo` with a path):
+B3 should reuse it. "Open" on the chip comes with B5 (link to `/notes?open=…`); until then
+the chip shows the path on hover.
+A2 notes: A2: notes, journal, recipes, files.save and memory
 keep versions; tools files.versions/changes/restore, notes.trash/restore_deleted,
 memory.versions/undo; results carry `changed: {path, title, version, new}` for A3;
 files keeps versions of text up to 10 MB, not 1 MB as first planned).

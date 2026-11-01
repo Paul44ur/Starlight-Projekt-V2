@@ -52,6 +52,7 @@ from starlight.core.permissions import (
     save_rule,
 )
 from starlight.core.ui import current_ui
+from starlight.notebook import undo_change
 from starlight.web.auth import COOKIE, Device, Devices
 
 STATIC = Path(__file__).with_name("static")
@@ -322,6 +323,43 @@ def first_sentence(text: str, limit: int = 160) -> str:
     return sentence if len(sentence) <= limit else sentence[: limit - 1].rstrip() + "…"
 
 
+class RecentChanges:
+    """Files the assistant changed, as the chat showed them, for the Undo chip. The page
+    only ever sends an id back, never a path: what can be undone is what Starlight itself
+    reported, nothing a page makes up."""
+
+    LIMIT = 200
+
+    def __init__(self) -> None:
+        self._items: dict[str, dict[str, Any]] = {}
+
+    def add(self, changed: dict[str, Any], here: bool = True) -> dict[str, Any]:
+        """What the page is sent about a change. ``here``: the page is on the PC, where an
+        undo is allowed (on a phone the chip only says what changed)."""
+        new = bool(changed.get("new"))
+        undoable = here and (new or changed.get("version") is not None)
+        token = uuid.uuid4().hex
+        if undoable:
+            self._items[token] = dict(changed)
+            while len(self._items) > self.LIMIT:  # (dicts keep insertion order: oldest first)
+                del self._items[next(iter(self._items))]
+        return {
+            "type": "changed",
+            "id": token,
+            "title": str(changed.get("title") or ""),
+            "path": str(changed.get("path") or ""),
+            "new": new,
+            "undoable": undoable,
+        }
+
+    def take(self, token: str) -> dict[str, Any] | None:
+        return self._items.pop(token, None)
+
+    def give_back(self, token: str, change: dict[str, Any]) -> None:
+        """An undo that failed (a locked file ...): the button may try again."""
+        self._items[token] = change
+
+
 def create_app(paths: Paths | None = None) -> Any:
     paths = paths or Paths.discover()
     state: dict[str, Any] = {}
@@ -350,6 +388,7 @@ def create_app(paths: Paths | None = None) -> Any:
     app = FastAPI(title="Starlight chat", docs_url=None, redoc_url=None, lifespan=lifespan)
     config = load_config(paths)
     devices = Devices(paths.data / "devices", config.web.remote)
+    recent_changes = RecentChanges()  # what the Undo chips in the chat refer to
     gate = Gate(devices, config.web.remote, config.web)
 
     @app.middleware("http")
@@ -1035,6 +1074,23 @@ def create_app(paths: Paths | None = None) -> Any:
         k.audit.record("web.permission", pattern=pattern, setting=setting)
         return {"rules": k.policy.rules()}
 
+    # -- undoing a change the assistant made (the chip under an answer) --------------------
+
+    @app.post("/api/changes/{token}/undo")
+    def undo_a_change(token: str, request: Request) -> dict[str, Any]:
+        local_only(request)  # at the PC, like other changes to your files
+        change = recent_changes.take(token)
+        if change is None:
+            raise HTTPException(status_code=404, detail="that change can no longer be undone here")
+        k = kernel()
+        try:
+            done = undo_change(k.file_history, change)
+        except (ToolError, OSError) as exc:
+            recent_changes.give_back(token, change)
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        k.audit.record("web.undo", path=str(change.get("path")), new=bool(change.get("new")))
+        return {"undone": done}
+
     # -- settings: safety limits (starlight/core/safety.py) ---------------------------------
 
     def module_settings(k: Kernel) -> dict[str, Any]:
@@ -1270,6 +1326,8 @@ def create_app(paths: Paths | None = None) -> Any:
             {"type": "busy"}  (an answer is still being written)
             {"type": "confirm", "id", "question"}, {"type": "prompt", "id", "question", "secret"}
             {"type": "notify", "text"}
+            {"type": "changed", "id", "title", "path", "new", "undoable"}  (a tool changed a
+            note or file: the Undo chip; Undo posts the id to /api/changes/{id}/undo)
         """
         peer = websocket.client.host if websocket.client else None
         who = gate.viewer(websocket.headers, dict(websocket.cookies), peer)
@@ -1310,6 +1368,8 @@ def create_app(paths: Paths | None = None) -> Any:
                             conversation=message.get("conversation") or None,
                             confirm_more=confirm_more,
                             block_more=block_more,
+                            changes=recent_changes,
+                            undo_here=who.local,
                         )
                     )
                 elif kind == "regenerate":
@@ -1327,6 +1387,8 @@ def create_app(paths: Paths | None = None) -> Any:
                             confirm_more=confirm_more,
                             block_more=block_more,
                             regenerate=True,
+                            changes=recent_changes,
+                            undo_here=who.local,
                         )
                     )
                 elif kind == "edit" and str(message.get("text", "")).strip():
@@ -1345,6 +1407,8 @@ def create_app(paths: Paths | None = None) -> Any:
                             block_more,
                             regenerate=True,
                             replacement=str(message["text"]).strip(),
+                            changes=recent_changes,
+                            undo_here=who.local,
                         )
                     )
                 elif kind == "reply":
@@ -1462,6 +1526,8 @@ async def _run_ask(
     block_more: tuple[str, ...] = (),
     regenerate: bool = False,
     replacement: str | None = None,
+    changes: RecentChanges | None = None,
+    undo_here: bool = True,
 ) -> None:
     """One request from the browser. ``regenerate``: ask the conversation's last question
     again (``text``, if given, is the question the page means) and replace its answer; if
@@ -1476,7 +1542,10 @@ async def _run_ask(
         queue.put_nowait({"type": "thought", "text": text})
 
     def on_tool(report: dict[str, Any]) -> None:  # a tool starts or ends: the timeline
+        changed = report.pop("changed", None)
         queue.put_nowait({"type": "tool", **report})
+        if changed is not None and changes is not None:  # it changed a file: an Undo chip
+            queue.put_nowait(changes.add(changed, here=undo_here))
 
     async def pump() -> None:
         while True:
