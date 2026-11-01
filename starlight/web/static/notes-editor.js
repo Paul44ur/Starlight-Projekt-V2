@@ -239,9 +239,44 @@ function linkMenu(options) {
   };
 }
 
+// #ta... suggests the tags already in use; at the start of a line in the properties block,
+// the property names already in use.
+function tagMenu(options) {
+  return (context) => {
+    const before = context.matchBefore(/(?:^|[\s(])#[\p{L}\p{N}_\-/]+$/u);
+    if (!before || !options.tagNames) return null;
+    const hash = before.text.indexOf("#");
+    return {
+      from: before.from + hash + 1,
+      filter: true,
+      options: options.tagNames().map(({ name, count }) => ({ label: name, detail: String(count) })),
+    };
+  };
+}
+
+function propertyMenu(options) {
+  return (context) => {
+    if (!options.propertyNames) return null;
+    const head = context.state.sliceDoc(0, Math.min(context.state.doc.length, 65536));
+    const block = head.match(PROPERTIES_CLOSED);
+    const line = context.state.doc.lineAt(context.pos);
+    if (!block || line.number === 1 || line.to >= block[0].trimEnd().length - 3) return null;
+    const before = context.matchBefore(/^[\p{L}\p{N}_\-]*$/u);
+    if (!before || (!context.explicit && before.from === before.to)) return null;
+    return {
+      from: before.from,
+      filter: true,
+      options: options.propertyNames().map(({ name, count }) => ({
+        label: name, detail: String(count), apply: name + ": ",
+      })),
+    };
+  };
+}
+
 // The editor in ``parent``. options: text, onChange(text), pictures(files, at) (paste and
 // drop), pickPicture(), notice(text), say(text) (the page's translation), placeholder,
-// noteNames() ([{name, detail}] for the [[ suggestions).
+// noteNames() ([{name, detail}] for the [[ suggestions), tagNames() and propertyNames()
+// ([{name, count}] for # and for property names).
 export function createEditor(parent, options) {
   const view = new cm.EditorView({
     parent,
@@ -257,7 +292,10 @@ export function createEditor(parent, options) {
         cm.syntaxHighlighting(styled),
         marks(/!?\[\[[^\[\]\n]+\]\]/g, "cm-wikilink"),
         marks(/(?<![\p{L}\p{N}_#&/\\])#[\p{L}\p{N}_\-/]*[\p{L}_][\p{L}\p{N}_\-/]*/gu, "cm-tag"),
-        cm.autocompletion({ override: [slashMenu(options), linkMenu(options)], icons: false }),
+        cm.autocompletion({
+          override: [slashMenu(options), linkMenu(options), tagMenu(options), propertyMenu(options)],
+          icons: false,
+        }),
         cm.highlightSelectionMatches(),
         cm.placeholder(options.placeholder || ""),
         cm.keymap.of([

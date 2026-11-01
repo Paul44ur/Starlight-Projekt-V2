@@ -522,6 +522,14 @@ to it in your other notes too (each keeps its earlier version). In the chat: "re
 note Plan to Ideas" (it asks first when other notes change), "which notes link to my
 shopping list?".
 
+**Tags and properties.** Tags (`#work`, `#work/projects`) and properties (lines like
+`status: open` at the top of a note) sort your notes. The left side lists every tag with
+how many notes have it; click one to see those notes. On the right, a note's properties can
+be changed, added (text, number, date, list or yes/no) and removed; only those lines of the
+note change. While writing, `#` suggests the tags you already use. In the chat: "tag my
+shopping note with #home", "which notes are tagged work?", "set status of Plan to done",
+"what do I remember tagged hobby?".
+
 **Settings** lists the modules, each with an on/off switch; open one to
 choose for each of its tools whether it runs on its own, asks first or is blocked (the search
 finds modules and tools), and pair your phone there. **Memory**

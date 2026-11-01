@@ -445,18 +445,39 @@ class Memory:
             held = f" (until {expires})" if expires else ""
             return f"{'Updated' if merged else 'Saved'} memory '{entry.id}'{held}."
 
-        async def recall(query: str, limit: int = 5) -> list[dict[str, Any]]:
-            """Search long-term memory."""
-            hits = await self.recall(query, limit)
+        async def recall(query: str = "", limit: int = 5, tag: str = "") -> list[dict[str, Any]]:
+            """Search long-term memory. ``tag``: only memories with that tag (or one under
+            it, "work" finds "work/projects"); with a tag and no query, the newest of them."""
+            wanted = tag.strip().lstrip("#").casefold()
+
+            def tagged(entry: Any) -> bool:
+                return not wanted or any(
+                    t.casefold() == wanted or t.casefold().startswith(wanted + "/")
+                    for t in entry.tags
+                )
+
+            if wanted and not query.strip():
+                await self.sync()
+                entries = [e for e in self.store.all() if tagged(e) and not e.expired()]
+                entries.sort(key=lambda e: e.date, reverse=True)
+                return [
+                    {"id": e.id, "text": e.text, "date": e.date, "tags": e.tags}
+                    for e in entries[: max(1, limit)]
+                ]
+            if not query.strip():
+                raise ToolError("what should I look for? (or give a tag)")
+            hits = await self.recall(query, limit * 4 if wanted else limit)
             return [
                 {
                     "id": h.entry.id,
                     "text": h.entry.text,
                     "date": h.entry.date,
+                    "tags": h.entry.tags,
                     "score": round(h.score, 3),
                 }
                 for h in hits
-            ]
+                if tagged(h.entry)
+            ][:limit]
 
         async def forget(memory_id: str) -> str:
             """Delete one memory file by id (memory.undo brings it back)."""

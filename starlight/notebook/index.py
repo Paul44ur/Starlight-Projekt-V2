@@ -421,6 +421,33 @@ class Index:
             ).fetchall()
         return [(r[0], r[1]) for r in rows]
 
+    def tag_tree(self) -> list[dict[str, Any]]:
+        """Every tag and every level above it ("work" for #work/projects), each with how many
+        notes have it or a tag under it; A to Z, so a parent comes before its children."""
+        with self._db() as db:
+            rows = db.execute("SELECT file_id, tag, shown FROM tags").fetchall()
+        notes: dict[str, set[int]] = {}
+        shown: dict[str, str] = {}
+        for file_id, tag, written in rows:
+            parts, written_parts = tag.split("/"), written.split("/")
+            for depth in range(1, len(parts) + 1):
+                name = "/".join(parts[:depth])
+                notes.setdefault(name, set()).add(file_id)
+                shown.setdefault(name, "/".join(written_parts[:depth]))
+        return [
+            {"tag": shown[name], "count": len(notes[name]), "depth": name.count("/")}
+            for name in sorted(notes)
+        ]
+
+    def property_names(self) -> list[tuple[str, int]]:
+        """The property names in use, most used first."""
+        with self._db() as db:
+            rows = db.execute(
+                "SELECT key, COUNT(DISTINCT file_id) AS n FROM properties GROUP BY key"
+                " ORDER BY n DESC, key"
+            ).fetchall()
+        return [(r[0], r[1]) for r in rows]
+
     def with_tag(self, tag: str) -> list[str]:
         """Notes with ``tag`` or a tag under it (``work`` finds ``#work/projects`` too)."""
         wanted = key(tag.lstrip("#"))

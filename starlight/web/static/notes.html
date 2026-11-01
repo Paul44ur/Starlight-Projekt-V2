@@ -146,6 +146,18 @@
   .info .back .line { display: block; color: var(--dim); font-size: 12.5px; margin-top: 2px;
                       overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .missing-note { text-align: center; padding: 40px 10px; }
+  /* Tags and properties (block C2). */
+  .tag-item .name { color: var(--accent); }
+  .info dl { grid-template-columns: auto minmax(0, 1fr); align-items: center; }
+  .info dd.prop { display: flex; gap: 4px; align-items: center; min-width: 0; }
+  .info .prop-value, .prop-form input, .prop-form select {
+    flex: 1; min-width: 0; width: 100%; padding: 3px 6px; font-size: 13px; color: var(--text);
+    background: var(--panel2); border: 1px solid var(--border); border-radius: 6px; color-scheme: light dark; }
+  .info .prop-value[type=checkbox] { flex: none; width: 16px; height: 16px; accent-color: var(--ok); }
+  .info .prop-x { padding: 0 6px; }
+  .info .add-prop { margin-top: 8px; padding-left: 6px; }
+  .prop-form { display: grid; gap: 6px; margin-top: 8px; }
+  body.editing .info .prop-value, body.editing .info .prop-x, body.editing .info .add-prop { opacity: .5; pointer-events: none; }
 
   @media (max-width: 1100px) {
     .notes { grid-template-columns: 250px minmax(0, 1fr); }
@@ -185,6 +197,7 @@
     <div id="pinned-box" hidden><h3>Pinned</h3><ul class="plain" id="pinned" translate="no"></ul></div>
     <h3>Folders</h3>
     <div id="folders" translate="no"></div>
+    <div id="tags-section" hidden><h3>Tags</h3><ul class="plain" id="tags-box" translate="no"></ul></div>
   </aside>
   <main id="note" class="reading" tabindex="-1"><div class="column" id="column"></div></main>
   <aside class="info" id="info" aria-label="About this note">
@@ -261,10 +274,30 @@ function remember(path) {
 // -- the list on the left ------------------------------------------------------------------
 
 async function loadList() {
-  const data = await api("/api/notes");
+  const [data, facets] = await Promise.all([api("/api/notes"), api("/api/notes/facets")]);
   state.notes = data.notes; state.folders = data.folders; state.pinned = data.pinned;
+  state.tags = facets.tags; state.propertyNames = facets.properties;
   drawSide();
+  drawTags();
   if (data.capped) toast("Only the first 20,000 notes are listed");
+}
+
+// Tags (block C2): every tag, nested ones under their parent, with how many notes have it.
+function drawTags() {
+  const box = document.getElementById("tags-box");
+  box.replaceChildren();
+  for (const entry of state.tags || []) {
+    const b = el("button", "item tag-item");
+    b.type = "button";
+    b.style.paddingLeft = 8 + entry.depth * 14 + "px";
+    b.appendChild(el("span", "name", "#" + entry.tag.split("/").pop()));
+    b.appendChild(el("span", "count", String(entry.count)));
+    b.title = "#" + entry.tag;
+    b.dataset.tag = entry.tag;
+    b.onclick = () => go({ tag: entry.tag });
+    box.appendChild(el("li")).appendChild(b);
+  }
+  document.getElementById("tags-section").hidden = !box.children.length;
 }
 
 function noteButton(note) {
@@ -440,7 +473,8 @@ async function openNote(path, heading, editing = false) {
   for (const [key, value] of Object.entries(note.properties)) {
     if (["tags", "tag", "aliases", "alias", "title"].includes(key)) continue;
     const chip = chips.appendChild(el("span", "chip"));
-    chip.append(el("span", "", key + ": "), el("b", "", Array.isArray(value) ? value.join(", ") : String(value)));
+    const shown = typeof value === "boolean" ? t(value ? "yes" : "no") : Array.isArray(value) ? value.join(", ") : String(value);
+    chip.append(el("span", "", key + ": "), el("b", "", shown));
   }
   chips.classList.add("md");  // (the tag pills' look)
   if (note.error) column.appendChild(el("p", "notice", t("This note's properties could not be read:") + " " + note.error));
@@ -497,12 +531,90 @@ function drawInfo(note, body) {
   }
   if (!seen.size) back.appendChild(el("li", "none", t("No other note links here yet")));
 
+  drawProps(note);
+}
+
+// -- properties (block C2): change, add and remove them here; only their lines change -------
+
+const TYPES = [["text", "Text"], ["number", "Number"], ["date", "Date"], ["list", "List"], ["yesno", "Yes or no"]];
+function typeOf(value) {
+  if (typeof value === "boolean") return "yesno";
+  if (typeof value === "number") return "number";
+  if (Array.isArray(value)) return "list";
+  if (typeof value === "string" && /^\d{4}-\d{2}-\d{2}$/.test(value)) return "date";
+  return "text";
+}
+function fromInput(type, input) {
+  if (type === "yesno") return input.checked;
+  if (type === "number") return input.value === "" ? null : Number(input.value);
+  if (type === "list") return input.value.split(",").map(v => v.trim()).filter(Boolean);
+  return input.value.trim() === "" ? null : input.value.trim();
+}
+function propInput(type, value) {
+  const input = el("input", "prop-value");
+  if (type === "yesno") { input.type = "checkbox"; input.checked = !!value; }
+  else if (type === "number") { input.type = "number"; input.step = "any"; input.value = value ?? ""; }
+  else if (type === "date") { input.type = "date"; input.value = value || ""; }
+  else { input.type = "text"; input.value = Array.isArray(value) ? value.join(", ") : (value ?? ""); }
+  return input;
+}
+
+async function setProp(note, name, value) {
+  if (edit.editor) { toast(t("Finish editing first (Done), then change properties here.")); return; }
+  try {
+    await api("/api/note/property", { method: "POST", body: { path: note.path, name, value, stamp: note.stamp } });
+  } catch (e) { toast(e.message); }
+  await loadList();
+  await openNote(note.path);
+}
+
+function drawProps(note) {
   const props = document.getElementById("props");
   props.replaceChildren();
   for (const [key, value] of Object.entries(note.properties)) {
-    props.append(el("dt", "", key), el("dd", "", Array.isArray(value) ? value.join(", ") : String(value)));
+    const type = typeOf(value);
+    const dd = el("dd", "prop");
+    const input = dd.appendChild(propInput(type, value));
+    input.setAttribute("aria-label", key);
+    input.addEventListener("change", () => setProp(note, key, fromInput(type, input)));
+    const remove = dd.appendChild(el("button", "icon prop-x", "×"));
+    remove.type = "button";
+    remove.title = t("Remove this property"); remove.setAttribute("aria-label", t("Remove this property") + ": " + key);
+    remove.onclick = () => setProp(note, key, null);
+    props.append(el("dt", "", key), dd);
   }
   if (!props.children.length) props.appendChild(el("dd", "none", t("None")));
+  const add = el("button", "icon add-prop", "＋ Add a property");
+  add.type = "button";
+  add.onclick = () => {
+    const form = el("form", "prop-form");
+    const name = form.appendChild(el("input", "prop-name"));
+    name.type = "text";
+    name.placeholder = t("Name"); name.setAttribute("aria-label", t("Name")); name.required = true;
+    name.setAttribute("list", "prop-names");
+    const list = form.appendChild(el("datalist"));
+    list.id = "prop-names";
+    for (const known of state.propertyNames || []) list.appendChild(el("option")).value = known.name;
+    const kind = form.appendChild(el("select"));
+    kind.setAttribute("aria-label", t("Kind"));
+    for (const [value, label] of TYPES) { const o = kind.appendChild(el("option", "", t(label))); o.value = value; }
+    let input = form.appendChild(propInput("text", ""));
+    input.setAttribute("aria-label", t("Value"));
+    kind.onchange = () => { const next = propInput(kind.value, ""); next.setAttribute("aria-label", t("Value")); input.replaceWith(next); input = next; };
+    const ok = form.appendChild(el("button", "ok", "Add"));
+    ok.type = "submit";
+    form.onsubmit = (event) => {
+      event.preventDefault();
+      const value = fromInput(kind.value, input);
+      if (!name.value.trim() || value === null || (Array.isArray(value) && !value.length)) { toast(t("Give the property a name and a value.")); return; }
+      setProp(note, name.value.trim(), value);
+    };
+    add.replaceWith(form);
+    name.focus();
+  };
+  props.after(add);
+  document.querySelectorAll(".info .add-prop").forEach(b => { if (b !== add) b.remove(); });
+  document.querySelectorAll(".info .prop-form").forEach(f => f.remove());
 }
 
 // -- lists and the start page ----------------------------------------------------------------
@@ -763,6 +875,8 @@ async function startEditing() {
       { name: n.name, detail: folderOf(n.path) },
       ...n.aliases.map(alias => ({ name: alias, detail: "→ " + n.name })),
     ]),
+    tagNames: () => (state.tags || []).map(entry => ({ name: entry.tag, count: entry.count })),
+    propertyNames: () => (state.propertyNames || []).map(p => ({ name: p.name, count: p.count })),
   });
   document.getElementById("edit-toggle").textContent = t("✓ Done");
   document.body.classList.add("editing");

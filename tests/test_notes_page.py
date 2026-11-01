@@ -129,8 +129,10 @@ async def test_reading_a_note_its_outline_backlinks_and_links(
         ]
         backlinks = await page.locator("#backlinks button").all_text_contents()
         assert backlinks == ["PlanNotesBack to [[Shopping#Food]]."]  # (with the line: C1)
-        props = await page.locator("#props").text_content()
-        assert "shopRewe" in props and "aliasesEinkauf" in props
+        props = await page.locator("#props dd.prop input").evaluate_all(
+            "is => is.map(i => [i.getAttribute('aria-label'), i.value])"
+        )  # (editable since C2)
+        assert ["shop", "Rewe"] in props and ["aliases", "Einkauf"] in props
         current = page.locator('.side .item[aria-current="page"]')
         assert await current.text_content() == "Shopping"
         folders = await page.locator("#folders > details > summary .name").all_text_contents()

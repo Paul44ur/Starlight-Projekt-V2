@@ -15,6 +15,8 @@ texts, and the page lets you choose.
     GET    /api/notes/search?q=              notes with these words
     GET    /api/notes/resolve?name=&from=    the note a link [[name]] means (404: none yet)
     GET    /api/notes/embed?name=&source=&heading=  a note or a part of it, to show inside
+    GET    /api/notes/facets                 tags (nested, with counts) and property names
+    POST   /api/note/property                {path, name, value, stamp}: one property (null: off)
     POST   /api/notes/welcome                {lang}: the welcome note, the first time only
     GET    /api/notes/trash                  deleted notes
     POST   /api/notes/trash/restore          {path}: bring one back
@@ -320,6 +322,14 @@ def add_notes_api(
             raise _bad(f"{file.stem} has no part {part}", 404)
         return {"path": path, "title": file.stem, "text": shown[:20000]}
 
+    @app.get("/api/notes/facets")
+    def facets(request: Request) -> dict[str, Any]:
+        local_only(request)
+        found = index()
+        found.refresh()
+        names = [{"name": name, "count": count} for name, count in found.property_names()]
+        return {"tags": found.tag_tree(), "properties": names}
+
     @app.get("/api/notes/trash")
     def trash(request: Request) -> dict[str, Any]:
         local_only(request)
@@ -517,6 +527,42 @@ def add_notes_api(
             "stamp": stamp(target),
             "updated": [rel(p) for p in updated],
         }
+
+    @app.post("/api/note/property")
+    async def note_property(request: Request) -> dict[str, Any]:
+        """Set (or, with value null, remove) one property; only its own lines change. The
+        stamp the page read the note with must still match (409 otherwise)."""
+        local_only(request)
+        data = await body(request)
+        file = note_file(str(data.get("path", "")))
+        name, value, expected = (
+            str(data.get("name") or "").strip(),
+            data.get("value"),
+            data.get("stamp"),
+        )
+        if not isinstance(expected, str):
+            raise _bad("send the stamp the note was read with")
+        if not isinstance(value, (str, int, float, bool, list, type(None))):
+            raise _bad("a property is text, a number, yes/no, a date or a list")
+        from starlight.text import decode_text
+
+        with writing:
+            text = decode_text(file.read_bytes())
+            try:
+                if value is None:
+                    new = markdown.remove_property(text, name)
+                else:
+                    if isinstance(value, list):
+                        value = [str(v).strip() for v in value if str(v).strip()]
+                    new = markdown.set_property(text, name, value)
+                written = write_note(file, new, "notes.page property", history(), expected=expected)
+            except ValueError as exc:
+                raise _bad(str(exc)) from exc
+            except NoteConflict as exc:
+                raise _bad(str(exc), 409) from exc
+            except OSError as exc:
+                raise _bad(f"could not save {file.name}: {locked(exc)}", 409) from exc
+        return {"stamp": written.stamp, "properties": markdown.split(new).properties}
 
     @app.delete("/api/note")
     def delete_note(request: Request, path: str) -> dict[str, Any]:

@@ -360,6 +360,17 @@ a `^block`. The page marks links to missing notes (click: "Write it"), shows emb
 three deep, a note shown higher up is not shown again), backlink cards with the line,
 previews on hover, `[[` suggestions in the editor (names and aliases), and asks before a
 rename changes other notes.
+Block C2 sorts notes. `markdown.add_tag` / `remove_tag` change only the `tags` property (a
+`#tag` written in the text stays); `Index.tag_tree` counts each tag and every level above it
+(distinct notes), `Index.property_names` lists the names in use. Notes tools: `notes.tags`,
+`notes.by_tag` (nested), `notes.tag`, `notes.untag`, `notes.properties`, `notes.set_property`
+(numbers, true/false, dates and lists written as such; an empty value removes it).
+`memory.recall` takes a `tag` (nested too; no query: the newest with that tag) and returns
+each memory's tags. API: `GET /api/notes/facets` (tags and property names) and
+`POST /api/note/property` (one property, with the stamp; null removes it). The page lists
+the tags in the sidebar, makes the properties panel editable in reading mode (typed inputs,
+add, remove), and the editor suggests tags after `#` and property names in the properties
+block.
 
 **Safety limits you set (`core/safety.py`).** Settings -> Safety limits chooses a level
 (strict, balanced, relaxed) and any of 29 switches on top, kept in

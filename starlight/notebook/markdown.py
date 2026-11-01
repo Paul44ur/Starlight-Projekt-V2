@@ -562,3 +562,43 @@ def remove_property(text: str, key: str) -> str:
     if not "".join(lines[1:end]).strip():
         del lines[: end + 1]
     return bom + "".join(lines)
+
+
+# -- tags in the properties --------------------------------------------------------------------
+
+TAG_NAME = re.compile(r"[\w/\-]+")
+
+
+def clean_tag(tag: str) -> str:
+    """A tag as written in the tags property ("#Work/Projects " -> "Work/Projects")."""
+    name = tag.strip().lstrip("#").strip().strip("/")
+    if not TAG_NAME.fullmatch(name) or re.fullmatch(r"[\d/\-]+", name):
+        raise ValueError(f"{tag!r} cannot be a tag: letters, digits, - and / only, not just digits")
+    return name
+
+
+def _tags_key(properties: dict[str, Any]) -> str:
+    return "tag" if "tags" not in properties and "tag" in properties else "tags"
+
+
+def add_tag(text: str, tag: str) -> str:
+    """The note with ``tag`` in its tags property (unchanged when it is there already)."""
+    name = clean_tag(tag)
+    properties = split(text).properties
+    current = property_tags(properties)
+    if any(t.casefold() == name.casefold() for t in current):
+        return text
+    return set_property(text, _tags_key(properties), [*current, name])
+
+
+def remove_tag(text: str, tag: str) -> tuple[str, bool]:
+    """The note without ``tag`` in its tags property, and whether it was there. A #tag in
+    the text itself stays (it is part of what was written)."""
+    name = tag.strip().lstrip("#").strip()
+    properties = split(text).properties
+    current = property_tags(properties)
+    remaining = [t for t in current if t.casefold() != name.casefold()]
+    if len(remaining) == len(current):
+        return text, False
+    key = _tags_key(properties)
+    return (set_property(text, key, remaining) if remaining else remove_property(text, key)), True

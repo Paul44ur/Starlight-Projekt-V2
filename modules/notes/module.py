@@ -8,11 +8,15 @@ to the trash (notes.trash, notes.restore_deleted).
 
 Notes link to each other with [[Note]]. notes.links and notes.backlinks follow them, and
 notes.rename updates the links in other notes too (asking first when there are any).
+Tags (#work, or the tags property) and properties (name: value at the top of a note) sort
+them: notes.tags, notes.by_tag, notes.tag, notes.untag, notes.properties,
+notes.set_property. A property change touches only its own lines.
 """
 
 from __future__ import annotations
 
 import re
+from collections.abc import Callable
 from datetime import datetime
 from pathlib import Path
 from typing import Any
@@ -20,7 +24,14 @@ from typing import Any
 from pydantic import BaseModel
 
 from starlight.core import Module, ModuleContext, ToolError, tool
-from starlight.notebook import append_note, write_note
+from starlight.notebook import Written, append_note, write_note
+from starlight.notebook.markdown import (
+    add_tag,
+    remove_property,
+    remove_tag,
+    set_property,
+    split,
+)
 from starlight.notebook.rename import plan as plan_rename
 from starlight.notebook.rename import rename as carry_out_rename
 
@@ -93,6 +104,19 @@ class NotesModule(Module):
             for n in index.notes(folder)
             if n.folder == folder and n.aliases
         }
+
+    def _change(self, path: Path, change: Callable[[str], str], reason: str) -> Written | None:
+        """Change a note's text with ``change`` (safely: a version first). None: no change."""
+        from starlight.text import decode_text
+
+        text = decode_text(path.read_bytes())
+        try:
+            new = change(text)
+        except ValueError as exc:
+            raise ToolError(str(exc)) from exc
+        if new == text:
+            return None
+        return write_note(path, new, reason, self.ctx.history)
 
     @staticmethod
     def _stamp() -> str:
@@ -262,3 +286,98 @@ class NotesModule(Module):
         path = Path(matches[0].path)
         self.ctx.history.restore_deleted(path)
         return {"restored": path.stem, "file": str(path)}
+
+    # -- tags and properties (block C2) ------------------------------------------------------
+
+    @tool
+    def tags(self) -> dict[str, Any]:
+        """All tags in your notes and how many notes have each (#work/projects also counts
+        for #work), A to Z."""
+        index = self.ctx.notebook
+        index.refresh()
+        tree = index.tag_tree()
+        return {"count": len(tree), "tags": tree[:300]}
+
+    @tool
+    def by_tag(self, tag: str) -> dict[str, Any]:
+        """The notes with a tag (or a tag under it: "work" finds #work/projects too)."""
+        index = self.ctx.notebook
+        index.refresh()
+        paths = index.with_tag(tag)
+        notes = [{"title": Path(p).stem, "folder": Path(p).parent.as_posix()} for p in paths]
+        return {"tag": tag.lstrip("#"), "count": len(notes), "notes": notes[:200]}
+
+    @tool
+    def tag(self, title: str, tag: str) -> dict[str, Any]:
+        """Add a tag to a note (in its tags property at the top)."""
+        path = self._find(title)
+        written = self._change(path, lambda text: add_tag(text, tag), "notes.tag")
+        result: dict[str, Any] = {"note": path.stem, "tag": tag.strip().lstrip("#")}
+        if written is None:
+            result["already"] = True  # (it had that tag: nothing changed)
+        else:
+            result["changed"] = written.changed(path)
+        return result
+
+    @tool
+    def untag(self, title: str, tag: str) -> dict[str, Any]:
+        """Take a tag off a note (from its tags property; a #tag written in the text stays,
+        as it is part of the text)."""
+        path = self._find(title)
+        removed = [False]
+
+        def change(text: str) -> str:
+            new, removed[0] = remove_tag(text, tag)
+            return new
+
+        written = self._change(path, change, "notes.untag")
+        if not removed[0]:
+            raise ToolError(f"'{path.stem}' has no tag {tag} in its tags property")
+        result: dict[str, Any] = {"note": path.stem, "removed": tag.strip().lstrip("#")}
+        if written is not None:
+            result["changed"] = written.changed(path)
+        return result
+
+    @tool
+    def properties(self, title: str) -> dict[str, Any]:
+        """A note's properties (the name: value lines at its top)."""
+        path = self._find(title)
+        front = split(path.read_text("utf-8", errors="replace"))
+        return {"note": path.stem, "properties": front.properties, "problem": front.error or None}
+
+    @tool
+    def set_property(self, title: str, name: str, value: str = "") -> dict[str, Any]:
+        """Set a property of a note (name: value at its top); an empty value removes it.
+        Numbers, true/false, dates (YYYY-MM-DD) and lists ("a, b") are written as such.
+        Only that property's lines change."""
+        path = self._find(title)
+        typed = _typed(name, value)
+        written = self._change(
+            path,
+            (lambda text: remove_property(text, name.strip()))
+            if typed is None
+            else (lambda text: set_property(text, name.strip(), typed)),
+            "notes.set_property",
+        )
+        result: dict[str, Any] = {"note": path.stem, "name": name.strip(), "value": typed}
+        if written is not None:
+            result["changed"] = written.changed(path)
+        return result
+
+
+def _typed(name: str, value: str) -> Any:
+    """A property value as the assistant gives it, as it should be written: None (remove
+    it), a list, a number, true/false, or text (a date stays text and is written as one)."""
+    text = value.strip()
+    if not text:
+        return None
+    if name.strip().casefold() in ("tags", "aliases") or ("," in text and "\n" not in text):
+        return [part.strip().lstrip("#") if name.strip().casefold() == "tags" else part.strip()
+                for part in text.split(",") if part.strip()]  # fmt: skip
+    if re.fullmatch(r"-?\d{1,15}", text):
+        return int(text)
+    if re.fullmatch(r"-?\d{1,15}\.\d{1,15}", text):
+        return float(text)
+    if text.casefold() in ("true", "yes", "ja", "false", "no", "nein"):
+        return text.casefold() in ("true", "yes", "ja")
+    return text

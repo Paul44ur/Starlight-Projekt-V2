@@ -210,6 +210,13 @@
     "Also change the links to this note in other notes? Notes that change:": "Die Links auf diese Notiz in anderen Notizen mitändern? Betroffene Notizen:",
     "Each keeps its earlier version.": "Jede behält ihre frühere Fassung.",
     "Renamed. Links changed in other notes:": "Umbenannt. Links geändert in anderen Notizen:",
+    // the Notes page: tags and properties
+    "Tags": "Schlagwörter", "Finish editing first (Done), then change properties here.": "Erst fertig bearbeiten (Fertig), dann die Eigenschaften hier ändern.",
+    "Remove this property": "Diese Eigenschaft entfernen", "＋ Add a property": "＋ Eigenschaft hinzufügen",
+    "Kind": "Art", "Add": "Hinzufügen", "Number": "Zahl",
+    "Date": "Datum", "List": "Liste", "Yes or no": "Ja oder nein",
+    "Give the property a name and a value.": "Gib der Eigenschaft einen Namen und einen Wert.",
+    "yes": "ja", "no": "nein",
     // the chat: a file the assistant changed
     "Changed:": "Geändert:", "New:": "Neu:", "Undone:": "Rückgängig gemacht:",
     // settings: safety limits (the switches' own texts come from the server in German)
