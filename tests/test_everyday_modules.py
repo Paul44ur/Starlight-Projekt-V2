@@ -65,8 +65,11 @@ async def test_expenses_a_month_and_its_budget(project: Paths, documents: Path) 
     async with Kernel(project) as k:
         await call(k, "expenses.add", amount="23,40", what="Groceries at the market")
         await call(k, "expenses.add", amount="12", what="Pizza", category="eating out")
+        # a day of its own, but always in this month ("yesterday" is last month on the 1st)
+        first = dt.date.today().replace(day=1).isoformat()
         added = await call(k, "expenses.add", amount="5", what="Bus", category="transport",
-                           day="yesterday")  # fmt: skip
+                           day=first)  # fmt: skip
+        assert added["added"]["day"] == first
         month = await call(k, "expenses.month")
         assert month["total"] == 40.4 and month["left"] == 59.6
         assert month["by_category"] == {"groceries": 23.4, "eating out": 12.0, "transport": 5.0}

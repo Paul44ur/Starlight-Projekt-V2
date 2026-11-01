@@ -1,0 +1,25 @@
+"""Notes, the journal, recipes and memory as a notebook (docs/plan-notes-app.md).
+
+This package grows block by block. So far:
+
+* ``db``: opening a SQLite file and bringing its tables up to date.
+* ``history``: the earlier versions of files Starlight changes, to compare and restore
+  them, and the trash for deleted ones.
+* ``write``: the one safe way to change such a file: refuse if it changed since it was
+  read, keep a version, write it as a whole.
+"""
+
+from __future__ import annotations
+
+from starlight.notebook.history import History, Version
+from starlight.notebook.write import NoteConflict, Written, append_note, stamp, write_note
+
+__all__ = [
+    "History",
+    "NoteConflict",
+    "Version",
+    "Written",
+    "append_note",
+    "stamp",
+    "write_note",
+]

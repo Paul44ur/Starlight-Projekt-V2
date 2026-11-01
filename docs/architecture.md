@@ -25,6 +25,7 @@ starlight/core/     kernel, agent loop, dispatcher, events, config, logging, kil
                     context (summaries), http (rate limits), vault, stats, ui
 starlight/models/   Ollama, llama.cpp, router, serve, bench
 starlight/memory/   Memory folder, embeddings, vector index
+starlight/notebook/ notes as a notebook (docs/plan-notes-app.md): history and safe writing so far
 starlight/skills/   skill drafting, approval, git history
 starlight/sandbox/  Docker and process sandboxes for generated code
 starlight/viewer/   the statistics viewer (separate, read-only app)
@@ -249,6 +250,22 @@ like the PC; `web.remote.blocked` is unchanged); `web.respect_robots_on_fetch: f
 lets `web.fetch` read the page asked for like a browser while `fetch_many` (research),
 page watches and news follow robots.txt; a robots.txt answering 401/403 means no rules
 (RFC 9309); `apps.ask_first_open: false`; `agent.max_steps` is 15.
+
+**The notebook base (`starlight/notebook/`, block A1 of `docs/plan-notes-app.md`).**
+`history.History` keeps the earlier versions of files Starlight changes in
+`data/history/history.sqlite` (gzip blobs with path, time, size, reason and a deleted flag;
+the same content is not kept twice; `min_gap` keeps one version per few minutes while
+typing). It compares versions (unified diff), restores one (keeping the current file as a
+version first), and keeps deleted files in a trash. Cleanup after each save: at most
+`notebook.versions` per file, none older than `notebook.days`, all together under
+`notebook.max_mb` (oldest first; incremental vacuum). This database is the only copy of
+those versions, unlike the notebook index planned for block B2, which is a cache.
+`write.write_note` / `append_note` are the one safe way to change such a file: refuse when
+the file's stamp (mtime and size) differs from the one it was read with (`NoteConflict`),
+keep a version, write atomically (`core.fsutil.write_atomic_bytes`; appending keeps the
+file's bytes and line endings). `notebook/db.py` opens a SQLite file and applies its
+migrations by `PRAGMA user_version`. Nothing uses the base yet; block A2 switches the
+writers over.
 
 **Safety limits you set (`core/safety.py`).** Settings -> Safety limits chooses a level
 (strict, balanced, relaxed) and any of 27 switches on top, kept in

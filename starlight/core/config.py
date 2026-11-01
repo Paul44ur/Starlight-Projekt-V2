@@ -288,6 +288,16 @@ class ViewerConfig(_Strict):
     refresh_seconds: int = Field(default=5, ge=1)
 
 
+class NotebookConfig(_Strict):
+    """Notes, the journal, recipes and memory (starlight/notebook): the earlier versions of
+    files Starlight changes, so a change can be undone."""
+
+    keep_versions: bool = True  # a copy before every change Starlight makes to these files
+    versions: int = Field(default=20, ge=1, le=1000)  # at most so many per file
+    days: int = Field(default=90, ge=1, le=3650)  # and none older than this
+    max_mb: float = Field(default=200, gt=0, le=100_000)  # all versions together, compressed
+
+
 class StarlightConfig(_Strict):
     name: str = "Starlight"
     logging: LoggingConfig = Field(default_factory=LoggingConfig)
@@ -306,6 +316,7 @@ class StarlightConfig(_Strict):
     viewer: ViewerConfig = Field(default_factory=ViewerConfig)
     web: WebConfig = Field(default_factory=WebConfig)
     output: OutputConfig = Field(default_factory=OutputConfig)
+    notebook: NotebookConfig = Field(default_factory=NotebookConfig)
     diagnostics: DiagnosticsConfig = Field(default_factory=DiagnosticsConfig)
 
 

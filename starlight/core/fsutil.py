@@ -56,10 +56,21 @@ def write_atomic(
 ) -> None:
     """Write ``text`` to ``path`` as a whole: to a temporary file next to it first, then
     replaced in one step. Other programs reading the file see the old or the new text."""
+    _replace_with(path, lambda temp: temp.write_text(text, encoding=encoding, newline=newline))
+
+
+def write_atomic_bytes(path: Path, data: bytes) -> None:
+    """write_atomic for bytes, written exactly as given (no newline translation): for
+    putting an earlier version of a file back as it was."""
+    _replace_with(path, lambda temp: temp.write_bytes(data))
+
+
+def _replace_with(path: Path, write: Callable[[Path], object]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
+    # (the temporary name is also in core/fsutil's users: files.py skips ".*.tmp" leftovers)
     temp = path.with_name(f".{path.name}.{uuid.uuid4().hex[:8]}.tmp")
     try:
-        retry_on_lock(lambda: temp.write_text(text, encoding=encoding, newline=newline))
+        retry_on_lock(lambda: write(temp))
         replace_file(temp, path)
     finally:
         with contextlib.suppress(OSError):

@@ -11,8 +11,8 @@ Work goes block by block (section 9). One block is one session and one commit; m
 
 | Block | What | Size | Needs | State |
 |---|---|---|---|---|
-| A1 | Shared base: safe writing and history | M | – | **next** |
-| A2 | Every writer through the safe path; undo tools; safety limit | M | A1 | open |
+| A1 | Shared base: safe writing and history | M | – | **done** 2026-11-01 ("Notes plan A1: …") |
+| A2 | Every writer through the safe path; undo tools; safety limit | M | A1 | **next** |
 | A3 | "Changed · Open · Undo" chip in the chat | S | A2 | open |
 | B1 | Editor build (CodeMirror bundle, licences, hash test) | S | – | open |
 | B2 | Parser and index (Markdown, SQLite, full-text search) | M | A1 | open |
@@ -38,7 +38,10 @@ Work goes block by block (section 9). One block is one session and one commit; m
 | F4 | Board view on the page | L | F3, B6 | open |
 | G1–G6 | Extras (export, Kanban, flashcards, live preview, Mermaid, deep links) | S–M each | see 9 | optional |
 
-Last updated: 2026-11-01 (plan agreed and split into blocks; nothing implemented yet).
+Last updated: 2026-11-01 (A1 done: `starlight/notebook/` with `db.py`, `history.py`,
+`write.py`, the `notebook:` settings and `tests/test_notebook_history.py`; nothing uses it yet).
+Note for A2+: history lives in its own database `data/history/history.sqlite` (it is the only
+copy of the versions); the B2 index stays a separate cache in `data/notebook/index.sqlite`.
 
 ## For my future self
 
@@ -132,7 +135,7 @@ rounds; this is the final, checked version.
 | `markdown.py` | Pure functions: properties, headings/sections, links, tags, tasks, query blocks; ignores code blocks and URLs. Edits only the lines concerned (keeps comments and key order). Replaces memory's own parser (`FRONT` in `starlight/memory/store.py`). |
 | `index.py` | `data/notebook/index.sqlite`: tables files, links, tags, properties, tasks, plus an FTS5 table. Re-reads only changed files (stat walk at most every 5 s, immediately after Starlight's own writes; no file-watcher dependency). Caps the file count (20,000). Fallback search without FTS5. |
 | `links.py` | Resolves a link: file name or alias, case-insensitive, same folder first, then shortest unique path. Backlinks from the index. |
-| `history.py` | Gzip copies in `data/history/` with rows in the index: list, compare (difflib), restore, trash. Keeps 20 versions or 90 days per file and 200 MB in all. While typing on the page: at most one version per 5 minutes, plus one on leaving the note. |
+| `history.py` | Gzip copies in their own database `data/history/history.sqlite` (not the index: this is the only copy): list, compare (difflib), restore, trash. Keeps 20 versions or 90 days per file and 200 MB in all. While typing on the page: at most one version per 5 minutes, plus one on leaving the note. |
 | `write.py` | `write_note(path, text, reason, expected_stamp)`: version first, refuse if the file changed since it was read, atomic write, index update. Everything writes through it. |
 | `query.py` | One safe condition language (and, or, not, comparisons, `has`, dates, numbers), never evaluated as code, translated to SQL on the index. Automations can switch to it later (stay backward compatible with `matches()`). |
 | `templates.py`, `boards.py` | Templates; reading and changing `.canvas` boards. |
@@ -298,13 +301,14 @@ table updated, commit and push.
 
 **A1 · Shared base: safe writing and history · M** · needs: –
 - Goal: one way to write the user's notes that never loses a version.
-- Files: new `starlight/notebook/__init__.py`, `db.py` (the shared SQLite file
-  `data/notebook/index.sqlite`, schema versions), `write.py`, `history.py`; new
-  `tests/test_notebook_history.py`.
+- Files: new `starlight/notebook/__init__.py`, `db.py` (opening SQLite files, schema versions
+  by `PRAGMA user_version`), `write.py`, `history.py`; new `tests/test_notebook_history.py`.
+  History has its own database, `data/history/history.sqlite`: it holds the only copy of the
+  versions, so it must not share a file with the index, which is a cache.
 - Steps:
   1. `db.py`: open/create the database, a `schema` table, small migrations.
-  2. `history.py`: `save(path, reason)` writes a gzip copy to `data/history/<relative
-     path>/<time>-<n>.md.gz` plus a row (path, time, size, reason, deleted flag); `versions(path)`,
+  2. `history.py`: `save(path, reason)` keeps a gzip copy as a row (path, time, size, reason,
+     deleted flag, content hash) in `data/history/history.sqlite`; `versions(path)`,
      `read(version)`, `diff(a, b)` (difflib, unified), `restore(path, version)` (saves the
      current one first), `trash(path)` and `restore_deleted`.
   3. Trimming: 20 versions or 90 days per file, 200 MB in all (settings in a new `notebook:`
