@@ -7,7 +7,9 @@ on Windows 11; the pages have German translations (`starlight/web/static/i18n.js
 ## Active plan
 **Read `docs/plan-notes-app.md` before working on notes, the journal, memory, to-dos or a
 Notes page.** It holds the agreed plan for the notes app built into Starlight, the user's
-decisions, what was verified, and its status. Keep its Status section current.
+decisions, what was verified, and its status. The work is split into blocks (section 9):
+one block per session and commit, in the order of the Status table; mark a block done there
+(with its commit) when it is pushed.
 
 ## How we work
 - Branch `Starlight-V2-LM-Studio`; commit and push when a piece of work is done; no pull
