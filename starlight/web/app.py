@@ -56,6 +56,11 @@ from starlight.notebook import undo_change
 from starlight.web.auth import COOKIE, Device, Devices
 
 STATIC = Path(__file__).with_name("static")
+# The files in static/vendor the pages may load (see bundles/editor/README.md).
+VENDOR = {
+    "editor.js": "text/javascript; charset=utf-8",  # CodeMirror 6, for the Notes page
+    "LICENSES.txt": "text/plain; charset=utf-8",
+}
 LOOPBACK = {"127.0.0.1", "localhost", "::1"}
 LOOPBACK_PEERS = {"127.0.0.1", "::1"}
 MB = 1024**2
@@ -521,6 +526,15 @@ def create_app(paths: Paths | None = None) -> Any:
     @app.get("/markdown.js")
     def markdown() -> Response:
         return Response(page("markdown.js"), media_type="text/javascript")
+
+    @app.get("/vendor/{name}")
+    def vendor(name: str) -> Response:
+        """Third-party code Starlight ships (static/vendor, built in bundles/): only the
+        files listed here, nothing else from that folder."""
+        media = VENDOR.get(name)
+        if media is None:
+            raise HTTPException(status_code=404, detail="no such file")
+        return FileResponse(STATIC / "vendor" / name, media_type=media)
 
     @app.get("/icon.svg")
     def icon() -> Response:

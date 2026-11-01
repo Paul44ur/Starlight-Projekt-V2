@@ -33,3 +33,6 @@ config/starlight.local.yaml
 config/permissions.chat.yaml
 config/starlight.remote.yaml
 config/launcher.json
+
+# The editor bundle's build folder (bundles/editor/README.md)
+bundles/*/node_modules/

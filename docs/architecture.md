@@ -281,6 +281,12 @@ draws a chip under the answer; Undo posts only the id to `POST /api/changes/{id}
 does the work: a new file goes to the trash, a changed one gets its version back. Changes
 made from a phone are shown without Undo and are not kept. The terminal collects the same
 reports and prints "Changed: X (undo: /undo)"; `/undo` goes back one change at a time.
+Block B1 ships the Notes page's editor: `static/vendor/editor.js` is CodeMirror 6 (state,
+view, commands with history, language and highlighting, Markdown with GFM, autocomplete,
+search) built into one ES module by `bundles/editor/build.mjs` (esbuild, pinned versions,
+`npm ci` from the lock). The build also writes `editor.sha256` and `LICENSES.txt` (every
+bundled package, all MIT). `/vendor/{name}` serves only the files in `VENDOR`.
+`.gitattributes` keeps git from changing the file's bytes; a test checks the hash.
 
 **Safety limits you set (`core/safety.py`).** Settings -> Safety limits chooses a level
 (strict, balanced, relaxed) and any of 29 switches on top, kept in

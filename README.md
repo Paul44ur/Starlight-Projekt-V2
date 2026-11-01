@@ -921,3 +921,11 @@ If you installed with `Starlight.exe`, uv isn't on your PATH. Either install it 
   uv run ruff check . && uv run ruff format --check .
   uv run mypy && uv run mypy modules
   ```
+
+### Third-party code
+
+Starlight ships one file built from other people's code:
+`starlight/web/static/vendor/editor.js`, the text editor for the Notes page
+([CodeMirror 6](https://codemirror.net), MIT licence). Its licences are in
+`starlight/web/static/vendor/LICENSES.txt`. `bundles/editor/` holds the exact versions and
+the build; its README says how to rebuild the file. You do not need Node.js to run Starlight.

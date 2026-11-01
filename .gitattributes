@@ -1,0 +1,3 @@
+# Shipped third-party bundles: byte for byte as built (a test checks their hash), so git
+# must never change their line endings.
+starlight/web/static/vendor/** -text
