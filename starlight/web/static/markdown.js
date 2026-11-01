@@ -1,6 +1,10 @@
 // Markdown in Starlight's answers (headings, lists, tables, code, bold, links), drawn as page
 // elements. The model's text only ever becomes textContent, never HTML: an answer cannot run
 // a script or load anything, and a link opens only if it is http(s) or mailto.
+//
+// render.js fills in mdHooks for notes: links between notes ([[Note]]), pictures, tags,
+// callouts and task boxes. Without it those stay plain text.
+const mdHooks = { wikilink: null, text: null, quote: null, item: null };
 
 const MD_FENCE = /^\s{0,3}(`{3,}|~{3,})\s*([\w+#.-]*)[^`]*$/;
 const MD_HEADING = /^\s{0,3}(#{1,6})\s+(.*?)\s*#*\s*$/;
@@ -23,6 +27,7 @@ const MD_INLINE = new RegExp([
   "\\$\\$([^$\\n]+?)\\$\\$",
   "\\\\\\(([^\\n]+?)\\\\\\)",
   "(?<![\\w$\\\\])\\$(?=[^\\s$])([^$\\n]*?[^\\s$\\\\])\\$(?![\\d$])",
+  "(!?)\\[\\[([^\\[\\]\\n]+?)\\]\\]",  // [[Note]], ![[photo.png]] (render.js draws them)
 ].join("|"), "g");
 // $$ … $$ or \[ … \] on lines of their own (or on one line)
 const MD_MATH_BLOCK = /^\s{0,3}(\$\$|\\\[)\s*(.*?)\s*(\$\$|\\\])?\s*$/;
@@ -48,7 +53,8 @@ function mdInline(parent, text) {
   const add = (plain) => {
     plain.split("\n").forEach((line, i) => {
       if (i) parent.appendChild(document.createElement("br"));
-      if (line) parent.appendChild(document.createTextNode(line));
+      if (line && mdHooks.text) mdHooks.text(parent, line);  // (tags)
+      else if (line) parent.appendChild(document.createTextNode(line));
     });
   };
   for (const m of text.matchAll(MD_INLINE)) {
@@ -60,6 +66,10 @@ function mdInline(parent, text) {
     else if (m[6] !== undefined || m[7] !== undefined) mdInline(parent.appendChild(el("em")), m[6] ?? m[7]);
     else if (m[8] !== undefined) parent.appendChild(mdLink(m[8], m[9]));
     else if (m[10] !== undefined) parent.appendChild(mdLink(m[10], m[10]));
+    else if (m[15] !== undefined) {
+      if (mdHooks.wikilink) parent.appendChild(mdHooks.wikilink(m[15], m[14] === "!"));
+      else add(m[0]);
+    }
     else parent.appendChild(el("span", "math", mathText(m[11] ?? m[12] ?? m[13])));
   }
   add(text.slice(last));
@@ -231,7 +241,8 @@ function mdBlocks(parent, lines) {
     } else if (MD_QUOTE.test(line)) {
       const quoted = [];
       while (i < lines.length && (m = lines[i].match(MD_QUOTE))) { quoted.push(m[1]); i++; }
-      mdBlocks(parent.appendChild(el("blockquote")), quoted);
+      if (!(mdHooks.quote && mdHooks.quote(parent, quoted)))  // (a callout: > [!tip])
+        mdBlocks(parent.appendChild(el("blockquote")), quoted);
     } else if ((m = line.match(MD_ITEM))) {
       const indent = m[1].length, ordered = /\d/.test(m[2]);
       const list = el(ordered ? "ol" : "ul");
@@ -261,6 +272,7 @@ function mdBlocks(parent, lines) {
           i++;
         }
         const li = list.appendChild(el("li"));
+        if (mdHooks.item) content[0] = mdHooks.item(li, content[0]);  // (a task box: [ ] milk)
         if (content.length === 1) mdInline(li, content[0]);
         else mdBlocks(li, content);
       }
@@ -311,6 +323,10 @@ function markdownToSpeech(text) {
     .replace(/^\s{0,3}#{1,6}\s+/gm, "")
     .replace(/^\s*([-*+]|\d{1,9}[.)])\s+/gm, "")
     .replace(/^\s{0,3}>\s?/gm, "")
+    .replace(/^\s*\[[ xX/-]\]\s+/gm, "")
+    .replace(/\[!\w+\][+-]?\s*/g, "")
+    .replace(/!\[\[[^\]\n]*\]\]/g, "")
+    .replace(/\[\[(?:[^\]|\n]*\|)?([^\]\n]+)\]\]/g, "$1")
     .replace(/!?\[([^\]]*)\]\([^)]*\)/g, "$1")
     .replace(/https?:\/\/[^\s<>]*[^\s<>().,;:!?'"]/g, "a link")
     .replace(/(\*\*|__|~~|`)/g, "")

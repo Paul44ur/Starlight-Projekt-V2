@@ -528,6 +528,10 @@ def create_app(paths: Paths | None = None) -> Any:
     def markdown() -> Response:
         return Response(page("markdown.js"), media_type="text/javascript")
 
+    @app.get("/render.js")
+    def render() -> Response:
+        return Response(page("render.js"), media_type="text/javascript")
+
     @app.get("/vendor/{name}")
     def vendor(name: str) -> Response:
         """Third-party code Starlight ships (static/vendor, built in bundles/): only the

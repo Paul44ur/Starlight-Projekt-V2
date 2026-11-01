@@ -88,3 +88,39 @@ button:focus:not(:focus-visible), a:focus:not(:focus-visible) { outline: none; }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation-duration: .01ms !important; transition-duration: .01ms !important; }
 }
+
+/* Notes in rendered Markdown (render.js): links between notes, pictures, tags, callouts,
+   task boxes. Shared by chat answers and the Notes page. */
+.md .note-link { color: var(--accent); text-decoration: none;
+                 border-bottom: 1px dashed color-mix(in srgb, var(--accent) 55%, transparent); }
+.md .note-link:hover { border-bottom-style: solid; }
+.md .note-embed { display: inline-block; padding: 1px 8px; border: 1px solid var(--border);
+                  border-radius: 6px; background: var(--panel2); border-bottom-style: solid; }
+.md .note-embed::before { content: "↳ "; color: var(--dim); }
+.md .note-picture { display: block; max-width: 100%; height: auto; margin: .3em 0 .6em;
+                    border-radius: 8px; border: 1px solid var(--border); }
+.md .tag { display: inline-block; padding: 0 7px; margin: 0 1px; border-radius: 999px;
+           font-size: .88em; line-height: 1.55; text-decoration: none; color: var(--accent);
+           background: color-mix(in srgb, var(--accent) 13%, transparent); }
+.md .tag:hover { background: color-mix(in srgb, var(--accent) 22%, transparent); }
+.md .callout { --c: var(--accent); margin: 0 0 .7em; padding: 8px 12px; border-radius: 8px;
+               border-left: 4px solid var(--c); background: color-mix(in srgb, var(--c) 9%, transparent); }
+.md .callout-tip { --c: var(--ok); }
+.md .callout-warning { --c: var(--warn); }
+.md .callout-quote { --c: var(--dim); }
+.md .callout-todo { --c: #a371f7; }
+.md .callout-title { display: flex; gap: 8px; align-items: baseline; font-weight: 600; color: var(--c); }
+.md summary.callout-title { cursor: pointer; list-style: none; }
+.md summary.callout-title::-webkit-details-marker { display: none; }
+.md summary.callout-title::after { content: "▸"; margin-left: auto; color: var(--dim); }
+.md details.callout[open] > summary.callout-title::after { content: "▾"; }
+.md .callout-icon { width: 1.1em; text-align: center; flex: none; }
+.md .callout-body { margin-top: 4px; color: var(--text); }
+.md .callout-body > :last-child { margin-bottom: 0; }
+.md ul.task-list { padding-left: 1.2em; }
+.md li.task { list-style: none; position: relative; }
+.md li.task > .task-box { position: absolute; left: -1.35em; top: .22em; margin: 0;
+                          width: 1em; height: 1em; accent-color: var(--ok); }
+.md li.task[data-status="done"], .md li.task[data-status="cancelled"] { color: var(--dim); }
+.md li.task[data-status="done"] { text-decoration: line-through; text-decoration-color: var(--dim); }
+.md li.task[data-status="cancelled"] { text-decoration: line-through; font-style: italic; }

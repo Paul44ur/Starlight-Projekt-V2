@@ -316,6 +316,14 @@ Windows-reserved names, no `code/`, and nothing whose real path (after links) is
 A save sends the `stamp` it read; a change made meanwhile gives 409 with both texts. Saves
 keep at most one version per 5 minutes; rename and delete keep one first. Undo from the
 chat stays `POST /api/changes/{id}/undo` (A3).
+Block B4 draws notes syntax in rendered Markdown: `markdown.js` has `mdHooks` (wikilink,
+text, quote, item) that `static/render.js` fills in. `[[Note]]`, `[[Note|text]]` and
+`[[Note#Heading]]` link to `/notes?open=…`; `![[photo.png]]` shows a picture from
+`/api/notes/file/` (a bare name is in `Notes/Attachments`; no `..`, full paths or
+addresses), `![[Note]]` is a link chip until C1 embeds notes; `#tags` are pills linking to
+`/notes?tag=…`; `> [!tip] Title` is a callout (note, tip, warning, quote, todo; `-` folded,
+`+` open); `- [ ]` items get read-only boxes. All of it stays `textContent`. Without
+render.js the syntax stays plain text. Styles are in `style.css` under `.md`.
 
 **Safety limits you set (`core/safety.py`).** Settings -> Safety limits chooses a level
 (strict, balanced, relaxed) and any of 29 switches on top, kept in
