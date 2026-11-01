@@ -380,6 +380,18 @@ backlinks, and `notes._find` takes a path in the Starlight folder ("Journal/2026
 so notes outside Notes can be read; a rename stays in the note's folder. The Notes page's
 "✨ Ask" menu opens `/?ask=<request>`: the chat puts the request in the box of a new
 conversation and sends nothing until Send.
+Block C4 adds templates. `notebook/templates.py`: the shipped Meeting, Daily and Project
+(German or English, by the page's language or the PC's locale) are copied to
+`Templates/` the first time; `render` fills `{{title}}`, `{{date}}`, `{{time}}`,
+`{{date:FORMAT}}` (YYYY, MMMM, dddd ... in the template's language), `{{yesterday}}`, and
+`{{events}}`, `{{todo}}`, `{{weather}}` through `calendar.agenda`, `todo.due` and
+`weather.now` (only those; empty when a module is off or fails). Tools: `notes.templates`,
+`notes.from_template`, `journal.today` (a day's page from Daily.md; module variables only
+for today), `journal.month` and `journal.year` (reviews in `Journal/Monthly` and
+`Journal/Yearly`). A new journal day starts from Daily.md. Automation templates
+`monthly-review` and `weekly-plan`. API: `GET /api/notes/templates`, `POST /api/note` with
+`template`, `POST /api/notes/today`. The page: ＋ opens a menu (empty or a template), Today
+writes the day's page, and journal days show a two-week calendar strip.
 
 **Safety limits you set (`core/safety.py`).** Settings -> Safety limits chooses a level
 (strict, balanced, relaxed) and any of 29 switches on top, kept in

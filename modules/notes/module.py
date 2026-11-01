@@ -24,7 +24,7 @@ from typing import Any
 from pydantic import BaseModel
 
 from starlight.core import Module, ModuleContext, ToolError, tool
-from starlight.notebook import Written, append_note, write_note
+from starlight.notebook import Written, append_note, templates, write_note
 from starlight.notebook.markdown import (
     add_tag,
     remove_property,
@@ -386,6 +386,45 @@ class NotesModule(Module):
         if written is not None:
             result["changed"] = written.changed(path)
         return result
+
+    # -- templates (block C4) ---------------------------------------------------------------
+
+    async def _module_output(self, tool: str, args: dict[str, Any]) -> Any:
+        """Another module's answer for a template ({{events}} ...); None when it is off."""
+        if not self.ctx.has_tool(tool):
+            return None
+        result = await self.ctx.call(tool, args)
+        return result.output if result.ok else None
+
+    @tool(name="templates")
+    def list_templates(self) -> dict[str, Any]:
+        """The note templates: Meeting, Daily, Project and your own (the Templates folder in
+        the Starlight folder)."""
+        return {"templates": templates.names(self.ctx.output_dir)}
+
+    @tool
+    async def from_template(self, template: str, title: str) -> dict[str, Any]:
+        """Start a new note from a template, e.g. "start a meeting note for the Müller call":
+        template "Meeting", title "Müller call". Its date, time, today's calendar and what is
+        due are filled in."""
+        source = templates.find(self.ctx.output_dir, template)
+        if source is None:
+            known = ", ".join(templates.names(self.ctx.output_dir)) or "none yet"
+            raise ToolError(f"no template called '{template}' (there are: {known})")
+        path = self._file(title)
+        if path.exists():
+            raise ToolError(
+                f"there is already a note '{path.stem}'; give the new one another title"
+            )
+        text = await templates.render(
+            source.read_text("utf-8", errors="replace"),
+            title=title.strip(),
+            lang=templates.system_language(),
+            call=self._module_output,
+        )
+        written = write_note(path, text, "notes.from_template", self.ctx.history)
+        return {"saved": path.stem, "template": source.stem, "file": str(path),
+                "changed": written.changed(path)}  # fmt: skip
 
 
 def _typed(name: str, value: str) -> Any:

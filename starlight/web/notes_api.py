@@ -16,6 +16,8 @@ texts, and the page lets you choose.
     GET    /api/notes/resolve?name=&from=    the note a link [[name]] means (404: none yet)
     GET    /api/notes/embed?name=&source=&heading=  a note or a part of it, to show inside
     GET    /api/notes/facets                 tags (nested, with counts) and property names
+    GET    /api/notes/templates?lang=        the note templates (shipped ones copied the first time)
+    POST   /api/notes/today                  {day, lang}: that day's journal page (made if missing)
     POST   /api/note/property                {path, name, value, stamp}: one property (null: off)
     POST   /api/notes/welcome                {lang}: the welcome note, the first time only
     GET    /api/notes/trash                  deleted notes
@@ -25,7 +27,7 @@ texts, and the page lets you choose.
     GET    /api/notes/file/{path}            a picture (an SVG only as a download)
     GET    /api/note?path=                   text, stamp, properties, outline, links, backlinks
     PUT    /api/note?path=                   {text, stamp, first}: save (409 on a conflict)
-    POST   /api/note                         {folder, title, text}: a new note
+    POST   /api/note                         {folder, title, text | template, lang}: a new note
     POST   /api/note/rename                  {path, title, fix_links}: links follow
     DELETE /api/note?path=                   to the trash
     GET    /api/note/versions?path=          the kept versions
@@ -49,7 +51,7 @@ from fastapi.responses import FileResponse
 from starlight.core.fsutil import write_atomic
 from starlight.core.safepaths import inside
 from starlight.core.tools import ToolError
-from starlight.notebook import NoteConflict, markdown, stamp, write_note
+from starlight.notebook import NoteConflict, markdown, stamp, templates, write_note
 from starlight.notebook.rename import plan as plan_rename
 from starlight.notebook.rename import rename as carry_out_rename
 from starlight.notebook.write import MISSING
@@ -486,6 +488,17 @@ def add_notes_api(
         title = clean_name(str(data.get("title") or ""), 80) or "Untitled"
         text = str(data.get("text") or "")
         base = relative_path(root(), folder, None)
+        if data.get("template"):  # a new note from a template, its variables filled in
+            lang = str(data.get("lang") or "")
+            source = templates.find(root(), str(data["template"]), lang)
+            if source is None:
+                raise _bad(f"there is no template {data['template']}", 404)
+            text = await templates.render(
+                source.read_text("utf-8", errors="replace"),
+                title=title,
+                lang=lang,
+                call=tool_output,
+            )
         with writing:
             file, number = base / f"{title}.md", 2
             while file.exists():
@@ -494,6 +507,35 @@ def add_notes_api(
             base.mkdir(parents=True, exist_ok=True)
             written = write_note(file, text, "notes.page", history(), expected=MISSING)
         return {"path": rel(file), "title": file.stem, "stamp": written.stamp}
+
+    async def tool_output(tool: str, args: dict[str, Any]) -> Any:
+        """A module's answer for a template ({{events}} ...); None when it is off."""
+        k = kernel()
+        if tool.split(".")[0] not in templates.FROM_MODULES_SAFE:
+            return None
+        result = await k.dispatcher.call(tool, args)
+        return result.output if result.ok else None
+
+    @app.get("/api/notes/templates")
+    def note_templates(request: Request, lang: str = "") -> dict[str, Any]:
+        local_only(request)
+        return {"templates": templates.names(root(), lang)}
+
+    @app.post("/api/notes/today")
+    async def today(request: Request) -> dict[str, Any]:
+        """A day's journal page (today's if no day is given), made from the Daily template by
+        the journal module if it is not there yet."""
+        local_only(request)
+        data = await body(request)
+        templates.ensure(root(), str(data.get("lang") or ""))
+        result = await kernel().dispatcher.call(
+            "journal.today", {"day": str(data.get("day") or "")}
+        )
+        if not result.ok:
+            raise _bad(str(result.error or "the journal module is off (Settings)"), 409)
+        file = Path(str(result.output["file"]))
+        index().touch(file)
+        return {"path": rel(file), "new": bool(result.output.get("new"))}
 
     @app.post("/api/note/rename")
     async def rename_note(request: Request) -> dict[str, Any]:

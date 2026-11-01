@@ -23,8 +23,8 @@ Work goes block by block (section 9). One block is one session and one commit; m
 | C1 | Links, aliases, embeds, backlinks, rename that fixes links | M | B6 | **done** 2026-11-01 ("Notes plan C1: …") |
 | C2 | Tags and properties | M | C1 | **done** 2026-11-01 ("Notes plan C2: …") |
 | C3 | The assistant uses the structure; "Ask Starlight" on a note | M | C2 | **done** 2026-11-01 ("Notes plan C3: …") |
-| C4 | Templates, daily notes, calendar strip, monthly and yearly reviews | M | B6 | **next** |
-| D1 | Capture: clipper (with the guard), highlights, inbox | M | C2 | open |
+| C4 | Templates, daily notes, calendar strip, monthly and yearly reviews | M | B6 | **done** 2026-11-01 ("Notes plan C4: …") |
+| D1 | Capture: clipper (with the guard), highlights, inbox | M | C2 | **next** |
 | D2 | Voice memos | S | D1 | open |
 | D3 | Tasks in notes: parser, writing back, to-do integration | M | B2 | open |
 | D4 | Tasks on the page: boxes, date chips, Tasks view | M | D3, B6 | open |
@@ -38,7 +38,10 @@ Work goes block by block (section 9). One block is one session and one commit; m
 | F4 | Board view on the page | L | F3, B6 | open |
 | G1–G6 | Extras (export, Kanban, flashcards, live preview, Mermaid, deep links) | S–M each | see 9 | optional |
 
-Last updated: 2026-11-01 (A1 to C3 done. C3: "Ask Starlight" fills the chat box and waits
+Last updated: 2026-11-01 (A1 to C4 done: milestone C is complete. C4: templates keep their
+English file names (Meeting, Daily, Project) in both languages, only their text is German
+or English; the language comes from the page, or the PC's locale for the assistant's tools.
+C3: "Ask Starlight" fills the chat box and waits
 for Send (nothing is sent by itself); requests name the note by its path, which notes.read
 now accepts.
 C2: properties are edited on the page only in

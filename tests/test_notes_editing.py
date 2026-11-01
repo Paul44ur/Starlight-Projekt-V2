@@ -185,7 +185,8 @@ async def test_new_rename_delete_and_bring_back(
         page.on("dialog", lambda dialog: dialog.accept())  # "Move this note to the trash?"
         await opened(page, f"{static_site}/notes.html?path=Notes%2FPlan.md")
         await page.wait_for_selector("#edit-toggle")
-        await page.locator("#new-note").click()
+        await page.locator("#new-note").click()  # (since C4 a menu: empty, or a template)
+        await page.locator(".new-menu button", has_text="Empty note").click()
         await page.wait_for_selector(".title-input")
         assert await page.locator(".title-input").input_value() == "Untitled"
         assert (notebook / "Notes" / "Untitled.md").is_file()

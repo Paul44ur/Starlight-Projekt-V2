@@ -146,6 +146,22 @@
   .info .back .line { display: block; color: var(--dim); font-size: 12.5px; margin-top: 2px;
                       overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .missing-note { text-align: center; padding: 40px 10px; }
+  /* The journal's calendar strip and the new-note menu (block C4). */
+  .strip { display: grid; grid-template-columns: repeat(14, minmax(0, 1fr)); gap: 4px; margin: 0 0 14px; }
+  .strip .day { display: grid; justify-items: center; gap: 1px; padding: 4px 0 5px; border-radius: 8px;
+                background: none; border: 1px solid transparent; color: var(--dim); position: relative; }
+  .strip .day:hover { background: var(--panel2); }
+  .strip .day .wd { font-size: 10.5px; text-transform: uppercase; letter-spacing: .04em; }
+  .strip .day .dn { font-size: 14px; font-weight: 600; }
+  .strip .day.has { color: var(--text); }
+  .strip .day.has::after { content: ""; position: absolute; bottom: 2px; width: 5px; height: 5px;
+                           border-radius: 50%; background: var(--accent); }
+  .strip .day.today { border-color: var(--border); }
+  .strip .day.open { background: color-mix(in srgb, var(--accent) 16%, transparent); color: var(--text); }
+  .side .top-row { position: relative; }
+  .new-menu { left: 0; right: 0; top: 100%; }
+  .side .top-row .new-menu button { font-size: 14px; line-height: 1.4; padding: 7px 10px; }
+  .menu-label { font-size: 11px; text-transform: uppercase; letter-spacing: .05em; color: var(--dim); padding: 6px 10px 2px; }
   /* "Ask Starlight" (block C3). */
   .crumbs .actions { position: relative; }
   .ask-menu { position: absolute; top: 100%; right: 0; z-index: 20; margin-top: 4px; min-width: 240px;
@@ -495,6 +511,7 @@ async function openNote(path, heading, editing = false) {
   if (!note.body.trim()) body.appendChild(el("p", "dim", t("This note is empty.")));
 
   state.parts = { title, body };
+  if (/^Journal\/\d{4}-\d{2}-\d{2}\.md$/.test(note.path)) column.prepend(calendarStrip(nameOf(note.path)));
   markMissing(body, note.links);
   showEmbeds(body, note.path, new Set([note.path]), 0);
   drawInfo(note, body);
@@ -703,8 +720,12 @@ function showView(view) {
     const path = "Journal/" + today() + ".md";
     if (state.notes.some(n => n.path === path)) return go({ path }, false);
     clearInfo(); state.view = "today"; markCurrent();
-    column.replaceChildren(el("h1", "title", t("Today")));
-    column.appendChild(el("div", "soon", t("No journal entry for today yet. Tell Starlight in the chat: “Write in my journal: …”.")));
+    column.replaceChildren(calendarStrip(today()), el("h1", "title", t("Today")));
+    const box = column.appendChild(el("div", "soon"));
+    box.appendChild(el("p", "", t("No journal page for today yet.")));
+    const write = box.appendChild(el("button", "ok", "Write today's page"));
+    write.type = "button";
+    write.onclick = () => writeDay(today());
     return;
   }
   if (view === "inbox") {
@@ -815,7 +836,31 @@ document.addEventListener("keydown", (event) => {
   else if (mod && key === "n" && !event.shiftKey) { event.preventDefault(); newNote(); }
   else if (event.key === "Escape" && document.body.classList.contains("show-info")) document.body.classList.remove("show-info");
 });
-document.getElementById("new-note").onclick = () => newNote();
+// ＋: an empty note, or one from a template (Meeting, Daily, Project and your own)
+document.getElementById("new-note").onclick = async (event) => {
+  event.stopPropagation();
+  const open = document.querySelector(".new-menu");
+  if (open) { open.remove(); return; }
+  let names = [];
+  try { names = (await api("/api/notes/templates?" + new URLSearchParams({ lang: window.starlightLanguage || "en" }))).templates; }
+  catch (e) { /* an empty note still works */ }
+  const menu = el("div", "ask-menu new-menu");
+  menu.setAttribute("role", "menu");
+  const item = (label, template) => {
+    const b = menu.appendChild(el("button", "", label));
+    b.type = "button"; b.setAttribute("role", "menuitem");
+    if (template) { b.dataset.template = template; b.setAttribute("translate", "no"); }
+    b.onclick = () => { menu.remove(); newNote(template); };
+  };
+  item(t("Empty note"), "");
+  if (names.length) menu.appendChild(el("div", "menu-label", t("From a template")));
+  names.forEach(name => item(name, name));
+  document.querySelector(".side .top-row").appendChild(menu);
+  menu.querySelector("button").focus();
+  const close = (e) => { if (!menu.contains(e.target)) { menu.remove(); document.removeEventListener("click", close); } };
+  setTimeout(() => document.addEventListener("click", close));
+  menu.addEventListener("keydown", (e) => { if (e.key === "Escape") menu.remove(); });
+};
 
 // -- editing (block B6) ---------------------------------------------------------------------
 // The editor (notes-editor.js, on the shipped CodeMirror bundle) is loaded on the first edit.
@@ -1006,11 +1051,14 @@ async function rename(input) {
   }
 }
 
-async function newNote() {
+async function newNote(template = "") {
   if (!(await stopEditing())) return;
   const folder = state.current ? folderOf(state.current.path) : "";
+  const title = template ? template + " " + today() : t("Untitled");
   try {
-    const made = await api("/api/note", { method: "POST", body: { folder: folder || "Notes", title: t("Untitled") } });
+    const made = await api("/api/note", { method: "POST", body: {
+      folder: folder && folder !== "Journal" ? folder : "Notes", title, template,
+      lang: window.starlightLanguage || "en" } });
     await loadList();
     history.pushState({ path: made.path }, "", "/notes?" + new URLSearchParams({ path: made.path }));
     await openNote(made.path, null, true);
@@ -1087,6 +1135,44 @@ function pickPicture() {
     if (files.length && edit.editor) addPictures(files, edit.editor.view.state.selection.main.head);
   };
   input.click();
+}
+
+// -- the journal: a calendar strip and a day's page (block C4) -------------------------------
+
+function isoDay(date) {
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+}
+
+// Two weeks of days: those with a journal page are marked; a click opens the day (or writes it).
+function calendarStrip(shown) {
+  const strip = el("nav", "strip");
+  strip.setAttribute("aria-label", t("Journal days"));
+  const now = new Date(today() + "T12:00:00");
+  const anchor = new Date(shown + "T12:00:00");
+  const end = anchor > now || (now - anchor) / 864e5 < 11 ? now : new Date(anchor.getTime() + 3 * 864e5);
+  const names = window.starlightLanguage === "de" ? ["So", "Mo", "Di", "Mi", "Do", "Fr", "Sa"] : ["Su", "Mo", "Tu", "We", "Th", "Fr", "Sa"];
+  for (let back = 13; back >= 0; back--) {
+    const date = new Date(end.getTime() - back * 864e5);
+    const day = isoDay(date);
+    const has = state.notes.some(n => n.path === "Journal/" + day + ".md");
+    const cell = strip.appendChild(el("button", "day" + (has ? " has" : "") + (day === today() ? " today" : "") + (day === shown ? " open" : "")));
+    cell.type = "button";
+    cell.dataset.day = day;
+    cell.title = day + (has ? "" : " · " + t("no page yet"));
+    cell.append(el("span", "wd", names[date.getDay()]), el("span", "dn", String(date.getDate())));
+    cell.onclick = () => (has ? go({ path: "Journal/" + day + ".md" }) : writeDay(day));
+  }
+  return strip;
+}
+
+async function writeDay(day) {
+  if (!(await stopEditing())) return;
+  try {
+    const made = await api("/api/notes/today", { method: "POST", body: { day, lang: window.starlightLanguage || "en" } });
+    await loadList();
+    history.pushState({ path: made.path }, "", "/notes?" + new URLSearchParams({ path: made.path }));
+    await openNote(made.path, null, true);
+  } catch (e) { toast(e.message); }
 }
 
 // -- "Ask Starlight" on a note (block C3) ---------------------------------------------------

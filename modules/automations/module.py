@@ -212,6 +212,23 @@ TEMPLATES: dict[str, dict[str, Any]] = {
         "when": "sunday 18:00",
         "actions": [{"tool": "system.health_report", "args": {"send": True}}],
     },
+    "monthly-review": {
+        "when": "every month on the 1st at 9:00",
+        "actions": [
+            {"tool": "journal.month", "args": {"month": "last"}},
+            {"say": "Your monthly review is ready: {result.saved}"},
+        ],
+    },
+    "weekly-plan": {
+        "when": "monday 8:00",
+        "actions": [
+            {
+                "ask": "Plan my week: read my calendar for the next 7 days (calendar.agenda) "
+                "and my open to-dos (todo.list_tasks), then save a short plan for the week as "
+                "a note (notes.note) called 'Week plan' with today's date."
+            }
+        ],
+    },
     "battery-low": {
         "on": "sensors.battery_low",
         "actions": [{"say": "The battery is at {event.percent}%: plug in the charger."}],

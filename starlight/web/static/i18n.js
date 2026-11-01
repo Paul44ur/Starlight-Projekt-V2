@@ -220,6 +220,9 @@
     // "Ask Starlight" on a note, and the chat that opens with the request
     "✨ Ask": "✨ Fragen", "Ask Starlight about this note": "Starlight zu dieser Notiz fragen",
     "Check the request, then press Send": "Prüf die Anfrage, dann drück Senden",
+    // templates, the journal's day page and calendar strip
+    "Empty note": "Leere Notiz", "From a template": "Aus einer Vorlage", "No journal page for today yet.": "Noch keine Tagebuchseite für heute.",
+    "Write today's page": "Heutige Seite schreiben", "Journal days": "Tagebuchtage", "no page yet": "noch keine Seite",
     // the chat: a file the assistant changed
     "Changed:": "Geändert:", "New:": "Neu:", "Undone:": "Rückgängig gemacht:",
     // settings: safety limits (the switches' own texts come from the server in German)

@@ -536,6 +536,17 @@ request written out; check it, change it if you like, and press **Send**. When a
 links to another memory or a note (`[[Car service]]`), Starlight reads that too when the
 memory comes up (a few short pieces at most).
 
+**Templates and the daily page.** **＋** offers an empty note or one from a template:
+Meeting, Daily and Project come with Starlight (in German or English) and live in the
+`Templates` folder of your Starlight folder, where you can change them or add your own.
+They fill in the title, the date (`{{date}}`, or your own format like
+`{{date:dddd, D. MMMM YYYY}}`), the time, a link to yesterday, and today's calendar, what
+is due and the weather (empty when that module is off). **Today** writes the day's journal
+page from the Daily template; the strip above it shows two weeks, with a dot on each day
+that has a page. In the chat: "start a meeting note for the Müller call", "write my monthly
+review", "write my review of the year". Automations offer "monthly-review" and
+"weekly-plan".
+
 **Settings** lists the modules, each with an on/off switch; open one to
 choose for each of its tools whether it runs on its own, asks first or is blocked (the search
 finds modules and tools), and pair your phone there. **Memory**
