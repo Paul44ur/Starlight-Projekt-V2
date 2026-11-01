@@ -11,7 +11,11 @@ most ``max_mb`` (compressed; the oldest go first). The settings are read at ever
 (NotebookConfig, ``notebook:`` in starlight.yaml), so a change applies at once.
 
 This database is not a cache: it is the only copy of the earlier versions. The notebook's
-index (later blocks) lives elsewhere and can be thrown away; this one must not be.
+index (index.py) lives elsewhere and can be thrown away; this one must not be.
+
+Every writer gets this one History, so it also passes the news on: after a change, a
+restore or a deletion, ``changed(path)`` tells its ``listeners`` (the index, which then
+reads that note again at once).
 """
 
 from __future__ import annotations
@@ -19,8 +23,10 @@ from __future__ import annotations
 import difflib
 import gzip
 import hashlib
+import logging
 import os
 import time
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -50,6 +56,7 @@ MIGRATIONS = (
     """,
 )
 MB = 1024**2
+log = logging.getLogger(__name__)
 
 
 class HistoryError(ToolError):
@@ -89,6 +96,16 @@ class History:
         self.db_path = db_path
         # NotebookConfig or anything with keep_versions, versions, days and max_mb
         self.settings = settings
+        self.listeners: list[Callable[[Path], None]] = []  # told about each changed file
+
+    def changed(self, path: Path) -> None:
+        """``path`` was written, put back or deleted: tell the listeners. One that fails is
+        logged, never the writer's problem (the file is written either way)."""
+        for listener in list(self.listeners):
+            try:
+                listener(path)
+            except Exception:
+                log.exception("telling %r that %s changed failed", listener, path)
 
     def _setting(self, name: str, default: Any) -> Any:
         return getattr(self.settings, name, default) if self.settings is not None else default
@@ -253,6 +270,7 @@ class History:
             raise HistoryError(f"version {version} belongs to another file, not {path}")
         before = self.save(path, "before restore")
         write_atomic_bytes(path, data)
+        self.changed(path)
         return before
 
     def trash(self, path: Path, reason: str = "deleted") -> int | None:
@@ -263,6 +281,7 @@ class History:
         if version is None and self.enabled:
             raise HistoryError(f"{path} could not be kept, so it was not deleted")
         retry_on_lock(path.unlink)
+        self.changed(path)
         return version
 
     def restore_deleted(self, path: Path) -> None:
@@ -273,3 +292,4 @@ class History:
         if not kept:
             raise HistoryError(f"{path} is not in the trash")
         write_atomic_bytes(path, self.read(kept[0].id))
+        self.changed(path)

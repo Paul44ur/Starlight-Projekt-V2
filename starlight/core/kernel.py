@@ -44,7 +44,6 @@ from starlight.core.toolroute import ToolRouter
 from starlight.core.tools import Tool
 from starlight.core.ui import ContextualUI, NoUser, UserIO, current_ui
 from starlight.core.vault import Vault, VaultBackend
-from starlight.notebook import History
 
 
 def confirmer_for(ui: UserIO) -> Confirmer:
@@ -154,12 +153,15 @@ class Kernel:
         )
 
         from starlight.memory import Memory  # memory and skills build on the core
-        from starlight.skills import SkillManager
 
         # Earlier versions of the files Starlight changes (notes, journal, memory ...).
+        from starlight.notebook import History  # (here: the notebook imports core)
+        from starlight.skills import SkillManager
+
         self.file_history = History(
             self.paths.data / "history" / "history.sqlite", self.config.notebook
         )
+        self._notebook_index: Any = None  # (made on first use: notebook_index)
         self.memory = Memory(
             self.paths, self.config.memory, self.provider, self.stats, history=self.file_history
         )
@@ -606,6 +608,19 @@ class Kernel:
                 self.log.exception("could not save the conversation", conversation=conversation)
             self._taken_back.pop(conversation, None)  # a Regenerate that worked: nothing to restore
         return result
+
+    @property
+    def notebook_index(self) -> Any:
+        """The index of the notes in the Starlight folder (starlight/notebook/index.py), made
+        on first use; it hears about every change Starlight makes (file_history). None when
+        there is no such folder (a bad output.folder)."""
+        if self._notebook_index is None and self.services.output_dir is not None:
+            from starlight.notebook.index import Index
+
+            index = Index(self.paths.data / "notebook" / "index.sqlite", self.services.output_dir)
+            self.file_history.listeners.append(index.touch)
+            self._notebook_index = index
+        return self._notebook_index
 
     @property
     def history(self) -> list[Message]:

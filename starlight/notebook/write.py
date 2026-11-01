@@ -5,7 +5,8 @@
    so another program or another browser tab is never silently overwritten;
 2. keep the file as it was (History.save), so the change can be undone;
 3. write the new content as a whole (a temporary file, then replaced in one step), so a
-   crash or a power cut leaves the old file or the new one, never half of it.
+   crash or a power cut leaves the old file or the new one, never half of it;
+4. tell the history's listeners (the notebook index updates that note at once).
 
 Line endings follow the platform for new text, as the modules' ``write_text`` did before;
 appending keeps the file's own (CRLF stays CRLF) and its bytes exactly as they were.
@@ -75,6 +76,8 @@ def write_note(
     new = not path.exists()
     version = history.save(path, reason, min_gap=min_gap) if history is not None else None
     write_atomic_bytes(path, _encode(text, os.linesep.encode()))
+    if history is not None:
+        history.changed(path)  # (the index reads it again)
     return Written(stamp(path), version, new)
 
 
@@ -96,6 +99,8 @@ def append_note(
     newline = b"\r\n" if b"\r\n" in existing else b"\n" if existing else os.linesep.encode()
     version = history.save(path, reason) if history is not None and existing else None
     write_atomic_bytes(path, existing + _encode(text, newline))
+    if history is not None:
+        history.changed(path)
     return Written(stamp(path), version, new=not existing)
 
 

@@ -25,8 +25,7 @@ from typing import Any
 import yaml
 
 from starlight.core.fsutil import write_atomic
-
-FRONT = re.compile(r"\A---\s*\n(.*?)\n---\s*\n?(.*)\Z", re.DOTALL)
+from starlight.notebook.markdown import split
 
 
 def slugify(text: str, max_len: int = 60) -> str:
@@ -100,16 +99,10 @@ class MemoryStore:
     def parse(self, path: Path) -> MemoryEntry:
         raw = read_text(path)
         entry_id = path.relative_to(self.root).with_suffix("").as_posix()
-        match = FRONT.match(raw)
-        header: dict[str, Any] = {}
-        body = raw
-        if match:
-            try:
-                loaded = yaml.safe_load(match.group(1))
-                header = loaded if isinstance(loaded, dict) else {}
-                body = match.group(2)
-            except yaml.YAMLError:
-                header = {}
+        front = split(raw)  # the notebook's reader (dates come back as ISO text)
+        header: dict[str, Any] = front.properties
+        # properties that cannot be read stay part of the text, so nothing is hidden
+        body = raw.removeprefix("\ufeff") if front.error else front.body
         try:
             confidence = float(header.get("confidence", 1.0))
         except (TypeError, ValueError):

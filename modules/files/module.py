@@ -209,6 +209,7 @@ class FilesModule(Module):
             if isinstance(exc, PermissionError):
                 reason += " (is the file open in another program, e.g. Excel?)"
             raise FileError(f"could not save {dest}: {reason}") from exc
+        self.ctx.history.changed(dest)  # (a note in the notebook: its index entry updates)
 
         self.ctx.logger.info("saved", path=str(dest), bytes=size, mode=mode)
         if self.ctx.stats is not None:

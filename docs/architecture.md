@@ -287,6 +287,22 @@ search) built into one ES module by `bundles/editor/build.mjs` (esbuild, pinned 
 `npm ci` from the lock). The build also writes `editor.sha256` and `LICENSES.txt` (every
 bundled package, all MIT). `/vendor/{name}` serves only the files in `VENDOR`.
 `.gitattributes` keeps git from changing the file's bytes; a test checks the hash.
+Block B2 reads the notes. `notebook/markdown.py` is pure functions: `split` (the properties
+block, read without YAML aliases, dates as ISO text), `parse` (headings, `[[links]]` with
+`|`, `#Heading`, `#^id` and embeds, Markdown links to local files, tags, block ids, tasks
+with plain-word fields in English or German, fenced code and `query` blocks), `section`
+and `block` (parts for embeds), and `set_property` / `remove_property`, which change only
+that property's lines. Code, inline code, addresses and escaped characters never count.
+Memory and skills read their properties with `split`. `notebook/links.py` resolves a link:
+the name without case, a folder in the link narrows it, the linking note's folder first,
+then the shortest path; aliases when no name matches. `notebook/index.py` keeps
+`data/notebook/index.sqlite` (a cache): files, links, tags, properties, tasks and FTS5
+(or a plain scan when this SQLite has no FTS5; a change of mode rebuilds it, and so does a
+broken file). `refresh` walks the Starlight folder (not `code/` or hidden folders) at most
+every 5 s and reads only changed files; at most 20,000 files and 1 MB per note.
+`History.listeners` hear about every write, restore and deletion (`write_note`,
+`append_note`, `files.save` too), so `Kernel.notebook_index` (made on first use) updates a
+note at once with `touch`.
 
 **Safety limits you set (`core/safety.py`).** Settings -> Safety limits chooses a level
 (strict, balanced, relaxed) and any of 29 switches on top, kept in

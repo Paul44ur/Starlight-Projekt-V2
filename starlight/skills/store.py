@@ -10,7 +10,8 @@ from typing import Any, Literal
 import yaml
 
 from starlight.core.logging import get_logger
-from starlight.memory.store import FRONT, read_text, slugify
+from starlight.memory.store import read_text, slugify
+from starlight.notebook.markdown import split
 
 type Status = Literal["draft", "approved", "rejected"]
 SKILL_FILE = "SKILL.md"
@@ -77,14 +78,11 @@ class SkillStore:
         path = folder / SKILL_FILE
         if not path.is_file():
             return None
-        raw = read_text(path)
-        match = FRONT.match(raw)
-        header: dict[str, Any] = {}
-        body = raw
-        if match:
-            loaded = yaml.safe_load(match.group(1))
-            header = loaded if isinstance(loaded, dict) else {}
-            body = match.group(2)
+        front = split(read_text(path))
+        if front.error:  # (all() leaves such a skill out and logs why)
+            raise ValueError(f"{path}: {front.error}")
+        header: dict[str, Any] = front.properties
+        body = front.body
         example = folder / "example.md"
         code_dir = folder / "code"
         code = (
