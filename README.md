@@ -682,10 +682,10 @@ off with `starlight remote disable`.
   - *Relaxed*: fewer questions: no second question after reading web pages or mail, no
     limits, your files elsewhere without asking, and the code sandbox may go online.
 
-  Below the level, 27 protections one by one, in three groups. *Limits and the guard*: how
+  Below the level, 29 protections one by one, in three groups. *Limits and the guard*: how
   often actions may run on their own, steps per request, the time limit of an action, web
-  speed, robots.txt. *What Starlight refuses or asks about by itself*: its own folder, your
-  files elsewhere, programs and scripts, the code sandbox's internet, folders and programs,
+  speed, robots.txt. *What Starlight refuses or asks about by itself*: earlier versions of what
+  it changes, its own folder, your files elsewhere, programs and scripts, the code sandbox's internet, folders and programs,
   the screen-corner stop, the red banner, changing permissions from the chat, opening a
   program the first time, only the servers you listed, scans. *Other devices and web
   pages*: what always asks or never runs on a phone, pairing, how long a pairing code works
@@ -694,6 +694,12 @@ off with `starlight remote disable`.
   restart (the page says which). The choice is kept in `config\starlight.safety.yaml`, and
   `config\starlight.local.yaml` still wins over it. Always on: the kill switch, passwords
   masked in the logs, the audit log, and that these limits change only at the PC.
+- **Undo.** Before Starlight changes a note, a journal day, a recipe, a text file it saves
+  or a memory, it keeps the old version. "Undo the last change to my shopping note", "what
+  changed in letter.txt?", "bring back the note I deleted", "undo that change to my
+  memory" (`files.restore`, `files.changes`, `files.versions`, `notes.trash`,
+  `notes.restore_deleted`, `memory.undo`). A restore keeps the current file too, so it can
+  be undone in turn. Up to 20 versions per file, for 90 days (Settings → Safety limits).
 - **Everything runs on your PC.** The model, your conversations, your memory and
   screenshots never leave it. Only web pages you ask for, and WhatsApp if you set it up,
   use the internet.

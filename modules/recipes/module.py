@@ -25,6 +25,7 @@ from typing import Any
 from pydantic import BaseModel
 
 from starlight.core import Module, ModuleContext, ToolError, tool
+from starlight.notebook import write_note
 
 _BAD = re.compile(r'[<>:"/\\|?*\x00-\x1f]')
 _RESERVED = re.compile(r"^(con|prn|aux|nul|com[0-9]|lpt[0-9])(\..*)?$", re.IGNORECASE)
@@ -134,14 +135,13 @@ class RecipesModule(Module):
         if not ingredients:
             raise ToolError("a recipe needs its ingredients")
         path = self._file(title)
-        path.parent.mkdir(parents=True, exist_ok=True)
         lines = [f"# {title.strip()}", f"Serves: {max(1, serves)}", "", "## Ingredients"]
         lines += [f"- {i.strip()}" for i in ingredients if i.strip()]
         lines += ["", "## Steps"] + [
             f"{n}. {s.strip()}" for n, s in enumerate(steps, 1) if s.strip()
         ]
-        path.write_text("\n".join(lines) + "\n", encoding="utf-8")
-        return {"saved": str(path)}
+        written = write_note(path, "\n".join(lines) + "\n", "recipes.save", self.ctx.history)
+        return {"saved": str(path), "changed": written.changed(path)}
 
     @tool
     def find(self, text: str = "") -> dict[str, Any]:

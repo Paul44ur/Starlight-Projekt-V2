@@ -281,6 +281,18 @@ SWITCHES: tuple[Switch, ...] = (
         warning="A script saved in the wrong folder (Startup) runs at every login.",
     ),
     Switch(
+        "versions", "refusals", "Keep earlier versions of files Starlight changes",
+        "Before Starlight changes a note, the journal, a recipe, a saved file or a memory, it "
+        "keeps the old one, so any change can be undone.",
+        "notebook.keep_versions", strict=True,
+        warning="A change Starlight makes to your notes, journal or memory can't be undone.",
+    ),
+    Switch(
+        "versions_count", "refusals", "Earlier versions to keep of each file",
+        "The oldest go first; none are kept longer than 90 days.",
+        "notebook.versions", kind="int", strict=50, low=5, high=100,
+    ),
+    Switch(
         "sandbox_net", "refusals", "Code sandbox: no internet",
         "Programs Starlight writes and runs get no network, unless a task asks for it.",
         "module:code.allow_network", invert=True, strict=True, relaxed=False,
@@ -451,6 +463,19 @@ GERMAN: dict[str, tuple[str, str, str]] = {
         "Eine .exe, .bat, .ps1 oder Ähnliches außerhalb des Starlight-Ordners zu speichern "
         "fragt vorher, und eine als Datei zu öffnen wird abgelehnt.",
         "Ein Skript im falschen Ordner (Autostart) läuft bei jeder Anmeldung.",
+    ),
+    "versions": (
+        "Frühere Fassungen der Dateien aufheben, die Starlight ändert",
+        "Bevor Starlight eine Notiz, das Tagebuch, ein Rezept, eine gespeicherte Datei oder eine "
+        "Erinnerung ändert, hebt es die alte Fassung auf, so lässt sich jede Änderung rückgängig "
+        "machen.",
+        "Eine Änderung, die Starlight an deinen Notizen, dem Tagebuch oder den Erinnerungen "
+        "macht, lässt sich nicht rückgängig machen.",
+    ),
+    "versions_count": (
+        "Frühere Fassungen je Datei",
+        "Die ältesten gehen zuerst; keine wird länger als 90 Tage aufgehoben.",
+        "",
     ),
     "sandbox_net": (
         "Code-Sandbox: kein Internet",

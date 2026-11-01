@@ -140,6 +140,8 @@ class Services:
     # The user's profile (name, language, home, timezone, preferences), from memory.
     profile: Callable[[], dict[str, str]] | None = None
     focus: Any = None  # focus mode (starlight.core.focus.Focus): messages held meanwhile
+    # Earlier versions of the files Starlight changes (starlight.notebook.History).
+    history: Any = None
 
 
 PRIMARY_POLL = 1.0  # seconds between checks whether this process became the primary core
@@ -237,6 +239,17 @@ class ModuleContext:
         if self.services.run_request is None:
             raise RuntimeError("no agent configured")
         return await self.services.run_request(text)
+
+    @property
+    def history(self) -> Any:
+        """The earlier versions of files Starlight changes (``starlight.notebook.History``):
+        keep one before changing a note (or use ``starlight.notebook.write_note``), list,
+        compare and restore them."""
+        if self.services.history is None:  # (outside a kernel: the same file, defaults)
+            from starlight.notebook import History
+
+            self.services.history = History(self.paths.data / "history" / "history.sqlite")
+        return self.services.history
 
     @property
     def focus(self) -> Any:

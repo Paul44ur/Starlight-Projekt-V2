@@ -44,6 +44,7 @@ from starlight.core.toolroute import ToolRouter
 from starlight.core.tools import Tool
 from starlight.core.ui import ContextualUI, NoUser, UserIO, current_ui
 from starlight.core.vault import Vault, VaultBackend
+from starlight.notebook import History
 
 
 def confirmer_for(ui: UserIO) -> Confirmer:
@@ -88,8 +89,8 @@ def _last_user_index(history: list[Message]) -> int | None:
 # Their description and keywords for the tool router.
 BUILTIN_GROUPS: dict[str, tuple[str, list[str]]] = {
     "memory": (
-        "Long-term memory: remember, recall and forget facts; the user's profile",
-        ["remember", "know", "profile", "forget", "tidy", "duplicates", "weißt"],
+        "Long-term memory: remember, recall, forget and undo facts; the user's profile",
+        ["remember", "know", "profile", "forget", "tidy", "duplicates", "weißt", "undo"],
     ),
     "skills": ("Approved skills: how-tos learned from earlier tasks", ["skill"]),
 }
@@ -155,7 +156,13 @@ class Kernel:
         from starlight.memory import Memory  # memory and skills build on the core
         from starlight.skills import SkillManager
 
-        self.memory = Memory(self.paths, self.config.memory, self.provider, self.stats)
+        # Earlier versions of the files Starlight changes (notes, journal, memory ...).
+        self.file_history = History(
+            self.paths.data / "history" / "history.sqlite", self.config.notebook
+        )
+        self.memory = Memory(
+            self.paths, self.config.memory, self.provider, self.stats, history=self.file_history
+        )
         self._role_models: dict[str, ModelProvider] = {}
         self.skills = SkillManager(
             self.paths,
@@ -206,6 +213,7 @@ class Kernel:
             output_dir=output_dir,
             output_error=output_error,
             write_anywhere=self.config.output.write_anywhere,
+            history=self.file_history,
             policy=self.policy,
             deliver=self.deliver,
             embedder=self.memory.index.embedder,

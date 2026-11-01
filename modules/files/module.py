@@ -33,6 +33,8 @@ _RESERVED = re.compile(r"^(con|prn|aux|nul|com[0-9]|lpt[0-9])(\..*)?$", re.IGNOR
 MAX_BYTES_PER_CHAR = 4  # in UTF-8 (and UTF-16): so many bytes always hold max_read_chars
 SNIFF_BYTES = 8192  # a NUL byte in the first 8 KiB: a binary file, not text
 UTF16_BOMS = (b"\xff\xfe", b"\xfe\xff")  # UTF-16 text (PowerShell 5 `>`) is full of NULs
+KEEP_VERSION_BYTES = 10 * 1024**2  # files up to this size keep a version before a change
+MAX_DIFF_CHARS = 20_000  # files.changes shows at most this much
 
 # Not plain text: written as text, these would be broken files.
 _DOCUMENTS = {".doc", ".docx", ".odt", ".pdf", ".pages", ".epub"}
@@ -191,6 +193,10 @@ class FilesModule(Module):
             raise FileError(f"the user did not allow this, so nothing was saved to {dest}")
         self.ctx.kill_switch.check()  # the question may have taken a while
 
+        version = None
+        if mode in ("replace", "append") and dest.stat().st_size <= KEEP_VERSION_BYTES:
+            # the file as it was, so this can be undone (files.versions, files.restore)
+            version = self.ctx.history.save(dest, f"files.{mode}")
         try:
             dest.parent.mkdir(parents=True, exist_ok=True)
             if mode == "append":
@@ -208,12 +214,72 @@ class FilesModule(Module):
         if self.ctx.stats is not None:
             self.ctx.stats.record("files.saved", 1, mode=mode)
         await self.ctx.publish("files.saved", {"path": str(dest), "bytes": size, "mode": mode})
-        result: dict[str, Any] = {"saved": str(dest), "size": size_text(size)}
+        result: dict[str, Any] = {
+            "saved": str(dest),
+            "size": size_text(size),
+            "changed": {"path": str(dest), "title": dest.stem, "version": version,
+                        "new": creates_file},
+        }  # fmt: skip
         if mode == "rename":
             result["note"] = f"{target.path.name} already existed, so this is {dest.name}"
         elif mode in ("replace", "append"):
             result["note"] = "replaced the old file" if mode == "replace" else "added to the end"
         return result
+
+    @tool
+    def versions(self, path: str) -> dict[str, Any]:
+        """The earlier versions Starlight kept of a file it changed (a note, a journal day,
+        a recipe, a file it saved), newest first, with when and why. files.changes shows
+        what changed since one; files.restore puts one back."""
+        target = self._target(path)
+        kept = self.ctx.history.versions(target.path)
+        return {
+            "file": str(target.path),
+            "count": len(kept),
+            "versions": [v.public() for v in kept[:50]],
+        }
+
+    def _version(self, target: UserPath, version: int) -> int:
+        """The version asked for; 0: the newest (the file before its last change)."""
+        kept = self.ctx.history.versions(target.path)
+        if not kept:
+            raise FileError(f"no earlier versions of {target.path.name} are kept")
+        if version == 0:
+            return int(kept[0].id)
+        if version not in {v.id for v in kept}:
+            raise FileError(f"{target.path.name} has no version {version}; see files.versions")
+        return version
+
+    @tool
+    def changes(self, path: str, version: int = 0) -> dict[str, Any]:
+        """What changed in a file since an earlier version (0: since the last change), as
+        lines taken out (-) and put in (+)."""
+        target = self._target(path)
+        chosen = self._version(target, version)
+        diff = self.ctx.history.diff(target.path, chosen)
+        return {"file": str(target.path), "version": chosen,
+                "changes": diff[:MAX_DIFF_CHARS] or "(no difference)"}  # fmt: skip
+
+    @tool
+    async def restore(self, path: str, version: int = 0) -> dict[str, Any]:
+        """Put an earlier version of a file back: "undo the last change to my shopping note"
+        (version 0, the default: the file before its last change), or a version from
+        files.versions. The file as it is now is kept too, so this can be undone. A file
+        outside the Starlight folder asks first."""
+        self.ctx.kill_switch.check()
+        target = self._target(path)
+        chosen = self._version(target, version)
+        if not target.free and not await self.ctx.ui.confirm(
+            f"Put back version {chosen} of this file?\n  {target.path}"
+        ):
+            raise FileError("not confirmed, the file stays as it is")
+        before = self.ctx.history.restore(target.path, chosen)
+        return {
+            "restored": str(target.path),
+            "version": chosen,
+            "changed": {"path": str(target.path), "title": target.path.stem,
+                        "version": before, "new": False},
+        }  # fmt: skip
 
     def _save_question(self, dest: Path, mode: str, size: int, no_question: bool) -> str | None:
         """What to ask before saving, or None. Replacing asks also where nothing else would,

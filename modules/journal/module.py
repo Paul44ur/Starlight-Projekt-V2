@@ -2,7 +2,8 @@
 each entry with the time it was written. `week` reads the last seven days back and writes a
 weekly review with the model - what happened, what got done, what is open, what to focus on
 - saved in Journal/Weekly. Schedule it with an automation ("every Sunday at 18:00, write my
-weekly review") and it comes to you on every channel.
+weekly review") and it comes to you on every channel. Every change keeps the day's file as it
+was (starlight.notebook), so it can be undone with files.restore.
 """
 
 from __future__ import annotations
@@ -16,6 +17,7 @@ from pydantic import BaseModel
 
 from starlight.core import Module, ModuleContext, ToolError, tool
 from starlight.core.model import Message
+from starlight.notebook import append_note, write_note
 
 _BAD = re.compile(r'[<>:"/\\|?*\x00-\x1f]')
 
@@ -93,9 +95,10 @@ class JournalModule(Module):
         path.parent.mkdir(parents=True, exist_ok=True)
         start = "" if path.is_file() else f"# {when.strftime('%A, %d %B %Y')}\n"
         stamp = dt.datetime.now().strftime("%H:%M") if when == self._today() else "later"
-        with path.open("a", encoding="utf-8") as handle:
-            handle.write(f"{start}\n**{stamp}** - {text}\n")
-        return {"saved": str(path), "day": when.isoformat()}
+        written = append_note(
+            path, f"{start}\n**{stamp}** - {text}\n", "journal.write", self.ctx.history
+        )
+        return {"saved": str(path), "day": when.isoformat(), "changed": written.changed(path)}
 
     @tool
     def read(self, day: str = "") -> dict[str, Any]:
@@ -154,6 +157,6 @@ class JournalModule(Module):
         review = str(reply.content).strip()
         year, number, _ = end.isocalendar()
         path = self.folder / "Weekly" / f"{year}-W{number:02d}.md"
-        path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(f"# Week {number}, {year}\n\n{review}\n", encoding="utf-8")
-        return {"review": review, "saved": str(path)}
+        content = f"# Week {number}, {year}\n\n{review}\n"
+        written = write_note(path, content, "journal.week", self.ctx.history)
+        return {"review": review, "saved": str(path), "changed": written.changed(path)}

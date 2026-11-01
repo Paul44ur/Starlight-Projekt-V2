@@ -1,6 +1,10 @@
 """Quick notes as plain Markdown files you can open in any editor: "note: the WiFi password
 for guests is on the router", "add to my shopping note: eggs", "what did I note about the
 car?". Notes live in the Notes folder of your Starlight folder.
+
+Every change keeps the note as it was (starlight.notebook: History, write_note), so it can be
+undone ("undo the last change to my shopping note", files.restore), and a deleted note goes
+to the trash (notes.trash, notes.restore_deleted).
 """
 
 from __future__ import annotations
@@ -13,6 +17,7 @@ from typing import Any
 from pydantic import BaseModel
 
 from starlight.core import Module, ModuleContext, ToolError, tool
+from starlight.notebook import append_note, write_note
 
 _BAD = re.compile(r'[<>:"/\\|?*\x00-\x1f]')
 _RESERVED = re.compile(r"^(con|prn|aux|nul|com[0-9]|lpt[0-9])(\..*)?$", re.IGNORECASE)
@@ -83,8 +88,9 @@ class NotesModule(Module):
             raise ToolError(f"{path} is a folder, not a note; give the note another title")
         if len(text.encode("utf-8")) > MAX_NOTE_BYTES:
             raise ToolError("that is more than 1 MB of text: save it as a file instead of a note")
-        path.write_text(f"# {title.strip()}\n\n{text.strip()}\n", encoding="utf-8")
-        return {"saved": path.stem, "file": str(path)}
+        content = f"# {title.strip()}\n\n{text.strip()}\n"
+        written = write_note(path, content, "notes.note", self.ctx.history)
+        return {"saved": path.stem, "file": str(path), "changed": written.changed(path)}
 
     @tool
     def append(self, title: str, text: str) -> dict[str, Any]:
@@ -100,9 +106,9 @@ class NotesModule(Module):
                 f"the note '{path.stem}' would be over 1 MB: start a new one "
                 f"(for example '{path.stem} 2')"
             )
-        with path.open("a", encoding="utf-8") as handle:
-            handle.write(f"\n_{self._stamp()}_\n{text.strip()}\n")
-        return {"added_to": path.stem, "file": str(path)}
+        addition = f"\n_{self._stamp()}_\n{text.strip()}\n"
+        written = append_note(path, addition, "notes.append", self.ctx.history)
+        return {"added_to": path.stem, "file": str(path), "changed": written.changed(path)}
 
     @tool
     def read(self, title: str) -> dict[str, Any]:
@@ -144,9 +150,36 @@ class NotesModule(Module):
 
     @tool
     async def delete(self, title: str) -> dict[str, Any]:
-        """Delete a note. Asks first."""
+        """Delete a note: it goes to the trash (notes.restore_deleted brings it back).
+        Asks first."""
         path = self._find(title)
         if not await self.ctx.ui.confirm(f"Delete the note '{path.stem}'?"):
             raise ToolError("not confirmed, the note is kept")
-        path.unlink()
-        return {"deleted": path.stem}
+        self.ctx.history.trash(path, "notes.delete")
+        return {"deleted": path.stem, "note": "in the trash: notes.restore_deleted brings it back"}
+
+    @tool
+    def trash(self) -> dict[str, Any]:
+        """Deleted notes that can still come back (newest first)."""
+        found = self.ctx.history.deleted(self.folder)
+        return {
+            "count": len(found),
+            "notes": [{"title": Path(v.path).stem, "deleted": v.when} for v in found[:100]],
+        }
+
+    @tool
+    def restore_deleted(self, title: str) -> dict[str, Any]:
+        """Bring a deleted note back from the trash, as it was."""
+        wanted = title.strip().casefold()
+        found = self.ctx.history.deleted(self.folder)
+        exact = [v for v in found if Path(v.path).stem.casefold() == wanted]
+        matches = exact or [v for v in found if wanted in Path(v.path).stem.casefold()]
+        if not matches:
+            names = ", ".join(sorted({Path(v.path).stem for v in found})[:10]) or "it is empty"
+            raise ToolError(f"no deleted note called '{title}' in the trash ({names})")
+        if len({v.path for v in matches}) > 1:
+            names = ", ".join(sorted({Path(v.path).stem for v in matches})[:10])
+            raise ToolError(f"'{title}' matches several deleted notes: {names}")
+        path = Path(matches[0].path)
+        self.ctx.history.restore_deleted(path)
+        return {"restored": path.stem, "file": str(path)}

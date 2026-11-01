@@ -1,7 +1,7 @@
 name: files
 version: 0.1.0
 description: Save files Starlight makes for you (letters, notes, tables, code) and read them back
-keywords: ["file", "save", "letter", "write", "document", "read file", "Datei", "speichern", "Brief", "schreiben"]
+keywords: ["file", "save", "letter", "write", "document", "read file", "undo", "version", "restore", "Datei", "speichern", "Brief", "schreiben", "rückgängig", "wiederherstellen"]
 entrypoint: module:FilesModule
 # Saving in your Starlight folder needs no question; anywhere else, and replacing a file,
 # asks you first (the tools ask themselves, so the permission here is "safe").

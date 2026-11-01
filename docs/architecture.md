@@ -264,11 +264,19 @@ those versions, unlike the notebook index planned for block B2, which is a cache
 the file's stamp (mtime and size) differs from the one it was read with (`NoteConflict`),
 keep a version, write atomically (`core.fsutil.write_atomic_bytes`; appending keeps the
 file's bytes and line endings). `notebook/db.py` opens a SQLite file and applies its
-migrations by `PRAGMA user_version`. Nothing uses the base yet; block A2 switches the
-writers over.
+migrations by `PRAGMA user_version`. Block A2 switched the writers over: the kernel makes
+one `History` (`Kernel.file_history`, with the live `notebook` settings) and hands it to
+modules (`ctx.history`) and to memory (`MemoryStore(root, history)`: every write keeps a
+version, `delete` goes to the trash). Notes, journal and recipes write only through
+`write_note` / `append_note` and return `changed: {path, title, version, new}` (what an undo
+needs); `files.save` keeps a version before replacing or appending (text up to 10 MB).
+Tools: `files.versions`, `files.changes`, `files.restore` (version 0: before the last
+change; outside the free folders it asks), `notes.trash`, `notes.restore_deleted`,
+`memory.versions`, `memory.undo`. `notebook.keep_versions` and `notebook.versions` are
+safety limits.
 
 **Safety limits you set (`core/safety.py`).** Settings -> Safety limits chooses a level
-(strict, balanced, relaxed) and any of 27 switches on top, kept in
+(strict, balanced, relaxed) and any of 29 switches on top, kept in
 `config/starlight.safety.yaml`. Each switch names the real setting it changes, in
 `starlight.yaml` (`permissions.guard_after_untrusted`, `output.protect_starlight_folder`,
 `web.remote.require_pairing` ...) or in a module's settings (`desktop.failsafe`,

@@ -32,6 +32,12 @@ class NoteConflict(ToolError):
 class Written:
     stamp: str  # the file's stamp now: what the next change should expect
     version: int | None  # the earlier version kept (None: the file was new, or versions off)
+    new: bool = False  # the file did not exist before
+
+    def changed(self, path: Path) -> dict[str, object]:
+        """What tools return about a change, so the chat can offer to undo it: the
+        version to put back, or (for a new file) that undoing means deleting it."""
+        return {"path": str(path), "title": path.stem, "version": self.version, "new": self.new}
 
 
 def stamp(path: Path) -> str:
@@ -66,9 +72,10 @@ def write_note(
 ) -> Written:
     """Replace the file's content with ``text`` (UTF-8), safely (see the module's notes)."""
     _check(path, expected)
+    new = not path.exists()
     version = history.save(path, reason, min_gap=min_gap) if history is not None else None
     write_atomic_bytes(path, _encode(text, os.linesep.encode()))
-    return Written(stamp(path), version)
+    return Written(stamp(path), version, new)
 
 
 def append_note(
@@ -89,4 +96,4 @@ def append_note(
     newline = b"\r\n" if b"\r\n" in existing else b"\n" if existing else os.linesep.encode()
     version = history.save(path, reason) if history is not None and existing else None
     write_atomic_bytes(path, existing + _encode(text, newline))
-    return Written(stamp(path), version)
+    return Written(stamp(path), version, new=not existing)

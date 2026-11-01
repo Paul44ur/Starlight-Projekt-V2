@@ -100,11 +100,13 @@ class Memory:
         provider: ModelProvider | None = None,
         stats: Stats | None = None,
         embedder: Embedder | None = None,
+        history: Any = None,
     ) -> None:
         self.config = config or MemoryConfig()
         self.provider = provider
         self.stats = stats
-        self.store = MemoryStore(paths.memory)
+        # history (starlight.notebook.History): a version of each memory before it changes
+        self.store = MemoryStore(paths.memory, history)
         self.index = MemoryIndex(
             self.store,
             embedder or create_embedder(self.config.embedder),
@@ -457,8 +459,18 @@ class Memory:
             ]
 
         async def forget(memory_id: str) -> str:
-            """Delete one memory file by id."""
+            """Delete one memory file by id (memory.undo brings it back)."""
             return "Deleted." if await self.forget(memory_id) else "No such memory."
+
+        def versions(memory_id: str) -> dict[str, Any]:
+            """The earlier versions kept of one memory (by id), newest first: what it said
+            before it was changed, merged or deleted."""
+            return {"memory": memory_id, "versions": [v.public() for v in self.versions(memory_id)]}
+
+        async def undo(memory_id: str) -> dict[str, Any]:
+            """Undo the last change to one memory (by id): put back what it said before, or
+            bring it back if it was deleted."""
+            return await self.undo(memory_id)
 
         async def about_me(limit: int = 40) -> dict[str, Any]:
             """Everything you know about the user: their profile and what you remember,
@@ -527,7 +539,35 @@ class Memory:
             make_tool(MODULE, tidy, permission=Permission.CONFIRM),
             make_tool(MODULE, people_and_places),
             make_tool(MODULE, forget_conversation, permission=Permission.CONFIRM),
+            make_tool(MODULE, versions),
+            make_tool(MODULE, undo),
         ]
+
+    def versions(self, memory_id: str) -> list[Any]:
+        """The kept versions of a memory (starlight.notebook.Version), newest first."""
+        history = self.store.history
+        if history is None:
+            raise ToolError("earlier versions of memories are not kept here")
+        try:
+            path = self.store.path(memory_id)
+        except ValueError as exc:
+            raise ToolError(str(exc)) from exc
+        return list(history.versions(path))
+
+    async def undo(self, memory_id: str) -> dict[str, Any]:
+        kept = self.versions(memory_id)
+        if not kept:
+            raise ToolError(f"no earlier version of the memory '{memory_id}' is kept")
+        path = self.store.path(memory_id)
+        history = self.store.history
+        if path.is_file():
+            history.restore(path, kept[0].id)
+            done = "put back as it was before its last change"
+        else:
+            history.restore_deleted(path)
+            done = "brought back"
+        await self.sync(force=True)
+        return {"memory": memory_id, "done": done}
 
     def close(self) -> None:
         self.index.close()

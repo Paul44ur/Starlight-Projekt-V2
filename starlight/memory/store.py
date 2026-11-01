@@ -85,8 +85,11 @@ class MemoryEntry:
 
 
 class MemoryStore:
-    def __init__(self, root: Path) -> None:
+    def __init__(self, root: Path, history: Any = None) -> None:
         self.root = root
+        # starlight.notebook.History: every change and deletion keeps the memory as it was,
+        # so memory.undo can bring it back. None: no versions (tests, tools without a kernel).
+        self.history = history
 
     def path(self, entry_id: str) -> Path:
         path = (self.root / f"{entry_id}.md").resolve()
@@ -144,6 +147,8 @@ class MemoryStore:
 
     def write(self, entry: MemoryEntry) -> Path:
         path = self.path(entry.id)
+        if self.history is not None:
+            self.history.save(path, "memory")
         write_atomic(path, entry.to_markdown())
         return path
 
@@ -151,5 +156,8 @@ class MemoryStore:
         path = self.path(entry_id)
         if not path.is_file():
             return False
-        path.unlink()
+        if self.history is not None:
+            self.history.trash(path, "memory deleted")  # (memory.undo brings it back)
+        else:
+            path.unlink()
         return True
