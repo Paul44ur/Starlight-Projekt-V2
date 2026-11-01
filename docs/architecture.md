@@ -392,6 +392,17 @@ for today), `journal.month` and `journal.year` (reviews in `Journal/Monthly` and
 `monthly-review` and `weekly-plan`. API: `GET /api/notes/templates`, `POST /api/note` with
 `template`, `POST /api/notes/today`. The page: ＋ opens a menu (empty or a template), Today
 writes the day's page, and journal days show a two-week calendar strip.
+Block D1 is capture. The dispatcher also raises the injection guard when a result says
+`untrusted: true` (`Dispatcher._outside`), and `notes.clip` is in `untrusted_sources`.
+`notes.clip(url)` fetches through `ctx.http` (polite, robots.txt), keeps the title, a model
+summary (told never to follow the page's instructions), the text (20,000 characters) and
+`source`, `date`, `tags: [clipped]` in `Clippings/`, and returns `untrusted: true`;
+`notes.read` of any note with a `source:` property returns `untrusted: true` too.
+`notes.highlight` appends a `> [!quote]` callout. `notes.note` without a title appends to
+`Inbox/Inbox.md`; `notes.inbox` lists its items and `notes.sort_inbox` asks the model for a
+target note per item, asks the user, then appends each item there and removes it from the
+inbox (versions kept). The Inbox view has a "Sort my inbox" button (it opens the chat with
+the request).
 
 **Safety limits you set (`core/safety.py`).** Settings -> Safety limits chooses a level
 (strict, balanced, relaxed) and any of 29 switches on top, kept in

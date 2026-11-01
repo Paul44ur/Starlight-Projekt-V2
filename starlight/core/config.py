@@ -163,6 +163,7 @@ class PermissionsConfig(_Strict):
             "mail.overnight",
             "mail.draft_reply",
             "calendar.prepare",
+            "notes.clip",
             "approvals.pending",
         ]
     )

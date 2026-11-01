@@ -732,8 +732,18 @@ function showView(view) {
     clearInfo(); state.view = "inbox"; markCurrent();
     column.replaceChildren(el("h1", "title", t("Inbox")));
     const inbox = state.notes.filter(n => folderOf(n.path) === "Inbox");
-    if (!inbox.length) column.appendChild(el("div", "soon", t("The inbox is empty. Clipped pages and quick notes will land here.")));
-    else column.appendChild(listOf(inbox.map(n => n.path)));
+    if (!inbox.length) {
+      column.appendChild(el("div", "soon", t("The inbox is empty. Notes written without a title land here; clipped pages go to Clippings.")));
+      return;
+    }
+    column.appendChild(el("p", "dim", t("Notes written without a title wait here. Starlight can file them into your notes; it asks before moving anything.")));
+    const sort = column.appendChild(el("button", "ok", "Sort my inbox"));
+    sort.type = "button";
+    sort.onclick = () => {
+      const ask = window.starlightLanguage === "de" ? "Sortiere meinen Eingang in meine Notizen." : "Sort my inbox into my notes.";
+      location.href = "/?" + new URLSearchParams({ ask });
+    };
+    column.appendChild(listOf(inbox.map(n => n.path)));
     return;
   }
   if (view === "trash") return showTrash();

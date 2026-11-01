@@ -206,9 +206,17 @@ class Dispatcher:
         if result.ok:
             self.policy.count_run(name)
         taint = request_taint.get()
-        if result.ok and taint is not None and self.policy.is_untrusted_source(name):
+        if result.ok and taint is not None and self._outside(name, result):
             taint.sources.append(name)  # from now on in this request, the guard is up
         return self._finish(result, request_id)
+
+    def _outside(self, name: str, result: ToolResult) -> bool:
+        """The result brought outside content: the tool is one of untrusted_sources, or its
+        result says so itself (``untrusted: true``, e.g. a note clipped from the web)."""
+        if self.policy.is_untrusted_source(name):
+            return True
+        said = isinstance(result.output, dict) and result.output.get("untrusted") is True
+        return said and self.policy.config.guard_after_untrusted
 
     def _finish(
         self, result: ToolResult, request_id: str | None, state: str | None = None

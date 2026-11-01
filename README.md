@@ -547,6 +547,14 @@ that has a page. In the chat: "start a meeting note for the Müller call", "writ
 review", "write my review of the year". Automations offer "monthly-review" and
 "weekly-plan".
 
+**Capturing things.** "Save this page as a note: https://…" keeps the page in `Clippings`
+with a short summary, the link (`source:`) and its text. Such a page is outside content:
+for the rest of that request, and whenever the clipping is read again later, tools that
+normally ask (mail, typing on the desktop …) ask again, so hidden text in a page cannot use
+them unnoticed. "Keep this quote in my Quotes note" adds it as a quote box. "Note: call
+the plumber" without a title goes to the **Inbox**; "sort my inbox" (or the button in the
+Inbox view) proposes where each item belongs and asks before moving anything.
+
 **Settings** lists the modules, each with an on/off switch; open one to
 choose for each of its tools whether it runs on its own, asks first or is blocked (the search
 finds modules and tools), and pair your phone there. **Memory**

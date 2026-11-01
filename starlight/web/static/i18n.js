@@ -156,8 +156,11 @@
     "Opened lately": "Zuletzt geöffnet",
     "No journal entry for today yet. Tell Starlight in the chat: “Write in my journal: …”.":
       "Noch kein Tagebucheintrag für heute. Sag Starlight im Chat: „Schreib in mein Tagebuch: …“.",
-    "The inbox is empty. Clipped pages and quick notes will land here.":
-      "Der Eingang ist leer. Gespeicherte Webseiten und schnelle Notizen landen hier.",
+    "The inbox is empty. Notes written without a title land here; clipped pages go to Clippings.":
+      "Der Eingang ist leer. Notizen ohne Titel landen hier; gespeicherte Webseiten unter Clippings.",
+    "Notes written without a title wait here. Starlight can file them into your notes; it asks before moving anything.":
+      "Notizen ohne Titel warten hier. Starlight kann sie in deine Notizen einsortieren; es fragt, bevor es etwas verschiebt.",
+    "Sort my inbox": "Eingang sortieren",
     "All tasks from your notes in one place: coming in a later update.":
       "Alle Aufgaben aus deinen Notizen an einem Ort: kommt mit einem späteren Update.",
     "A map of how your notes link together: coming in a later update.":
