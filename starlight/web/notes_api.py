@@ -11,8 +11,10 @@ as a whole, and a save carries the ``stamp`` the page read the note with, so a c
 meanwhile (in another program or tab) is never overwritten: the answer is 409 with both
 texts, and the page lets you choose.
 
-    GET    /api/notes                        the folders and notes (pinned ones marked)
+    GET    /api/notes[?tag=]                 the folders and notes (pinned ones marked)
     GET    /api/notes/search?q=              notes with these words
+    GET    /api/notes/resolve?name=&from=    the note a link [[name]] means (404: none yet)
+    POST   /api/notes/welcome                {lang}: the welcome note, the first time only
     GET    /api/notes/trash                  deleted notes
     POST   /api/notes/trash/restore          {path}: bring one back
     POST   /api/notes/pins                   {path, pinned}
@@ -30,6 +32,7 @@ texts, and the page lets you choose.
 
 from __future__ import annotations
 
+import datetime as dt
 import json
 import re
 import threading
@@ -120,6 +123,64 @@ def relative_path(root: Path, text: str, kinds: tuple[str, ...] | None = NOTE) -
     return path
 
 
+def welcome_note(german: bool) -> tuple[str, str]:
+    """The first note: what notes can do, shown by example (itself an ordinary note)."""
+    soon = (dt.date.today() + dt.timedelta(days=3)).isoformat()
+    if german:
+        return (
+            "Willkommen",
+            f"""---
+tags: [willkommen]
+---
+# Willkommen in deinen Notizen
+
+Hier hältst du fest, was du behalten willst. Starlight liest mit und hilft: Frag im Chat
+zum Beispiel „Was steht in meiner Einkaufsliste?“.
+
+## So geht's
+- **Verknüpfen:** Zwei eckige Klammern verbinden Notizen, z. B. [[Einkaufsliste]].
+- **Schlagwörter:** Ein Rautezeichen ordnet: #ideen oder #arbeit/projekte.
+- **Bilder:** Ein Bild aus dem Ordner Notes/Attachments zeigst du mit `![[foto.png]]`.
+
+## Aufgaben
+- [ ] Milch kaufen fällig: {soon}
+- [x] Diese Notiz lesen
+
+> [!tip] Tipp
+> Mit **Strg+K** findest du jede Notiz schnell.
+
+> [!note] Nichts geht verloren
+> Vor jeder Änderung hebt Starlight die alte Fassung auf.
+""",
+        )
+    return (
+        "Welcome",
+        f"""---
+tags: [welcome]
+---
+# Welcome to your notes
+
+Write down what you want to keep. Starlight reads along and helps: ask in the chat,
+for example "What is on my shopping list?".
+
+## How it works
+- **Links:** Two square brackets connect notes, like [[Shopping list]].
+- **Tags:** A hash sign sorts things: #ideas or #work/projects.
+- **Pictures:** Show a picture from the Notes/Attachments folder with `![[photo.png]]`.
+
+## Tasks
+- [ ] Buy milk due: {soon}
+- [x] Read this note
+
+> [!tip] Tip
+> Press **Ctrl+K** to find any note quickly.
+
+> [!note] Nothing gets lost
+> Before every change, Starlight keeps the earlier version.
+""",
+    )
+
+
 def add_notes_api(
     app: FastAPI,
     kernel: Callable[[], Any],
@@ -172,12 +233,17 @@ def add_notes_api(
     # -- the list -------------------------------------------------------------------------
 
     @app.get("/api/notes")
-    def list_notes(request: Request) -> dict[str, Any]:
+    def list_notes(request: Request, tag: str = "") -> dict[str, Any]:
         local_only(request)
         found = index()
         done = found.refresh()
         pins = pinned()
-        notes = [{**n.public(), "pinned": n.path in pins} for n in found.notes()]
+        tagged = set(found.with_tag(tag)) if tag.strip() else None
+        notes = [
+            {**n.public(), "pinned": n.path in pins}
+            for n in found.notes()
+            if tagged is None or n.path in tagged
+        ]
         folders = list(FOLDERS)
         for note in notes:
             top = note["path"].split("/")[0] if "/" in note["path"] else ""
@@ -192,6 +258,37 @@ def add_notes_api(
         found.refresh()
         hits = found.search(q, max(1, min(limit, 100)))
         return {"hits": [h.__dict__ for h in hits]}
+
+    @app.get("/api/notes/resolve")
+    def resolve(request: Request, name: str, source: str = "") -> dict[str, Any]:
+        local_only(request)
+        found = index()
+        found.refresh()
+        path = found.resolve(name, source or None)
+        if path is None:
+            raise _bad(f"there is no note {name} yet", 404)
+        return {"path": path}
+
+    @app.post("/api/notes/welcome")
+    async def welcome(request: Request) -> dict[str, Any]:
+        """The welcome note, made on the first visit to the Notes page (never again, even
+        after it is deleted). In German or English, as the page speaks."""
+        local_only(request)
+        data = await body(request)
+        flag = Path(kernel().paths.data) / "notebook" / "welcomed"
+        if flag.exists():
+            return {"path": None}
+        german = str(data.get("lang", "")).lower().startswith("de")
+        title, text = welcome_note(german)
+        folder = root().resolve() / "Notes"
+        file = folder / f"{title}.md"
+        with writing:
+            if not file.exists():
+                folder.mkdir(parents=True, exist_ok=True)
+                write_note(file, text, "notes.page welcome", history(), expected=MISSING)
+            flag.parent.mkdir(parents=True, exist_ok=True)
+            flag.write_text("1", encoding="utf-8")
+        return {"path": rel(file)}
 
     @app.get("/api/notes/trash")
     def trash(request: Request) -> dict[str, Any]:
@@ -299,6 +396,7 @@ def add_notes_api(
             "text": text,
             "stamp": current,
             "properties": note.properties,
+            "body": note.body,  # (the text after the properties block)
             "error": note.error,
             "headings": [h.__dict__ for h in note.headings],
             "tags": note.tag_names(),

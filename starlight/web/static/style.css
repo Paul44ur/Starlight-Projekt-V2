@@ -52,6 +52,7 @@ header.top h1 { display: flex; align-items: center; gap: 8px; font-size: 16px; m
 img.logo { width: 22px; height: 22px; flex: none; border-radius: 6px; }
 header.top .spacer { flex: 1; }
 header.top nav { display: flex; gap: 12px; font-size: 14px; }
+body.remote a[href="/notes"] { display: none; }  /* PC only */
 .page { max-width: 980px; margin: 0 auto; padding: 18px 16px 60px; }
 /* A wide table scrolls inside its card instead of pushing the whole page sideways. */
 .card { background: var(--panel); border: 1px solid var(--border); border-radius: 12px;

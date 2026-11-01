@@ -465,6 +465,11 @@ def create_app(paths: Paths | None = None) -> Any:
         viewer(request)
         return page("settings.html")
 
+    @app.get("/notes", response_class=HTMLResponse)
+    def notes_page(request: Request) -> str:
+        local_only(request)  # your notes: on the PC only (docs/plan-notes-app.md)
+        return page("notes.html")
+
     @app.get("/memory", response_class=HTMLResponse)
     def memory_page(request: Request) -> str:
         viewer(request)

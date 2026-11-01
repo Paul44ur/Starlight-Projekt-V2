@@ -54,3 +54,10 @@ function toast(text) {
   document.body.appendChild(t);
   setTimeout(() => t.remove(), 2600);
 }
+
+// The Notes page is on the PC only: a paired phone does not show the link to it.
+if (document.querySelector('a[href="/notes"]')) {
+  fetch("/api/status").then(r => r.json()).then(s => {
+    if (s && s.local === false) document.body.classList.add("remote");
+  }).catch(() => { /* the page says itself when Starlight cannot be reached */ });
+}

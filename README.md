@@ -495,6 +495,14 @@ question again and replaces that answer); under it you see how fast it was writt
   **archive** it (🗄 Archive at the end of the list shows the archive), download it as
   Markdown or as a web page that works on its own, **print or save it as PDF**, or delete it.
 
+**Notes** (at the PC) shows your notes, journal and recipes from the Starlight folder.
+The list on the left has your folders, pinned notes and a search box; **Ctrl+K** finds a
+note by its name. A note reads like a page: links to other notes (`[[Shopping]]`) open
+them, tags (`#home`) list the notes that have them, and the right side shows its outline,
+the notes that link to it and its properties. Links and tags in chat answers open here
+too. The first visit brings a short welcome note with examples. Editing on the page comes
+in a later update; until then, ask Starlight in the chat to change a note.
+
 **Settings** lists the modules, each with an on/off switch; open one to
 choose for each of its tools whether it runs on its own, asks first or is blocked (the search
 finds modules and tools), and pair your phone there. **Memory**

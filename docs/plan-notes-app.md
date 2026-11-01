@@ -18,8 +18,8 @@ Work goes block by block (section 9). One block is one session and one commit; m
 | B2 | Parser and index (Markdown, SQLite, full-text search) | M | A1 | **done** 2026-11-01 ("Notes plan B2: …") |
 | B3 | Notes API (list, read, save, rename, trash, versions, pictures) | M | A2, B2 | **done** 2026-11-01 ("Notes plan B3: …") |
 | B4 | Renderer extension (`render.js`) | M | – | **done** 2026-11-01 ("Notes plan B4: …") |
-| B5 | Notes page: layout, list, switcher, reading view, welcome note | M | B3, B4 | **next** |
-| B6 | Notes page: editing (CodeMirror, toolbar, `/` menu, autosave, conflicts, pictures, history panel) | L | B1, B5 | open |
+| B5 | Notes page: layout, list, switcher, reading view, welcome note | M | B3, B4 | **done** 2026-11-01 ("Notes plan B5: …") |
+| B6 | Notes page: editing (CodeMirror, toolbar, `/` menu, autosave, conflicts, pictures, history panel) | L | B1, B5 | **next** |
 | C1 | Links, aliases, embeds, backlinks, rename that fixes links | M | B6 | open |
 | C2 | Tags and properties | M | C1 | open |
 | C3 | The assistant uses the structure; "Ask Starlight" on a note | M | C2 | open |
@@ -38,7 +38,13 @@ Work goes block by block (section 9). One block is one session and one commit; m
 | F4 | Board view on the page | L | F3, B6 | open |
 | G1–G6 | Extras (export, Kanban, flashcards, live preview, Mermaid, deep links) | S–M each | see 9 | optional |
 
-Last updated: 2026-11-01 (A1 to B4 done. B4: `mdHooks` in markdown.js, filled by
+Last updated: 2026-11-01 (A1 to B5 done. B5: `static/notes.html` (reading only); the page
+keeps `state.current` (the note as `/api/note` returned it, with `body`, `stamp`,
+`headings`); B6 adds an Edit/Read toggle next to "☆ Pin" in `.crumbs .actions` and should
+reuse `openNote`/`drawInfo`. Tasks and Graph in the sidebar are placeholders (D4, F1/F2).
+Tests drive the page in Chromium with `/api/**` answered by the real app
+(`tests/test_notes_page.py`, `notes_page()`).
+B4: `mdHooks` in markdown.js, filled by
 render.js; links go to `/notes?open=<name>&heading=<h>` and tags to `/notes?tag=<t>`, so
 B5's page must read those two parameters. A bare picture name is looked up in
 `Notes/Attachments`.

@@ -134,6 +134,35 @@
     ". Changes are saved in config/permissions.chat.yaml.": ". Änderungen landen in config/permissions.chat.yaml.",
     "Advanced: one rule for several tools": "Erweitert: eine Regel für mehrere Werkzeuge", "A pattern such as": "Ein Muster wie",
     '. "Default" removes the rule again.': '. „Standard" entfernt die Regel wieder.',
+    // the Notes page (notes.html)
+    "Notes": "Notizen", "Starlight notes": "Starlight-Notizen", "Skip to the note": "Zur Notiz springen",
+    "Find a note (Ctrl+K)": "Notiz finden (Strg+K)", "Your notes": "Deine Notizen", "Search notes": "Notizen durchsuchen",
+    "Views": "Ansichten", "Today": "Heute", "Inbox": "Eingang", "Tasks": "Aufgaben", "Graph": "Netz",
+    "Pinned": "Angeheftet", "Folders": "Ordner", "About this note": "Zu dieser Notiz", "Outline": "Gliederung",
+    "Linked from": "Verlinkt von", "Properties": "Eigenschaften", "Find a note": "Notiz finden",
+    "Type a note's name": "Namen einer Notiz tippen", "↑↓ choose · Enter opens · Esc closes": "↑↓ wählen · Enter öffnet · Esc schließt",
+    "Only the first 20,000 notes are listed": "Nur die ersten 20.000 Notizen werden gezeigt",
+    "Starlight folder": "Starlight-Ordner", "No notes here yet": "Noch keine Notizen hier",
+    "There is no note called": "Es gibt keine Notiz namens", "★ Pinned": "★ Angeheftet", "☆ Pin": "☆ Anheften",
+    "Unpin this note": "Nicht mehr anheften", "Pin this note to the top of the list": "Diese Notiz oben in der Liste anheften",
+    "This note's properties could not be read:": "Die Eigenschaften dieser Notiz ließen sich nicht lesen:",
+    "This note is empty.": "Diese Notiz ist leer.", "No headings": "Keine Überschriften",
+    "No other note links here yet": "Noch keine andere Notiz verlinkt hierher", "None": "Keine",
+    "1 note": "1 Notiz", "notes": "Notizen", "Nothing found. Try fewer or other words.": "Nichts gefunden. Versuch es mit weniger oder anderen Wörtern.",
+    "No notes yet": "Noch keine Notizen",
+    "Ask Starlight in the chat to write one, for example: “Make a note: buy milk”.":
+      "Bitte Starlight im Chat, eine zu schreiben, zum Beispiel: „Notiere: Milch kaufen“.",
+    "Choose a note on the left, or press Ctrl+K to find one.": "Wähle links eine Notiz oder drück Strg+K, um eine zu finden.",
+    "Opened lately": "Zuletzt geöffnet",
+    "No journal entry for today yet. Tell Starlight in the chat: “Write in my journal: …”.":
+      "Noch kein Tagebucheintrag für heute. Sag Starlight im Chat: „Schreib in mein Tagebuch: …“.",
+    "The inbox is empty. Clipped pages and quick notes will land here.":
+      "Der Eingang ist leer. Gespeicherte Webseiten und schnelle Notizen landen hier.",
+    "All tasks from your notes in one place: coming in a later update.":
+      "Alle Aufgaben aus deinen Notizen an einem Ort: kommt mit einem späteren Update.",
+    "A map of how your notes link together: coming in a later update.":
+      "Eine Karte, wie deine Notizen zusammenhängen: kommt mit einem späteren Update.",
+    "No note with that name": "Keine Notiz mit diesem Namen",
     // the chat: a file the assistant changed
     "Changed:": "Geändert:", "New:": "Neu:", "Undone:": "Rückgängig gemacht:",
     // settings: safety limits (the switches' own texts come from the server in German)

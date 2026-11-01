@@ -324,6 +324,17 @@ addresses), `![[Note]]` is a link chip until C1 embeds notes; `#tags` are pills 
 `/notes?tag=…`; `> [!tip] Title` is a callout (note, tip, warning, quote, todo; `-` folded,
 `+` open); `- [ ]` items get read-only boxes. All of it stays `textContent`. Without
 render.js the syntax stays plain text. Styles are in `style.css` under `.md`.
+Block B5 is the Notes page, `/notes` (`static/notes.html`, PC only; the other pages link
+to it, and `common.js` hides the link on a phone). Three areas: the sidebar (search,
+Today, Inbox, Tasks and Graph, pinned notes, the folder tree), the reading column (title,
+the note's own tags and properties as chips, the body drawn by `markdown.js` and
+`render.js`), and the info panel (outline, backlinks, properties; it folds away under
+1100 px). The URL says what is shown: `?path=`, `?open=<name>&heading=` (resolved by
+`GET /api/notes/resolve`), `?tag=` (`GET /api/notes?tag=`), `?q=` or `?view=`; links in a
+note stay on the page and Back works. Ctrl+K is a quick switcher (letters in order, word
+starts count more, aliases too). `POST /api/notes/welcome` writes the welcome note
+(German or English, as the page speaks) once ever; `data/notebook/welcomed` remembers.
+Note text is marked `translate="no"`, so i18n never changes it.
 
 **Safety limits you set (`core/safety.py`).** Settings -> Safety limits chooses a level
 (strict, balanced, relaxed) and any of 29 switches on top, kept in

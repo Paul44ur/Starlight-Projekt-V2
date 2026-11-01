@@ -274,3 +274,23 @@ def test_a_file_open_elsewhere_gets_a_plain_answer(
     )
     assert response.status_code == 409 and "another program" in response.json()["detail"]
     assert (notebook / "Notes" / "Plan.md").read_text("utf-8") == "Back to [[Shopping]].\n"
+
+
+def test_tag_filter_link_resolution_and_the_welcome_note(api: Any, notebook: Path) -> None:
+    tagged = get(api, "/api/notes", tag="HOME")["notes"]
+    assert [n["path"] for n in tagged] == ["Notes/Shopping.md"]
+    assert get(api, "/api/notes/resolve", name="plan", source="Notes/Shopping.md") == {
+        "path": "Notes/Plan.md"
+    }
+    assert (
+        api.get("/api/notes/resolve", params={"name": "Nowhere"}, headers=LOCAL).status_code == 404
+    )
+    note = get(api, "/api/note", path="Notes/Shopping.md")
+    assert note["body"] == "# Shopping\n- [ ] milk\nSee [[Plan]].\n"  # without the properties
+    made = send(api, "POST", "/api/notes/welcome", json={"lang": "de-DE"})
+    assert made["path"] == "Notes/Willkommen.md"
+    text = (notebook / "Notes" / "Willkommen.md").read_text("utf-8")
+    assert "# Willkommen in deinen Notizen" in text and "- [ ] Milch kaufen fällig: " in text
+    (notebook / "Notes" / "Willkommen.md").unlink()
+    assert send(api, "POST", "/api/notes/welcome", json={"lang": "en"})["path"] is None  # once
+    assert not (notebook / "Notes" / "Welcome.md").exists()
