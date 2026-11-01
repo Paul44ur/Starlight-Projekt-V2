@@ -16,8 +16,8 @@ Work goes block by block (section 9). One block is one session and one commit; m
 | A3 | "Changed · Open · Undo" chip in the chat | S | A2 | **done** 2026-11-01 ("Notes plan A3: …") |
 | B1 | Editor build (CodeMirror bundle, licences, hash test) | S | – | **done** 2026-11-01 ("Notes plan B1: …") |
 | B2 | Parser and index (Markdown, SQLite, full-text search) | M | A1 | **done** 2026-11-01 ("Notes plan B2: …") |
-| B3 | Notes API (list, read, save, rename, trash, versions, pictures) | M | A2, B2 | **next** |
-| B4 | Renderer extension (`render.js`) | M | – | open |
+| B3 | Notes API (list, read, save, rename, trash, versions, pictures) | M | A2, B2 | **done** 2026-11-01 ("Notes plan B3: …") |
+| B4 | Renderer extension (`render.js`) | M | – | **next** |
 | B5 | Notes page: layout, list, switcher, reading view, welcome note | M | B3, B4 | open |
 | B6 | Notes page: editing (CodeMirror, toolbar, `/` menu, autosave, conflicts, pictures, history panel) | L | B1, B5 | open |
 | C1 | Links, aliases, embeds, backlinks, rename that fixes links | M | B6 | open |
@@ -38,7 +38,11 @@ Work goes block by block (section 9). One block is one session and one commit; m
 | F4 | Board view on the page | L | F3, B6 | open |
 | G1–G6 | Extras (export, Kanban, flashcards, live preview, Mermaid, deep links) | S–M each | see 9 | optional |
 
-Last updated: 2026-11-01 (A1, A2, A3, B1 and B2 done. B2: `Kernel.notebook_index` (made on
+Last updated: 2026-11-01 (A1 to B3 done. B3: the API is in `starlight/web/notes_api.py`
+(endpoint list in its docstring and in docs/architecture.md); a note is `/api/note?path=…`
+(a query parameter, not `/api/notes/{path}`), pictures are served from
+`/api/notes/file/{path}` (B4 links `![[picture]]` there).
+B2: `Kernel.notebook_index` (made on
 first use, root = the Starlight folder) is the Index; its API: `refresh`, `touch`, `notes`,
 `note`, `properties`, `search`, `tags`, `with_tag`, `tasks`, `links`, `backlinks`,
 `resolve`, `resolver`. `History.listeners` / `History.changed(path)` is the change feed

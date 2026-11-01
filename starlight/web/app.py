@@ -54,6 +54,7 @@ from starlight.core.permissions import (
 from starlight.core.ui import current_ui
 from starlight.notebook import undo_change
 from starlight.web.auth import COOKIE, Device, Devices
+from starlight.web.notes_api import add_notes_api
 
 STATIC = Path(__file__).with_name("static")
 # The files in static/vendor the pages may load (see bundles/editor/README.md).
@@ -1104,6 +1105,10 @@ def create_app(paths: Paths | None = None) -> Any:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
         k.audit.record("web.undo", path=str(change.get("path")), new=bool(change.get("new")))
         return {"undone": done}
+
+    # -- the Notes page's API (notes_api.py) ------------------------------------------------
+
+    add_notes_api(app, kernel, local_only, body)
 
     # -- settings: safety limits (starlight/core/safety.py) ---------------------------------
 

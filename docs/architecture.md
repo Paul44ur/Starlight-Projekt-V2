@@ -303,6 +303,19 @@ every 5 s and reads only changed files; at most 20,000 files and 1 MB per note.
 `History.listeners` hear about every write, restore and deletion (`write_note`,
 `append_note`, `files.save` too), so `Kernel.notebook_index` (made on first use) updates a
 note at once with `touch`.
+Block B3 adds the Notes page's API (`web/notes_api.py`), all PC only (`local_only`):
+`GET /api/notes` (folders and notes, pinned ones marked), `/api/notes/search?q=`,
+`/api/notes/trash` and `POST /api/notes/trash/restore`, `POST /api/notes/pins` (kept in
+`data/notebook/pinned.json`), `POST /api/notes/pictures?name=` (PNG, JPEG, GIF or WebP by
+their first bytes, 10 MB, into `Notes/Attachments`), `GET /api/notes/file/{path}` (pictures
+with `nosniff` and a strict CSP; an SVG only as a download), and for one note
+`GET|PUT|DELETE /api/note?path=`, `POST /api/note` (new), `/api/note/rename`,
+`/api/note/versions`, `/api/note/diff` and `POST /api/note/restore`. Paths are relative to
+the Starlight folder and checked by `relative_path`: no `..`, full paths, hidden or
+Windows-reserved names, no `code/`, and nothing whose real path (after links) is outside.
+A save sends the `stamp` it read; a change made meanwhile gives 409 with both texts. Saves
+keep at most one version per 5 minutes; rename and delete keep one first. Undo from the
+chat stays `POST /api/changes/{id}/undo` (A3).
 
 **Safety limits you set (`core/safety.py`).** Settings -> Safety limits chooses a level
 (strict, balanced, relaxed) and any of 29 switches on top, kept in
