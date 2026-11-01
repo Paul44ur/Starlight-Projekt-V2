@@ -347,6 +347,19 @@ session started is kept). A 409 opens the conflict dialog (keep mine, take their
 both). There are new, rename (the title field), delete (to the trash), a Trash view with
 Bring back, a history dialog (versions, a coloured diff, put back), Ctrl+E, Ctrl+S, Ctrl+N,
 and a last save with `keepalive` when the page closes.
+Block C1 connects notes. `notebook/rename.py`: `plan(index, old, new)` finds every
+[[link]] by the old name that resolves to the note (`markdown.wikilink_spans` gives their
+places outside code; `links.retarget` keeps a folder, `#part` and `|shown text`; links by an
+alias stay, the alias goes along) and returns the new texts; `rename` moves the file and
+writes each changed note through `write_note` (a version each). The notes module gets
+`notes.rename` (asks first when other notes change), `notes.links`, `notes.backlinks` (with
+the linking line) and `notes.read` with links; `notes._find` also finds a note by an alias.
+Modules reach the index through `ctx.notebook` (`Services.notebook`). The API's rename takes
+`fix_links`, and `GET /api/notes/embed?name=&source=&heading=` returns a note, a section or
+a `^block`. The page marks links to missing notes (click: "Write it"), shows embeds (at most
+three deep, a note shown higher up is not shown again), backlink cards with the line,
+previews on hover, `[[` suggestions in the editor (names and aliases), and asks before a
+rename changes other notes.
 
 **Safety limits you set (`core/safety.py`).** Settings -> Safety limits chooses a level
 (strict, balanced, relaxed) and any of 29 switches on top, kept in

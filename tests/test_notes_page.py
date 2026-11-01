@@ -127,7 +127,8 @@ async def test_reading_a_note_its_outline_backlinks_and_links(
             "Food",
             "Other",
         ]
-        assert await page.locator("#backlinks button").all_text_contents() == ["PlanNotes"]
+        backlinks = await page.locator("#backlinks button").all_text_contents()
+        assert backlinks == ["PlanNotesBack to [[Shopping#Food]]."]  # (with the line: C1)
         props = await page.locator("#props").text_content()
         assert "shopRewe" in props and "aliasesEinkauf" in props
         current = page.locator('.side .item[aria-current="page"]')
@@ -158,8 +159,8 @@ async def test_reading_a_note_its_outline_backlinks_and_links(
             "() => document.querySelector('h1.title')?.textContent === 'Shopping'"
         )
         await opened(page, f"{static_site}/notes.html?open=Nowhere")
-        await page.wait_for_selector(".toast")
-        assert "There is no note called Nowhere" in await page.locator(".toast").text_content()
+        await page.wait_for_selector(".missing-note")  # not written yet: offered (C1)
+        assert await page.locator(".missing-note h1").text_content() == "Nowhere"
         assert page.errors == []  # type: ignore[attr-defined]
 
 

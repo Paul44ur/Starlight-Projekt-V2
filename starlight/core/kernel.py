@@ -216,6 +216,7 @@ class Kernel:
             output_error=output_error,
             write_anywhere=self.config.output.write_anywhere,
             history=self.file_history,
+            notebook=lambda: self.notebook_index,
             policy=self.policy,
             deliver=self.deliver,
             embedder=self.memory.index.embedder,

@@ -14,6 +14,7 @@ texts, and the page lets you choose.
     GET    /api/notes[?tag=]                 the folders and notes (pinned ones marked)
     GET    /api/notes/search?q=              notes with these words
     GET    /api/notes/resolve?name=&from=    the note a link [[name]] means (404: none yet)
+    GET    /api/notes/embed?name=&source=&heading=  a note or a part of it, to show inside
     POST   /api/notes/welcome                {lang}: the welcome note, the first time only
     GET    /api/notes/trash                  deleted notes
     POST   /api/notes/trash/restore          {path}: bring one back
@@ -23,7 +24,7 @@ texts, and the page lets you choose.
     GET    /api/note?path=                   text, stamp, properties, outline, links, backlinks
     PUT    /api/note?path=                   {text, stamp, first}: save (409 on a conflict)
     POST   /api/note                         {folder, title, text}: a new note
-    POST   /api/note/rename                  {path, title}
+    POST   /api/note/rename                  {path, title, fix_links}: links follow
     DELETE /api/note?path=                   to the trash
     GET    /api/note/versions?path=          the kept versions
     GET    /api/note/diff?path=&version=     what changed since a version (or between two)
@@ -47,6 +48,8 @@ from starlight.core.fsutil import write_atomic
 from starlight.core.safepaths import inside
 from starlight.core.tools import ToolError
 from starlight.notebook import NoteConflict, markdown, stamp, write_note
+from starlight.notebook.rename import plan as plan_rename
+from starlight.notebook.rename import rename as carry_out_rename
 from starlight.notebook.write import MISSING
 
 FOLDERS = ("Notes", "Journal", "Recipes", "Clippings", "Inbox")  # always shown, in this order
@@ -292,6 +295,31 @@ def add_notes_api(
             flag.write_text("1", encoding="utf-8")
         return {"path": rel(file)}
 
+    @app.get("/api/notes/embed")
+    def embed(request: Request, name: str, source: str = "", heading: str = "") -> dict[str, Any]:
+        """A note (or a part of it: "Heading" or "^block") shown inside another, or as a
+        preview when the pointer rests on a link."""
+        local_only(request)
+        found = index()
+        found.refresh()
+        path = found.resolve(name, source or None)
+        if path is None:
+            raise _bad(f"there is no note {name} yet", 404)
+        file = relative_path(root(), path)
+        from starlight.text import decode_text
+
+        text = decode_text(file.read_bytes()[:MAX_NOTE])
+        part = heading.strip()
+        if part.startswith("^"):
+            shown = markdown.block(text, part[1:])
+        elif part:
+            shown = markdown.section(text, part)
+        else:
+            shown = markdown.split(text).body
+        if shown is None:
+            raise _bad(f"{file.stem} has no part {part}", 404)
+        return {"path": path, "title": file.stem, "text": shown[:20000]}
+
     @app.get("/api/notes/trash")
     def trash(request: Request) -> dict[str, Any]:
         local_only(request)
@@ -467,20 +495,28 @@ def add_notes_api(
             raise _bad("give the note a new title")
         target = file.with_name(f"{title}.md")
         relative_path(root(), rel(target))
+        fix_links = data.get("fix_links", True) is not False  # links in other notes too
         with writing:
             if target.exists() and target.resolve() != file.resolve():
                 raise _bad(f"there is already a note {title}", 409)
-            history().save(file, "notes.page rename")
             try:
-                file.rename(target)
+                planned = plan_rename(index(), file, target)
+                if not fix_links:
+                    planned.texts = {p: t for p, t in planned.texts.items() if p == file}
+                updated = carry_out_rename(index(), history(), planned)
+            except ToolError as exc:
+                raise _bad(str(exc), 409) from exc
             except OSError as exc:
                 raise _bad(f"could not rename {file.name}: {locked(exc)}", 409) from exc
-            history().changed(file)
-            history().changed(target)
         old, new = rel(file), rel(target)
         set_pins([new if p == old else p for p in pinned()])
-        audit("notes.page.rename", path=str(file), to=str(target))
-        return {"path": new, "title": target.stem, "stamp": stamp(target)}
+        audit("notes.page.rename", path=str(file), to=str(target), links=len(updated))
+        return {
+            "path": new,
+            "title": target.stem,
+            "stamp": stamp(target),
+            "updated": [rel(p) for p in updated],
+        }
 
     @app.delete("/api/note")
     def delete_note(request: Request, path: str) -> dict[str, Any]:

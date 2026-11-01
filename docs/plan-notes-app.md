@@ -20,8 +20,8 @@ Work goes block by block (section 9). One block is one session and one commit; m
 | B4 | Renderer extension (`render.js`) | M | – | **done** 2026-11-01 ("Notes plan B4: …") |
 | B5 | Notes page: layout, list, switcher, reading view, welcome note | M | B3, B4 | **done** 2026-11-01 ("Notes plan B5: …") |
 | B6 | Notes page: editing (CodeMirror, toolbar, `/` menu, autosave, conflicts, pictures, history panel) | L | B1, B5 | **done** 2026-11-01 ("Notes plan B6: …") |
-| C1 | Links, aliases, embeds, backlinks, rename that fixes links | M | B6 | **next** |
-| C2 | Tags and properties | M | C1 | open |
+| C1 | Links, aliases, embeds, backlinks, rename that fixes links | M | B6 | **done** 2026-11-01 ("Notes plan C1: …") |
+| C2 | Tags and properties | M | C1 | **next** |
 | C3 | The assistant uses the structure; "Ask Starlight" on a note | M | C2 | open |
 | C4 | Templates, daily notes, calendar strip, monthly and yearly reviews | M | B6 | open |
 | D1 | Capture: clipper (with the guard), highlights, inbox | M | C2 | open |
@@ -38,7 +38,10 @@ Work goes block by block (section 9). One block is one session and one commit; m
 | F4 | Board view on the page | L | F3, B6 | open |
 | G1–G6 | Extras (export, Kanban, flashcards, live preview, Mermaid, deep links) | S–M each | see 9 | optional |
 
-Last updated: 2026-11-01 (A1 to B6 done: milestone B is complete. B6: the editor module is
+Last updated: 2026-11-01 (A1 to C1 done. C1: a missing note is offered ("Write it"), not
+created on click, as the plan first said: a click must not make files by itself. Rename
+logic is `starlight/notebook/rename.py` (plan, rename); modules use `ctx.notebook`.
+B6: the editor module is
 `static/notes-editor.js` (`createEditor(parent, options)` returns text, setText, insertAt,
 run(command), focus, destroy); C1's `[[` autocomplete belongs in its `autocompletion`
 override next to `slashMenu`. The editor edits the whole file, properties block included

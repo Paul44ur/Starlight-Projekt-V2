@@ -78,11 +78,13 @@ async def test_toolbar_slash_menu_and_task_ticking(
         await page.keyboard.press("End")
         await page.keyboard.type("\n/dat")
         await page.wait_for_selector(".cm-tooltip-autocomplete")
+        await page.wait_for_timeout(150)  # (Enter picks an item only after 75 ms)
         await page.keyboard.press("Enter")
         await page.locator('.toolbar [data-tool="heading"]').click()
         await page.keyboard.press("End")
         await page.keyboard.type("\n/task")
         await page.wait_for_selector(".cm-tooltip-autocomplete")
+        await page.wait_for_timeout(150)  # (Enter picks an item only after 75 ms)
         await page.keyboard.press("Enter")
         await page.keyboard.type("buy apples")
         await page.keyboard.press("Control+Enter")  # ticks it

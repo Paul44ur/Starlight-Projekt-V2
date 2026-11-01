@@ -513,6 +513,15 @@ take the other one, or keep both. **＋** (Ctrl+N) starts a new note; type over 
 rename it. 🗑 moves a note to the **Trash**, where **Bring back** returns it. 🕘 shows the
 earlier versions with what changed, and puts one back.
 
+**Linking notes.** Type `[[` while writing and Starlight suggests your notes. A link to a
+note that does not exist yet looks paler; click it and **Write it** starts that note.
+`![[Shopping]]` shows another note inside this one (`![[Shopping#Food]]` just that part).
+Rest the pointer on a link for a preview. The right side lists the notes that link here,
+each with the line that links. When you rename a note, Starlight offers to change the links
+to it in your other notes too (each keeps its earlier version). In the chat: "rename my
+note Plan to Ideas" (it asks first when other notes change), "which notes link to my
+shopping list?".
+
 **Settings** lists the modules, each with an on/off switch; open one to
 choose for each of its tools whether it runs on its own, asks first or is blocked (the search
 finds modules and tools), and pair your phone there. **Memory**

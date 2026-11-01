@@ -484,11 +484,22 @@ class Index:
                 " ORDER BY f.path, l.line, l.rowid",
                 names,
             ).fetchall()
-        return [
+        found = [
             {"from": r[0], "line": r[1], "target": r[2], "heading": r[3], "embed": bool(r[4])}
             for r in rows
             if r[0] != path and resolver.resolve(r[2], r[0]) == path
         ]
+        texts: dict[str, list[str]] = {}
+        for link in found:  # the line that links, to show it with the link
+            if link["from"] not in texts:
+                try:
+                    data = (self.root / link["from"]).read_bytes()[: self.max_note_bytes]
+                    texts[link["from"]] = data.decode("utf-8", errors="replace").splitlines()
+                except OSError:
+                    texts[link["from"]] = []
+            lines = texts[link["from"]]
+            link["text"] = lines[link["line"]].strip()[:300] if link["line"] < len(lines) else ""
+        return found
 
 
 def _like_prefix(text: str) -> str:

@@ -203,6 +203,13 @@
     "No differences: the note is the same as then.": "Keine Unterschiede: Die Notiz ist wie damals.",
     "Green: added since then. Red: there then, gone now.": "Grün: seitdem dazugekommen. Rot: damals da, jetzt weg.",
     "The earlier version is back. The text before it was kept too.": "Die frühere Fassung ist zurück. Der Text davor wurde auch aufgehoben.",
+    // the Notes page: links between notes
+    "Not written yet: click to write it": "Noch nicht geschrieben: Klick, um sie zu schreiben",
+    "There is no note with this name yet.": "Es gibt noch keine Notiz mit diesem Namen.", "Write it": "Schreiben",
+    "(shown above:": "(oben schon gezeigt:",
+    "Also change the links to this note in other notes? Notes that change:": "Die Links auf diese Notiz in anderen Notizen mitändern? Betroffene Notizen:",
+    "Each keeps its earlier version.": "Jede behält ihre frühere Fassung.",
+    "Renamed. Links changed in other notes:": "Umbenannt. Links geändert in anderen Notizen:",
     // the chat: a file the assistant changed
     "Changed:": "Geändert:", "New:": "Neu:", "Undone:": "Rückgängig gemacht:",
     // settings: safety limits (the switches' own texts come from the server in German)

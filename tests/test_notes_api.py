@@ -312,3 +312,29 @@ def test_each_editing_session_keeps_where_it_started(api: Any, notebook: Path) -
         get(api, "/api/note/diff", path="Notes/Plan.md", version=v["id"])["text"] for v in versions
     ]
     assert texts == ["two", "Back to [[Shopping]].\n"]
+
+
+def test_embedded_parts_and_a_rename_with_or_without_the_links(api: Any, notebook: Path) -> None:
+    (notebook / "Notes" / "Parts.md").write_text(
+        "# Parts\n## One\nfirst\n## Two\nsecond ^here\n", encoding="utf-8"
+    )
+    whole = get(api, "/api/notes/embed", name="Shopping")
+    assert whole["path"] == "Notes/Shopping.md" and whole["text"].startswith("# Shopping")
+    assert get(api, "/api/notes/embed", name="Parts", heading="One")["text"] == "## One\nfirst\n"
+    assert get(api, "/api/notes/embed", name="Parts", heading="^here")["text"] == "second\n"
+    for params in ({"name": "Nowhere"}, {"name": "Parts", "heading": "Three"}):
+        assert api.get("/api/notes/embed", params=params, headers=LOCAL).status_code == 404
+
+    kept = send(
+        api,
+        "POST",
+        "/api/note/rename",
+        json={"path": "Notes/Plan.md", "title": "Ideas", "fix_links": False},
+    )
+    assert kept["updated"] == []  # asked to leave the links: Shopping still says [[Plan]]
+    assert "[[Plan]]" in (notebook / "Notes" / "Shopping.md").read_text("utf-8")
+    moved = send(
+        api, "POST", "/api/note/rename", json={"path": "Notes/Shopping.md", "title": "Groceries"}
+    )
+    assert moved["updated"] == ["Notes/Ideas.md"]  # its link to Shopping followed
+    assert "[[Groceries]]" in (notebook / "Notes" / "Ideas.md").read_text("utf-8")

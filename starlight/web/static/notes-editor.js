@@ -218,8 +218,30 @@ function slashMenu(options) {
   };
 }
 
+// [[ suggests the notes (their names and other names) to link to.
+function linkMenu(options) {
+  return (context) => {
+    const before = context.matchBefore(/\[\[[^\][|#\n]*$/);
+    if (!before || !options.noteNames) return null;
+    return {
+      from: before.from + 2,
+      filter: true,
+      options: options.noteNames().map(({ name, detail }) => ({
+        label: name,
+        detail,
+        apply: (view, completion, from, to) => {
+          const closed = view.state.sliceDoc(to, to + 2) === "]]";
+          view.dispatch({ changes: { from, to, insert: name + (closed ? "" : "]]") },
+                          selection: { anchor: from + name.length + 2 } });
+        },
+      })),
+    };
+  };
+}
+
 // The editor in ``parent``. options: text, onChange(text), pictures(files, at) (paste and
-// drop), pickPicture(), notice(text), say(text) (the page's translation), placeholder.
+// drop), pickPicture(), notice(text), say(text) (the page's translation), placeholder,
+// noteNames() ([{name, detail}] for the [[ suggestions).
 export function createEditor(parent, options) {
   const view = new cm.EditorView({
     parent,
@@ -235,7 +257,7 @@ export function createEditor(parent, options) {
         cm.syntaxHighlighting(styled),
         marks(/!?\[\[[^\[\]\n]+\]\]/g, "cm-wikilink"),
         marks(/(?<![\p{L}\p{N}_#&/\\])#[\p{L}\p{N}_\-/]*[\p{L}_][\p{L}\p{N}_\-/]*/gu, "cm-tag"),
-        cm.autocompletion({ override: [slashMenu(options)], icons: false }),
+        cm.autocompletion({ override: [slashMenu(options), linkMenu(options)], icons: false }),
         cm.highlightSelectionMatches(),
         cm.placeholder(options.placeholder || ""),
         cm.keymap.of([

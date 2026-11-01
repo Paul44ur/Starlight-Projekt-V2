@@ -417,6 +417,33 @@ def parse(text: str) -> Note:
     )
 
 
+def wikilink_spans(text: str) -> list[tuple[int, int, str, bool]]:
+    """Where each [[link]] is in ``text`` (not in code): (start, end, inside, embed), as
+    offsets into ``text``. For changing links in place (a rename)."""
+    found: list[tuple[int, int, str, bool]] = []
+    front = split(text)
+    offset = 1 if text.startswith("\ufeff") else 0
+    fence: str | None = None
+    for number, line in enumerate(_lines(text.removeprefix("\ufeff"))):
+        start, bare = offset, line.rstrip("\r\n")
+        offset += len(line)
+        if number < front.body_line:
+            continue
+        opening = FENCE.match(bare)
+        if fence is not None:
+            if opening and opening.group(1).startswith(fence) and not opening.group(2).strip():
+                fence = None
+            continue
+        if opening and not (opening.group(1)[0] == "`" and "`" in opening.group(2)):
+            fence = opening.group(1)
+            continue
+        masked = COMMENT.sub(_blank, INLINE_CODE.sub(_blank, bare))
+        for match in WIKILINK.finditer(masked):
+            inside = bare[match.start(2) : match.end(2)]
+            found.append((start + match.start(), start + match.end(), inside, bool(match.group(1))))
+    return found
+
+
 # -- parts of a note (for embeds) ---------------------------------------------------------------
 
 

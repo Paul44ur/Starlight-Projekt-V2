@@ -142,6 +142,7 @@ class Services:
     focus: Any = None  # focus mode (starlight.core.focus.Focus): messages held meanwhile
     # Earlier versions of the files Starlight changes (starlight.notebook.History).
     history: Any = None
+    notebook: Any = None  # a function: the notebook index (starlight.notebook.index.Index)
 
 
 PRIMARY_POLL = 1.0  # seconds between checks whether this process became the primary core
@@ -250,6 +251,19 @@ class ModuleContext:
 
             self.services.history = History(self.paths.data / "history" / "history.sqlite")
         return self.services.history
+
+    @property
+    def notebook(self) -> Any:
+        """The index of the notes in the Starlight folder (``starlight.notebook.index.Index``):
+        links, backlinks, tags, search. Outside a kernel: one for the output folder."""
+        if callable(self.services.notebook):
+            return self.services.notebook()
+        from starlight.notebook.index import Index
+
+        index = Index(self.paths.data / "notebook" / "index.sqlite", self.output_dir)
+        self.history.listeners.append(index.touch)
+        self.services.notebook = lambda: index
+        return index
 
     @property
     def focus(self) -> Any:

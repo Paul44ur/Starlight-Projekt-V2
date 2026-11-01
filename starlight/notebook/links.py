@@ -11,6 +11,7 @@ Paths here are relative to the notebook folder and written with "/" ("Notes/Shop
 
 from __future__ import annotations
 
+import re
 import unicodedata
 from collections.abc import Iterable
 from dataclasses import dataclass
@@ -84,3 +85,16 @@ class Resolver:
         names = {key(path.rsplit("/", 1)[-1]), key(_stem(path))}
         names.update(a for a, paths in self.by_alias.items() if path in paths)
         return names
+
+
+def retarget(inside: str, new_name: str) -> str:
+    """The inside of a [[link]] pointing at ``new_name`` instead: a folder written in the link,
+    the part after "#" and the shown text after "|" stay as they were."""
+    head = re.match(r"[^#|]*", inside)
+    target = head.group(0) if head else ""
+    rest = inside[len(target) :]
+    escaped = target.endswith("\\")  # "[[Note\\|text]]" in a table
+    bare = target[:-1] if escaped else target
+    folder, slash, _ = bare.rpartition("/")
+    suffix = ".md" if bare.rstrip().casefold().endswith(".md") else ""
+    return (folder + slash if slash else "") + new_name + suffix + ("\\" if escaped else "") + rest
