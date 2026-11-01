@@ -371,6 +371,15 @@ each memory's tags. API: `GET /api/notes/facets` (tags and property names) and
 the tags in the sidebar, makes the properties panel editable in reading mode (typed inputs,
 add, remove), and the editor suggests tags after `#` and property names in the properties
 block.
+Block C3 lets the assistant use the structure. `Memory.enrich` adds what the recalled
+memories link to (`Memory.linked`): another memory (by id or topic) or a note (through
+`Memory.notebook`, the kernel's index; `[[Note#Heading]]` brings that section). One step
+only, at most `LINKED_MAX` (5) items, `LINKED_ONE` (600) characters each and `LINKED_CHARS`
+(2000) in all; a note comes once. `notes.read` returns the path, properties, links and
+backlinks, and `notes._find` takes a path in the Starlight folder ("Journal/2026-11-01"),
+so notes outside Notes can be read; a rename stays in the note's folder. The Notes page's
+"✨ Ask" menu opens `/?ask=<request>`: the chat puts the request in the box of a new
+conversation and sends nothing until Send.
 
 **Safety limits you set (`core/safety.py`).** Settings -> Safety limits chooses a level
 (strict, balanced, relaxed) and any of 29 switches on top, kept in

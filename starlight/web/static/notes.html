@@ -146,6 +146,14 @@
   .info .back .line { display: block; color: var(--dim); font-size: 12.5px; margin-top: 2px;
                       overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .missing-note { text-align: center; padding: 40px 10px; }
+  /* "Ask Starlight" (block C3). */
+  .crumbs .actions { position: relative; }
+  .ask-menu { position: absolute; top: 100%; right: 0; z-index: 20; margin-top: 4px; min-width: 240px;
+              background: var(--panel); border: 1px solid var(--border); border-radius: 10px;
+              box-shadow: var(--shadow); padding: 4px; display: grid; }
+  .ask-menu button { text-align: left; background: none; border: none; border-radius: 7px; padding: 7px 10px;
+                     color: var(--text); font-size: 14px; }
+  .ask-menu button:hover, .ask-menu button:focus-visible { background: color-mix(in srgb, var(--accent) 16%, transparent); }
   /* Tags and properties (block C2). */
   .tag-item .name { color: var(--accent); }
   .info dl { grid-template-columns: auto minmax(0, 1fr); align-items: center; }
@@ -451,10 +459,13 @@ async function openNote(path, heading, editing = false) {
   const past = el("button", "icon", "🕘");
   past.type = "button"; past.title = t("Earlier versions"); past.setAttribute("aria-label", t("Earlier versions"));
   past.onclick = () => showHistory();
+  const ask = el("button", "icon", "✨ Ask");
+  ask.type = "button"; ask.title = t("Ask Starlight about this note"); ask.setAttribute("aria-haspopup", "menu");
+  ask.onclick = (event) => { event.stopPropagation(); askMenu(ask); };
   const bin = el("button", "icon", "🗑");
   bin.type = "button"; bin.title = t("Move to the trash"); bin.setAttribute("aria-label", t("Move to the trash"));
   bin.onclick = () => deleteNote();
-  actions.append(editButton, pin, past, bin, toggle);
+  actions.append(editButton, ask, pin, past, bin, toggle);
 
   const title = column.appendChild(el("h1", "title", note.title));
   title.setAttribute("translate", "no");
@@ -1076,6 +1087,48 @@ function pickPicture() {
     if (files.length && edit.editor) addPictures(files, edit.editor.view.state.selection.main.head);
   };
   input.click();
+}
+
+// -- "Ask Starlight" on a note (block C3) ---------------------------------------------------
+// Opens the chat with the request written out (in the page's language) in a new
+// conversation; Starlight reads the note with notes.read. Nothing is sent before Send.
+
+const ASKS = {
+  en: {
+    summary: ["Summarise", (n, p) => `Summarise my note "${n}" (${p}) in a few sentences.`],
+    tasks: ["Find the tasks", (n, p) => `List the tasks in my note "${n}" (${p}): what is still open, and when it is due.`],
+    links: ["Suggest links and tags", (n, p) => `Suggest links to my other notes and tags for my note "${n}" (${p}). Don't change anything yet.`],
+    translate: ["Translate", (n, p) => `Translate my note "${n}" (${p}) into German.`],
+  },
+  de: {
+    summary: ["Zusammenfassen", (n, p) => `Fasse meine Notiz „${n}“ (${p}) in ein paar Sätzen zusammen.`],
+    tasks: ["Aufgaben finden", (n, p) => `Liste die Aufgaben in meiner Notiz „${n}“ (${p}) auf: Was ist noch offen, und bis wann?`],
+    links: ["Links und Schlagwörter vorschlagen", (n, p) => `Schlag Links zu meinen anderen Notizen und Schlagwörter für meine Notiz „${n}“ (${p}) vor. Ändere noch nichts.`],
+    translate: ["Übersetzen", (n, p) => `Übersetze meine Notiz „${n}“ (${p}) ins Englische.`],
+  },
+};
+
+function askMenu(button) {
+  const open = document.querySelector(".ask-menu");
+  if (open) { open.remove(); return; }
+  const note = state.current;
+  const asks = ASKS[window.starlightLanguage === "de" ? "de" : "en"];
+  const menu = el("div", "ask-menu");
+  menu.setAttribute("role", "menu");
+  for (const [kind, [label, request]] of Object.entries(asks)) {
+    const item = menu.appendChild(el("button", "", label));
+    item.type = "button"; item.setAttribute("role", "menuitem"); item.dataset.ask = kind;
+    item.onclick = async () => {
+      menu.remove();
+      if (!(await stopEditing())) return;
+      location.href = "/?" + new URLSearchParams({ ask: request(note.title, note.path.replace(/\.md$/i, "")) });
+    };
+  }
+  button.after(menu);
+  menu.querySelector("button").focus();
+  const close = (event) => { if (!menu.contains(event.target)) { menu.remove(); document.removeEventListener("click", close); } };
+  setTimeout(() => document.addEventListener("click", close));
+  menu.addEventListener("keydown", (event) => { if (event.key === "Escape") { menu.remove(); button.focus(); } });
 }
 
 // -- links between notes (block C1) --------------------------------------------------------

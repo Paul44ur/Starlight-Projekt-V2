@@ -75,7 +75,26 @@ class NotesModule(Module):
         """The note files (a folder called "Ideas.md" is not one)."""
         return [p for p in self.folder.glob("*.md") if p.is_file()]
 
+    def _by_path(self, text: str) -> Path:
+        """A note named by its path in the Starlight folder ("Journal/2026-11-01"), as the
+        Notes page's "Ask Starlight" names it. Nothing outside that folder or in code/."""
+        root = self.ctx.output_dir.resolve()
+        raw = text.replace("\\", "/").strip().strip("/")
+        if not raw.casefold().endswith(".md"):
+            raw += ".md"
+        parts = raw.split("/")
+        if any(p in ("", ".", "..") or p.startswith(".") for p in parts) or (
+            parts[0].casefold() == "code"
+        ):
+            raise ToolError(f"'{text}' is not a note in the Starlight folder")
+        path = root.joinpath(*parts)
+        if not path.resolve().is_relative_to(root) or not path.is_file():
+            raise NoteNotFound(f"no note '{text}' in the Starlight folder; see notes.list")
+        return path
+
     def _find(self, title: str) -> Path:
+        if "/" in title or "\\" in title:  # a path in the Starlight folder
+            return self._by_path(title)
         exact = self._file(title)
         if exact.is_file():
             return exact
@@ -158,16 +177,20 @@ class NotesModule(Module):
 
     @tool
     def read(self, title: str) -> dict[str, Any]:
-        """Read a note (by its title or part of it), with the notes it links to and the
-        notes that link to it."""
+        """Read a note (by its title or part of it, or its path in the Starlight folder such
+        as "Journal/2026-11-01"), with its properties, the notes it links to and the notes
+        that link to it."""
         path = self._find(title)
         index = self.ctx.notebook
         index.refresh()
         index.touch(path)
         relative = self._relative(path)
+        text = path.read_text("utf-8", errors="replace")
         return {
             "title": path.stem,
-            "text": path.read_text("utf-8", errors="replace")[:20000],
+            "path": relative,
+            "properties": split(text).properties,
+            "text": text[:20000],
             "links": sorted({link["target"] for link in index.links(relative) if link["target"]}),
             "linked_from": sorted({Path(b["from"]).stem for b in index.backlinks(relative)}),
         }
@@ -203,7 +226,7 @@ class NotesModule(Module):
         """Rename a note. Links to it in other notes are changed to the new name too (each
         keeps its earlier version); asks first when other notes change."""
         path = self._find(title)
-        new = self._file(new_title)
+        new = path.with_name(self._file(new_title).name)  # (in the note's own folder)
         if new.name == path.name:
             raise ToolError(f"the note is already called '{path.stem}'")
         planned = plan_rename(self.ctx.notebook, path, new)

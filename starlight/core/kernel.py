@@ -163,7 +163,12 @@ class Kernel:
         )
         self._notebook_index: Any = None  # (made on first use: notebook_index)
         self.memory = Memory(
-            self.paths, self.config.memory, self.provider, self.stats, history=self.file_history
+            self.paths,
+            self.config.memory,
+            self.provider,
+            self.stats,
+            history=self.file_history,
+            notebook=lambda: self.notebook_index,  # a memory's [[link]] to a note
         )
         self._role_models: dict[str, ModelProvider] = {}
         self.skills = SkillManager(

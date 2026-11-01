@@ -217,6 +217,9 @@
     "Date": "Datum", "List": "Liste", "Yes or no": "Ja oder nein",
     "Give the property a name and a value.": "Gib der Eigenschaft einen Namen und einen Wert.",
     "yes": "ja", "no": "nein",
+    // "Ask Starlight" on a note, and the chat that opens with the request
+    "✨ Ask": "✨ Fragen", "Ask Starlight about this note": "Starlight zu dieser Notiz fragen",
+    "Check the request, then press Send": "Prüf die Anfrage, dann drück Senden",
     // the chat: a file the assistant changed
     "Changed:": "Geändert:", "New:": "Neu:", "Undone:": "Rückgängig gemacht:",
     // settings: safety limits (the switches' own texts come from the server in German)

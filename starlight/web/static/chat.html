@@ -1154,21 +1154,35 @@ function fill(id, items) {
   box.className = ""; items.forEach(x => box.appendChild(el("div", "item", x)));
 }
 
-// Shared from the phone's share menu (/share), or the "Talk" shortcut on the home screen.
+// Shared from the phone's share menu (/share), the "Talk" shortcut on the home screen, or
+// "Ask Starlight" on the Notes page (?ask=: the request waits in the box of a new
+// conversation; nothing is sent until you press Send). True for ?ask.
 function takeShared() {
   const params = new URLSearchParams(location.search);
-  if (!params.has("share") && !params.has("files") && !params.has("talk")) return;
+  if (params.get("ask")) {
+    input.value = params.get("ask").slice(0, 4000);
+    input.oninput();
+    input.focus();
+    toast("Check the request, then press Send");
+    history.replaceState(null, "", "/");
+    return true;
+  }
+  if (!params.has("share") && !params.has("files") && !params.has("talk")) return false;
   if (params.get("share")) { input.value = params.get("share") + "\n"; input.oninput(); }
   try { JSON.parse(params.get("files") || "[]").forEach(f => attached.push({ id: f.id, name: f.name })); } catch (e) { /* */ }
   showFiles();
   if (params.has("share") || params.has("files")) { input.focus(); toast("Shared: say what to do with it, then Send"); }
   if (params.has("talk")) { document.getElementById("talk").focus(); toast("Press 🗣 to start talking"); }
   history.replaceState(null, "", "/");
+  return false;
 }
 
 (async () => {
-  takeShared();
+  const fresh = takeShared();
   await loadList();
+  if (fresh) {  // a question about a note: in a conversation of its own
+    try { conversation = (await api("/api/conversations", { method: "POST" })).id; } catch (e) { /* the current one */ }
+  }
   if (conversation) await open(conversation);
   connect(); refresh(); setInterval(refresh, 4000);
   if ("serviceWorker" in navigator) navigator.serviceWorker.register("/sw.js").catch(() => { /* http on a phone: no offline page */ });

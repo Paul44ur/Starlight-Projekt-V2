@@ -92,6 +92,14 @@ def _date(value: Any) -> str:
         return ""
 
 
+# A memory's [[links]] (enrich): what they lead to comes along, one step, within these limits.
+LINKED_MAX = 5  # items
+LINKED_CHARS = 2000  # characters in all
+LINKED_ONE = 600  # characters of one item
+LINKED_READ = 64 * 1024  # bytes read of a linked note
+_PICTURE = re.compile(r"\.(png|jpe?g|gif|webp|svg|pdf)$", re.IGNORECASE)
+
+
 class Memory:
     def __init__(
         self,
@@ -101,8 +109,12 @@ class Memory:
         stats: Stats | None = None,
         embedder: Embedder | None = None,
         history: Any = None,
+        notebook: Any = None,
     ) -> None:
         self.config = config or MemoryConfig()
+        # a function giving the notebook index (starlight.notebook.index.Index), so a
+        # memory's [[link]] to a note can bring that note along; None: memories only
+        self.notebook = notebook
         self.provider = provider
         self.stats = stats
         # history (starlight.notebook.History): a version of each memory before it changes
@@ -145,10 +157,72 @@ class Memory:
         if not hits:
             return None
         lines = [f"- {h.entry.text} ({h.entry.date}, id {h.entry.id})" for h in hits]
-        return (
+        text = (
             "Things you remember from earlier conversations (from your memory folder; "
             "they may be outdated):\n" + "\n".join(lines)
         )
+        linked = self.linked([h.entry for h in hits])
+        if linked:
+            text += "\nWhat those memories link to ([[...]]):\n" + "\n".join(
+                f"- {name}: {body}" for name, body in linked
+            )
+        return text
+
+    def linked(self, entries: list[MemoryEntry]) -> list[tuple[str, str]]:
+        """What the [[links]] in these memories lead to: another memory (by its id or
+        topic) or a note in the notebook. One step only (links in what is found are not
+        followed), at most LINKED_MAX items and LINKED_CHARS characters in all."""
+        from starlight.notebook.markdown import parse
+
+        seen = {e.id for e in entries}
+        by_name: dict[str, MemoryEntry] = {}
+        found: list[tuple[str, str]] = []
+        budget = LINKED_CHARS
+        for entry in entries:
+            for link in parse(entry.content).links:
+                if len(found) >= LINKED_MAX or budget <= 0:
+                    return found
+                if not link.target or (link.embed and _PICTURE.search(link.target)):
+                    continue
+                if not by_name:
+                    for each in self.store.all():
+                        by_name.setdefault(each.id.casefold(), each)
+                        by_name.setdefault(each.topic.casefold(), each)
+                memory = by_name.get(link.target.casefold())
+                if memory is not None:
+                    if memory.id in seen or memory.expired():
+                        continue
+                    seen.add(memory.id)
+                    name, body = memory.topic, memory.content
+                else:
+                    note = self._note(link.target, link.heading)
+                    if note is None or note[0] in seen:
+                        continue
+                    seen.add(note[0])
+                    name, body = note[1], note[2]
+                body = " ".join(body.split())[: min(LINKED_ONE, budget)]
+                found.append((name, body))
+                budget -= len(body)
+        return found
+
+    def _note(self, target: str, heading: str) -> tuple[str, str, str] | None:
+        """A note a memory links to: (path, title, text), or None."""
+        from starlight.notebook.markdown import section, split
+
+        index = self.notebook() if callable(self.notebook) else None
+        if index is None:
+            return None
+        try:
+            index.refresh()
+            path = index.resolve(target)
+            if path is None:
+                return None
+            raw = (Path(index.root) / path).read_bytes()[:LINKED_READ].decode("utf-8", "replace")
+        except (OSError, ValueError):
+            return None
+        part = section(raw, heading) if heading and not heading.startswith("^") else None
+        title = Path(path).stem + (f" > {heading}" if part else "")
+        return path, title, part or split(raw).body
 
     # -- writing -----------------------------------------------------------------------
 
