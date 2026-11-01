@@ -537,6 +537,10 @@ def create_app(paths: Paths | None = None) -> Any:
     def render() -> Response:
         return Response(page("render.js"), media_type="text/javascript")
 
+    @app.get("/notes-editor.js")
+    def notes_editor() -> Response:
+        return Response(page("notes-editor.js"), media_type="text/javascript")
+
     @app.get("/vendor/{name}")
     def vendor(name: str) -> Response:
         """Third-party code Starlight ships (static/vendor, built in bundles/): only the

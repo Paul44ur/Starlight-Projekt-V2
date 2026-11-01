@@ -97,6 +97,40 @@
   kbd { font: 11px ui-monospace, Consolas, monospace; border: 1px solid var(--border); border-bottom-width: 2px;
         border-radius: 4px; padding: 0 4px; color: var(--dim); }
 
+  /* Editing (block B6). */
+  .side .top-row { display: flex; gap: 6px; }
+  .side .top-row #search { flex: 1; min-width: 0; }
+  .side .top-row button { flex: none; font-size: 18px; line-height: 1; padding: 4px 10px; }
+  .title-input { width: 100%; font-family: inherit; font-size: 30px; font-weight: 700; line-height: 1.25;
+                 letter-spacing: -.01em; margin: 6px 0 10px;
+                 padding: 0 0 2px; border: none; border-bottom: 2px solid transparent; background: none;
+                 color: var(--text); border-radius: 0; }
+  .title-input:focus { outline: none; border-bottom-color: var(--accent); }
+  .toolbar { position: sticky; top: -28px; z-index: 5; display: flex; flex-wrap: wrap; align-items: center;
+             gap: 2px; margin: 0 0 10px; padding: 6px 4px; background: var(--bg);
+             border-bottom: 1px solid var(--border); }
+  .toolbar .tool { min-width: 34px; padding: 3px 8px; background: none; border-color: transparent; font-size: 14px; }
+  .toolbar .tool:hover { background: var(--panel2); border-color: var(--border); }
+  .toolbar .tool.b { font-weight: 800; } .toolbar .tool.i { font-style: italic; font-family: Georgia, serif; }
+  .toolbar .sep { width: 1px; height: 20px; background: var(--border); margin: 0 6px; }
+  .save-state { margin-left: auto; font-size: 12.5px; color: var(--dim); padding-right: 4px; }
+  .save-state.bad { color: var(--bad); }
+  .editor { min-height: 50vh; }
+  .dialog-box { width: min(720px, 94vw); max-height: 80vh; overflow: auto; padding: 16px 18px; }
+  .dialog-box h2 { font-size: 17px; margin: 0 0 6px; }
+  .dialog-box .buttons { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 14px; }
+  .dialog-box pre { white-space: pre-wrap; overflow-wrap: anywhere; background: var(--bg); border: 1px solid var(--border);
+                    border-radius: 8px; padding: 8px 10px; font-size: 13px; max-height: 40vh; overflow: auto; }
+  .history-grid { display: grid; grid-template-columns: 220px minmax(0, 1fr); gap: 12px; margin-top: 10px; }
+  .versions { list-style: none; margin: 0; padding: 0; max-height: 52vh; overflow: auto; }
+  .versions button { display: block; width: 100%; text-align: left; background: none; border: 1px solid transparent;
+                     padding: 6px 8px; border-radius: 7px; font-size: 13.5px; }
+  .versions button small { display: block; color: var(--dim); }
+  .versions button[aria-pressed="true"] { background: color-mix(in srgb, var(--accent) 16%, transparent); }
+  .diff .add { color: var(--ok); } .diff .del { color: var(--bad); } .diff .at { color: var(--dim); }
+  .trash-row { display: flex; align-items: center; gap: 10px; }
+  .trash-row .card-note { flex: 1; }
+
   @media (max-width: 1100px) {
     .notes { grid-template-columns: 250px minmax(0, 1fr); }
     .info { display: none; }
@@ -121,12 +155,16 @@
 </header>
 <div class="notes">
   <aside class="side" aria-label="Your notes">
-    <input id="search" type="search" placeholder="Search notes" aria-label="Search notes" />
+    <div class="top-row">
+      <input id="search" type="search" placeholder="Search notes" aria-label="Search notes" />
+      <button type="button" id="new-note" title="New note (Ctrl+N)" aria-label="New note (Ctrl+N)">＋</button>
+    </div>
     <div class="quick" role="group" aria-label="Views">
       <button data-view="today"><span class="ico">📅</span>Today</button>
       <button data-view="inbox"><span class="ico">📥</span>Inbox</button>
       <button data-view="tasks"><span class="ico">☑</span>Tasks</button>
       <button data-view="graph"><span class="ico">✳</span>Graph</button>
+      <button data-view="trash"><span class="ico">🗑</span>Trash</button>
     </div>
     <div id="pinned-box" hidden><h3>Pinned</h3><ul class="plain" id="pinned" translate="no"></ul></div>
     <h3>Folders</h3>
@@ -147,6 +185,33 @@
     <p class="dim small hint">↑↓ choose · Enter opens · Esc closes</p>
   </div>
 </div>
+<div id="conflict" class="switcher" hidden role="dialog" aria-modal="true" aria-labelledby="conflict-title">
+  <div class="switch-box dialog-box">
+    <h2 id="conflict-title">This note was changed somewhere else</h2>
+    <p class="dim small">Another program or tab changed it after you opened it. Nothing is lost: choose what to keep.</p>
+    <details><summary>Show the other version</summary><pre id="theirs" translate="no"></pre></details>
+    <div class="buttons">
+      <button type="button" class="ok" id="keep-mine">Keep mine</button>
+      <button type="button" id="take-theirs">Take the other version</button>
+      <button type="button" id="keep-both">Keep both</button>
+    </div>
+  </div>
+</div>
+<div id="history" class="switcher" hidden role="dialog" aria-modal="true" aria-labelledby="history-title">
+  <div class="switch-box dialog-box">
+    <h2 id="history-title">Earlier versions</h2>
+    <p class="dim small">Starlight keeps a version before each change. Choose one to see what changed since then.</p>
+    <div class="history-grid">
+      <ul class="versions" id="versions"></ul>
+      <div id="version-view" class="diff" translate="no"></div>
+    </div>
+    <div class="buttons">
+      <button type="button" class="ok" id="restore-version" hidden>Put this version back</button>
+      <button type="button" id="close-history">Close</button>
+    </div>
+  </div>
+</div>
+<input type="file" id="picture-file" accept="image/png,image/jpeg,image/gif,image/webp" multiple hidden />
 <script src="/common.js"></script>
 <script src="/markdown.js"></script>
 <script src="/render.js"></script>
@@ -254,7 +319,8 @@ function markCurrent() {
 
 // -- moving around: /notes?path=… | ?open=Name&heading=… | ?tag=… | ?q=… | ?view=… --------
 
-function go(params, push = true) {
+async function go(params, push = true) {
+  if (!(await stopEditing())) return;
   const query = new URLSearchParams(params).toString();
   if (push) history.pushState(params, "", "/notes" + (query ? "?" + query : ""));
   return route(params);
@@ -281,7 +347,13 @@ async function route(params) {
   return showHome();
 }
 
-window.addEventListener("popstate", () => route(Object.fromEntries(new URLSearchParams(location.search))));
+window.addEventListener("popstate", async () => {
+  if (!(await stopEditing())) {  // not saved yet: stay on the note (its text is still there)
+    history.pushState({ path: state.current.path }, "", "/notes?" + new URLSearchParams({ path: state.current.path }));
+    return;
+  }
+  route(Object.fromEntries(new URLSearchParams(location.search)));
+});
 
 // A link in a note: [[Other note]] and #tags stay on this page.
 column.addEventListener("click", (event) => {
@@ -295,7 +367,7 @@ column.addEventListener("click", (event) => {
 
 // -- one note ------------------------------------------------------------------------------
 
-async function openNote(path, heading) {
+async function openNote(path, heading, editing = false) {
   let note;
   try { note = await api("/api/note?" + new URLSearchParams({ path })); }
   catch (e) { toast(e.message); return showHome(); }
@@ -324,7 +396,17 @@ async function openNote(path, heading) {
   toggle.id = "info-toggle"; toggle.type = "button";
   toggle.title = t("About this note"); toggle.setAttribute("aria-label", t("About this note"));
   toggle.onclick = () => document.body.classList.toggle("show-info");
-  actions.append(pin, toggle);
+  const editButton = el("button", "icon", "✎ Edit");
+  editButton.id = "edit-toggle"; editButton.type = "button";
+  editButton.title = t("Edit or read this note (Ctrl+E)");
+  editButton.onclick = () => toggleEdit();
+  const past = el("button", "icon", "🕘");
+  past.type = "button"; past.title = t("Earlier versions"); past.setAttribute("aria-label", t("Earlier versions"));
+  past.onclick = () => showHistory();
+  const bin = el("button", "icon", "🗑");
+  bin.type = "button"; bin.title = t("Move to the trash"); bin.setAttribute("aria-label", t("Move to the trash"));
+  bin.onclick = () => deleteNote();
+  actions.append(editButton, pin, past, bin, toggle);
 
   const title = column.appendChild(el("h1", "title", note.title));
   title.setAttribute("translate", "no");
@@ -352,10 +434,12 @@ async function openNote(path, heading) {
   renderMarkdown(body, note.body);
   if (!note.body.trim()) body.appendChild(el("p", "dim", t("This note is empty.")));
 
+  state.parts = { title, body };
   drawInfo(note, body);
   markCurrent();
   document.getElementById("note").scrollTop = 0;
   if (heading) showHeading(body, note.headings, heading);
+  if (editing) await startEditing();
 }
 
 function showHeading(body, headings, wanted) {
@@ -490,6 +574,7 @@ function showView(view) {
     else column.appendChild(listOf(inbox.map(n => n.path)));
     return;
   }
+  if (view === "trash") return showTrash();
   clearInfo(); state.view = view; markCurrent();
   column.replaceChildren(el("h1", "title", t(view === "tasks" ? "Tasks" : "Graph")));
   column.appendChild(el("div", "soon", t(view === "tasks"
@@ -582,8 +667,344 @@ switchInput.addEventListener("keydown", (event) => {
 switcher.addEventListener("click", (event) => { if (event.target === switcher) closeSwitcher(); });
 document.getElementById("find").onclick = openSwitcher;
 document.addEventListener("keydown", (event) => {
-  if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "k") { event.preventDefault(); openSwitcher(); }
+  const key = event.key.toLowerCase(), mod = event.ctrlKey || event.metaKey;
+  if (mod && key === "k") { event.preventDefault(); openSwitcher(); }
+  else if (mod && key === "e" && state.current) { event.preventDefault(); toggleEdit(); }
+  else if (mod && key === "s") { event.preventDefault(); if (edit.editor) save(); }
+  else if (mod && key === "n" && !event.shiftKey) { event.preventDefault(); newNote(); }
   else if (event.key === "Escape" && document.body.classList.contains("show-info")) document.body.classList.remove("show-info");
+});
+document.getElementById("new-note").onclick = () => newNote();
+
+// -- editing (block B6) ---------------------------------------------------------------------
+// The editor (notes-editor.js, on the shipped CodeMirror bundle) is loaded on the first edit.
+// A change is saved one second after you stop typing, with the stamp the note was read
+// with: if it changed elsewhere meanwhile, nothing is overwritten and you choose.
+
+let kit = null;
+const edit = { editor: null, dirty: false, timer: null, saving: null, first: true, quiet: false };
+const TOOLS = [
+  ["bold", "B", "Bold (Ctrl+B)", "b"], ["italic", "I", "Italic (Ctrl+I)", "i"], ["heading", "H", "Heading", ""],
+  ["list", "•", "Bullet list", ""], ["task", "☑", "Task (Ctrl+Enter ticks it)", ""],
+  ["link", "[[ ]]", "Link to a note", ""], ["picture", "🖼", "Picture", ""],
+];
+
+function status(text, bad = false) {
+  const shown = document.getElementById("save-state");
+  if (!shown) return;
+  shown.textContent = t(text);
+  shown.classList.toggle("bad", bad);
+}
+
+async function startEditing() {
+  const note = state.current;
+  if (!note || edit.editor) return;
+  kit ||= await import("/notes-editor.js");
+  const input = el("input", "title-input");
+  input.value = note.title;
+  input.setAttribute("aria-label", t("Title"));
+  input.setAttribute("translate", "no");
+  input.addEventListener("keydown", (event) => {
+    if (event.key === "Enter") { event.preventDefault(); edit.editor.focus(); }
+    else if (event.key === "Escape") { input.value = state.current.title; edit.editor.focus(); }
+  });
+  input.addEventListener("change", () => rename(input));
+  state.parts.title.replaceWith(input);
+  state.parts.title = input;
+
+  const bar = el("div", "toolbar");
+  bar.setAttribute("role", "toolbar");
+  bar.setAttribute("aria-label", t("Formatting"));
+  for (const [name, label, tip, cls] of TOOLS) {
+    const button = el("button", "tool " + cls, label);
+    button.type = "button"; button.title = t(tip); button.setAttribute("aria-label", t(tip));
+    button.dataset.tool = name;
+    button.onmousedown = (event) => event.preventDefault();  // (the text keeps its selection)
+    button.onclick = () => (name === "picture" ? pickPicture() : edit.editor.run(name));
+    bar.appendChild(button);
+  }
+  const saved = bar.appendChild(el("span", "save-state"));
+  saved.id = "save-state";
+  saved.setAttribute("role", "status");
+  const box = el("div", "editor");
+  box.setAttribute("translate", "no");
+  state.parts.body.replaceWith(bar, box);
+  state.parts.body = box;
+  state.parts.bar = bar;
+
+  edit.first = true; edit.dirty = false;
+  edit.editor = kit.createEditor(box, {
+    text: note.text,
+    onChange: changed,
+    pictures: addPictures,
+    pickPicture,
+    notice: toast,
+    say: t,
+    placeholder: t("Write here. Type / for headings, tasks, tables and more."),
+  });
+  document.getElementById("edit-toggle").textContent = t("✓ Done");
+  document.body.classList.add("editing");
+  status("Saved");
+  edit.editor.focus();
+}
+
+function changed() {
+  if (edit.quiet) return;
+  edit.dirty = true;
+  status("Editing…");
+  clearTimeout(edit.timer);
+  edit.timer = setTimeout(save, 1000);
+}
+
+// Save now (if something changed). True when everything is saved.
+async function save() {
+  clearTimeout(edit.timer);
+  while (edit.saving) await edit.saving;
+  if (!edit.dirty || !edit.editor) return !edit.dirty;
+  const note = state.current, text = edit.editor.text();
+  edit.dirty = false;
+  status("Saving…");
+  edit.saving = (async () => {
+    try {
+      const response = await fetch("/api/note?" + new URLSearchParams({ path: note.path }), {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ text, stamp: note.stamp, first: edit.first }),
+      });
+      const data = await response.json().catch(() => ({}));
+      if (response.status === 409 && data.detail && typeof data.detail === "object") {
+        edit.dirty = true;
+        status("Not saved: changed elsewhere", true);
+        conflict(data.detail);
+        return false;
+      }
+      if (!response.ok) throw new Error(typeof data.detail === "string" ? data.detail : response.statusText);
+      note.stamp = data.stamp; note.text = text; edit.first = false;
+      status(edit.dirty ? "Editing…" : "Saved");
+      return true;
+    } catch (e) {
+      edit.dirty = true;
+      status(t("Not saved:") + " " + e.message, true);
+      return false;
+    }
+  })();
+  const ok = await edit.saving;
+  edit.saving = null;
+  return ok;
+}
+
+// Leave the editor, saving first. False (staying) when it could not be saved.
+async function stopEditing() {
+  if (!edit.editor) return true;
+  if (!(await save())) {
+    toast(t("Not saved yet: your text is still here. Try again in a moment."));
+    return false;
+  }
+  edit.editor.destroy();
+  edit.editor = null;
+  document.body.classList.remove("editing");
+  return true;
+}
+
+async function toggleEdit() {
+  if (!state.current) return;
+  if (!edit.editor) return startEditing();
+  if (await stopEditing()) await openNote(state.current.path);
+}
+
+function conflict(detail) {
+  const dialog = document.getElementById("conflict");
+  document.getElementById("theirs").textContent = detail.theirs;
+  dialog.hidden = false;
+  const replace = (text) => { edit.quiet = true; edit.editor.setText(text); edit.quiet = false; };
+  const close = () => { dialog.hidden = true; edit.editor.focus(); };
+  document.getElementById("keep-mine").onclick = () => {
+    state.current.stamp = detail.stamp; edit.dirty = true; close(); save();
+  };
+  document.getElementById("take-theirs").onclick = () => {
+    state.current.stamp = detail.stamp; state.current.text = detail.theirs;
+    replace(detail.theirs); edit.dirty = false; close(); status("Saved");
+  };
+  document.getElementById("keep-both").onclick = () => {
+    state.current.stamp = detail.stamp;
+    replace(detail.theirs.replace(/\s+$/, "") + "\n\n---\n\n" + edit.editor.text());
+    edit.dirty = true; close(); save();
+  };
+  document.getElementById("keep-mine").focus();
+}
+
+async function rename(input) {
+  const note = state.current, title = input.value.trim();
+  if (!title || title === note.title) { input.value = note.title; return; }
+  if (!(await save())) return;
+  try {
+    const answer = await api("/api/note/rename", { method: "POST", body: { path: note.path, title } });
+    note.path = answer.path; note.title = answer.title; note.stamp = answer.stamp;
+    input.value = answer.title;
+    history.replaceState({ path: note.path }, "", "/notes?" + new URLSearchParams({ path: note.path }));
+    document.title = note.title + " · Starlight";
+    remember(note.path);
+    await loadList();
+    markCurrent();
+  } catch (e) {
+    toast(e.message);
+    input.value = note.title;
+  }
+}
+
+async function newNote() {
+  if (!(await stopEditing())) return;
+  const folder = state.current ? folderOf(state.current.path) : "";
+  try {
+    const made = await api("/api/note", { method: "POST", body: { folder: folder || "Notes", title: t("Untitled") } });
+    await loadList();
+    history.pushState({ path: made.path }, "", "/notes?" + new URLSearchParams({ path: made.path }));
+    await openNote(made.path, null, true);
+    const input = document.querySelector(".title-input");
+    if (input) { input.focus(); input.select(); }
+  } catch (e) { toast(e.message); }
+}
+
+async function deleteNote() {
+  const note = state.current;
+  if (!note || !confirm(t("Move this note to the trash? You can bring it back from the trash."))) return;
+  if (edit.editor) {
+    if (!(await save())) {  // the last changes first: never delete over unsaved text
+      toast(t("Not saved yet: your text is still here. Try again in a moment."));
+      return;
+    }
+    edit.editor.destroy(); edit.editor = null;
+    document.body.classList.remove("editing");
+  }
+  try {
+    await api("/api/note?" + new URLSearchParams({ path: note.path }), { method: "DELETE" });
+  } catch (e) { toast(e.message); return; }
+  toast(t("Moved to the trash"));
+  await loadList();
+  go({ view: "trash" });
+}
+
+async function showTrash() {
+  clearInfo(); state.view = "trash"; markCurrent();
+  column.replaceChildren(el("h1", "title", t("Trash")));
+  const data = await api("/api/notes/trash");
+  if (!data.notes.length) {
+    column.appendChild(el("div", "soon", t("The trash is empty. Deleted notes wait here until you bring them back.")));
+    return;
+  }
+  column.appendChild(el("p", "dim", t("Deleted notes. Bring one back as it was.")));
+  const list = column.appendChild(el("ul", "cards"));
+  for (const item of data.notes) {
+    const row = list.appendChild(el("li", "trash-row"));
+    const card = row.appendChild(el("div", "card-note"));
+    card.setAttribute("translate", "no");
+    card.append(el("div", "t", nameOf(item.path)), el("div", "w", folderOf(item.path) + " · " + item.when));
+    const back = row.appendChild(el("button", "", "Bring back"));
+    back.type = "button";
+    back.onclick = async () => {
+      try {
+        const done = await api("/api/notes/trash/restore", { method: "POST", body: { path: item.path } });
+        toast(t("It is back"));
+        await loadList();
+        go({ path: done.restored });
+      } catch (e) { toast(e.message); }
+    };
+  }
+}
+
+async function addPictures(files, at) {
+  for (const file of files) {
+    try {
+      const response = await fetch("/api/notes/pictures?" + new URLSearchParams({ name: file.name || "picture" }),
+        { method: "POST", body: file });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(typeof data.detail === "string" ? data.detail : response.statusText);
+      edit.editor.insertAt(at, data.embed + "\n");
+      at += data.embed.length + 1;
+    } catch (e) { toast(e.message); }
+  }
+}
+
+function pickPicture() {
+  const input = document.getElementById("picture-file");
+  input.onchange = () => {
+    const files = [...input.files];
+    input.value = "";
+    if (files.length && edit.editor) addPictures(files, edit.editor.view.state.selection.main.head);
+  };
+  input.click();
+}
+
+// -- earlier versions ------------------------------------------------------------------------
+
+const REASONS = {
+  "notes.page": "changed here", "notes.page rename": "before renaming", "notes.page delete": "before deleting",
+  "before restore": "before putting a version back", "notes.append": "before Starlight added to it",
+  "notes.note": "before Starlight rewrote it", "journal.write": "before a journal entry",
+  "journal.week": "before the weekly review", "recipes.save": "before Starlight changed it",
+  "notes.delete": "before deleting", "undo": "before an undo",
+};
+
+async function showHistory() {
+  const note = state.current;
+  if (!note) return;
+  await save();
+  const dialog = document.getElementById("history");
+  const list = document.getElementById("versions");
+  const view = document.getElementById("version-view");
+  const restore = document.getElementById("restore-version");
+  restore.hidden = true;
+  list.replaceChildren();
+  let data;
+  try { data = await api("/api/note/versions?" + new URLSearchParams({ path: note.path })); }
+  catch (e) { toast(e.message); return; }
+  view.replaceChildren(el("p", "dim", t(data.versions.length
+    ? "Choose a version on the left to see what changed since then."
+    : "No earlier versions yet. Starlight keeps one before each change.")));
+  dialog.hidden = false;
+  for (const version of data.versions) {
+    const button = el("button", "", version.when);
+    button.type = "button";
+    button.setAttribute("aria-pressed", "false");
+    button.appendChild(el("small", "", t(REASONS[version.reason] || version.reason)));
+    button.onclick = async () => {
+      list.querySelectorAll("button").forEach(b => b.setAttribute("aria-pressed", String(b === button)));
+      const shown = await api("/api/note/diff?" + new URLSearchParams({ path: note.path, version: version.id }));
+      const pre = el("pre");
+      const changes = shown.diff.split("\n").filter(line => !line.startsWith("---") && !line.startsWith("+++"));
+      if (!changes.join("").trim()) pre.appendChild(el("span", "at", t("No differences: the note is the same as then.")));
+      for (const line of changes) {
+        const cls = line.startsWith("+") ? "add" : line.startsWith("-") ? "del" : line.startsWith("@@") ? "at" : "";
+        pre.appendChild(el("span", cls, (line.startsWith("@@") ? "⋯" : line) + "\n"));
+      }
+      view.replaceChildren(el("p", "dim small", t("Green: added since then. Red: there then, gone now.")), pre);
+      restore.hidden = false;
+      restore.onclick = async () => {
+        try {
+          await api("/api/note/restore", { method: "POST", body: { path: note.path, version: version.id } });
+        } catch (e) { toast(e.message); return; }
+        dialog.hidden = true;
+        toast(t("The earlier version is back. The text before it was kept too."));
+        const wasEditing = !!edit.editor;
+        if (edit.editor) { edit.editor.destroy(); edit.editor = null; edit.dirty = false; document.body.classList.remove("editing"); }
+        await openNote(note.path, null, wasEditing);
+      };
+    };
+    list.appendChild(el("li")).appendChild(button);
+  }
+}
+document.getElementById("close-history").onclick = () => { document.getElementById("history").hidden = true; };
+document.getElementById("history").addEventListener("click", (event) => {
+  if (event.target.id === "history") event.target.hidden = true;
+});
+
+// Closing the page with changes not yet saved: send them on the way out.
+window.addEventListener("beforeunload", () => {
+  if (!edit.editor || !edit.dirty || !state.current) return;
+  fetch("/api/note?" + new URLSearchParams({ path: state.current.path }), {
+    method: "PUT", keepalive: true, headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ text: edit.editor.text(), stamp: state.current.stamp, first: edit.first }),
+  });
 });
 
 // -- start ----------------------------------------------------------------------------------

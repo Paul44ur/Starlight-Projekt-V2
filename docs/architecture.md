@@ -335,6 +335,18 @@ note stay on the page and Back works. Ctrl+K is a quick switcher (letters in ord
 starts count more, aliases too). `POST /api/notes/welcome` writes the welcome note
 (German or English, as the page speaks) once ever; `data/notebook/welcomed` remembers.
 Note text is marked `translate="no"`, so i18n never changes it.
+Block B6 adds editing. `static/notes-editor.js` (an ES module, imported only on the first
+Edit, so reading never loads the 625 KB bundle) builds the editor from `/vendor/editor.js`:
+Markdown with styled headings, bold, links and dimmed marks, a parser extension that shows
+the properties block as one dimmed block, `[[links]]` and `#tags` marked, a "/" menu
+(autocompletion from after the slash, in the page's language), Ctrl+B, Ctrl+I, Ctrl+Enter
+(tick a task), and paste or drop of pictures. `notes.html` saves one second after typing
+stops with `PUT /api/note` and the stamp; the first save of each editing session sends
+`first` (the server then keeps a version even inside the 5-minute gap, so where each
+session started is kept). A 409 opens the conflict dialog (keep mine, take theirs, keep
+both). There are new, rename (the title field), delete (to the trash), a Trash view with
+Bring back, a history dialog (versions, a coloured diff, put back), Ctrl+E, Ctrl+S, Ctrl+N,
+and a last save with `keepalive` when the page closes.
 
 **Safety limits you set (`core/safety.py`).** Settings -> Safety limits chooses a level
 (strict, balanced, relaxed) and any of 29 switches on top, kept in

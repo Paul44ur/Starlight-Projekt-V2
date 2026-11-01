@@ -294,3 +294,21 @@ def test_tag_filter_link_resolution_and_the_welcome_note(api: Any, notebook: Pat
     (notebook / "Notes" / "Willkommen.md").unlink()
     assert send(api, "POST", "/api/notes/welcome", json={"lang": "en"})["path"] is None  # once
     assert not (notebook / "Notes" / "Welcome.md").exists()
+
+
+def test_each_editing_session_keeps_where_it_started(api: Any, notebook: Path) -> None:
+    def put(text: str, stamp: str, first: bool = False) -> str:
+        body = {"text": text, "stamp": stamp, "first": first}
+        return str(
+            send(api, "PUT", "/api/note", params={"path": "Notes/Plan.md"}, json=body)["stamp"]
+        )
+
+    stamp = get(api, "/api/note", path="Notes/Plan.md")["stamp"]
+    stamp = put("one", stamp, first=True)  # a session starts: the text before it is kept
+    stamp = put("two", stamp)  # typing on: no new version within 5 minutes
+    stamp = put("three", stamp, first=True)  # the next session: "two" is kept
+    versions = get(api, "/api/note/versions", path="Notes/Plan.md")["versions"]
+    texts = [
+        get(api, "/api/note/diff", path="Notes/Plan.md", version=v["id"])["text"] for v in versions
+    ]
+    assert texts == ["two", "Back to [[Shopping]].\n"]

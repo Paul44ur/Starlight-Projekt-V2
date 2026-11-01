@@ -21,7 +21,7 @@ texts, and the page lets you choose.
     POST   /api/notes/pictures?name=         the picture's bytes as the body
     GET    /api/notes/file/{path}            a picture (an SVG only as a download)
     GET    /api/note?path=                   text, stamp, properties, outline, links, backlinks
-    PUT    /api/note?path=                   {text, stamp}: save (409 on a conflict)
+    PUT    /api/note?path=                   {text, stamp, first}: save (409 on a conflict)
     POST   /api/note                         {folder, title, text}: a new note
     POST   /api/note/rename                  {path, title}
     DELETE /api/note?path=                   to the trash
@@ -53,7 +53,9 @@ FOLDERS = ("Notes", "Journal", "Recipes", "Clippings", "Inbox")  # always shown,
 ATTACHMENTS = "Notes/Attachments"
 MAX_NOTE = 1024**2  # bigger than this is a document, not a note
 MAX_PICTURE = 10 * 1024**2
-TYPING_GAP = 300.0  # seconds: while typing, at most one kept version per 5 minutes
+# seconds: while typing, at most one kept version per 5 minutes. The first save after
+# opening the editor ("first") always keeps one, so where each editing session started stays.
+TYPING_GAP = 300.0
 NOTE = (".md",)
 PICTURES = {
     ".png": "image/png",
@@ -417,8 +419,9 @@ def add_notes_api(
         file = relative_path(root(), path)
         with writing:
             try:
+                gap = 0.0 if data.get("first") else TYPING_GAP
                 written = write_note(
-                    file, text, "notes.page", history(), expected=expected, min_gap=TYPING_GAP
+                    file, text, "notes.page", history(), expected=expected, min_gap=gap
                 )
             except NoteConflict as exc:
                 from starlight.text import decode_text

@@ -19,8 +19,8 @@ Work goes block by block (section 9). One block is one session and one commit; m
 | B3 | Notes API (list, read, save, rename, trash, versions, pictures) | M | A2, B2 | **done** 2026-11-01 ("Notes plan B3: …") |
 | B4 | Renderer extension (`render.js`) | M | – | **done** 2026-11-01 ("Notes plan B4: …") |
 | B5 | Notes page: layout, list, switcher, reading view, welcome note | M | B3, B4 | **done** 2026-11-01 ("Notes plan B5: …") |
-| B6 | Notes page: editing (CodeMirror, toolbar, `/` menu, autosave, conflicts, pictures, history panel) | L | B1, B5 | **next** |
-| C1 | Links, aliases, embeds, backlinks, rename that fixes links | M | B6 | open |
+| B6 | Notes page: editing (CodeMirror, toolbar, `/` menu, autosave, conflicts, pictures, history panel) | L | B1, B5 | **done** 2026-11-01 ("Notes plan B6: …") |
+| C1 | Links, aliases, embeds, backlinks, rename that fixes links | M | B6 | **next** |
 | C2 | Tags and properties | M | C1 | open |
 | C3 | The assistant uses the structure; "Ask Starlight" on a note | M | C2 | open |
 | C4 | Templates, daily notes, calendar strip, monthly and yearly reviews | M | B6 | open |
@@ -38,7 +38,13 @@ Work goes block by block (section 9). One block is one session and one commit; m
 | F4 | Board view on the page | L | F3, B6 | open |
 | G1–G6 | Extras (export, Kanban, flashcards, live preview, Mermaid, deep links) | S–M each | see 9 | optional |
 
-Last updated: 2026-11-01 (A1 to B5 done. B5: `static/notes.html` (reading only); the page
+Last updated: 2026-11-01 (A1 to B6 done: milestone B is complete. B6: the editor module is
+`static/notes-editor.js` (`createEditor(parent, options)` returns text, setText, insertAt,
+run(command), focus, destroy); C1's `[[` autocomplete belongs in its `autocompletion`
+override next to `slashMenu`. The editor edits the whole file, properties block included
+(C2's properties panel can change them without the editor). "Template" in the "/" menu
+is a placeholder for C4.
+B5: `static/notes.html` (reading only); the page
 keeps `state.current` (the note as `/api/note` returned it, with `body`, `stamp`,
 `headings`); B6 adds an Edit/Read toggle next to "☆ Pin" in `.crumbs .actions` and should
 reuse `openNote`/`drawInfo`. Tasks and Graph in the sidebar are placeholders (D4, F1/F2).

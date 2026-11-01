@@ -163,6 +163,46 @@
     "A map of how your notes link together: coming in a later update.":
       "Eine Karte, wie deine Notizen zusammenhängen: kommt mit einem späteren Update.",
     "No note with that name": "Keine Notiz mit diesem Namen",
+    // the Notes page: editing
+    "New note (Ctrl+N)": "Neue Notiz (Strg+N)", "Trash": "Papierkorb",
+    "This note was changed somewhere else": "Diese Notiz wurde woanders geändert",
+    "Another program or tab changed it after you opened it. Nothing is lost: choose what to keep.":
+      "Ein anderes Programm oder ein anderer Tab hat sie geändert, nachdem du sie geöffnet hast. Nichts geht verloren: Wähle, was bleiben soll.",
+    "Show the other version": "Die andere Fassung zeigen", "Keep mine": "Meine behalten",
+    "Take the other version": "Die andere Fassung nehmen", "Keep both": "Beide behalten",
+    "Earlier versions": "Frühere Fassungen",
+    "Starlight keeps a version before each change. Choose one to see what changed since then.":
+      "Starlight hebt vor jeder Änderung eine Fassung auf. Wähle eine, um zu sehen, was sich seitdem geändert hat.",
+    "Put this version back": "Diese Fassung zurückholen", "Close": "Schließen",
+    "✎ Edit": "✎ Bearbeiten", "✓ Done": "✓ Fertig", "Edit or read this note (Ctrl+E)": "Notiz bearbeiten oder lesen (Strg+E)",
+    "Move to the trash": "In den Papierkorb", "Bold (Ctrl+B)": "Fett (Strg+B)", "Italic (Ctrl+I)": "Kursiv (Strg+I)",
+    "Heading": "Überschrift", "Subheading": "Unterüberschrift", "Bullet list": "Liste",
+    "Task (Ctrl+Enter ticks it)": "Aufgabe (Strg+Enter hakt sie ab)", "Task": "Aufgabe",
+    "Link to a note": "Link zu einer Notiz", "Picture": "Bild", "Table": "Tabelle", "Callout": "Hinweisbox",
+    "Today's date": "Heutiges Datum", "Template": "Vorlage", "Templates come in a later update.": "Vorlagen kommen mit einem späteren Update.",
+    "Title": "Titel", "Formatting": "Formatierung",
+    "Write here. Type / for headings, tasks, tables and more.": "Hier schreiben. Tipp / für Überschriften, Aufgaben, Tabellen und mehr.",
+    "Editing…": "Bearbeitet…", "Saving…": "Speichert…", "Not saved: changed elsewhere": "Nicht gespeichert: woanders geändert",
+    "Not saved:": "Nicht gespeichert:",
+    "Not saved yet: your text is still here. Try again in a moment.": "Noch nicht gespeichert: Dein Text ist noch da. Versuch es gleich noch einmal.",
+    "Untitled": "Ohne Titel",
+    "Move this note to the trash? You can bring it back from the trash.":
+      "Diese Notiz in den Papierkorb legen? Du kannst sie aus dem Papierkorb zurückholen.",
+    "Moved to the trash": "In den Papierkorb gelegt",
+    "The trash is empty. Deleted notes wait here until you bring them back.":
+      "Der Papierkorb ist leer. Gelöschte Notizen warten hier, bis du sie zurückholst.",
+    "Deleted notes. Bring one back as it was.": "Gelöschte Notizen. Hol eine zurück, wie sie war.",
+    "Bring back": "Zurückholen", "It is back": "Sie ist wieder da",
+    "changed here": "hier geändert", "before renaming": "vor dem Umbenennen", "before deleting": "vor dem Löschen",
+    "before putting a version back": "vor dem Zurückholen einer Fassung", "before Starlight added to it": "bevor Starlight etwas ergänzte",
+    "before Starlight rewrote it": "bevor Starlight sie neu schrieb", "before a journal entry": "vor einem Tagebucheintrag",
+    "before the weekly review": "vor dem Wochenrückblick", "before Starlight changed it": "bevor Starlight sie änderte",
+    "before an undo": "vor einem Rückgängigmachen",
+    "Choose a version on the left to see what changed since then.": "Wähle links eine Fassung, um zu sehen, was sich seitdem geändert hat.",
+    "No earlier versions yet. Starlight keeps one before each change.": "Noch keine früheren Fassungen. Starlight hebt vor jeder Änderung eine auf.",
+    "No differences: the note is the same as then.": "Keine Unterschiede: Die Notiz ist wie damals.",
+    "Green: added since then. Red: there then, gone now.": "Grün: seitdem dazugekommen. Rot: damals da, jetzt weg.",
+    "The earlier version is back. The text before it was kept too.": "Die frühere Fassung ist zurück. Der Text davor wurde auch aufgehoben.",
     // the chat: a file the assistant changed
     "Changed:": "Geändert:", "New:": "Neu:", "Undone:": "Rückgängig gemacht:",
     // settings: safety limits (the switches' own texts come from the server in German)

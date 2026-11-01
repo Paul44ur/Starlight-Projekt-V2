@@ -500,8 +500,18 @@ The list on the left has your folders, pinned notes and a search box; **Ctrl+K**
 note by its name. A note reads like a page: links to other notes (`[[Shopping]]`) open
 them, tags (`#home`) list the notes that have them, and the right side shows its outline,
 the notes that link to it and its properties. Links and tags in chat answers open here
-too. The first visit brings a short welcome note with examples. Editing on the page comes
-in a later update; until then, ask Starlight in the chat to change a note.
+too. The first visit brings a short welcome note with examples.
+
+**Writing notes.** Press **✎ Edit** (or **Ctrl+E**) on a note. Headings show big and bold
+shows bold while you type, so you need no special knowledge: the toolbar makes text bold,
+adds a heading, a list, a task or a link to another note, and puts in a picture. Type
+**/** for a menu (heading, task, table, link, callout, today's date, picture). Paste or drop
+a picture to add it. **Ctrl+Enter** ticks a task. Your text is saved by itself a second
+after you stop typing ("Saved" shows it). If the note was changed elsewhere in the
+meantime (in another program or tab), nothing is overwritten: you choose to keep yours,
+take the other one, or keep both. **＋** (Ctrl+N) starts a new note; type over its title to
+rename it. 🗑 moves a note to the **Trash**, where **Bring back** returns it. 🕘 shows the
+earlier versions with what changed, and puts one back.
 
 **Settings** lists the modules, each with an on/off switch; open one to
 choose for each of its tools whether it runs on its own, asks first or is blocked (the search
