@@ -61,3 +61,44 @@ if (document.querySelector('a[href="/notes"]')) {
     if (s && s.local === false) document.body.classList.add("remote");
   }).catch(() => { /* the page says itself when Starlight cannot be reached */ });
 }
+
+// -- recording: the chat's microphone and the Notes page's voice memos ------------------------
+// Record 16 kHz mono 16-bit WAV in the browser, which the speech server reads directly.
+async function startRecording() {
+  const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+  const context = new AudioContext();
+  const source = context.createMediaStreamSource(stream);
+  const node = context.createScriptProcessor(4096, 1, 1);
+  const chunks = [];
+  node.onaudioprocess = (e) => chunks.push(new Float32Array(e.inputBuffer.getChannelData(0)));
+  source.connect(node); node.connect(context.destination);
+  return { stop: async () => {
+    node.disconnect(); source.disconnect(); stream.getTracks().forEach(t => t.stop());
+    const rate = context.sampleRate; await context.close();
+    return wav(chunks, rate);
+  } };
+}
+// A WAV file: a 44-byte RIFF header, then 16 kHz mono 16-bit samples (what whisper reads).
+const WAV_RATE = 16000, WAV_BYTES = 2, WAV_HEADER = 44;
+function wav(chunks, rate) {
+  const all = new Float32Array(chunks.reduce((n, c) => n + c.length, 0));
+  let at = 0; chunks.forEach(c => { all.set(c, at); at += c.length; });
+  const ratio = rate / WAV_RATE, length = Math.floor(all.length / ratio);  // resampled
+  const size = length * WAV_BYTES;
+  const buffer = new ArrayBuffer(WAV_HEADER + size), view = new DataView(buffer);
+  const writeAscii = (o, s) => [...s].forEach((ch, i) => view.setUint8(o + i, ch.charCodeAt(0)));
+  writeAscii(0, "RIFF"); view.setUint32(4, WAV_HEADER - 8 + size, true); writeAscii(8, "WAVEfmt ");
+  view.setUint32(16, 16, true);  // the fmt chunk's length
+  view.setUint16(20, 1, true);  // PCM
+  view.setUint16(22, 1, true);  // mono
+  view.setUint32(24, WAV_RATE, true);  // samples per second
+  view.setUint32(28, WAV_RATE * WAV_BYTES, true);  // bytes per second
+  view.setUint16(32, WAV_BYTES, true);  // bytes per sample (all channels)
+  view.setUint16(34, WAV_BYTES * 8, true);  // bits per sample
+  writeAscii(36, "data"); view.setUint32(40, size, true);
+  for (let i = 0; i < length; i++) {
+    const v = Math.max(-1, Math.min(1, all[Math.floor(i * ratio)]));
+    view.setInt16(WAV_HEADER + i * WAV_BYTES, v < 0 ? v * 0x8000 : v * 0x7fff, true);
+  }
+  return new Blob([buffer], { type: "audio/wav" });
+}

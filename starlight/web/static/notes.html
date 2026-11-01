@@ -146,6 +146,7 @@
   .info .back .line { display: block; color: var(--dim); font-size: 12.5px; margin-top: 2px;
                       overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .missing-note { text-align: center; padding: 40px 10px; }
+  #memo.on { color: var(--bad); border-color: var(--bad); }
   /* The journal's calendar strip and the new-note menu (block C4). */
   .strip { display: grid; grid-template-columns: repeat(14, minmax(0, 1fr)); gap: 4px; margin: 0 0 14px; }
   .strip .day { display: grid; justify-items: center; gap: 1px; padding: 4px 0 5px; border-radius: 8px;
@@ -203,6 +204,7 @@
   <h1><img class="logo" src="/icon.svg" alt="" width="22" height="22" />Notes</h1><span class="spacer"></span>
   <nav><a href="/">Chat</a><a href="/memory">Memory</a><a href="/activity">Activity</a><a href="/automations">Automations</a><a href="/settings">Settings</a></nav>
   <button class="icon" id="find" title="Find a note (Ctrl+K)" aria-label="Find a note (Ctrl+K)">⌕ <kbd>Ctrl K</kbd></button>
+  <button class="icon" id="memo" title="Voice memo: speak, it is kept as text" aria-label="Voice memo: speak, it is kept as text">🎤</button>
   <button id="theme" class="icon" onclick="cycleTheme()" aria-label="Theme">◐</button>
 </header>
 <div class="notes">
@@ -1325,6 +1327,41 @@ column.addEventListener("mouseover", (event) => {
 column.addEventListener("mouseout", (event) => {
   if (event.target.closest("a.note-link")) hidePreview();
 });
+
+// -- voice memos (block D2): spoken, written down, kept as text ------------------------------
+// Into the inbox, or into the journal day that is open (not while editing it). The sound
+// itself is never kept.
+
+let memoRecorder = null;
+document.getElementById("memo").onclick = async () => {
+  const button = document.getElementById("memo");
+  if (!memoRecorder) {
+    if (!navigator.mediaDevices) { toast(t("The microphone needs https:// or this PC")); return; }
+    try {
+      memoRecorder = await startRecording();
+      button.classList.add("on"); button.textContent = "⏹";
+      toast(t("Recording… press ⏹ to stop"));
+    } catch (e) { toast(t("No microphone access: ") + e.message); }
+    return;
+  }
+  button.classList.remove("on"); button.textContent = "🎤";
+  const audio = await memoRecorder.stop();
+  memoRecorder = null;
+  try {
+    const heard = await fetch("/api/transcribe", { method: "POST", headers: { "Content-Type": "audio/wav" }, body: audio });
+    const data = await heard.json().catch(() => ({}));
+    if (!heard.ok) { toast(data.detail || t("Could not understand that")); return; }
+    if (!(data.text || "").trim()) { toast(t("Nothing was understood")); return; }
+    const journalDay = state.current && !edit.editor && /^Journal\/\d{4}-\d{2}-\d{2}\.md$/.test(state.current.path)
+      ? nameOf(state.current.path) : "";
+    const kept = await api("/api/notes/memo", { method: "POST",
+      body: { text: data.text, to: journalDay ? "journal" : "inbox", day: journalDay } });
+    toast(t(kept.kept_in === "journal" ? "Memo kept in the journal" : "Memo kept in the inbox") + ": " + kept.text);
+    await loadList();
+    if (journalDay) await openNote(state.current.path);
+    else if (state.view === "inbox") showView("inbox");
+  } catch (e) { toast(e.message); }
+};
 
 // -- earlier versions ------------------------------------------------------------------------
 

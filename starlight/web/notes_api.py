@@ -18,6 +18,7 @@ texts, and the page lets you choose.
     GET    /api/notes/facets                 tags (nested, with counts) and property names
     GET    /api/notes/templates?lang=        the note templates (shipped ones copied the first time)
     POST   /api/notes/today                  {day, lang}: that day's journal page (made if missing)
+    POST   /api/notes/memo                   {text, to, day}: a voice memo's text, kept
     POST   /api/note/property                {path, name, value, stamp}: one property (null: off)
     POST   /api/notes/welcome                {lang}: the welcome note, the first time only
     GET    /api/notes/trash                  deleted notes
@@ -536,6 +537,29 @@ def add_notes_api(
         file = Path(str(result.output["file"]))
         index().touch(file)
         return {"path": rel(file), "new": bool(result.output.get("new"))}
+
+    @app.post("/api/notes/memo")
+    async def memo(request: Request) -> dict[str, Any]:
+        """A voice memo's text (the page recorded it and /api/transcribe wrote it down): into
+        the inbox, or a journal day ({to: "journal", day})."""
+        local_only(request)
+        data = await body(request)
+        text = str(data.get("text") or "").strip()[:4000]
+        if not text:
+            raise _bad("nothing was understood")
+        journal = data.get("to") == "journal"
+        tool, args = (
+            ("journal.write", {"text": f"🎤 {text}", "day": str(data.get("day") or "")})
+            if journal
+            else ("notes.note", {"text": f"🎤 {text}"})
+        )
+        result = await kernel().dispatcher.call(tool, args)
+        if not result.ok:
+            raise _bad(str(result.error), 409)
+        file = Path(str(result.output.get("saved") or result.output.get("file") or ""))
+        if file.is_file():
+            index().touch(file)
+        return {"kept_in": "journal" if journal else "inbox", "text": text}
 
     @app.post("/api/note/rename")
     async def rename_note(request: Request) -> dict[str, Any]:

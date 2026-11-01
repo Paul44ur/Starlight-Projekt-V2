@@ -25,8 +25,8 @@ Work goes block by block (section 9). One block is one session and one commit; m
 | C3 | The assistant uses the structure; "Ask Starlight" on a note | M | C2 | **done** 2026-11-01 ("Notes plan C3: …") |
 | C4 | Templates, daily notes, calendar strip, monthly and yearly reviews | M | B6 | **done** 2026-11-01 ("Notes plan C4: …") |
 | D1 | Capture: clipper (with the guard), highlights, inbox | M | C2 | **done** 2026-11-01 ("Notes plan D1: …") |
-| D2 | Voice memos | S | D1 | **next** |
-| D3 | Tasks in notes: parser, writing back, to-do integration | M | B2 | open |
+| D2 | Voice memos | S | D1 | **done** 2026-11-01 ("Notes plan D2: …") |
+| D3 | Tasks in notes: parser, writing back, to-do integration | M | B2 | **next** |
 | D4 | Tasks on the page: boxes, date chips, Tasks view | M | D3, B6 | open |
 | E1 | Search operators with highlighted hits | M | B5 | open |
 | E2 | Related notes, mentions without a link, OCR text | M | E1 | open |
@@ -38,7 +38,9 @@ Work goes block by block (section 9). One block is one session and one commit; m
 | F4 | Board view on the page | L | F3, B6 | open |
 | G1–G6 | Extras (export, Kanban, flashcards, live preview, Mermaid, deep links) | S–M each | see 9 | optional |
 
-Last updated: 2026-11-01 (A1 to D1 done. D1: notes.note now takes (text, title="") so a
+Last updated: 2026-11-01 (A1 to D2 done. D2: memos are marked "🎤 " in front of their text;
+the browser recorder lives in common.js now (chat and Notes share it).
+D1: notes.note now takes (text, title="") so a
 note without a title goes to Inbox/Inbox.md; call it with keywords. Clippings are marked by
 their `source:` property, which is what makes a later read untrusted.
 C4: templates keep their

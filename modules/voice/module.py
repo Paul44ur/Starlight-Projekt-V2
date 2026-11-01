@@ -370,6 +370,32 @@ class VoiceModule(Module):
         audio = await asyncio.to_thread(self.record, duration)
         return {"seconds": duration, "text": await self.transcribe_audio(audio)}
 
+    @tool(own_timeout=True)
+    async def memo(self, seconds: float = 0, to: str = "inbox") -> dict[str, Any]:
+        """Record a voice memo from this PC's microphone and keep it as text (the sound is
+        not kept): in the notes inbox, or in today's journal with to="journal"."""
+        duration = min(seconds or self.config.record_seconds, 120)
+        audio = await asyncio.to_thread(self.record, duration)
+        text = str(await self.transcribe_audio(audio)).strip()
+        if not text:
+            raise ToolError("nothing was understood; try again a little closer to the microphone")
+        return await self.keep_memo(text, to)
+
+    async def keep_memo(self, text: str, to: str = "inbox", day: str = "") -> dict[str, Any]:
+        """Keep a memo's text: the notes inbox, or the journal (today's, or ``day``'s)."""
+        journal = to.strip().lower() in ("journal", "tagebuch")
+        tool, args = (
+            ("journal.write", {"text": f"🎤 {text}", "day": day})
+            if journal
+            else ("notes.note", {"text": f"🎤 {text}"})
+        )
+        if not self.ctx.has_tool(tool):
+            raise ToolError(f"the {'journal' if journal else 'notes'} module is off")
+        result = await self.ctx.call(tool, args)
+        if not result.ok:
+            raise ToolError(str(result.error))
+        return {"text": text, "kept_in": "journal" if journal else "inbox"}
+
     # -- text to speech --------------------------------------------------------------------
 
     def installed_voices(self) -> dict[str, Path]:

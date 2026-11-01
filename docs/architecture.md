@@ -403,6 +403,11 @@ summary (told never to follow the page's instructions), the text (20,000 charact
 target note per item, asks the user, then appends each item there and removes it from the
 inbox (versions kept). The Inbox view has a "Sort my inbox" button (it opens the chat with
 the request).
+Block D2 is voice memos. `voice.memo(seconds, to)` records at the PC's microphone (two
+minutes at most), transcribes, and keeps only the text through `notes.note` (the inbox) or
+`journal.write`; the page's 🎤 records in the browser (`startRecording` and `wav`, moved from
+chat.html to `common.js`), sends the WAV to `/api/transcribe`, then the text to
+`POST /api/notes/memo` (the inbox, or the open journal day when not editing it).
 
 **Safety limits you set (`core/safety.py`).** Settings -> Safety limits chooses a level
 (strict, balanced, relaxed) and any of 29 switches on top, kept in

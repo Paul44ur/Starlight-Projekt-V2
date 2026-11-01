@@ -555,6 +555,10 @@ them unnoticed. "Keep this quote in my Quotes note" adds it as a quote box. "Not
 the plumber" without a title goes to the **Inbox**; "sort my inbox" (or the button in the
 Inbox view) proposes where each item belongs and asks before moving anything.
 
+**Voice memos.** Press 🎤 at the top of the Notes page, speak, and press ⏹: Starlight
+writes down what you said and keeps it as text in the Inbox (or in the journal day you have
+open). The recording itself is not kept. At the PC's microphone: "take a voice memo".
+
 **Settings** lists the modules, each with an on/off switch; open one to
 choose for each of its tools whether it runs on its own, asks first or is blocked (the search
 finds modules and tools), and pair your phone there. **Memory**

@@ -226,6 +226,10 @@
     // templates, the journal's day page and calendar strip
     "Empty note": "Leere Notiz", "From a template": "Aus einer Vorlage", "No journal page for today yet.": "Noch keine Tagebuchseite für heute.",
     "Write today's page": "Heutige Seite schreiben", "Journal days": "Tagebuchtage", "no page yet": "noch keine Seite",
+    // voice memos on the Notes page
+    "Voice memo: speak, it is kept as text": "Sprachnotiz: sprechen, sie wird als Text aufgehoben",
+    "Recording… press ⏹ to stop": "Nimmt auf… ⏹ beendet", "Nothing was understood": "Nichts verstanden",
+    "Memo kept in the inbox": "Notiz im Eingang aufgehoben", "Memo kept in the journal": "Notiz im Tagebuch aufgehoben",
     // the chat: a file the assistant changed
     "Changed:": "Geändert:", "New:": "Neu:", "Undone:": "Rückgängig gemacht:",
     // settings: safety limits (the switches' own texts come from the server in German)
