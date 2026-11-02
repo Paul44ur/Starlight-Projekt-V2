@@ -367,6 +367,34 @@ class Index:
                 rows = db.execute(f"SELECT {INFO} FROM files ORDER BY path").fetchall()
         return [_info(r) for r in rows]
 
+    def select(
+        self,
+        where: str,
+        params: list[Any],
+        order: str,
+        order_params: list[Any],
+        limit: int,
+        seconds: float,
+    ) -> list[NoteInfo]:
+        """The notes matching ``where`` (SQL on ``files f``, from starlight/notebook/query.py:
+        fixed pieces only, every value in ``params``), in ``order``. TimeoutError after
+        ``seconds``."""
+        deadline = time.monotonic() + seconds
+        with self._db() as db:
+            db.set_progress_handler(lambda: int(time.monotonic() > deadline), 1000)
+            try:
+                rows = db.execute(
+                    f"SELECT {INFO} FROM files f WHERE {where} ORDER BY {order} LIMIT ?",
+                    [*params, *order_params, limit],
+                ).fetchall()
+            except sqlite3.OperationalError as exc:
+                if "interrupt" in str(exc).lower():
+                    raise TimeoutError(str(exc)) from exc
+                raise
+            finally:
+                db.set_progress_handler(None, 0)
+        return [_info(r) for r in rows]
+
     def note(self, path: str) -> NoteInfo | None:
         with self._db() as db:
             row = db.execute(f"SELECT {INFO} FROM files WHERE path = ?", (path,)).fetchone()

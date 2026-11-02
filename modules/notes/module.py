@@ -24,7 +24,15 @@ from typing import Any
 from pydantic import BaseModel
 
 from starlight.core import Module, ModuleContext, ToolError, tool
-from starlight.notebook import Written, append_note, related, search, templates, write_note
+from starlight.notebook import (
+    Written,
+    append_note,
+    query,
+    related,
+    search,
+    templates,
+    write_note,
+)
 from starlight.notebook.markdown import (
     add_tag,
     iso_dates,
@@ -306,6 +314,24 @@ class NotesModule(Module):
         if untrusted:  # a clipping's words are outside content: the injection guard goes up
             answer["untrusted"] = True
         return answer
+
+    @tool(name="query")
+    def query_notes(
+        self, where: str = "", sort: str = "", fields: str = "", limit: int = 50
+    ) -> dict[str, Any]:
+        """Find notes like rows of a table, by their properties, tags, folder and dates.
+        `where`: e.g. "status is open and tag is work", "due < today+7 or priority is high",
+        "not (folder is Journal) and rating >= 4", "due is empty" (and/or/not, is, is not,
+        <, >, has, is empty; dates like 2026-12-01 or today-7). `sort`: e.g. "due" or
+        "rating desc". `fields`: the columns to show, e.g. "status, due, tag". Shows the
+        result as a table."""
+        index = self.ctx.notebook
+        index.refresh()
+        found = query.run(index, where, sort, fields, max(1, min(limit, 500)))
+        outside = index.with_property("source")
+        if any(n["path"] in outside for n in found["notes"]):
+            found["untrusted"] = True  # (a clipping's title came from the web)
+        return found
 
     @tool(name="related")
     async def related_notes(self, title: str, limit: int = 5) -> dict[str, Any]:

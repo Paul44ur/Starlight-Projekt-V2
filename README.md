@@ -517,6 +517,13 @@ turns that mention into a link, changing only that line (its earlier version is 
 the chat: "which notes are related to my garden note?", "where do I mention Garden without
 a link?".
 
+**Notes as a table.** Ask "which notes have status open and the tag work, sorted by due
+date?" and Starlight looks them up like rows of a table: by properties (`status is open`,
+`due < today+7`, `rating >= 4`, `due is empty`), tags (`tag is work`), folders (`folder is
+Journal`), the day a note was changed (`modified > today-7`) and its length (`words > 200`),
+with `and`, `or`, `not` and brackets (German words work too: `und`, `oder`, `nicht`, `ist`,
+`hat`, `leer`). What you type is only ever data to look for, never run as code.
+
 **Writing notes.** Press **✎ Edit** (or **Ctrl+E**) on a note. Headings show big and bold
 shows bold while you type, so you need no special knowledge: the toolbar makes text bold,
 adds a heading, a list, a task or a link to another note, and puts in a picture. Type

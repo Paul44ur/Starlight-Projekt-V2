@@ -457,6 +457,17 @@ name, or its path when the name would lead elsewhere). The docs module has `docs
 `ocr_max_pages`, `ocr_seconds` each). Tools `notes.related`, `notes.mentions`; API
 `GET /api/note/related`, `GET /api/note/mentions`, `POST /api/note/link-mention`; the page
 shows both lists in the right panel.
+Block E3 is the query language. `notebook/query.py`: `parse` reads a query into a tree
+(`Cond`, `Not`, `AllOf`, `AnyOf`; and binds closer than or; values are text, numbers, dates
+with `today±N`, or yes/no; German keywords too; at most 2,000 characters and 30 brackets
+deep) with `QueryError` messages in plain words; `to_sql` writes fixed SQL pieces only, every
+field name and value a parameter: a property through `json_each` on the index's JSON values
+(`is` compares text without case, numbers as numbers, dates by day; `has` is "contains" for
+text and "holds" for lists; `is not` and `is empty` match notes without it), and `tag`,
+`folder`, `path`, `name`, `modified`, `words` on their own columns. `order_by` sorts with
+missing values last. `run` executes through `Index.select`, which stops after a few seconds
+(an SQLite progress handler), and returns `{fields, notes, count}`. Tool `notes.query(where,
+sort, fields, limit)` (`untrusted` when a clipping is in the table).
 
 **Safety limits you set (`core/safety.py`).** Settings -> Safety limits chooses a level
 (strict, balanced, relaxed) and any of 29 switches on top, kept in
