@@ -9,6 +9,8 @@
 //                                                     Notes page makes it tick)
 //   - [ ] Call Tom due: 2026-11-05 priority: high     its fields as chips: the due date red
 //                                                     when overdue, amber when today
+//   ```query  where: status is open  ...  ```         a live table of notes (on the Notes
+//                                                     page only: it asks /api/notes/query)
 // As in markdown.js, the text only ever becomes textContent. Links lead only to the Notes
 // page, pictures only come from /api/notes/file/ inside the notebook folder.
 
@@ -196,3 +198,91 @@ mdHooks.item = (li, text) => {
   }
   return "";
 };
+
+// -- query blocks (block E4) ---------------------------------------------------------------
+// ```query
+// where: status is open and tag is work
+// sort: due
+// fields: status, due
+// ```
+// becomes a table of the notes it finds, fetched again each time the note is shown (and by
+// its ↻ button). A click on a column sorts by it; a second click turns the order round. Only
+// the Notes page sets window.starlightQueryTables: elsewhere the block stays as code.
+
+function queryCell(value) {
+  if (value === null || value === undefined) return "";
+  if (Array.isArray(value)) return value.join(", ");
+  if (typeof value === "boolean") return value ? "✓" : "–";
+  if (typeof value === "object") return JSON.stringify(value);
+  return String(value);
+}
+
+const queryEmpty = (v) => v === null || v === undefined || v === "" || (Array.isArray(v) && !v.length);
+
+function queryCompare(a, b) {
+  if (typeof a === "number" && typeof b === "number") return a - b;
+  return queryCell(a).localeCompare(queryCell(b), undefined, { numeric: true, sensitivity: "base" });
+}
+
+function queryTable(text) {
+  const box = el("div", "query-box");
+  box.dataset.query = text;
+  let data = null, sortBy = null, down = false;
+  const draw = () => {
+    box.replaceChildren();
+    const columns = ["name", ...data.fields.filter(f => f.toLowerCase() !== "name")];
+    const rows = [...data.notes];
+    if (sortBy) {  // (empty cells last, either way round)
+      rows.sort((a, b) => (queryEmpty(a[sortBy]) - queryEmpty(b[sortBy]))
+        || (down ? -1 : 1) * queryCompare(a[sortBy], b[sortBy]));
+    }
+    const table = el("table", "md-table query-table");
+    const head = table.createTHead().insertRow();
+    for (const column of columns) {
+      const th = head.appendChild(el("th"));
+      const button = th.appendChild(el("button", "query-sort", column === "name" ? taskWords("Note") : column));
+      button.type = "button";
+      button.title = taskWords("Sort by this column");
+      if (sortBy === column) button.appendChild(el("span", "query-arrow", down ? " ▼" : " ▲"));
+      th.setAttribute("aria-sort", sortBy === column ? (down ? "descending" : "ascending") : "none");
+      button.onclick = () => { down = sortBy === column ? !down : false; sortBy = column; draw(); };
+    }
+    const tbody = table.createTBody();
+    for (const note of rows) {
+      const row = tbody.insertRow();
+      for (const column of columns) {
+        const cell = row.insertCell();
+        if (column === "name") {
+          const a = cell.appendChild(el("a", "note-link", note.name));
+          a.href = noteHref(note.path.replace(/\.md$/i, ""), "");
+        } else {
+          cell.textContent = queryCell(note[column]);
+        }
+      }
+    }
+    const scroller = el("div", "md-table-wrap");
+    scroller.appendChild(table);
+    box.appendChild(scroller);
+    const foot = box.appendChild(el("div", "query-foot"));
+    foot.appendChild(el("span", "", data.count === 1 ? taskWords("1 note") : data.count + " " + taskWords("notes")));
+    const again = foot.appendChild(el("button", "query-again", "↻"));
+    again.type = "button";
+    again.title = taskWords("Look again");
+    again.setAttribute("aria-label", taskWords("Look again"));
+    again.onclick = load;
+  };
+  async function load() {
+    try {
+      data = await api("/api/notes/query", { method: "POST", body: { text } });
+    } catch (e) {
+      box.replaceChildren(el("div", "query-error", taskWords("This table could not be made:") + " " + e.message));
+      return;
+    }
+    draw();
+  }
+  box.appendChild(el("div", "query-foot", "…"));
+  load();
+  return box;
+}
+
+mdHooks.code = (lang, text) => (lang === "query" && window.starlightQueryTables ? queryTable(text) : null);

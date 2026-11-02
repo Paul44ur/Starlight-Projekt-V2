@@ -37,6 +37,7 @@ texts, and the page lets you choose.
     GET    /api/note/mentions?path=          lines that name the note without a link
     POST   /api/note/link-mention            {path, source, line, expected}: link one
     GET    /api/notes/tasks                  open tasks: overdue, today, upcoming, none
+    POST   /api/notes/query                  {text}: a ```query block's table
     POST   /api/note/rename                  {path, title, fix_links}: links follow
     DELETE /api/note?path=                   to the trash
     GET    /api/note/versions?path=          the kept versions
@@ -63,6 +64,7 @@ from starlight.core.tools import ToolError
 from starlight.notebook import (
     NoteConflict,
     markdown,
+    query,
     related,
     search,
     stamp,
@@ -594,6 +596,21 @@ def add_notes_api(
             except OSError as exc:
                 raise _bad(f"could not save {source.name}: {locked(exc)}", 409) from exc
         return {"path": rel(source), "stamp": written.stamp, "version": written.version}
+
+    @app.post("/api/notes/query")
+    async def run_query(request: Request) -> dict[str, Any]:
+        """A ```query block's table: {text: the block's lines}. 400 with the reason in plain
+        words when it cannot be read."""
+        local_only(request)
+        data = await body(request)
+        text = str(data.get("text") or "")
+        try:
+            asked = query.parse_block(text)
+            found = index()
+            found.refresh()
+            return query.run(found, asked["where"], asked["sort"], asked["fields"], asked["limit"])
+        except query.QueryError as exc:
+            raise _bad(str(exc)) from exc
 
     @app.get("/api/notes/tasks")
     def all_tasks(request: Request) -> dict[str, Any]:

@@ -524,6 +524,19 @@ Journal`), the day a note was changed (`modified > today-7`) and its length (`wo
 with `and`, `or`, `not` and brackets (German words work too: `und`, `oder`, `nicht`, `ist`,
 `hat`, `leer`). What you type is only ever data to look for, never run as code.
 
+A table can also live inside a note. Write a block like this (or ask: "put a table of my
+open work notes in my Board note"):
+
+    ```query
+    where: status is not done and tag is work
+    sort: due
+    fields: status, due, tag
+    ```
+
+On the Notes page it shows as a table that is looked up again each time you open the note
+(or press ↻). Click a column to sort by it; click again to turn the order round. A mistake
+in the block is shown in a yellow box that says what is wrong.
+
 **Writing notes.** Press **✎ Edit** (or **Ctrl+E**) on a note. Headings show big and bold
 shows bold while you type, so you need no special knowledge: the toolbar makes text bold,
 adds a heading, a list, a task or a link to another note, and puts in a picture. Type

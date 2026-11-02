@@ -468,6 +468,14 @@ text and "holds" for lists; `is not` and `is empty` match notes without it), and
 missing values last. `run` executes through `Index.select`, which stops after a few seconds
 (an SQLite progress handler), and returns `{fields, notes, count}`. Tool `notes.query(where,
 sort, fields, limit)` (`untrusted` when a clipping is in the table).
+Block E4 shows query blocks as tables. `query.parse_block` reads a block's lines (`where:`,
+`sort:`, `fields:`, `limit:`; German `wo:`, `sortieren:`, `felder:`, `anzahl:`; lines
+without a key belong to the condition; `#` lines are comments). `POST /api/notes/query
+{text}` runs it (400 with the reason). markdown.js got a `code` hook; render.js's
+`queryTable` answers it for ```` ```query ```` only where `window.starlightQueryTables` is set
+(the Notes page; the chat keeps the block as code, as phones cannot reach the notes API):
+names link to the notes, a click on a header sorts in the page (empty cells last either
+way), ↻ asks again, and mistakes show in a `.query-error` box.
 
 **Safety limits you set (`core/safety.py`).** Settings -> Safety limits chooses a level
 (strict, balanced, relaxed) and any of 29 switches on top, kept in

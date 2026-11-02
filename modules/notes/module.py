@@ -11,6 +11,10 @@ notes.rename updates the links in other notes too (asking first when there are a
 Tags (#work, or the tags property) and properties (name: value at the top of a note) sort
 them: notes.tags, notes.by_tag, notes.tag, notes.untag, notes.properties,
 notes.set_property. A property change touches only its own lines.
+
+notes.query finds notes like rows of a table ("status is open and tag is work"). Asked for
+a table that stays up to date in a note, write a ```query block into the note (lines
+where:, sort:, fields:); the Notes page shows it as a live table.
 """
 
 from __future__ import annotations
@@ -324,7 +328,9 @@ class NotesModule(Module):
         "not (folder is Journal) and rating >= 4", "due is empty" (and/or/not, is, is not,
         <, >, has, is empty; dates like 2026-12-01 or today-7). `sort`: e.g. "due" or
         "rating desc". `fields`: the columns to show, e.g. "status, due, tag". Shows the
-        result as a table."""
+        result as a table. For a table that stays up to date inside a note, write a block
+        into the note instead: ```query, then lines where: ..., sort: ..., fields: ...,
+        then ``` (the Notes page shows it as a live table)."""
         index = self.ctx.notebook
         index.refresh()
         found = query.run(index, where, sort, fields, max(1, min(limit, 500)))

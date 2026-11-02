@@ -162,6 +162,8 @@
       "Notizen ohne Titel warten hier. Starlight kann sie in deine Notizen einsortieren; es fragt, bevor es etwas verschiebt.",
     "Sort my inbox": "Eingang sortieren",
     "Search tips:": "Suchtipps:",
+    "Note": "Notiz", "Sort by this column": "Nach dieser Spalte sortieren", "Look again": "Neu suchen",
+    "This table could not be made:": "Diese Tabelle ließ sich nicht erstellen:",
     "Related": "Verwandt", "Mentioned without a link": "Ohne Link erwähnt", "Link": "Verlinken",
     "Make it a link to this note": "Zu einem Link auf diese Notiz machen", "Linked": "Verlinkt",
     "No related notes yet": "Noch keine verwandten Notizen",

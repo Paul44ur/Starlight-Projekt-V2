@@ -413,6 +413,41 @@ def fields_of(text: str) -> list[str]:
     return list(dict.fromkeys(f.strip().strip("\"'") for f in text.split(",") if f.strip()))[:12]
 
 
+BLOCK_KEYS = {
+    "where": "where", "wo": "where", "wenn": "where", "sort": "sort", "sortieren": "sort",
+    "sortiert": "sort", "fields": "fields", "felder": "fields", "spalten": "fields",
+    "columns": "fields", "limit": "limit", "anzahl": "limit", "max": "limit",
+}  # fmt: skip
+BLOCK_LINE = re.compile(r"^\s*([A-Za-zÄÖÜäöüß]+)\s*:\s*(.*)$")
+
+
+def parse_block(text: str) -> dict[str, Any]:
+    """A ```query block's lines: where:, sort:, fields:, limit: (German: wo:, sortieren:,
+    felder:, anzahl:). Lines without a key belong to where (a block may be only a
+    condition). {"where", "sort", "fields", "limit"}."""
+    found: dict[str, Any] = {"where": "", "sort": "", "fields": "", "limit": 100}
+    where: list[str] = []
+    for line in text.splitlines():
+        if not line.strip() or line.lstrip().startswith("#"):
+            continue  # (a "#" line is a comment)
+        match = BLOCK_LINE.match(line)
+        key = BLOCK_KEYS.get(match.group(1).casefold(), "?") if match else "where"
+        value = match.group(2).strip() if match else line.strip()
+        if key == "?":
+            raise QueryError(f"{line.split(':')[0].strip()}: is not a query line; use where:, "
+                             "sort:, fields: or limit:")  # fmt: skip
+        if key == "where":
+            where.append(value)
+        elif key == "limit":
+            if not value.isdigit():
+                raise QueryError("limit: is a number of notes, e.g. limit: 20")
+            found["limit"] = max(1, min(int(value), 1000))
+        else:
+            found[key] = value
+    found["where"] = " ".join(w.strip() for w in where if w.strip())
+    return found
+
+
 def run(
     index: Any,
     where: str = "",

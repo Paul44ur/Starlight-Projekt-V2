@@ -31,14 +31,18 @@ Work goes block by block (section 9). One block is one session and one commit; m
 | E1 | Search operators with highlighted hits | M | B5 | **done** 2026-11-02 ("Notes plan E1: …") |
 | E2 | Related notes, mentions without a link, OCR text | M | E1 | **done** 2026-11-02 ("Notes plan E2: …") |
 | E3 | Query language (`query.py`) and `notes.query` | M | B2 | **done** 2026-11-02 ("Notes plan E3: …") |
-| E4 | Query blocks as live tables | M | E3, B6 | **next** |
-| F1 | Graph data, d3-force bundle, small graph per note | M | C1 | open |
+| E4 | Query blocks as live tables | M | E3, B6 | **done** 2026-11-02 ("Notes plan E4: …") |
+| F1 | Graph data, d3-force bundle, small graph per note | M | C1 | **next** |
 | F2 | Whole-graph view | M | F1 | open |
 | F3 | Boards: JSON Canvas files, tools, API | M | A2 | open |
 | F4 | Board view on the page | L | F3, B6 | open |
 | G1–G6 | Extras (export, Kanban, flashcards, live preview, Mermaid, deep links) | S–M each | see 9 | optional |
 
-Last updated: 2026-11-02 (A1 to E3 done. E3: `starlight/notebook/query.py` (`parse`,
+Last updated: 2026-11-02 (A1 to E4 done. E4: the table is made in the page from
+`POST /api/notes/query` (not `GET`, as first written: the block's text goes in the body);
+sorting by a column happens in the page, without asking again. Automations do not use
+`query.py` yet (the plan's "later and separately").
+E3: `starlight/notebook/query.py` (`parse`,
 `to_sql`, `order_by`, `fields_of`, `run`); E4's endpoint can call `query.run(index, where,
 sort, fields, limit)` and show `QueryError`'s text as it is. The block's lines (`where:`,
 `sort:`, `fields:`, `limit:`) are not read yet: that belongs to E4. Property values are

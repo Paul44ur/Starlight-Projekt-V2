@@ -220,7 +220,8 @@ function mdBlocks(parent, lines) {
       i++;
       while (i < lines.length && !close.test(lines[i])) { code.push(lines[i]); i++; }
       i++;  // the closing fence (still missing while the answer streams in)
-      parent.appendChild(mdCodeBlock(code.join("\n"), m[2]));
+      const special = mdHooks.code && mdHooks.code(m[2], code.join("\n"));  // (a query table)
+      parent.appendChild(special || mdCodeBlock(code.join("\n"), m[2]));
     } else if ((m = line.match(MD_MATH_BLOCK))) {
       const tex = [m[2]];
       i++;
