@@ -499,7 +499,8 @@ question again and replaces that answer); under it you see how fast it was writt
 The list on the left has your folders, pinned notes and a search box; **Ctrl+K** finds a
 note by its name. A note reads like a page: links to other notes (`[[Shopping]]`) open
 them, tags (`#home`) list the notes that have them, and the right side shows its outline,
-the notes that link to it and its properties. Links and tags in chat answers open here
+the notes that link to it, a small graph of the notes it is linked with (click a point to
+open that note) and its properties. Links and tags in chat answers open here
 too. The first visit brings a short welcome note with examples.
 
 **Searching notes.** The search box finds notes with all your words (the last one may be
@@ -1030,8 +1031,11 @@ If you installed with `Starlight.exe`, uv isn't on your PATH. Either install it 
 
 ### Third-party code
 
-Starlight ships one file built from other people's code:
+Starlight ships two files built from other people's code:
 `starlight/web/static/vendor/editor.js`, the text editor for the Notes page
-([CodeMirror 6](https://codemirror.net), MIT licence). Its licences are in
-`starlight/web/static/vendor/LICENSES.txt`. `bundles/editor/` holds the exact versions and
-the build; its README says how to rebuild the file. You do not need Node.js to run Starlight.
+([CodeMirror 6](https://codemirror.net), MIT licence), with its licences in
+`starlight/web/static/vendor/LICENSES.txt`; and `starlight/web/static/vendor/graph.js`, the
+layout of the Notes page's graphs ([d3-force](https://d3js.org/d3-force), ISC licence), with
+its licences in `starlight/web/static/vendor/graph-LICENSES.txt`. `bundles/editor/` and
+`bundles/graph/` hold the exact versions and the builds; their READMEs say how to rebuild
+the files. You do not need Node.js to run Starlight.

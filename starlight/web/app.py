@@ -57,10 +57,12 @@ from starlight.web.auth import COOKIE, Device, Devices
 from starlight.web.notes_api import add_notes_api
 
 STATIC = Path(__file__).with_name("static")
-# The files in static/vendor the pages may load (see bundles/editor/README.md).
+# The files in static/vendor the pages may load (see bundles/*/README.md).
 VENDOR = {
     "editor.js": "text/javascript; charset=utf-8",  # CodeMirror 6, for the Notes page
     "LICENSES.txt": "text/plain; charset=utf-8",
+    "graph.js": "text/javascript; charset=utf-8",  # d3-force, for the Notes page's graphs
+    "graph-LICENSES.txt": "text/plain; charset=utf-8",
 }
 LOOPBACK = {"127.0.0.1", "localhost", "::1"}
 LOOPBACK_PEERS = {"127.0.0.1", "::1"}

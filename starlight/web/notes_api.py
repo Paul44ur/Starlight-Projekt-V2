@@ -38,6 +38,7 @@ texts, and the page lets you choose.
     POST   /api/note/link-mention            {path, source, line, expected}: link one
     GET    /api/notes/tasks                  open tasks: overdue, today, upcoming, none
     POST   /api/notes/query                  {text}: a ```query block's table
+    GET    /api/notes/graph?around=&depth=   the notes and their links (around one note)
     POST   /api/note/rename                  {path, title, fix_links}: links follow
     DELETE /api/note?path=                   to the trash
     GET    /api/note/versions?path=          the kept versions
@@ -63,6 +64,7 @@ from starlight.core.safepaths import inside
 from starlight.core.tools import ToolError
 from starlight.notebook import (
     NoteConflict,
+    graph,
     markdown,
     query,
     related,
@@ -596,6 +598,18 @@ def add_notes_api(
             except OSError as exc:
                 raise _bad(f"could not save {source.name}: {locked(exc)}", 409) from exc
         return {"path": rel(source), "stamp": written.stamp, "version": written.version}
+
+    @app.get("/api/notes/graph")
+    def notes_graph(
+        request: Request, around: str = "", depth: int = 1, limit: int = graph.LIMIT
+    ) -> dict[str, Any]:
+        """The notes as points and their links as lines: all of them, or ``around`` one note
+        (``depth`` links away). At most ``limit`` points."""
+        local_only(request)
+        found = index()
+        found.refresh()
+        centre = rel(note_file(around)) if around else None
+        return graph.graph(found, centre, depth, limit)
 
     @app.post("/api/notes/query")
     async def run_query(request: Request) -> dict[str, Any]:

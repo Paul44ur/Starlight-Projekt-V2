@@ -537,6 +537,14 @@ class Index:
 
     # -- links ---------------------------------------------------------------------------
 
+    def link_pairs(self) -> list[tuple[str, str]]:
+        """Every link in every note: (the note, the target as written)."""
+        with self._db() as db:
+            rows = db.execute(
+                "SELECT f.path, l.target FROM links l JOIN files f ON f.id = l.file_id"
+            ).fetchall()
+        return [(r[0], r[1]) for r in rows]
+
     def resolver(self) -> Resolver:
         with self._db() as db:
             rows = db.execute("SELECT path, aliases FROM files").fetchall()

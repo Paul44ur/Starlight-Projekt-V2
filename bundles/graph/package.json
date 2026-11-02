@@ -1,0 +1,19 @@
+{
+  "name": "starlight-graph-bundle",
+  "private": true,
+  "description": "Builds starlight/web/static/vendor/graph.js (d3-force) for the Notes page's graphs.",
+  "license": "MIT",
+  "type": "module",
+  "scripts": {
+    "build": "node build.mjs"
+  },
+  "dependencies": {
+    "d3-dispatch": "3.0.1",
+    "d3-force": "3.0.0",
+    "d3-quadtree": "3.0.1",
+    "d3-timer": "3.0.1"
+  },
+  "devDependencies": {
+    "esbuild": "0.28.2"
+  }
+}

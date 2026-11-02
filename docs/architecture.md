@@ -476,6 +476,15 @@ without a key belong to the condition; `#` lines are comments). `POST /api/notes
 (the Notes page; the chat keeps the block as code, as phones cannot reach the notes API):
 names link to the notes, a click on a header sorts in the page (empty cells last either
 way), ↻ asks again, and mistakes show in a `.query-error` box.
+Block F1 draws the links. `notebook/graph.py`: `graph(index, around, depth, limit)` makes
+points (notes) and lines (a link once between two notes, either way; not to pictures,
+missing notes or itself) from `Index.link_pairs` and the resolver; `around` keeps the notes
+up to `depth` links away (at most 3), and at most `limit` points stay (nearest, then most
+links). `GET /api/notes/graph`. The layout is d3-force, shipped as
+`static/vendor/graph.js` (15 KB, ISC; built in `bundles/graph/` like the editor, with
+`graph.sha256` and `graph-LICENSES.txt`; served by `/vendor/`). The Notes page loads it on
+first use and draws the note and its neighbours as SVG in the right panel; a point opens
+its note (click or Enter).
 
 **Safety limits you set (`core/safety.py`).** Settings -> Safety limits chooses a level
 (strict, balanced, relaxed) and any of 29 switches on top, kept in

@@ -15,6 +15,7 @@ This package grows block by block. So far:
 * ``related``: related notes by links and tags, mentions without a link, linking one.
 * ``query``: a small language to find notes by properties ("status is open and tag is
   work"), turned into SQL with every value as a parameter.
+* ``graph``: the notes as points and their links as lines (all, or around one note).
 """
 
 from __future__ import annotations
