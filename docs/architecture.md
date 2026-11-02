@@ -506,6 +506,18 @@ by the note's name; a new board in `Boards/` when there is none); writes go thro
 `write_note`, so versions are kept. API: `GET /api/boards`, `GET/PUT /api/board?path=`
 (with stamps: 409 on a conflict; 422 when it is not a board), `POST /api/board`; paths must
 end in `.canvas` and stay in the Starlight folder (`relative_path`).
+Block F4 shows boards on the page. `static/board.js` (an ES module served at `/board.js`,
+loaded on first use) draws a board as HTML cards in a transformed "world" layer with an SVG
+layer for the arrows: text cards through markdown.js (text only), note cards with the
+note's start from `/api/note`, pictures from `/api/notes/file/`, link cards as links only
+for http(s) (anything else stays text), groups behind the rest. One set of pointer
+handlers moves cards (a group with the cards inside it; a 20-point grid unless Alt is
+held), resizes them, draws arrows from a side dot to the card under the pointer (the target
+side is the nearest), and pans; the wheel zooms around the pointer; double-click writes in
+a text card or makes one; Delete removes the selection. Changes are saved 0.7 s later with
+`PUT /api/board` and the stamp; a 409 keeps the board unsaved and offers "Load it again".
+notes.html: a Boards view (`showBoards`), `?board=` opens one (`openBoardView`), and
+leaving a board saves its last change first (`stopEditing`).
 
 **Safety limits you set (`core/safety.py`).** Settings -> Safety limits chooses a level
 (strict, balanced, relaxed) and any of 29 switches on top, kept in

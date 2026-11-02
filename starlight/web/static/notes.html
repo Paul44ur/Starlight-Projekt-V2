@@ -98,6 +98,46 @@
   .info dl { margin: 0; font-size: 13.5px; display: grid; grid-template-columns: auto 1fr; gap: 4px 10px; }
   .info dt { color: var(--dim); } .info dd { margin: 0; overflow-wrap: anywhere; }
   .info .none { color: var(--dim); font-size: 13px; padding: 0 6px; }
+  body.board-open .column { max-width: none; }
+  .board-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: 4px 0 10px; }
+  .board-bar .tool { padding: 4px 10px; }
+  .board-bar .save-state { margin-left: auto; }
+  .board-stage { position: relative; height: max(420px, calc(100vh - 230px)); overflow: hidden; outline: none;
+                 border: 1px solid var(--border); border-radius: 12px; touch-action: none; cursor: grab;
+                 background-color: var(--bg);
+                 background-image: radial-gradient(circle, color-mix(in srgb, var(--text) 16%, transparent) 1px, transparent 1px);
+                 background-size: 20px 20px; }
+  .board-stage:focus-visible { border-color: var(--accent); }
+  .board-world { position: absolute; left: 0; top: 0; transform-origin: 0 0; }
+  .board-arrows { position: absolute; left: 0; top: 0; overflow: visible; pointer-events: none; }
+  .board-arrows .board-edge { pointer-events: auto; cursor: pointer; }
+  .board-line { fill: none; stroke: var(--dim); stroke-width: 2; }
+  .board-hit { fill: none; stroke: transparent; stroke-width: 14; }
+  .board-edge.selected .board-line { stroke: var(--accent); stroke-width: 3; }
+  .board-head { fill: var(--dim); }
+  .board-ghost { stroke: var(--accent); stroke-dasharray: 5 4; }
+  .board-label { font-size: 12px; fill: var(--text); paint-order: stroke; stroke: var(--bg); stroke-width: 4px; }
+  .board-card { --card: var(--border); position: absolute; box-sizing: border-box; background: var(--panel);
+                border: 2px solid var(--card); border-radius: 10px; box-shadow: var(--shadow); cursor: move;
+                font-size: 14px; color: var(--text); }
+  .board-card.selected { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .board-body { position: absolute; inset: 0; overflow: auto; padding: 8px 12px; }
+  .board-body.md > :first-child { margin-top: 0; }
+  .board-group { background: color-mix(in srgb, var(--card) 8%, transparent); box-shadow: none; }
+  .board-group-label { position: absolute; top: -24px; left: 4px; font-weight: 600; font-size: 13px; color: var(--dim); }
+  .board-file { font-weight: 600; display: block; margin-bottom: 4px; }
+  .board-picture { max-width: 100%; max-height: calc(100% - 26px); display: block; border-radius: 6px; }
+  .board-preview { font-size: 13px; color: var(--dim); }
+  .board-link { word-break: break-all; }
+  .board-edit { position: absolute; inset: 0; width: 100%; height: 100%; box-sizing: border-box; resize: none;
+                border: none; border-radius: 8px; padding: 8px 12px; font: inherit; background: var(--panel); color: var(--text); }
+  .board-dot { position: absolute; width: 12px; height: 12px; border-radius: 50%; background: var(--accent);
+               border: 2px solid var(--panel); opacity: 0; cursor: crosshair; z-index: 2; }
+  .board-card:hover .board-dot, .board-card.selected .board-dot { opacity: 1; }
+  .board-dot-top { top: -7px; left: calc(50% - 6px); } .board-dot-bottom { bottom: -7px; left: calc(50% - 6px); }
+  .board-dot-left { left: -7px; top: calc(50% - 6px); } .board-dot-right { right: -7px; top: calc(50% - 6px); }
+  .board-resize { position: absolute; right: -2px; bottom: -2px; width: 14px; height: 14px; cursor: nwse-resize; z-index: 2;
+                  background: linear-gradient(135deg, transparent 50%, var(--dim) 50%); border-radius: 0 0 8px 0; opacity: .7; }
   .graph-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; margin: 4px 0 12px; }
   .graph-bar select { max-width: 14em; }
   .graph-check { display: inline-flex; align-items: center; gap: 4px; font-size: 14px; }
@@ -266,6 +306,7 @@
       <button data-view="inbox"><span class="ico">📥</span>Inbox</button>
       <button data-view="tasks"><span class="ico">☑</span>Tasks</button>
       <button data-view="graph"><span class="ico">✳</span>Graph</button>
+      <button data-view="boards"><span class="ico">🗂</span>Boards</button>
       <button data-view="trash"><span class="ico">🗑</span>Trash</button>
     </div>
     <div id="pinned-box" hidden><h3>Pinned</h3><ul class="plain" id="pinned" translate="no"></ul></div>
@@ -455,6 +496,7 @@ async function go(params, push = true) {
 
 async function route(params) {
   state.view = params.view || null;
+  if (params.board) return openBoardView(params.board);
   if (params.path) return openNote(params.path, params.heading);
   if (params.open) {
     try {
@@ -1011,7 +1053,62 @@ function showView(view) {
   }
   if (view === "trash") return showTrash();
   if (view === "tasks") return showTasks();
+  if (view === "boards") return showBoards();
   return showGraph();
+}
+
+// -- boards (block F4) ---------------------------------------------------------------------
+// The Boards view lists the .canvas boards; a board opens in board.js (loaded on first use).
+
+async function showBoards() {
+  clearInfo(); state.view = "boards"; markCurrent();
+  column.replaceChildren(el("h1", "title", t("Boards")));
+  const make = column.appendChild(el("button", "ok", "＋ New board"));
+  make.type = "button";
+  make.onclick = async () => {
+    const title = window.prompt(t("What should the board be called?"), t("Board"));
+    if (!title) return;
+    try {
+      const made = await api("/api/board", { method: "POST", body: { title } });
+      go({ board: made.path });
+    } catch (e) { toast(e.message); }
+  };
+  let found;
+  try { found = await api("/api/boards"); } catch (e) { toast(e.message); return; }
+  if (state.view !== "boards") return;
+  if (!found.boards.length) {
+    column.appendChild(el("div", "soon", t("No boards yet. A board holds cards and arrows: ideas, notes, links, side by side.")));
+    return;
+  }
+  const list = column.appendChild(el("ul", "cards"));
+  for (const board of found.boards) {
+    const b = list.appendChild(el("li")).appendChild(el("button", "card-note"));
+    b.type = "button";
+    b.setAttribute("translate", "no");
+    b.append(el("div", "t", board.title), el("div", "w", board.path.split("/").slice(0, -1).join("/")));
+    b.onclick = () => go({ board: board.path });
+  }
+}
+
+let boardKit = null;
+async function openBoardView(path) {
+  clearInfo(); state.view = "boards"; markCurrent();
+  let board;
+  try { board = await api("/api/board?" + new URLSearchParams({ path })); }
+  catch (e) { column.replaceChildren(el("p", "notice", e.message)); return; }
+  try { boardKit ||= await import("/board.js"); }
+  catch (e) { toast(e.message); return; }
+  document.title = board.title + " · Starlight";
+  document.body.classList.add("board-open");
+  const title = el("h1", "title", board.title);
+  title.setAttribute("translate", "no");
+  column.replaceChildren(title);
+  const host = column.appendChild(el("div", "board-host"));
+  state.board = boardKit.openBoard(host, board, {
+    api, el, t, renderMarkdown, toast,
+    openNote: (file) => go({ path: file }),
+    reopen: () => { state.board = null; openBoardView(path); },
+  });
 }
 
 // -- the whole graph (block F2) ------------------------------------------------------------
@@ -1472,6 +1569,14 @@ async function save() {
 
 // Leave the editor, saving first. False (staying) when it could not be saved.
 async function stopEditing() {
+  if (state.board) {  // (a board's last change is saved before leaving it)
+    if (state.board.dirty && !(await state.board.save())) {
+      toast(t("The board is not saved yet. Try again in a moment."));
+      return false;
+    }
+    state.board = null;
+    document.body.classList.remove("board-open");
+  }
   if (!edit.editor) return true;
   if (!(await save())) {
     toast(t("Not saved yet: your text is still here. Try again in a moment."));

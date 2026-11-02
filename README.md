@@ -505,7 +505,16 @@ open that note) and its properties. **Graph** on the left shows all your notes a
 their links as lines: coloured by folder, bigger with more links. Drag to move it, use the
 wheel or + and − to zoom (names show when you zoom in), drag a point to move it, and click
 a point to open its note. Choose a folder or a tag to see only those notes, and tick
-**Memories** to see what Starlight remembers among them. Links and tags in chat answers open here
+**Memories** to see what Starlight remembers among them.
+
+**Boards.** **Boards** on the left lists your boards; **＋ New board** starts one. On a
+board, the buttons add a text card, a note card (it shows the note), a web link or a group
+(a frame around cards). Drag a card to move it (a group takes its cards along), its corner
+to resize it, and one of the dots on its edge onto another card to draw an arrow.
+Double-click a text card to write in it, or the empty space for a new one. Click a card or
+an arrow and press Delete to remove it. Drag the empty space to move around and use the
+wheel to zoom. Everything is saved by itself a moment later; if the board was changed
+elsewhere meanwhile, nothing is overwritten and **Load it again** shows the other version. Links and tags in chat answers open here
 too. The first visit brings a short welcome note with examples.
 
 **Searching notes.** The search box finds notes with all your words (the last one may be
