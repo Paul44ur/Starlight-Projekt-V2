@@ -474,6 +474,16 @@ class Index:
             ).fetchall()
         return [(r[0], r[1]) for r in rows]
 
+    def tags_of(self, path: str) -> list[str]:
+        """A note's tags (as compared: lower case, without "#"), each once."""
+        with self._db() as db:
+            rows = db.execute(
+                "SELECT DISTINCT t.tag FROM tags t JOIN files f ON f.id = t.file_id"
+                " WHERE f.path = ? ORDER BY t.tag",
+                (path,),
+            ).fetchall()
+        return [r[0] for r in rows]
+
     def with_tag(self, tag: str) -> list[str]:
         """Notes with ``tag`` or a tag under it (``work`` finds ``#work/projects`` too)."""
         wanted = key(tag.lstrip("#"))

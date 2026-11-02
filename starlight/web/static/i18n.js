@@ -162,6 +162,11 @@
       "Notizen ohne Titel warten hier. Starlight kann sie in deine Notizen einsortieren; es fragt, bevor es etwas verschiebt.",
     "Sort my inbox": "Eingang sortieren",
     "Search tips:": "Suchtipps:",
+    "Related": "Verwandt", "Mentioned without a link": "Ohne Link erwähnt", "Link": "Verlinken",
+    "Make it a link to this note": "Zu einem Link auf diese Notiz machen", "Linked": "Verlinkt",
+    "No related notes yet": "Noch keine verwandten Notizen",
+    "No mentions without a link": "Keine Erwähnungen ohne Link",
+    "links here": "verlinkt hierher", "linked from here": "von hier verlinkt", "similar": "ähnlich",
     // the Notes page: tasks
     "Overdue": "Überfällig", "Upcoming": "Demnächst", "No date": "Ohne Datum",
     "Tick it off": "Abhaken", "Open it again": "Wieder öffnen",

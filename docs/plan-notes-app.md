@@ -29,8 +29,8 @@ Work goes block by block (section 9). One block is one session and one commit; m
 | D3 | Tasks in notes: parser, writing back, to-do integration | M | B2 | **done** 2026-11-02 ("Notes plan D3: …") |
 | D4 | Tasks on the page: boxes, date chips, Tasks view | M | D3, B6 | **done** 2026-11-02 ("Notes plan D4: …") |
 | E1 | Search operators with highlighted hits | M | B5 | **done** 2026-11-02 ("Notes plan E1: …") |
-| E2 | Related notes, mentions without a link, OCR text | M | E1 | **next** |
-| E3 | Query language (`query.py`) and `notes.query` | M | B2 | open |
+| E2 | Related notes, mentions without a link, OCR text | M | E1 | **done** 2026-11-02 ("Notes plan E2: …") |
+| E3 | Query language (`query.py`) and `notes.query` | M | B2 | **next** |
 | E4 | Query blocks as live tables | M | E3, B6 | open |
 | F1 | Graph data, d3-force bundle, small graph per note | M | C1 | open |
 | F2 | Whole-graph view | M | F1 | open |
@@ -38,7 +38,13 @@ Work goes block by block (section 9). One block is one session and one commit; m
 | F4 | Board view on the page | L | F3, B6 | open |
 | G1–G6 | Extras (export, Kanban, flashcards, live preview, Mermaid, deep links) | S–M each | see 9 | optional |
 
-Last updated: 2026-11-02 (A1 to E1 done. E1: `starlight/notebook/search.py` (`parse`,
+Last updated: 2026-11-02 (A1 to E2 done. E2: `starlight/notebook/related.py`; the docs
+module's OCR is `modules/docs/ocr.py` (Tesseract run as a program, no Python package) and
+is on by default but does nothing without Tesseract. The knowledge base only reads the
+Notes folder of the Starlight folder (`include_notes`), so related-by-meaning works for
+notes there; others fall back to links and tags. Mentions skip notes that already link to
+the note anywhere.
+E1: `starlight/notebook/search.py` (`parse`,
 `fts_query`, `search`, `marks`, `snippet`, `fold`); `Index.search` now uses it, and the
 index got `fts_paths`, `scan_paths`, `bodies` and `with_property`. Without FTS5, accents
 count (the scan's stored text is casefolded only). `notes.find` now searches the whole

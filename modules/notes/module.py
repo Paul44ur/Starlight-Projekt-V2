@@ -24,7 +24,7 @@ from typing import Any
 from pydantic import BaseModel
 
 from starlight.core import Module, ModuleContext, ToolError, tool
-from starlight.notebook import Written, append_note, search, templates, write_note
+from starlight.notebook import Written, append_note, related, search, templates, write_note
 from starlight.notebook.markdown import (
     add_tag,
     iso_dates,
@@ -306,6 +306,40 @@ class NotesModule(Module):
         if untrusted:  # a clipping's words are outside content: the injection guard goes up
             answer["untrusted"] = True
         return answer
+
+    @tool(name="related")
+    async def related_notes(self, title: str, limit: int = 5) -> dict[str, Any]:
+        """Notes related to this one: by what they are about (the knowledge base, once it
+        has read the note), else by links and shared tags."""
+        path = self._find(title)
+        index = self.ctx.notebook
+        index.refresh()
+        relative = self._relative(path)
+        limit = max(1, min(limit, 20))
+        notes: list[dict[str, Any]] = []
+        if self.ctx.has_tool("docs.similar"):
+            answer = await self.ctx.call("docs.similar", {"path": str(path), "limit": limit * 3})
+            if answer.ok:
+                notes = related.by_meaning(index, relative, answer.output, limit)
+        if notes:
+            return {"note": path.stem, "related": notes, "by": "meaning"}
+        found = related.by_structure(index, relative, limit)
+        return {"note": path.stem, "related": found, "by": "links and tags"}
+
+    @tool
+    def mentions(self, title: str) -> dict[str, Any]:
+        """Notes that name this one in their text without linking to it, with the lines
+        (the Notes page links them with one click)."""
+        path = self._find(title)
+        index = self.ctx.notebook
+        index.refresh()
+        found = related.mentions(index, self._relative(path))
+        return {
+            "note": path.stem,
+            "count": len(found),
+            "mentions": [{"note": m.title, "path": m.path, "line": m.line + 1,
+                          "text": m.text.strip()[:300]} for m in found],
+        }  # fmt: skip
 
     @tool
     async def delete(self, title: str) -> dict[str, Any]:

@@ -32,7 +32,7 @@ from typing import Any
 from starlight.notebook import markdown
 from starlight.notebook.history import History
 from starlight.notebook.templates import FOLDER as TEMPLATES
-from starlight.notebook.write import NoteConflict, Written, stamp, write_note
+from starlight.notebook.write import NoteConflict, Written, read_for_change, write_note
 
 DONE = ("x", "X")
 SIMPLE_REPEATS = {
@@ -250,16 +250,8 @@ class Ticked:
 
 
 def _read(file: Path) -> tuple[str, str, str, str]:
-    """The note's text, its stamp (taken first), its line ending and its byte order mark."""
-    from starlight.text import decode_text
-
-    before = stamp(file)
-    try:
-        raw = file.read_bytes()
-    except FileNotFoundError as exc:
-        raise NoteConflict(f"the note {file.stem} is not there any more") from exc
-    newline = "\r\n" if b"\r\n" in raw else "\n"
-    return decode_text(raw), before, newline, "﻿" if raw.startswith(b"\xef\xbb\xbf") else ""
+    read = read_for_change(file)
+    return read.text, read.stamp, read.newline, read.bom
 
 
 def _apply(

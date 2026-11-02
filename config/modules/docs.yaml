@@ -11,3 +11,12 @@ max_file_mb: 30
 max_files: 20000
 chunk_chars: 1200
 top_k: 6
+# The text in pictures and scanned PDF pages, when Tesseract (free OCR) is installed
+# (Windows: the UB Mannheim installer, C:\Program Files\Tesseract-OCR). Files already read
+# are read again when they change.
+ocr: true
+ocr_command: ""              # tesseract.exe, when it is not found by itself
+ocr_languages: deu+eng       # the installed ones of these are used
+ocr_max_mb: 15               # bigger pictures are left out
+ocr_max_pages: 30            # scanned pages read per PDF
+ocr_seconds: 60              # per picture

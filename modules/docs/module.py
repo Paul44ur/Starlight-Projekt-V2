@@ -4,7 +4,11 @@ pets?", "find the invoice from the plumber". Everything stays on this PC.
 Files are split into overlapping parts, each part is turned into a vector with memory's
 embedding model, and the vectors are kept in data/modules/docs/index.sqlite. Only new or
 changed files are read again. `ask` finds the best parts and has the model answer from
-them, citing the file and page; `search` just lists the matching parts.
+them, citing the file and page; `search` just lists the matching parts; `similar` finds the
+files most like one file (the Notes page's related notes).
+
+With Tesseract installed, the text in pictures and in scanned PDF pages is read too (ocr.py;
+`ocr: false` switches it off).
 """
 
 from __future__ import annotations
@@ -30,6 +34,8 @@ from starlight.core.config import ConfigError, write_yaml_config
 from starlight.core.safepaths import expand, inside, protects_starlight
 from starlight.text import decode_text
 
+from .ocr import PICTURES, Reader, Tesseract, find_tesseract, read_picture
+
 TEXT = {".txt", ".md", ".markdown", ".csv", ".log", ".json", ".yaml", ".yml", ".ini", ".rst"}
 HTML = {".html", ".htm"}
 # (folders starting with a dot, like .git and .venv, are skipped as well)
@@ -50,6 +56,13 @@ class Config(BaseModel):
     max_files: int = Field(default=20000, ge=10)
     chunk_chars: int = Field(default=1200, ge=200, le=8000)
     top_k: int = Field(default=6, ge=1, le=30)
+    # the text in pictures and scanned PDF pages (when Tesseract is installed)
+    ocr: bool = True
+    ocr_command: str = ""  # tesseract.exe, when it is not found by itself
+    ocr_languages: str = "deu+eng"
+    ocr_max_mb: int = Field(default=15, ge=1)  # bigger pictures are left out
+    ocr_max_pages: int = Field(default=30, ge=1, le=1000)  # scanned pages read per PDF
+    ocr_seconds: int = Field(default=60, ge=5, le=600)  # per picture
 
 
 @dataclass
@@ -62,9 +75,15 @@ class Part:
 # -- reading files -------------------------------------------------------------------------
 
 
-def read_pages(path: Path) -> list[tuple[int, str]]:
-    """(page, text) for a file; [] when it has no readable text or its reader is missing."""
+SCANNED = 20  # a PDF page with fewer letters than this is a scan: its pictures are read
+
+
+def read_pages(path: Path, ocr: Reader | None = None, ocr_pages: int = 30) -> list[tuple[int, str]]:
+    """(page, text) for a file; [] when it has no readable text or its reader is missing.
+    With ``ocr``, the text of a picture and of up to ``ocr_pages`` scanned PDF pages."""
     suffix = path.suffix.lower()
+    if suffix in PICTURES:
+        return [(0, ocr.read(path))] if ocr is not None else []
     if suffix in TEXT:
         return [(0, decode_text(path.read_bytes()))]
     if suffix in HTML:
@@ -77,7 +96,16 @@ def read_pages(path: Path) -> list[tuple[int, str]]:
         except ImportError:
             return []
         reader = PdfReader(str(path))
-        return [(i, page.extract_text() or "") for i, page in enumerate(reader.pages, 1)]
+        pages = []
+        for number, page in enumerate(reader.pages, 1):
+            text = page.extract_text() or ""
+            if ocr is not None and ocr_pages > 0 and len(text.strip()) < SCANNED:
+                ocr_pages -= 1
+                with contextlib.suppress(Exception):  # (a picture pypdf cannot unpack)
+                    read = [read_picture(ocr, i.data, Path(i.name).suffix) for i in page.images]
+                    text = "\n".join(t for t in [text.strip(), *read] if t)
+            pages.append((number, text))
+        return pages
     if suffix == ".docx":
         try:
             import docx
@@ -108,8 +136,9 @@ def read_pages(path: Path) -> list[tuple[int, str]]:
     return []
 
 
-def readable(path: Path) -> bool:
-    return path.suffix.lower() in TEXT | HTML | {".pdf", ".docx", ".xlsx"}
+def readable(path: Path, pictures: bool = False) -> bool:
+    known = TEXT | HTML | {".pdf", ".docx", ".xlsx"} | (PICTURES if pictures else set())
+    return path.suffix.lower() in known
 
 
 def chunks(text: str, size: int) -> Iterator[str]:
@@ -156,6 +185,10 @@ class DocsModule(Module):
         self._busy = asyncio.Lock()
         self._index: tuple[list[Part], Matrix] | None = None  # (parts, their vectors as a matrix)
         self._generation = 0  # bumped whenever the index is dropped
+        self.ocr: Reader | None = None
+        command = find_tesseract(self.config.ocr_command) if self.config.ocr else None
+        if command:
+            self.ocr = Tesseract(command, self.config.ocr_languages, self.config.ocr_seconds)
         if self.config.reindex_minutes:
             ctx.every(self.config.reindex_minutes * 60, self.reindex, "reindex", first_delay=30)
 
@@ -186,6 +219,7 @@ class DocsModule(Module):
     def _files(self) -> Iterator[Path]:
         own = self.ctx.paths.root.resolve()
         limit = self.config.max_file_mb * 1024**2
+        picture_limit = min(limit, self.config.ocr_max_mb * 1024**2)
         count = 0
         for root in self._roots():
             for folder, dirs, names in os.walk(root):
@@ -196,10 +230,11 @@ class DocsModule(Module):
                 dirs[:] = [d for d in dirs if d not in SKIP_DIRS and not d.startswith(".")]
                 for name in names:
                     path = here / name
-                    if not readable(path) or name.startswith("~$"):  # Office lock files
-                        continue
+                    if not readable(path, self.ocr is not None) or name.startswith("~$"):
+                        continue  # (~$: Office's lock files)
+                    picture = path.suffix.lower() in PICTURES
                     with contextlib.suppress(OSError):
-                        if path.stat().st_size <= limit:
+                        if path.stat().st_size <= (picture_limit if picture else limit):
                             count += 1
                             if count > self.config.max_files:
                                 return
@@ -276,7 +311,9 @@ class DocsModule(Module):
                         if known.get(key) == (stat.st_mtime, stat.st_size, self._embedder_id):
                             continue
                         self.ctx.kill_switch.check()
-                        pages = await asyncio.to_thread(read_pages, path)
+                        pages = await asyncio.to_thread(
+                            read_pages, path, self.ocr, self.config.ocr_max_pages
+                        )
                     except KillSwitchEngaged:
                         raise
                     except Exception as exc:  # a damaged or locked file must not stop the rest
@@ -327,16 +364,19 @@ class DocsModule(Module):
         )
         return parts, matrix
 
-    async def _search(self, query: str, top_k: int) -> list[tuple[Part, float]]:
-        if not query.strip():
-            raise ToolError("what should I look for?")
+    async def _loaded(self) -> tuple[list[Part], Matrix]:
         index = self._index  # one snapshot: a reindex may reset self._index while we wait
         if index is None:
             generation = self._generation
             index = await asyncio.to_thread(self._load)
             if generation == self._generation:  # not invalidated while it was loading
                 self._index = index
-        parts, matrix = index
+        return index
+
+    async def _search(self, query: str, top_k: int) -> list[tuple[Part, float]]:
+        if not query.strip():
+            raise ToolError("what should I look for?")
+        parts, matrix = await self._loaded()
         if not parts:
             raise ToolError(
                 "the knowledge base is empty: add a folder with docs.add_folder, then wait "
@@ -404,6 +444,39 @@ class DocsModule(Module):
                 }
                 for p, s in hits
             ]
+        }
+
+    @tool
+    async def similar(self, path: str, limit: int = 5) -> dict[str, Any]:
+        """The files in the knowledge base most like this one (by what they are about), best
+        first: for "notes related to this one". `path` is the file's full path."""
+        parts, matrix = await self._loaded()
+        wanted = Path(path).expanduser()
+        keys = {p.path for p in parts}
+        key = str(wanted) if str(wanted) in keys else None
+        if key is None:  # (the same file, written another way)
+            with contextlib.suppress(OSError):
+                resolved = wanted.resolve()
+                key = next((k for k in keys if Path(k).resolve() == resolved), None)
+        if key is None:
+            raise ToolError(f"{wanted.name} is not in the knowledge base (yet)")
+        mine = np.array([i for i, p in enumerate(parts) if p.path == key])
+        centre = matrix[mine].mean(axis=0)
+        centre /= float(np.linalg.norm(centre)) or 1.0
+        scores = matrix @ centre
+        best: dict[str, tuple[float, int]] = {}  # file -> (its best part's score, that part)
+        for i in np.argsort(-scores):
+            other = parts[int(i)].path
+            if other != key and other not in best:
+                best[other] = (float(scores[i]), int(i))
+                if len(best) >= max(1, min(limit, 50)):
+                    break
+        return {
+            "file": key,
+            "similar": [
+                {"file": f, "score": round(score, 3), "snippet": parts[i].text[:200]}
+                for f, (score, i) in best.items()
+            ],
         }
 
     @tool

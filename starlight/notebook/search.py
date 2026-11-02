@@ -87,7 +87,7 @@ def fold(text: str) -> str:
     return "".join(out)
 
 
-def _pattern(term: str, prefix: bool) -> re.Pattern[str]:
+def word_pattern(term: str, prefix: bool) -> re.Pattern[str]:
     """Where ``term`` (folded) stands in folded text: at the start of a word; a phrase with
     any spaces or marks between its words; the whole word unless ``prefix``."""
     words = [re.escape(fold(w)) for w in term.split()]
@@ -100,7 +100,7 @@ def marks(text: str, query: Query) -> list[tuple[int, int]]:
     folded = fold(text)
     found: list[tuple[int, int]] = []
     for term in query.terms:
-        for hit in _pattern(term, prefix=True).finditer(folded):
+        for hit in word_pattern(term, prefix=True).finditer(folded):
             found.append((hit.start(), hit.end()))
     merged: list[tuple[int, int]] = []
     for start, end in sorted(found):
@@ -176,9 +176,11 @@ def fts_query(query: Query) -> str:
 
 def _contains(folded: str, query: Query) -> bool:
     """The plain scan's test: every term there (the last word as a prefix), none left out."""
-    wanted = [(_pattern(p, False), True) for p in query.phrases]
-    wanted += [(_pattern(w, n == len(query.words) - 1), True) for n, w in enumerate(query.words)]
-    wanted += [(_pattern(w, False), False) for w in query.without]
+    wanted = [(word_pattern(p, False), True) for p in query.phrases]
+    wanted += [
+        (word_pattern(w, n == len(query.words) - 1), True) for n, w in enumerate(query.words)
+    ]
+    wanted += [(word_pattern(w, False), False) for w in query.without]
     return all(bool(p.search(folded)) == present for p, present in wanted)
 
 
@@ -212,8 +214,8 @@ def search(index: Any, text: str, limit: int = 20) -> list[Result]:
 def _rank(row: tuple[str, str, str], query: Query) -> tuple[int, int, str]:
     """Without FTS5: words in the title first, then how often they are in the note."""
     title, body = fold(row[1]), fold(row[2])
-    in_title = sum(bool(_pattern(t, True).search(title)) for t in query.terms)
-    count = sum(len(_pattern(t, True).findall(body)) for t in query.terms)
+    in_title = sum(bool(word_pattern(t, True).search(title)) for t in query.terms)
+    count = sum(len(word_pattern(t, True).findall(body)) for t in query.terms)
     return (-in_title, -count, row[0].casefold())
 
 

@@ -443,6 +443,20 @@ found on text folded letter for letter (`fold`: no case, no accents, the same le
 `Index.search`, `GET /api/notes/search` and `notes.find` use it; `notes.find` returns the
 matching lines, searches the whole Starlight folder, and says `untrusted` when a clipping is
 among them. The page marks the hits and shows the search tips.
+Block E2 finds what belongs together. `notebook/related.py`: `by_structure` (links either
+way count 3, each shared tag 2, with the reasons), `by_meaning` (turns `docs.similar`'s
+answer into notes of the notebook), `mentions` (lines of other notes that name the note or
+an alias, three letters at least, as whole words outside code, links and web addresses;
+not in its properties, not in notes that already link to it, not in clippings) and
+`link_mention` (`[[Name]]` or `[[Name|as written]]` on that one line, through
+`read_for_change` and `write_note`; refused when the line changed; the link is the note's
+name, or its path when the name would lead elsewhere). The docs module has `docs.similar`
+(the mean of a file's part vectors against all parts, best part per file) and OCR
+(`modules/docs/ocr.py`: Tesseract as a program, found on PATH, in its Windows folder or
+`ocr_command`; pictures up to `ocr_max_mb`, PDF pages with almost no text up to
+`ocr_max_pages`, `ocr_seconds` each). Tools `notes.related`, `notes.mentions`; API
+`GET /api/note/related`, `GET /api/note/mentions`, `POST /api/note/link-mention`; the page
+shows both lists in the right panel.
 
 **Safety limits you set (`core/safety.py`).** Settings -> Safety limits chooses a level
 (strict, balanced, relaxed) and any of 29 switches on top, kept in

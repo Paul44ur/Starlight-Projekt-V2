@@ -68,7 +68,7 @@ and answer you on WhatsApp. It will ask you before it does anything risky. And o
 | **Word and Excel** | Reads .docx and .xlsx files and makes new ones (letters, lists, tables). |
 | **Developer tools** | Git status/log/diff/commit, Docker containers and their logs, and which program uses which network port. Changes ask first. "Review my changes" has your model read the git diff (or what is staged) and point out bugs, risks and unclear code. |
 | **Research** | "Find out whether …" — searches, reads several pages and writes a short report with numbered sources you can check. |
-| **Your own knowledge base** | "What does my rental contract say about pets?" — answers from folders you choose (text, Word, Excel, PDF), naming the file and page; in the web chat a source opens the PDF at that page. Everything stays on your PC. |
+| **Your own knowledge base** | "What does my rental contract say about pets?" — answers from folders you choose (text, Word, Excel, PDF), naming the file and page; in the web chat a source opens the PDF at that page. With Tesseract installed (free; on Windows the UB Mannheim installer), the text in photos and scanned PDFs is found too (`ocr: false` in `config/modules/docs.yaml` turns it off). Everything stays on your PC. |
 | **Expenses** | "I spent 23,40 € on groceries" — notes what you spend by day and category; "how much did I spend this month?" sums it up by category and against a budget (`monthly_budget` in `config\modules\expenses.yaml`). Reads a receipt (photo, scan or PDF) with your model and notes it. Exports a month as a CSV file for Excel. |
 | **Birthdays** | "Anna's birthday is on 12.3." — tells you a few days before (and on the day), with how old they turn when you gave the year. |
 | **Habits** | "Track 'walk' every day", "done walk" — your streak and the last two weeks at a glance; daily or weekly. |
@@ -508,6 +508,14 @@ finds those words together, `-cake` leaves notes with that word out, `tag:#work`
 notes with that tag, and `path:Journal` keeps notes in that folder (`-tag:` and `-path:`
 leave them out). Case and accents do not matter ("muller" finds "Müller"). The same works
 in the chat: "find my notes about the router path:Notes".
+
+**Related notes and mentions.** On the right of a note, **Related** lists the notes most
+like it: by what they are about, once the knowledge base has read your notes, else by links
+and shared tags (the reason shows under each). **Mentioned without a link** lists lines in
+other notes that name this note (or one of its other names) without linking to it; **Link**
+turns that mention into a link, changing only that line (its earlier version is kept). In
+the chat: "which notes are related to my garden note?", "where do I mention Garden without
+a link?".
 
 **Writing notes.** Press **✎ Edit** (or **Ctrl+E**) on a note. Headings show big and bold
 shows bold while you type, so you need no special knowledge: the toolbar makes text bold,

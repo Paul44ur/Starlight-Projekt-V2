@@ -50,6 +50,30 @@ def stamp(path: Path) -> str:
     return f"{info.st_mtime_ns}-{info.st_size}"
 
 
+@dataclass(frozen=True)
+class ForChange:
+    """A note read to change a line of it: its text, its stamp (taken first), its line
+    ending and its byte order mark, so writing it back keeps them."""
+
+    text: str
+    stamp: str
+    newline: str
+    bom: str
+
+
+def read_for_change(path: Path) -> ForChange:
+    from starlight.text import decode_text
+
+    before = stamp(path)
+    try:
+        raw = path.read_bytes()
+    except FileNotFoundError as exc:
+        raise NoteConflict(f"the note {path.stem} is not there any more") from exc
+    newline = "\r\n" if b"\r\n" in raw else "\n"
+    bom = "\ufeff" if raw.startswith(b"\xef\xbb\xbf") else ""
+    return ForChange(decode_text(raw), before, newline, bom)
+
+
 def _check(path: Path, expected: str | None) -> None:
     if expected is not None and stamp(path) != expected:
         raise NoteConflict(

@@ -98,6 +98,12 @@
   .info dl { margin: 0; font-size: 13.5px; display: grid; grid-template-columns: auto 1fr; gap: 4px 10px; }
   .info dt { color: var(--dim); } .info dd { margin: 0; overflow-wrap: anywhere; }
   .info .none { color: var(--dim); font-size: 13px; padding: 0 6px; }
+  .info ul.plain li.mention { display: flex; align-items: flex-start; gap: 4px; }
+  .info ul.plain li.mention .back { flex: 1 1 auto; min-width: 0; width: auto; }
+  .info li.mention mark { color: inherit; background: color-mix(in srgb, var(--warn) 38%, transparent); border-radius: 3px; }
+  .info ul.plain li.mention .link-it { flex: none; width: auto; font-size: 12px; padding: 2px 9px; margin-top: 4px;
+                                       border: 1px solid var(--border); border-radius: 6px; color: var(--accent); }
+  .info ul.plain li.mention .link-it:hover { border-color: var(--accent); }
   #info-toggle { display: none; }
 
   /* Finding a note: Ctrl+K. */
@@ -246,6 +252,8 @@
   <aside class="info" id="info" aria-label="About this note">
     <h3>Outline</h3><ul class="plain" id="outline" translate="no"></ul>
     <h3>Linked from</h3><ul class="plain" id="backlinks" translate="no"></ul>
+    <h3>Related</h3><ul class="plain" id="related" translate="no"></ul>
+    <h3>Mentioned without a link</h3><ul class="plain" id="mentions" translate="no"></ul>
     <h3>Properties</h3><dl id="props" translate="no"></dl>
   </aside>
 </div>
@@ -666,6 +674,52 @@ function drawInfo(note, body) {
   if (!seen.size) back.appendChild(el("li", "none", t("No other note links here yet")));
 
   drawProps(note);
+  drawRelated(note);
+}
+
+// -- related notes and mentions without a link (block E2) ----------------------------------
+
+async function drawRelated(note) {
+  const list = document.getElementById("related"), named = document.getElementById("mentions");
+  let found, said;
+  try {
+    [found, said] = await Promise.all([
+      api("/api/note/related?" + new URLSearchParams({ path: note.path })),
+      api("/api/note/mentions?" + new URLSearchParams({ path: note.path })),
+    ]);
+  } catch (e) { return; }
+  if (state.current !== note) return;  // (another note was opened meanwhile)
+  list.replaceChildren();
+  for (const other of found.related) {
+    const b = el("button", "back", other.title);
+    b.type = "button";
+    b.appendChild(el("small", "", other.why.map(w => w.startsWith("#") ? w : t(w)).join(" · ")));
+    b.onclick = () => go({ path: other.path });
+    list.appendChild(el("li")).appendChild(b);
+  }
+  if (!found.related.length) list.appendChild(el("li", "none", t("No related notes yet")));
+  named.replaceChildren();
+  for (const m of said.mentions) {
+    const item = named.appendChild(el("li", "mention"));
+    const b = item.appendChild(el("button", "back", m.title));
+    b.type = "button";
+    const line = b.appendChild(el("span", "line"));
+    line.append(m.text.slice(0, m.start).trimStart(), el("mark", "", m.text.slice(m.start, m.end)), m.text.slice(m.end));
+    line.title = m.text;
+    b.onclick = () => go({ path: m.path });
+    const link = item.appendChild(el("button", "link-it", t("Link")));
+    link.type = "button";
+    link.title = t("Make it a link to this note");
+    link.onclick = async () => {
+      link.disabled = true;
+      try {
+        await api("/api/note/link-mention", { method: "POST", body: { path: note.path, source: m.path, line: m.line, expected: m.text } });
+        toast(t("Linked"));
+      } catch (e) { toast(e.message); }
+      await openNote(note.path);  // (it is in "Linked from" now)
+    };
+  }
+  if (!said.mentions.length) named.appendChild(el("li", "none", t("No mentions without a link")));
 }
 
 // -- properties (block C2): change, add and remove them here; only their lines change -------
@@ -755,7 +809,7 @@ function drawProps(note) {
 
 function clearInfo() {
   state.current = null;
-  ["outline", "backlinks", "props"].forEach(id => document.getElementById(id).replaceChildren());
+  ["outline", "backlinks", "related", "mentions", "props"].forEach(id => document.getElementById(id).replaceChildren());
   document.title = t("Starlight notes");
   markCurrent();
 }

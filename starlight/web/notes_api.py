@@ -33,6 +33,9 @@ texts, and the page lets you choose.
                                               then the saved text comes back
     POST   /api/note                         {folder, title, text | template, lang}: a new note
     POST   /api/note/task                    {path, line, expected | id, done}: tick a task
+    GET    /api/note/related?path=           related notes (by meaning, or links and tags)
+    GET    /api/note/mentions?path=          lines that name the note without a link
+    POST   /api/note/link-mention            {path, source, line, expected}: link one
     GET    /api/notes/tasks                  open tasks: overdue, today, upcoming, none
     POST   /api/note/rename                  {path, title, fix_links}: links follow
     DELETE /api/note?path=                   to the trash
@@ -60,6 +63,7 @@ from starlight.core.tools import ToolError
 from starlight.notebook import (
     NoteConflict,
     markdown,
+    related,
     search,
     stamp,
     tasks,
@@ -543,6 +547,53 @@ def add_notes_api(
             "repeated": ticked.repeated,
             "next_due": ticked.next_due,
         }
+
+    @app.get("/api/note/related")
+    async def related_notes(request: Request, path: str) -> dict[str, Any]:
+        """Notes like this one: by meaning (the knowledge base's docs.similar, when it has
+        read the note), else by links and shared tags."""
+        local_only(request)
+        file = note_file(path)
+        found = index()
+        found.refresh()
+        relative = rel(file)
+        answer = await kernel().dispatcher.call("docs.similar", {"path": str(file), "limit": 15})
+        notes = related.by_meaning(found, relative, answer.output) if answer.ok else []
+        if notes:
+            return {"related": notes, "by": "meaning"}
+        return {"related": related.by_structure(found, relative), "by": "links and tags"}
+
+    @app.get("/api/note/mentions")
+    def unlinked_mentions(request: Request, path: str) -> dict[str, Any]:
+        """The lines of other notes that name this one without linking to it."""
+        local_only(request)
+        file = note_file(path)
+        found = index()
+        found.refresh()
+        return {"mentions": [m.public() for m in related.mentions(found, rel(file))]}
+
+    @app.post("/api/note/link-mention")
+    async def link_mention(request: Request) -> dict[str, Any]:
+        """Turn one mention into a link: {path: the note named, source: the note that names
+        it, line, expected: the line as shown}. 409 when the line changed."""
+        local_only(request)
+        data = await body(request)
+        target = note_file(str(data.get("path") or ""))
+        source = note_file(str(data.get("source") or ""))
+        line, expected = data.get("line"), data.get("expected")
+        if not isinstance(line, int) or not isinstance(expected, str):
+            raise _bad("send {path, source, line, expected}")
+        with writing:
+            try:
+                written = related.link_mention(
+                    index(), history(), source=rel(source), line=line, expected=expected,
+                    target=rel(target),
+                )  # fmt: skip
+            except NoteConflict as exc:
+                raise _bad(str(exc), 409) from exc
+            except OSError as exc:
+                raise _bad(f"could not save {source.name}: {locked(exc)}", 409) from exc
+        return {"path": rel(source), "stamp": written.stamp, "version": written.version}
 
     @app.get("/api/notes/tasks")
     def all_tasks(request: Request) -> dict[str, Any]:
