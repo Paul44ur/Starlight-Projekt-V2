@@ -38,6 +38,8 @@ texts, and the page lets you choose.
     GET    /api/note/mentions?path=          lines that name the note without a link
     POST   /api/note/link-mention            {path, source, line, expected}: link one
     GET    /api/notes/tasks                  open tasks: overdue, today, upcoming, none
+    GET    /api/notes/kanban                 the task board: open, doing, done
+    POST   /api/notes/kanban/move            {id, to, path?}: a card to another column
     POST   /api/notes/query                  {text}: a ```query block's table
     GET    /api/boards                       the .canvas boards in the Starlight folder
     GET    /api/board?path=                  a board: {board, stamp}
@@ -89,6 +91,7 @@ FOLDERS = ("Notes", "Journal", "Recipes", "Clippings", "Inbox")  # always shown,
 ATTACHMENTS = "Notes/Attachments"
 MAX_NOTE = 1024**2  # bigger than this is a document, not a note
 MAX_PICTURE = 10 * 1024**2
+KANBAN_DONE = 30  # the done column shows the last ones finished
 # seconds: while typing, at most one kept version per 5 minutes. The first save after
 # opening the editor ("first") always keeps one, so where each editing session started stays.
 TYPING_GAP = 300.0
@@ -777,6 +780,65 @@ def add_notes_api(
             return query.run(found, asked["where"], asked["sort"], asked["fields"], asked["limit"])
         except query.QueryError as exc:
             raise _bad(str(exc)) from exc
+
+    @app.get("/api/notes/kanban")
+    async def kanban(request: Request) -> dict[str, Any]:
+        """The task board (block G2): the tasks in notes and the to-do list's own, in the
+        columns open, doing and done (done: the last ones finished)."""
+        local_only(request)
+        found = index()
+        columns: dict[str, list[dict[str, Any]]] = {"open": [], "doing": [], "done": []}
+        rank = {"high": 0, "low": 2}
+        finished = []
+        for task in tasks.note_tasks(found):
+            card = {**task.view(), "line": task.line, "kind": "note", "finished": task.done}
+            if task.finished:
+                finished.append(card)
+            elif task.open:
+                columns["doing" if task.stage == "doing" else "open"].append(card)
+        listed = await kernel().dispatcher.call("todo.list", {"include_done": True})
+        if listed.ok:
+            for item in listed.output.get("tasks", []):
+                if "path" in item:
+                    continue  # (a task in a note: it is there already)
+                card = {**item, "kind": "todo"}
+                if item.get("done"):
+                    finished.append(card)
+                else:
+                    columns["doing" if item.get("stage") == "doing" else "open"].append(card)
+
+        def order(card: dict[str, Any]) -> tuple[str, int, str]:
+            return (card.get("due") or "~", rank.get(card.get("priority", ""), 1),
+                    card["text"].casefold())  # fmt: skip
+
+        for name in ("open", "doing"):
+            columns[name].sort(key=order)
+        finished.sort(key=lambda c: c.get("finished") or "", reverse=True)
+        columns["done"] = finished[:KANBAN_DONE]
+        return {**columns, "todo": listed.ok}
+
+    @app.post("/api/notes/kanban/move")
+    async def kanban_move(request: Request) -> dict[str, Any]:
+        """{id, to, path?}: a card to another column (open, doing, done). A task in a note
+        (with its path) changes in the note; a to-do through the to-do list."""
+        local_only(request)
+        data = await body(request)
+        task_id, to = str(data.get("id") or ""), str(data.get("to") or "")
+        if to not in tasks.STAGES or not task_id:
+            raise _bad("send {id, to: open, doing or done}")
+        if data.get("path"):
+            file = note_file(str(data["path"]))
+            with writing:
+                try:
+                    moved = tasks.move(file, rel(file), task_id, to, history(),
+                                       reason="notes.page kanban")  # fmt: skip
+                except NoteConflict as exc:
+                    raise _bad(str(exc), 409) from exc
+            return {"moved": to, "changed": moved.written is not None}
+        result = await kernel().dispatcher.call("todo.move", {"id": task_id, "to": to})
+        if not result.ok:
+            raise _bad(str(result.error), 409)
+        return {"moved": to, "changed": True}
 
     @app.get("/api/notes/tasks")
     def all_tasks(request: Request) -> dict[str, Any]:

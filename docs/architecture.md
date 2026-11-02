@@ -531,6 +531,17 @@ code blocks, rules and pictures; the font is Segoe UI or Arial on Windows, DejaV
 reportlab's own Vera elsewhere, so umlauts show. `GET /api/note/export?path=&format=html|pdf
 &show=` (show: opened inline, printing itself); the Notes page's ⤓ menu; the tool
 `notes.export(title, format)` saves into `Exports/` (never over an earlier file).
+Block G2 is the task board. A task's `status:` field (`doing`, or `läuft`, `aktiv`, `in
+Arbeit`, `in progress` ...; `open`) is `Task.stage`; the index's tasks table got a `stage`
+column (schema step 2, which also makes every note be read again once). `tasks.move(file,
+path, id, to)` puts a task in open (no status, not ticked), doing (`status: doing`, not
+ticked) or done (ticked with the day, no status; a repeating one gets its next one), only
+that line, a version first, refused when its text changed. The to-do module keeps `stage`
+on its own items and has `todo.move(id, to)` for both kinds. `GET /api/notes/kanban` gives
+the columns (note tasks from the index, the list's own through `todo.list`; done: the last
+30), `POST /api/notes/kanban/move` moves a card (with `path`: in the note; else
+`todo.move`). The Tasks view has List and Columns (remembered in the browser); cards move by
+HTML drag and drop or their buttons; render.js shows `status: doing` as a ▶ chip.
 
 **Safety limits you set (`core/safety.py`).** Settings -> Safety limits chooses a level
 (strict, balanced, relaxed) and any of 29 switches on top, kept in

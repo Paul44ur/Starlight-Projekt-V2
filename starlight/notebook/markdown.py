@@ -4,7 +4,8 @@ What it finds: the properties block at the top (``--- … ---``), headings and s
 links (``[[Note]]``, ``[[Note|text]]``, ``[[Note#Heading]]``, ``[[Note#^id]]``, embeds
 ``![[…]]`` and Markdown links to local files), tags (``#tag``, ``#work/projects`` and the
 ``tags`` property), block ids (``^id``), tasks with their plain-word fields (``due:``,
-``priority:``, ``repeat:``, ``start:``, ``done:``, and the German keys) and ``query`` blocks.
+``priority:``, ``repeat:``, ``start:``, ``done:``, ``status:``, and the German keys) and
+``query`` blocks.
 
 Code is not text: nothing inside fenced code blocks or `inline code` counts, and neither does
 anything inside a web address (``https://example.org/#top`` has no tag) or an escaped
@@ -64,6 +65,7 @@ TASK_KEYS = {
     "repeat": "repeat",
     "wiederholen": "repeat",
     "wiederholung": "repeat",
+    "status": "stage",  # open or doing (the Kanban columns, block G2); done is the [x]
 }
 FIELD = re.compile(r"(?<!\S)(" + "|".join(TASK_KEYS) + r"):[ \t]*", re.IGNORECASE)
 DATE_FIELDS = ("due", "start", "done")
@@ -73,6 +75,12 @@ NATURAL_DATE = re.compile(
     r"|(?:next|nächste[nrs]?|naechste[nrs]?|kommende[nrs]?|this|diese[nrs]?)[ \t]+\w+",
     re.IGNORECASE,
 )
+STAGE_PHRASE = re.compile(r"in[ \t]+(?:arbeit|progress)\b", re.IGNORECASE)  # two words
+STAGES = {
+    "open": "open", "offen": "open", "todo": "open", "in arbeit": "doing", "in progress": "doing",
+    "doing": "doing", "läuft": "doing", "laeuft": "doing", "aktiv": "doing", "active": "doing",
+    "wip": "doing", "started": "doing", "begonnen": "doing", "arbeit": "doing",
+}  # fmt: skip
 PRIORITIES = {
     "high": "high",
     "hoch": "high",
@@ -231,6 +239,7 @@ class Task:
     done: str = ""  # the day it was done
     priority: str = ""  # high, normal or low ("" when not given)
     repeat: str = ""  # "every month", "jeden Montag" ... as written
+    stage: str = ""  # status: open or doing ("" when not given)
     # where each field is on the line: (field, key starts, value starts, value ends)
     spans: tuple[tuple[str, int, int, int], ...] = field(default=(), compare=False, repr=False)
 
@@ -335,10 +344,12 @@ def _fields(text: str, masked: str) -> tuple[str, dict[str, str], list[tuple[str
         stop = matches[number + 1].start() if number + 1 < len(matches) else len(text)
         segment = text[match.end() : stop]
         phrase = NATURAL_DATE.match(segment) if name in DATE_FIELDS else None
+        if name == "stage":
+            phrase = STAGE_PHRASE.match(segment)
         if name == "repeat":  # words, up to the next field, tag or block id
             value = re.split(r"(?<!\S)[#^]\S", segment, maxsplit=1)[0].rstrip()
-        elif phrase and natural_date(phrase.group(0), dt.date(2026, 1, 1)):
-            value = phrase.group(0)  # "in 3 days", "next friday", "nächsten Freitag"
+        elif phrase and (name == "stage" or natural_date(phrase.group(0), dt.date(2026, 1, 1))):
+            value = phrase.group(0)  # "in 3 days", "next friday", "nächsten Freitag", "in Arbeit"
         else:  # one word; what follows stays text
             word = re.match(r"\S*", segment)
             value = word.group(0) if word else ""
@@ -352,6 +363,9 @@ def _fields(text: str, masked: str) -> tuple[str, dict[str, str], list[tuple[str
     rest = re.sub(r"[ \t]{2,}", " ", "".join(keep)).strip()
     if "priority" in found:
         found["priority"] = PRIORITIES.get(found["priority"].casefold(), found["priority"])
+    if "stage" in found:
+        stage = " ".join(found["stage"].split()).casefold()
+        found["stage"] = STAGES.get(stage, found["stage"])
     return rest, found, spans
 
 

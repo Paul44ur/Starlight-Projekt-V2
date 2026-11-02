@@ -80,6 +80,12 @@ MIGRATIONS = (
     CREATE INDEX tasks_file ON tasks (file_id);
     CREATE TABLE texts (file_id INTEGER PRIMARY KEY, folded TEXT NOT NULL, body TEXT NOT NULL)
     """,
+    # 2 (block G2): a task's status: open or doing. Every note is read again once (its
+    # stored mtime no longer matches), so the new column is filled.
+    """
+    ALTER TABLE tasks ADD COLUMN stage TEXT NOT NULL DEFAULT '';
+    UPDATE files SET mtime_ns = -1
+    """,
 )
 FTS = (
     "CREATE VIRTUAL TABLE IF NOT EXISTS fts USING fts5(title, body,"
@@ -336,10 +342,11 @@ class Index:
             ],
         )
         db.executemany(
-            "INSERT INTO tasks VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            "INSERT INTO tasks (file_id, line, indent, status, text, due, start, done, priority,"
+            " repeat, stage) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             [
                 (new_id, t.line, t.indent, t.status, t.text, t.due, t.start, t.done,
-                 t.priority, t.repeat)
+                 t.priority, t.repeat, t.stage)
                 for t in note.tasks
             ],
         )  # fmt: skip
@@ -528,12 +535,12 @@ class Index:
         with self._db() as db:
             rows = db.execute(
                 "SELECT f.path, t.line, t.indent, t.status, t.text, t.due, t.start, t.done,"
-                " t.priority, t.repeat FROM tasks t JOIN files f ON f.id = t.file_id"
+                " t.priority, t.repeat, t.stage FROM tasks t JOIN files f ON f.id = t.file_id"
                 + (" WHERE t.status = ' '" if open_only else "")
                 + " ORDER BY f.path, t.line"
             ).fetchall()
         names = ("path", "line", "indent", "status", "text", "due", "start", "done", "priority")
-        return [dict(zip((*names, "repeat"), r, strict=True)) for r in rows]
+        return [dict(zip((*names, "repeat", "stage"), r, strict=True)) for r in rows]
 
     # -- links ---------------------------------------------------------------------------
 

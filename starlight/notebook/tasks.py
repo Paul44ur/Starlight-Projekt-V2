@@ -83,6 +83,7 @@ class NoteTask:
     done: str = ""
     priority: str = ""  # high, normal, low or ""
     repeat: str = ""
+    stage: str = ""  # status: "doing" (the Kanban's middle column), "open" or ""
 
     @property
     def open(self) -> bool:
@@ -106,6 +107,8 @@ class NoteTask:
                 view[name] = getattr(self, name)
         if self.finished:
             view["done"] = True
+        elif self.open and self.stage == "doing":
+            view["stage"] = "doing"
         return view
 
 
@@ -134,7 +137,8 @@ def note_tasks(index: Any) -> list[NoteTask]:
             if not row["text"].strip():
                 continue
             dates = {name: _iso(row[name], written) for name in markdown.DATE_FIELDS}
-            fields = {"priority": row["priority"], "repeat": row["repeat"], **dates}
+            fields = {"priority": row["priority"], "repeat": row["repeat"],
+                      "stage": row.get("stage", ""), **dates}  # fmt: skip
             found.append(
                 NoteTask(
                     task_id_, path, info.title, row["line"], row["status"], row["text"], **fields
@@ -350,3 +354,62 @@ def with_next_ones(text: str, before: str, today: dt.date) -> str:
         lines.insert(at + 1, copy + ending)
         added += 1
     return "".join(lines) if added else text
+
+
+STAGES = ("open", "doing", "done")
+
+
+def move(
+    file: Path,
+    path: str,
+    id: str,
+    to: str,
+    history: History | None,
+    *,
+    reason: str = "notes.task",
+    today: dt.date | None = None,
+) -> Ticked:
+    """Put a task of a note (found by its id) in a Kanban column: ``open`` (not ticked, no
+    status), ``doing`` (not ticked, ``status: doing``) or ``done`` (ticked, with the day; a
+    repeating task gets its next one). Only that line changes; a version is kept first."""
+    if to not in STAGES:
+        raise ValueError(f"a task is open, doing or done, not {to}")
+    day = today or dt.date.today()
+    text, before, newline, bom = _read(file)
+    tasks = markdown.parse(text).tasks
+    task = next(
+        (t for found, t in zip(numbered(path, (t.text for t in tasks)), tasks, strict=True)
+         if found == id), None,
+    )  # fmt: skip
+    if task is None:
+        raise NoteConflict(
+            f"that task is not in {file.stem} as it was any more (its text changed); look again"
+        )
+    lines = text.splitlines(keepends=True)
+    original = lines[task.line].rstrip("\r\n")
+    ending = lines[task.line][len(original) :]
+    body = original
+    span = task.span("stage")
+    if to == "doing":
+        body = (
+            body[: span[1]] + "doing" + body[span[2] :]
+            if span
+            else _with_field(body, "status", "doing")
+        )
+    elif span:
+        body = _without(body, span)
+    current = markdown.parse(body).tasks[0]  # (the line on its own, its places found again)
+    copy = None
+    if to == "done" and current.open:
+        copy = _next_one(body, current, day) if current.repeat else None
+        body = _ticked(body, current, True, day)
+    elif to != "done" and not current.open:  # finished (or cancelled): open again
+        body = _ticked(body, current, False, day)
+    if body == original:
+        return Ticked(None, file, task.text, to == "done")
+    lines[task.line] = body + (ending or newline) + copy + ending if copy else body + ending
+    written = write_note(
+        file, bom + "".join(lines), reason, history, expected=before, newline=newline
+    )
+    next_due = markdown.parse(copy).tasks[0].due if copy else ""
+    return Ticked(written, file, task.text, to == "done", next_due, copy is not None)

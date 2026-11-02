@@ -115,10 +115,12 @@ const TASK_KEYS = {
   due: "due", "fällig": "due", faellig: "due", start: "start", beginn: "start",
   done: "done", erledigt: "done", priority: "priority", "priorität": "priority",
   prioritaet: "priority", repeat: "repeat", wiederholen: "repeat", wiederholung: "repeat",
+  status: "stage",
 };
 const TASK_FIELD = new RegExp("(?<!\\S)(" + Object.keys(TASK_KEYS).join("|") + "):[ \\t]*", "giu");
 const TASK_PHRASE = /^(?:(?:in|nach)[ \t]+\d{1,3}[ \t]+\S+|(?:next|nächste[nrs]?|naechste[nrs]?|kommende[nrs]?|this|diese[nrs]?)[ \t]+\S+)/iu;
 const TASK_PRIORITY = { high: "high", hoch: "high", low: "low", niedrig: "low" };
+const TASK_DOING = /^(doing|läuft|laeuft|aktiv|active|wip|started|begonnen|in\s+arbeit|in\s+progress)$/i;
 
 function taskFields(text) {
   const masked = text.replace(/(`+)[\s\S]*?\1/g, (code) => " ".repeat(code.length));
@@ -127,7 +129,8 @@ function taskFields(text) {
     const name = TASK_KEYS[m[1].toLowerCase()];
     const start = m.index + m[0].length;
     const rest = text.slice(start, n + 1 < matches.length ? matches[n + 1].index : text.length);
-    const phrase = name !== "priority" && name !== "repeat" && rest.match(TASK_PHRASE);
+    const phrase = name === "stage" ? rest.match(/^in[ \t]+(?:arbeit|progress)\b/i)
+      : name !== "priority" && name !== "repeat" && rest.match(TASK_PHRASE);
     const value = name === "repeat" ? rest.split(/(?<!\S)[#^]\S/)[0].trimEnd()
       : phrase ? phrase[0] : (rest.match(/^\S*/) || [""])[0];
     if (!value || fields[name] !== undefined) return;
@@ -160,6 +163,12 @@ const taskWords = (words) => (typeof t === "function" ? t(words) : words);
 function taskChip(name, value, open = true, today = isoToday()) {
   const icons = { due: "📅", start: "🛫", done: "✅", repeat: "🔁" };
   const titles = { due: "Due", start: "Starts", done: "Done on", repeat: "Repeats" };
+  if (name === "stage") {  // status: doing (the task board's middle column); "open" says nothing
+    if (!TASK_DOING.test(value.trim())) return null;
+    const chip = el("span", "task-chip task-stage", "▶ " + taskWords("Doing"));
+    chip.title = taskWords("Doing");
+    return chip;
+  }
   if (name === "priority") {
     const level = TASK_PRIORITY[value.toLowerCase()];
     if (!level) return null;
@@ -192,8 +201,8 @@ mdHooks.item = (li, text) => {
   if (!Object.keys(fields).length) return m[2] || "";
   // the words, then the fields as chips (the rest of the item goes on below them)
   mdInline(li.appendChild(el("span", "task-text")), words);
-  for (const name of ["due", "start", "repeat", "priority", "done"]) {
-    const chip = fields[name] && taskChip(name, fields[name], mark === " ");
+  for (const name of ["stage", "due", "start", "repeat", "priority", "done"]) {
+    const chip = fields[name] && (name !== "stage" || mark === " ") && taskChip(name, fields[name], mark === " ");
     if (chip) li.appendChild(chip);
   }
   return "";

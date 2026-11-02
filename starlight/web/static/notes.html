@@ -75,6 +75,25 @@
   .search-tips { margin-top: 18px; }
   .search-tips code { white-space: pre-wrap; }
   .soon { border: 1px dashed var(--border); border-radius: 12px; padding: 22px; color: var(--dim); text-align: center; }
+  .layout-switch { display: inline-flex; border: 1px solid var(--border); border-radius: 8px; overflow: hidden; margin: 2px 0 10px; }
+  .layout-switch button { border: none; border-radius: 0; padding: 4px 12px; background: transparent; }
+  .layout-switch button.on { background: color-mix(in srgb, var(--accent) 24%, transparent); color: var(--text); font-weight: 600; }
+  .kanban { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; align-items: start; }
+  @media (max-width: 900px) { .kanban { grid-template-columns: 1fr; } }
+  .kanban-col { background: var(--panel); border: 1px solid var(--border); border-radius: 12px; padding: 8px 10px 10px; min-height: 120px; }
+  .kanban-col.over { border-color: var(--accent); box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 30%, transparent); }
+  .kanban-col h3 { font-size: .95rem; margin: 2px 2px 8px; display: flex; gap: 8px; align-items: center; }
+  .kanban-col h3 .count { color: var(--dim); font-weight: normal; font-size: .85rem; }
+  .kanban-col[data-stage="doing"] h3 { color: var(--accent); }
+  .kanban-cards { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+  .kanban-card { background: var(--bg); border: 1px solid var(--border); border-radius: 10px; padding: 8px 10px; cursor: grab; }
+  .kanban-col[data-stage="done"] .kanban-text { text-decoration: line-through; color: var(--dim); }
+  .kanban-facts { display: flex; flex-wrap: wrap; gap: 4px 8px; align-items: center; margin-top: 4px; font-size: .85rem; }
+  .kanban-facts .task-chip { margin-left: 0; }
+  .kanban-facts .task-note { color: var(--dim); text-decoration: none; }
+  .kanban-moves { display: flex; gap: 4px; justify-content: flex-end; margin-top: 4px; }
+  .kanban-moves button { padding: 0 7px; font-size: 13px; }
+  .kanban-empty { color: var(--dim); font-size: .9rem; padding: 6px 4px; }
   .task-group h3 { font-size: .95rem; margin: 22px 0 6px; display: flex; gap: 8px; align-items: center; }
   .task-group h3 .count { color: var(--dim); font-weight: normal; font-size: .85rem; }
   .task-group[data-group="overdue"] h3 { color: var(--bad); }
@@ -653,9 +672,29 @@ async function tickInNote(box, note, task) {
 }
 
 // The Tasks view: the open tasks of all notes, overdue first
+// The Tasks view shows a list (by date) or columns (open, doing, done: block G2); the
+// choice is remembered in this browser.
+function tasksLayout(set) {
+  try {
+    if (set) localStorage.setItem("starlight.tasks.layout", set);
+    return localStorage.getItem("starlight.tasks.layout") || "list";
+  } catch (e) { return set || "list"; }
+}
+
 async function showTasks() {
   clearInfo(); state.view = "tasks"; markCurrent();
   column.replaceChildren(el("h1", "title", t("Tasks")));
+  const layout = tasksLayout();
+  const switcher = column.appendChild(el("div", "layout-switch"));
+  switcher.setAttribute("role", "group");
+  switcher.setAttribute("aria-label", t("Show the tasks as"));
+  for (const [key, label] of [["list", "List"], ["columns", "Columns"]]) {
+    const b = switcher.appendChild(el("button", key === layout ? "on" : "", t(label)));
+    b.type = "button"; b.dataset.layout = key;
+    b.setAttribute("aria-pressed", String(key === layout));
+    b.onclick = () => { tasksLayout(key); showTasks(); };
+  }
+  if (layout === "columns") return showKanban();
   let data;
   try { data = await api("/api/notes/tasks"); }
   catch (e) { toast(e.message); return; }
@@ -674,6 +713,81 @@ async function showTasks() {
     const list = section.appendChild(el("ul", "task-rows md"));
     for (const task of data[key]) list.appendChild(taskRow(task, data.date));
   }
+}
+
+// -- the task board (block G2): open, doing, done; drag a card or use its buttons ----------
+
+const KANBAN = [["open", "Open", "↺"], ["doing", "Doing", "▶"], ["done", "Done", "✓"]];
+let dragged = null;
+
+async function showKanban() {
+  let data;
+  try { data = await api("/api/notes/kanban"); }
+  catch (e) { toast(e.message); return; }
+  if (state.view !== "tasks") return;
+  const board = column.appendChild(el("div", "kanban"));
+  for (const [stage, label] of KANBAN) {
+    const lane = board.appendChild(el("section", "kanban-col"));
+    lane.dataset.stage = stage;
+    const heading = lane.appendChild(el("h3", "", t(label)));
+    heading.appendChild(el("span", "count", String(data[stage].length)));
+    const cards = lane.appendChild(el("ul", "kanban-cards md"));
+    for (const card of data[stage]) cards.appendChild(kanbanCard(card, stage, data));
+    if (!data[stage].length) cards.appendChild(el("li", "kanban-empty", t("Nothing here")));
+    lane.addEventListener("dragover", (event) => { if (dragged) { event.preventDefault(); lane.classList.add("over"); } });
+    lane.addEventListener("dragleave", () => lane.classList.remove("over"));
+    lane.addEventListener("drop", (event) => {
+      event.preventDefault(); lane.classList.remove("over");
+      if (dragged && dragged.stage !== stage) moveCard(dragged.card, stage);
+      dragged = null;
+    });
+  }
+}
+
+function kanbanCard(card, stage, data) {
+  const item = el("li", "kanban-card");
+  item.draggable = true;
+  item.dataset.id = card.id;
+  const words = item.appendChild(el("div", "kanban-text"));
+  words.setAttribute("translate", "no");
+  mdInline(words, card.text);
+  const facts = item.appendChild(el("div", "kanban-facts"));
+  for (const name of ["due", "priority"]) {
+    const chip = card[name] && (name !== "priority" || card.priority !== "normal")
+      && taskChip(name, card[name], stage !== "done");
+    if (chip) facts.appendChild(chip);
+  }
+  if (card.kind === "note") {
+    const where = facts.appendChild(el("a", "task-note", card.note));
+    where.setAttribute("translate", "no");
+    where.href = "/notes?" + new URLSearchParams({ path: card.path });
+    where.onclick = (event) => { event.preventDefault(); go({ path: card.path }); };
+  } else {
+    facts.appendChild(el("span", "task-note", "☑ " + (card.list || ""))).setAttribute("translate", "no");
+  }
+  const moves = item.appendChild(el("div", "kanban-moves"));
+  for (const [to, label, icon] of KANBAN) {
+    if (to === stage) continue;
+    const b = moves.appendChild(el("button", "icon", icon));
+    b.type = "button"; b.dataset.to = to;
+    b.title = t("Move to") + " " + t(label); b.setAttribute("aria-label", b.title);
+    b.onclick = () => moveCard(card, to);
+  }
+  item.addEventListener("dragstart", (event) => {
+    dragged = { card, stage };
+    event.dataTransfer.effectAllowed = "move";
+    event.dataTransfer.setData("text/plain", card.id);
+  });
+  item.addEventListener("dragend", () => { dragged = null; });
+  return item;
+}
+
+async function moveCard(card, to) {
+  try {
+    await api("/api/notes/kanban/move", { method: "POST",
+      body: { id: card.id, to, ...(card.kind === "note" ? { path: card.path } : {}) } });
+  } catch (e) { toast(e.message); }
+  if (state.view === "tasks") showTasks();
 }
 
 function taskRow(task, today) {

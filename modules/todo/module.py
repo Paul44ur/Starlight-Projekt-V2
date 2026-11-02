@@ -141,6 +141,8 @@ class TodoModule(Module):
             view["due"] = item["due"]
         if item.get("done"):
             view["done"] = True
+        elif item.get("stage") == "doing":
+            view["stage"] = "doing"
         return view
 
     # -- tools ---------------------------------------------------------------------------
@@ -224,8 +226,48 @@ class TodoModule(Module):
             return self._tick(item, True, "todo.done")
         item["done"] = True
         item["done_at"] = self._now().isoformat(timespec="seconds")
+        item.pop("stage", None)
         self._save(items)
         return {"done": True, "text": item["text"]}
+
+    @tool
+    def move(self, id: str, to: str) -> dict[str, Any]:
+        """Move a task to a column of the task board: `to` is open, doing (being worked on
+        now) or done. By its id, or a word from its text if only one task matches; a task in
+        a note changes in the note (status: doing)."""
+        stage = {"offen": "open", "in arbeit": "doing", "läuft": "doing", "erledigt": "done"}.get(
+            to.strip().lower(), to.strip().lower()
+        )
+        if stage not in note_tasks.STAGES:
+            raise ToolError("a task can move to open, doing or done")
+        items = self._load()
+        notes = self._notes()
+        found = next((t for t in notes if t.id == id.strip().lower()), None)
+        item = found or self._find(items, id, [t for t in notes if not t.finished])
+        if isinstance(item, NoteTask):
+            file = Path(self.ctx.notebook.root) / item.path
+            try:
+                moved = note_tasks.move(file, item.path, item.id, stage, self.ctx.history,
+                                        reason="todo.move")  # fmt: skip
+            except NoteConflict as exc:
+                raise ToolError(str(exc)) from exc
+            result: dict[str, Any] = {"moved": stage, "text": item.text, "note": item.title}
+            if moved.written is not None:
+                result["changed"] = moved.written.changed(file)
+            return result
+        if stage == "done":
+            item["done"] = True
+            item["done_at"] = self._now().isoformat(timespec="seconds")
+            item.pop("stage", None)
+        else:
+            item["done"] = False
+            item.pop("done_at", None)
+            if stage == "doing":
+                item["stage"] = "doing"
+            else:
+                item.pop("stage", None)
+        self._save(items)
+        return {"moved": stage, "text": item["text"]}
 
     @tool
     def reopen(self, id: str) -> dict[str, Any]:
@@ -240,6 +282,7 @@ class TodoModule(Module):
             raise ToolError(f"no task with id '{id}'")
         item["done"] = False
         item.pop("done_at", None)
+        item.pop("stage", None)
         self._save(items)
         return {"reopened": True, "text": item["text"]}
 

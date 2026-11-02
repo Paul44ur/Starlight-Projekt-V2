@@ -162,6 +162,8 @@
       "Notizen ohne Titel warten hier. Starlight kann sie in deine Notizen einsortieren; es fragt, bevor es etwas verschiebt.",
     "Sort my inbox": "Eingang sortieren",
     "Search tips:": "Suchtipps:",
+    "Show the tasks as": "Aufgaben zeigen als", "Columns": "Spalten", "Open": "Offen",
+    "Doing": "In Arbeit", "Done": "Erledigt", "Move to": "Verschieben nach", "Nothing here": "Hier ist nichts",
     "Export: HTML, PDF or print": "Exportieren: HTML, PDF oder drucken", "HTML file": "HTML-Datei",
     "PDF file": "PDF-Datei", "Print": "Drucken",
     "Boards": "Boards", "Board": "Board", "＋ New board": "＋ Neues Board",

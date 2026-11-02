@@ -619,6 +619,10 @@ add `done:` with the day (ticking again takes it away). Dates show as small chip
 overdue, amber when due today. A repeating task (`repeat: every week`) gets its next one
 below when you tick it. **Tasks** on the left lists the open tasks of all your notes:
 overdue, today, upcoming and without a date; tick them there or open their note.
+**Columns** shows them as a board instead: Open, Doing and Done, with your to-do list's
+tasks too. Drag a card to another column, or use its buttons (▶ doing, ✓ done, ↺ open).
+A task you are working on gets `status: doing` in its note (`status: in Arbeit` works too)
+and shows a ▶ chip. In the chat: "I'm working on the fence now" moves it to Doing.
 
 **Settings** lists the modules, each with an on/off switch; open one to
 choose for each of its tools whether it runs on its own, asks first or is blocked (the search
