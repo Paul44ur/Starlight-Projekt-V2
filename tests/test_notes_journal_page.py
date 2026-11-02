@@ -47,7 +47,8 @@ async def test_a_new_note_from_a_template(
         assert await page.locator(".title-input").input_value() == f"Meeting {today}"
         text = (notebook / "Notes" / f"Meeting {today}.md").read_text("utf-8")
         assert f"# Meeting {today}" in text and "## Decisions" in text
-        assert "## Decisions" in await page.locator(".cm-content").text_content()
+        lines = await page.locator(".cm-line").all_text_contents()  # the editor has it too
+        assert "Decisions" in lines  # (live preview hides "## " away from the cursor line)
         assert page.errors == []  # type: ignore[attr-defined]
 
 

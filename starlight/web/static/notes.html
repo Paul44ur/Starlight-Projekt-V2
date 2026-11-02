@@ -246,6 +246,8 @@
   .toolbar .tool:hover { background: var(--panel2); border-color: var(--border); }
   .toolbar .tool.b { font-weight: 800; } .toolbar .tool.i { font-style: italic; font-family: Georgia, serif; }
   .toolbar .sep { width: 1px; height: 20px; background: var(--border); margin: 0 6px; }
+  .toolbar .tool.live-preview[aria-pressed="true"] { color: var(--accent); }
+  .toolbar .tool.live-preview[aria-pressed="false"] { opacity: .55; }
   .save-state { margin-left: auto; font-size: 12.5px; color: var(--dim); padding-right: 4px; }
   .save-state.bad { color: var(--bad); }
   .editor { min-height: 50vh; }
@@ -1758,6 +1760,32 @@ const TOOLS = [
   ["link", "[[ ]]", "Link to a note", ""], ["picture", "🖼", "Picture", ""],
 ];
 
+// Live preview (block G4): the Markdown marks hide on the lines the cursor is not on. On
+// unless switched off with the toolbar's 👁 (remembered in this browser).
+function previewOn(set) {
+  try {
+    if (set !== undefined) localStorage.setItem("starlight.editor.preview", set ? "on" : "off");
+    return localStorage.getItem("starlight.editor.preview") !== "off";
+  } catch (e) { return set ?? true; }
+}
+
+function previewButton() {
+  const button = el("button", "tool live-preview", "👁");
+  button.type = "button";
+  button.dataset.tool = "preview";
+  const show = () => {
+    const on = previewOn();
+    button.setAttribute("aria-pressed", String(on));
+    button.title = t(on ? "Live preview: the marks show only on the line you are on (click for all)"
+      : "All the Markdown marks show (click for live preview)");
+  };
+  button.setAttribute("aria-label", t("Live preview"));
+  button.onmousedown = (event) => event.preventDefault();  // (the text keeps its selection)
+  button.onclick = () => { const on = !previewOn(); previewOn(on); edit.editor.preview(on); show(); };
+  show();
+  return button;
+}
+
 function status(text, bad = false) {
   const shown = document.getElementById("save-state");
   if (!shown) return;
@@ -1792,6 +1820,7 @@ async function startEditing() {
     button.onclick = () => (name === "picture" ? pickPicture() : edit.editor.run(name));
     bar.appendChild(button);
   }
+  bar.append(el("span", "sep"), previewButton());
   const saved = bar.appendChild(el("span", "save-state"));
   saved.id = "save-state";
   saved.setAttribute("role", "status");
@@ -1810,6 +1839,7 @@ async function startEditing() {
     notice: toast,
     say: t,
     placeholder: t("Write here. Type / for headings, tasks, tables and more."),
+    preview: previewOn(),
     noteNames: () => state.notes.flatMap(n => [
       { name: n.name, detail: folderOf(n.path) },
       ...n.aliases.map(alias => ({ name: alias, detail: "→ " + n.name })),

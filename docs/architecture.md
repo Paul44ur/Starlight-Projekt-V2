@@ -561,6 +561,16 @@ count: `GET /api/notes/flashcards`, `GET /api/notes/flashcards/due?deck=`, `POST
 /api/notes/flashcards/grade` (503 when the module is off). The Notes page has a Flashcards
 view (decks, then one card at a time; Space and 1 to 4). The automation template
 `daily-flashcards` says at 19:00 when cards are waiting.
+Block G4 is live preview. `notes-editor.js` has a ViewPlugin (in a Compartment, so
+`editor.preview(on)` switches it) that walks the syntax tree of the visible lines and hides,
+with replace decorations, the marks on every line the cursor or the selection is not on:
+ATX `HeaderMark` and its space, `EmphasisMark`, `StrikethroughMark`, inline `CodeMark`, a
+link's first `LinkMark` and `](address)`; a regular expression does `[[`, `Note|` and `]]`.
+A bullet's `ListMark` becomes a • widget; a task's `ListMark` hides and its `TaskMarker`
+becomes a checkbox widget, whose mousedown ticks that line with `toggleTask(view, [line])`
+(the selection stays). Fenced code, the properties block, images and `![[embeds]]` are left
+alone. The document never changes. The toolbar's 👁 keeps the choice in `localStorage`
+(`starlight.editor.preview`); the bundle needed nothing new.
 
 **Safety limits you set (`core/safety.py`).** Settings -> Safety limits chooses a level
 (strict, balanced, relaxed) and any of 29 switches on top, kept in

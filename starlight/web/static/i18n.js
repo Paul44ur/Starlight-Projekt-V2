@@ -164,6 +164,10 @@
     "Search tips:": "Suchtipps:",
     "Show the tasks as": "Aufgaben zeigen als", "Columns": "Spalten", "Open": "Offen",
     "Doing": "In Arbeit", "Done": "Erledigt", "Move to": "Verschieben nach", "Nothing here": "Hier ist nichts",
+    "Live preview": "Live-Vorschau",
+    "Live preview: the marks show only on the line you are on (click for all)":
+      "Live-Vorschau: Die Zeichen erscheinen nur in der Zeile, in der du bist (Klick zeigt alle)",
+    "All the Markdown marks show (click for live preview)": "Alle Markdown-Zeichen sind zu sehen (Klick für die Live-Vorschau)",
     "Flashcards": "Lernkarten", "Study all": "Alle lernen", "Study": "Lernen", "All decks": "Alle Stapel",
     "Show answer": "Antwort zeigen", "Again": "Nochmal", "Hard": "Schwer", "Good": "Gut", "Easy": "Leicht",
     "today": "heute", "in 1 day": "in 1 Tag", "in 1 month": "in 1 Monat", "in 1 year": "in 1 Jahr",

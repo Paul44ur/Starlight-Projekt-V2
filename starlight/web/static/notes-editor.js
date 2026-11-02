@@ -2,7 +2,8 @@
 // bundle (/vendor/editor.js), set up so writing a note needs no Markdown knowledge:
 // headings show big, bold shows bold, links are coloured, the marks (#, **, -) are dimmed,
 // [[links]] and #tags stand out, a toolbar and a "/" menu insert what you need, and
-// Ctrl+Enter ticks a task. Loaded only when you edit (notes.html imports it then).
+// Ctrl+Enter ticks a task. With live preview (block G4, on unless switched off) the marks
+// hide on the lines the cursor is not on. Loaded only when you edit (notes.html imports it).
 
 import * as cm from "/vendor/editor.js";
 
@@ -30,6 +31,9 @@ const look = cm.EditorView.theme({
   ".cm-completionIcon": { display: "none" },
   ".cm-panels": { backgroundColor: "var(--panel)", color: "var(--text)", borderColor: "var(--border)" },
   ".cm-searchMatch": { backgroundColor: "color-mix(in srgb, var(--warn) 35%, transparent)" },
+  ".cm-bullet": { color: "var(--dim)", display: "inline-block", width: "1.1em" },
+  ".cm-task-box": { width: "1em", height: "1em", margin: "0 .45em 0 0", verticalAlign: "-0.12em",
+                    accentColor: "var(--accent)", cursor: "pointer" },
 });
 
 // how the Markdown looks while you write it
@@ -152,9 +156,9 @@ function heading(view) {  // none -> # -> ## -> ### -> none
 
 // Ctrl+Enter: tick the task lines (with "done:" and the day) or open them again (without).
 // A repeating task's next one is added when the note is saved (the server does that).
-function toggleTask(view) {
+function toggleTask(view, only = null) {  // (only: these lines, not the selection's)
   const changes = [];
-  for (const line of lines(view)) {
+  for (const line of only || lines(view)) {
     const m = line.text.match(/^(\s*(?:[-*+]|\d{1,9}[.)])[ \t]+\[)(.)(\])/);
     if (!m) continue;
     const at = line.from + m[1].length;
@@ -172,6 +176,134 @@ function toggleTask(view) {
   const changed = view.state.changes(changes);  // a cursor at the line's end stays at its end
   view.dispatch({ changes: changed, selection: view.state.selection.map(changed, 1) });
   return true;
+}
+
+// -- live preview (block G4): the marks hide away from the lines you are on -----------------
+// "# ", "**", "*", "~~", "`" and a link's "[", "](address)" and "[[", "|", "]]" are hidden on
+// every line the cursor or the selection is not on, so the note reads as it will look; a
+// bullet shows as •, a task's [ ] as a box you can tick. Moving onto a line shows its marks
+// again to change them. Code blocks, the properties block and embeds (![[…]]) stay as written.
+
+const HIDDEN = cm.Decoration.replace({});
+
+class Bullet extends cm.WidgetType {
+  eq() { return true; }
+  toDOM() {
+    const dot = document.createElement("span");
+    dot.className = "cm-bullet";
+    dot.textContent = "•";
+    return dot;
+  }
+}
+
+class TaskBox extends cm.WidgetType {
+  constructor(done, label) { super(); this.done = done; this.label = label; }
+  eq(other) { return other.done === this.done; }
+  toDOM() {
+    const box = document.createElement("input");
+    box.type = "checkbox";
+    box.className = "cm-task-box";
+    box.checked = this.done;
+    box.setAttribute("aria-label", this.label);
+    return box;
+  }
+  ignoreEvent() { return false; }
+}
+
+const WIKILINK = /(!?)\[\[([^\[\]\n]+?)\]\]/g;
+
+function onLines(state) {  // the lines the cursor or the selection is on (their numbers)
+  const numbers = new Set();
+  for (const range of state.selection.ranges) {
+    const last = state.doc.lineAt(range.to).number;
+    for (let n = state.doc.lineAt(range.from).number; n <= last; n++) numbers.add(n);
+  }
+  return numbers;
+}
+
+function previewMarks(view, say) {
+  const { state } = view, doc = state.doc, shown = onLines(state), found = [];
+  const open = (from, to) => {  // all of from..to is on lines without the cursor
+    const a = doc.lineAt(from).number, b = doc.lineAt(to).number;
+    for (let n = a; n <= b; n++) if (shown.has(n)) return false;
+    return true;
+  };
+  const hide = (from, to) => {  // line by line: a plugin may not hide a line break
+    if (to <= from || !open(from, to)) return;
+    for (let at = from; at < to;) {
+      const line = doc.lineAt(at), end = Math.min(to, line.to);
+      if (end > at) found.push(HIDDEN.range(at, end));
+      at = line.to + 1;
+    }
+  };
+  const spaceAfter = (at) => (doc.sliceString(at, at + 1) === " " ? at + 1 : at);
+  const tree = cm.syntaxTree(state);
+  for (const { from, to } of view.visibleRanges) {
+    tree.iterate({
+      from, to,
+      enter(node) {
+        const name = node.name, parent = node.node.parent?.name || "";
+        if (name === "Properties" || name === "FencedCode" || name === "CodeBlock" || name === "Image") return false;
+        if (name === "HeaderMark" && parent.startsWith("ATXHeading")) hide(node.from, spaceAfter(node.to));
+        else if (name === "EmphasisMark" || name === "StrikethroughMark") hide(node.from, node.to);
+        else if (name === "CodeMark" && parent === "InlineCode") hide(node.from, node.to);
+        else if (name === "Link") {
+          const marks = node.node.getChildren("LinkMark");
+          if (marks.length >= 2 && node.node.getChild("URL")) {
+            hide(marks[0].from, marks[0].to);  // "["
+            hide(marks[1].from, node.to);  // "](address)"
+          }
+        } else if (name === "ListMark" && parent === "ListItem") {
+          const item = node.node.parent;
+          const task = item.getChild("Task");
+          const bullet = item.parent?.name === "BulletList";
+          if (task && open(node.from, node.to)) {
+            const marker = task.getChild("TaskMarker");
+            if (marker) {
+              const done = doc.sliceString(marker.from + 1, marker.to - 1).trim() !== "";
+              found.push(HIDDEN.range(node.from, spaceAfter(node.to)));
+              found.push(cm.Decoration.replace({ widget: new TaskBox(done, say("Tick it off")) })
+                .range(marker.from, marker.to));
+            }
+          } else if (bullet && open(node.from, node.to)) {
+            found.push(cm.Decoration.replace({ widget: new Bullet() }).range(node.from, node.to));
+          }
+        }
+      },
+    });
+    const text = doc.sliceString(from, to);
+    for (const m of text.matchAll(WIKILINK)) {
+      if (m[1]) continue;  // an embed: it stays as written
+      const start = from + m.index, end = start + m[0].length;
+      const inside = tree.resolveInner(start + 2, 1).name;
+      if (/Code|Properties/.test(inside)) continue;
+      const bar = m[2].indexOf("|");
+      hide(start, start + 2 + (bar >= 0 ? bar + 1 : 0));  // "[[" (and "Note|")
+      hide(end - 2, end);  // "]]"
+    }
+  }
+  return cm.Decoration.set(found, true);
+}
+
+function livePreview(say) {
+  return cm.ViewPlugin.fromClass(class {
+    constructor(view) { this.decorations = previewMarks(view, say); }
+    update(update) {
+      if (update.docChanged || update.viewportChanged || update.selectionSet
+          || cm.syntaxTree(update.startState) !== cm.syntaxTree(update.state)) {
+        this.decorations = previewMarks(update.view, say);
+      }
+    }
+  }, {
+    decorations: (plugin) => plugin.decorations,
+    eventHandlers: {
+      mousedown(event, view) {  // a task's box: tick it (the cursor stays where it was)
+        if (!event.target.classList?.contains("cm-task-box")) return false;
+        event.preventDefault();
+        return toggleTask(view, [view.state.doc.lineAt(view.posAtDOM(event.target))]);
+      },
+    },
+  });
 }
 
 function insert(view, text, cursor = text.length) {  // at the cursor, replacing the selection
@@ -291,6 +423,8 @@ function propertyMenu(options) {
 // noteNames() ([{name, detail}] for the [[ suggestions), tagNames() and propertyNames()
 // ([{name, count}] for # and for property names).
 export function createEditor(parent, options) {
+  const say = options.say || ((text) => text);
+  const preview = new cm.Compartment();
   const view = new cm.EditorView({
     parent,
     state: cm.EditorState.create({
@@ -305,6 +439,7 @@ export function createEditor(parent, options) {
         cm.syntaxHighlighting(styled),
         marks(/!?\[\[[^\[\]\n]+\]\]/g, "cm-wikilink"),
         marks(/(?<![\p{L}\p{N}_#&/\\])#[\p{L}\p{N}_\-/]*[\p{L}_][\p{L}\p{N}_\-/]*/gu, "cm-tag"),
+        preview.of(options.preview === false ? [] : livePreview(say)),
         cm.autocompletion({
           override: [slashMenu(options), linkMenu(options), tagMenu(options), propertyMenu(options)],
           icons: false,
@@ -378,6 +513,9 @@ export function createEditor(parent, options) {
       view.focus();
     },
     focus: () => view.focus(),
+    preview(on) {  // live preview on or off (block G4)
+      view.dispatch({ effects: preview.reconfigure(on ? livePreview(say) : []) });
+    },
     run(name) {
       const commands = {
         bold: () => wrap(view, "**"), italic: () => wrap(view, "*"), heading: () => heading(view),

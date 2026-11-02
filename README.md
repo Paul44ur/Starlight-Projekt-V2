@@ -564,6 +564,13 @@ take the other one, or keep both. **＋** (Ctrl+N) starts a new note; type over 
 rename it. 🗑 moves a note to the **Trash**, where **Bring back** returns it. 🕘 shows the
 earlier versions with what changed, and puts one back.
 
+**Live preview.** While you write, the Markdown marks (`#`, `**`, `*`, `~~`, backticks, a
+link's address, `[[ ]]`) hide on every line except the one you are on, so the note reads
+as it will look, like in a word processor. A bullet shows as •, and a task as a box you can
+tick with a click. Move onto a line to see and change its marks. Code, the properties at
+the top and pictures (`![[…]]`) stay as written, and the file keeps every mark. **👁** in
+the toolbar switches it off and on; this browser remembers your choice.
+
 **Exporting a note.** **⤓** on a note saves it as one HTML file (it opens on any computer,
 its pictures inside it) or as a PDF, or prints it. In the chat: "save my Project X note as
 a PDF" puts it in the `Exports` folder of your Starlight folder.
