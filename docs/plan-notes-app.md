@@ -28,8 +28,8 @@ Work goes block by block (section 9). One block is one session and one commit; m
 | D2 | Voice memos | S | D1 | **done** 2026-11-01 ("Notes plan D2: …") |
 | D3 | Tasks in notes: parser, writing back, to-do integration | M | B2 | **done** 2026-11-02 ("Notes plan D3: …") |
 | D4 | Tasks on the page: boxes, date chips, Tasks view | M | D3, B6 | **done** 2026-11-02 ("Notes plan D4: …") |
-| E1 | Search operators with highlighted hits | M | B5 | **next** |
-| E2 | Related notes, mentions without a link, OCR text | M | E1 | open |
+| E1 | Search operators with highlighted hits | M | B5 | **done** 2026-11-02 ("Notes plan E1: …") |
+| E2 | Related notes, mentions without a link, OCR text | M | E1 | **next** |
 | E3 | Query language (`query.py`) and `notes.query` | M | B2 | open |
 | E4 | Query blocks as live tables | M | E3, B6 | open |
 | F1 | Graph data, d3-force bundle, small graph per note | M | C1 | open |
@@ -38,7 +38,12 @@ Work goes block by block (section 9). One block is one session and one commit; m
 | F4 | Board view on the page | L | F3, B6 | open |
 | G1–G6 | Extras (export, Kanban, flashcards, live preview, Mermaid, deep links) | S–M each | see 9 | optional |
 
-Last updated: 2026-11-02 (A1 to D4 done. D4: the Tasks view is `showTasks` in notes.html
+Last updated: 2026-11-02 (A1 to E1 done. E1: `starlight/notebook/search.py` (`parse`,
+`fts_query`, `search`, `marks`, `snippet`, `fold`); `Index.search` now uses it, and the
+index got `fts_paths`, `scan_paths`, `bodies` and `with_property`. Without FTS5, accents
+count (the scan's stored text is casefolded only). `notes.find` now searches the whole
+Starlight folder (not only Notes) and keeps its answer shape (matching lines, 100 at most).
+D4: the Tasks view is `showTasks` in notes.html
 (the sidebar's Tasks button); the Graph button is still a placeholder (F1/F2). Chips come
 from render.js (`taskChip`), so chat answers show them too. The page's ticking endpoint is
 `POST /api/note/task`; its errors are plain text (409), shown as a toast.

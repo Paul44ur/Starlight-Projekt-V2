@@ -11,6 +11,7 @@ This package grows block by block. So far:
 * ``markdown``, ``links``, ``index``, ``rename``, ``templates``: reading notes, their links,
   the index, renaming with links that follow, templates.
 * ``tasks``: tasks in notes as to-dos (their ids, ticking them in the note).
+* ``search``: searching the notes ("phrases", -word, tag:, path:), with the hits marked.
 """
 
 from __future__ import annotations

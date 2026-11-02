@@ -24,7 +24,7 @@ from typing import Any
 from pydantic import BaseModel
 
 from starlight.core import Module, ModuleContext, ToolError, tool
-from starlight.notebook import Written, append_note, templates, write_note
+from starlight.notebook import Written, append_note, search, templates, write_note
 from starlight.notebook.markdown import (
     add_tag,
     iso_dates,
@@ -270,20 +270,42 @@ class NotesModule(Module):
 
     @tool
     def find(self, text: str) -> dict[str, Any]:
-        """Search all notes for a word or phrase; returns the matching lines."""
-        wanted = text.strip().casefold()
-        if not wanted:
-            raise ToolError("what should I look for?")
+        """Search your notes, the journal, recipes and clippings; returns the matching lines,
+        best notes first. Words (all of them), "exact words", -word to leave out,
+        tag:#work, path:Journal."""
+        from starlight.text import decode_text
+
+        query = search.parse(text)
+        if query.empty:
+            raise ToolError('what should I look for? Words, "exact words", tag:#work or path:')
+        index = self.ctx.notebook
+        index.refresh()
+        results = search.search(index, text, limit=MAX_HITS)
+        outside = index.with_property("source")
         hits: list[dict[str, Any]] = []
-        for path in sorted(self._notes()):
-            for number, line in enumerate(
-                path.read_text("utf-8", errors="replace").splitlines(), 1
-            ):
-                if wanted in line.casefold():
-                    hits.append({"note": path.stem, "line": number, "text": line.strip()[:300]})
-                    if len(hits) >= MAX_HITS:  # enough: stop even in the middle of a note
-                        return {"count": len(hits), "matches": hits}
-        return {"count": len(hits), "matches": hits}
+        untrusted = False
+        for result in results:
+            try:
+                lines = decode_text((Path(index.root) / result.path).read_bytes()).splitlines()
+            except OSError:
+                continue
+            found = [(n, line) for n, line in enumerate(lines, 1) if search.marks(line, query)]
+            if not found:  # (only tag: or path:, or words over two lines)
+                found = [(1, result.snippet)]
+            untrusted = untrusted or result.path in outside
+            for number, line in found:
+                hits.append(
+                    {"note": result.title, "path": result.path, "line": number,
+                     "text": line.strip()[:300]}
+                )  # fmt: skip
+                if len(hits) >= MAX_HITS:  # enough: stop even in the middle of a note
+                    break
+            if len(hits) >= MAX_HITS:
+                break
+        answer: dict[str, Any] = {"count": len(hits), "matches": hits}
+        if untrusted:  # a clipping's words are outside content: the injection guard goes up
+            answer["untrusted"] = True
+        return answer
 
     @tool
     async def delete(self, title: str) -> dict[str, Any]:

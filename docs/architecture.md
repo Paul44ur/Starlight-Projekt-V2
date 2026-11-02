@@ -433,6 +433,16 @@ amber today). On the Notes page the reading view's boxes are matched to the note
 order (not those in quotes or callouts; when the count or the ticks differ, none is
 enabled); the editor's Ctrl+Enter writes or removes `done:` itself; the Tasks view lists
 the groups with a box, the chips and the note.
+Block E1 is the search. `notebook/search.py`: `parse` reads words, `"phrases"`, `-word`,
+`-"words"`, `tag:`/`schlagwort:`, `path:`/`pfad:` (and `-tag:`, `-path:`); `fts_query` turns
+it into an FTS5 query with every word quoted (the last as a prefix, `NOT` for left-out ones);
+`search(index, text)` lets FTS5 find and rank (bm25, title five times) or, without FTS5 or
+with only `tag:`/`path:`, scans (`Index.scan_paths`, then the exact test in Python). Results
+carry a snippet (Markdown marks left out) and `marks`/`title_marks` (where the words are),
+found on text folded letter for letter (`fold`: no case, no accents, the same length).
+`Index.search`, `GET /api/notes/search` and `notes.find` use it; `notes.find` returns the
+matching lines, searches the whole Starlight folder, and says `untrusted` when a clipping is
+among them. The page marks the hits and shows the search tips.
 
 **Safety limits you set (`core/safety.py`).** Settings -> Safety limits chooses a level
 (strict, balanced, relaxed) and any of 29 switches on top, kept in

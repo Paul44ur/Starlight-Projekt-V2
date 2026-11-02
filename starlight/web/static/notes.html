@@ -69,6 +69,11 @@
   .card-note .t { font-weight: 600; }
   .card-note .w { color: var(--dim); font-size: 12.5px; }
   .card-note .s { color: var(--dim); font-size: 13.5px; margin-top: 3px; }
+  .card-note mark { color: inherit; background: color-mix(in srgb, var(--warn) 38%, transparent);
+                    border-radius: 3px; padding: 0 1px; }
+  .card-note .s mark { color: var(--text); }
+  .search-tips { margin-top: 18px; }
+  .search-tips code { white-space: pre-wrap; }
   .soon { border: 1px dashed var(--border); border-radius: 12px; padding: 22px; color: var(--dim); text-align: center; }
   .task-group h3 { font-size: .95rem; margin: 22px 0 6px; display: flex; gap: 8px; align-items: center; }
   .task-group h3 .count { color: var(--dim); font-weight: normal; font-size: .85rem; }
@@ -755,21 +760,35 @@ function clearInfo() {
   markCurrent();
 }
 
-function card(path, snippet) {
+// text with the parts at marks ([start, end] pairs) marked, as search hits are
+function marked(cls, text, marks = []) {
+  const box = el("div", cls);
+  let at = 0;
+  for (const [start, end] of marks) {
+    if (start < at || end > text.length) continue;
+    box.append(text.slice(at, start), el("mark", "", text.slice(start, end)));
+    at = end;
+  }
+  box.append(text.slice(at));
+  return box;
+}
+
+function card(path, snippet, hit) {
   const note = state.notes.find(n => n.path === path);
   const b = el("button", "card-note");
   b.type = "button";
   b.setAttribute("translate", "no");
-  b.appendChild(el("div", "t", note ? titleOf(note) : nameOf(path)));
+  const title = note ? titleOf(note) : nameOf(path);
+  b.appendChild(hit && hit.title === title ? marked("t", title, hit.title_marks) : el("div", "t", title));
   b.appendChild(el("div", "w", folderOf(path)));
-  if (snippet) b.appendChild(el("div", "s", snippet));
+  if (snippet) b.appendChild(hit ? marked("s", snippet, hit.marks) : el("div", "s", snippet));
   b.onclick = () => go({ path });
   return b;
 }
 
-function listOf(paths, snippets = {}) {
+function listOf(paths, snippets = {}, hits = {}) {
   const list = el("ul", "cards");
-  for (const path of paths) list.appendChild(el("li")).appendChild(card(path, snippets[path]));
+  for (const path of paths) list.appendChild(el("li")).appendChild(card(path, snippets[path], hits[path]));
   return list;
 }
 
@@ -788,12 +807,17 @@ async function showSearch(q) {
   const data = await api("/api/notes/search?" + new URLSearchParams({ q }));
   column.replaceChildren(el("h1", "title", "“" + q + "”"));
   column.firstChild.setAttribute("translate", "no");
+  const tips = el("p", "dim small search-tips", t("Search tips:") + " ");
+  tips.appendChild(el("code", "", 'tag:#work  path:Journal  "exact words"  -word'));
+  tips.lastChild.setAttribute("translate", "no");
   if (!data.hits.length) {
-    column.appendChild(el("p", "dim", t("Nothing found. Try fewer or other words.")));
+    column.append(el("p", "dim", t("Nothing found. Try fewer or other words.")), tips);
     return;
   }
   column.appendChild(el("p", "dim", data.hits.length === 1 ? t("1 note") : data.hits.length + " " + t("notes")));
-  column.appendChild(listOf(data.hits.map(h => h.path), Object.fromEntries(data.hits.map(h => [h.path, h.snippet]))));
+  const byPath = Object.fromEntries(data.hits.map(h => [h.path, h]));
+  column.appendChild(listOf(data.hits.map(h => h.path), Object.fromEntries(data.hits.map(h => [h.path, h.snippet])), byPath));
+  column.appendChild(tips);
 }
 
 function showHome() {

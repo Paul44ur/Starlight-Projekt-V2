@@ -392,35 +392,51 @@ class Index:
         return {r[0] for r in rows}
 
     def search(self, text: str, limit: int = 20) -> list[Hit]:
-        """Notes with all these words (the last one may be the start of a word), best
-        first. Without FTS5: the same words, found by a plain scan."""
-        words = WORD.findall(text)
-        if not words:
-            return []
+        """Notes with all these words (the last one may be the start of a word), best first;
+        also "phrases", -word, tag: and path: (starlight/notebook/search.py)."""
+        from starlight.notebook import search
+
+        return [Hit(r.path, r.title, r.snippet) for r in search.search(self, text, limit)]
+
+    # -- for starlight/notebook/search.py ------------------------------------------------
+
+    def fts_paths(self, match: str) -> list[str]:
+        """The notes FTS5 finds for ``match`` (an FTS5 query), best first (words in the
+        title count five times)."""
         with self._db() as db:
-            if self.fts:
-                query = " ".join(f'"{w}"' for w in words[:-1]) + f' "{words[-1]}"*'
-                rows = db.execute(
-                    "SELECT f.path, f.title, snippet(fts, 1, '', '', '…', 12) FROM fts"
-                    " JOIN files f ON f.id = fts.rowid WHERE fts MATCH ?"
-                    " ORDER BY bm25(fts, 5.0, 1.0) LIMIT ?",
-                    (query.strip(), limit),
-                ).fetchall()
-                return [Hit(r[0], r[1], r[2]) for r in rows]
-            folded = [w.casefold() for w in words]
-            where = " AND ".join("t.folded LIKE ? ESCAPE '\\'" for _ in folded)
             rows = db.execute(
-                f"SELECT f.path, f.title, t.folded, t.body FROM texts t"
-                f" JOIN files f ON f.id = t.file_id WHERE {where}",
-                [f"%{_like_prefix(w)}%" for w in folded],
+                "SELECT f.path FROM fts JOIN files f ON f.id = fts.rowid WHERE fts MATCH ?"
+                " ORDER BY bm25(fts, 5.0, 1.0)",
+                (match,),
             ).fetchall()
+        return [r[0] for r in rows]
 
-        def rank(row: Any) -> tuple[int, int]:  # words in the title first, then how often
-            title = row[1].casefold()
-            return (-sum(w in title for w in folded), -sum(row[2].count(w) for w in folded))
+    def scan_paths(self, words: list[str]) -> list[str]:
+        """Without FTS5: the notes whose title or text has each of ``words`` (casefolded)."""
+        where = " AND ".join("t.folded LIKE ? ESCAPE '\\'" for _ in words)
+        with self._db() as db:
+            rows = db.execute(
+                "SELECT f.path FROM texts t JOIN files f ON f.id = t.file_id"
+                + (f" WHERE {where}" if words else ""),
+                [f"%{_like_prefix(w)}%" for w in words],
+            ).fetchall()
+        return [r[0] for r in rows]
 
-        ranked = sorted(rows, key=rank)
-        return [Hit(r[0], r[1], _snippet(r[3], folded)) for r in ranked[:limit]]
+    def bodies(self, paths: list[str]) -> dict[str, tuple[str, str]]:
+        """Each note's title and text (after its properties), in the order given."""
+        source = (
+            "SELECT f.path, f.title, fts.body FROM fts JOIN files f ON f.id = fts.rowid"
+            if self.fts
+            else "SELECT f.path, f.title, t.body FROM texts t JOIN files f ON f.id = t.file_id"
+        )
+        found: dict[str, tuple[str, str]] = {}
+        with self._db() as db:
+            for start in range(0, len(paths), 500):
+                chunk = paths[start : start + 500]
+                marks = ", ".join("?" for _ in chunk)
+                for path, title, body in db.execute(f"{source} WHERE f.path IN ({marks})", chunk):
+                    found[path] = (title, body)
+        return {p: found[p] for p in paths if p in found}
 
     def tags(self) -> list[tuple[str, int]]:
         """Each tag (as first written) and in how many notes, most used first."""
@@ -542,12 +558,3 @@ class Index:
 def _like_prefix(text: str) -> str:
     """``text`` for a LIKE pattern: its % and _ taken literally."""
     return text.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
-
-
-def _snippet(body: str, words: list[str], around: int = 60) -> str:
-    """A few words of ``body`` around the first of ``words`` (casefolded)."""
-    lower = body.lower()  # (about the same length as the body, unlike casefold: ß -> ss)
-    at = min((i for i in (lower.find(w) for w in words) if i >= 0), default=0)
-    start, end = max(0, at - around), min(len(body), at + around)
-    text = " ".join(body[start:end].split())
-    return ("…" if start else "") + text + ("…" if end < len(body) else "")

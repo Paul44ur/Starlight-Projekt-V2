@@ -502,6 +502,13 @@ them, tags (`#home`) list the notes that have them, and the right side shows its
 the notes that link to it and its properties. Links and tags in chat answers open here
 too. The first visit brings a short welcome note with examples.
 
+**Searching notes.** The search box finds notes with all your words (the last one may be
+the start of a word), title words first, and marks the words in each result. `"oat milk"`
+finds those words together, `-cake` leaves notes with that word out, `tag:#work` keeps
+notes with that tag, and `path:Journal` keeps notes in that folder (`-tag:` and `-path:`
+leave them out). Case and accents do not matter ("muller" finds "Müller"). The same works
+in the chat: "find my notes about the router path:Notes".
+
 **Writing notes.** Press **✎ Edit** (or **Ctrl+E**) on a note. Headings show big and bold
 shows bold while you type, so you need no special knowledge: the toolbar makes text bold,
 adds a heading, a list, a task or a link to another note, and puts in a picture. Type

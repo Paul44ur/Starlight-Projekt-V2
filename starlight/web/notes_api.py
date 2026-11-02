@@ -12,7 +12,8 @@ meanwhile (in another program or tab) is never overwritten: the answer is 409 wi
 texts, and the page lets you choose.
 
     GET    /api/notes[?tag=]                 the folders and notes (pinned ones marked)
-    GET    /api/notes/search?q=              notes with these words
+    GET    /api/notes/search?q=              notes with these words ("phrases", -word, tag:,
+                                              path:), each with where the words are
     GET    /api/notes/resolve?name=&from=    the note a link [[name]] means (404: none yet)
     GET    /api/notes/embed?name=&source=&heading=  a note or a part of it, to show inside
     GET    /api/notes/facets                 tags (nested, with counts) and property names
@@ -56,7 +57,15 @@ from fastapi.responses import FileResponse
 from starlight.core.fsutil import write_atomic
 from starlight.core.safepaths import inside
 from starlight.core.tools import ToolError
-from starlight.notebook import NoteConflict, markdown, stamp, tasks, templates, write_note
+from starlight.notebook import (
+    NoteConflict,
+    markdown,
+    search,
+    stamp,
+    tasks,
+    templates,
+    write_note,
+)
 from starlight.notebook.rename import plan as plan_rename
 from starlight.notebook.rename import rename as carry_out_rename
 from starlight.notebook.write import MISSING
@@ -270,8 +279,8 @@ def add_notes_api(
         local_only(request)
         found = index()
         found.refresh()
-        hits = found.search(q, max(1, min(limit, 100)))
-        return {"hits": [h.__dict__ for h in hits]}
+        hits = search.search(found, q, max(1, min(limit, 100)))
+        return {"hits": [h.public() for h in hits]}  # (with where the words are: marks)
 
     @app.get("/api/notes/resolve")
     def resolve(request: Request, name: str, source: str = "") -> dict[str, Any]:
