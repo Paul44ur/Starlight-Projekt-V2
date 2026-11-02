@@ -265,6 +265,16 @@ class NotesModule(Module):
         changed = carry_out_rename(self.ctx.notebook, self.ctx.history, planned)
         return {"renamed": path.stem, "to": new.stem, "links_changed_in": [p.stem for p in changed]}
 
+    @tool
+    def link(self, title: str, heading: str = "") -> dict[str, Any]:
+        """A link that opens a note from anywhere: a mail, another program, an automation's
+        message (starlight://note/...; Windows opens it with Starlight). `heading`: open the
+        note there."""
+        from starlight.notebook.links import deep_link
+
+        path = self._find(title)
+        return {"note": path.stem, "link": deep_link(self._relative(path), heading.strip())}
+
     @tool(name="list")
     def list_notes(self) -> dict[str, Any]:
         """Your notes, most recently changed first."""

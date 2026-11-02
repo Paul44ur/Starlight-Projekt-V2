@@ -164,6 +164,9 @@
     "Search tips:": "Suchtipps:",
     "Show the tasks as": "Aufgaben zeigen als", "Columns": "Spalten", "Open": "Offen",
     "Doing": "In Arbeit", "Done": "Erledigt", "Move to": "Verschieben nach", "Nothing here": "Hier ist nichts",
+    "Copy a link to this note (it opens the note from other programs)":
+      "Link zu dieser Notiz kopieren (er öffnet die Notiz aus anderen Programmen)",
+    "Link copied:": "Link kopiert:", "The link to this note:": "Der Link zu dieser Notiz:",
     "Live preview": "Live-Vorschau",
     "Live preview: the marks show only on the line you are on (click for all)":
       "Live-Vorschau: Die Zeichen erscheinen nur in der Zeile, in der du bist (Klick zeigt alle)",

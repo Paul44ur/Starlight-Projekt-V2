@@ -491,6 +491,8 @@ class Settings:
     whisper_url: str = WHISPER_URL
     whisper_model_url: str = WHISPER_MODEL_URL
     piper_url: str = PIPER_URL
+    links: bool = True  # starlight:// links open your notes (Windows: registered for you)
+    first_page: str = ""  # a page to open instead of the chat ("/notes?path=..."): --open
     github_token: str | None = field(default=None, repr=False)
 
     @property
@@ -590,10 +592,12 @@ def load_settings(args: argparse.Namespace) -> Settings:
                     "remote_model",
                     "style",
                     "models_dir",
+                    "links",
                 ):
                     setattr(settings, key, value)
         except (OSError, ValueError) as exc:
             raise LauncherError(f"{saved} is not valid JSON: {exc}") from exc
+    settings.first_page = str(getattr(args, "page", "") or "")
     if getattr(args, "model", None):
         settings.model_url = preset_url(args.model)
     for key in ("model_url", "context", "variant", "llama_release", "port"):
@@ -2107,6 +2111,7 @@ def setup(settings: Settings, ui: Ui) -> Installed:
         state, detail = other_server_state(settings)
         ui.say(f"   {detail}" if state == "ready" else f"   {detail} (Starlight starts anyway)")
     write_launcher_config(settings, installed.server, installed.model)
+    ensure_links(settings, ui)
     return installed
 
 
@@ -2305,6 +2310,119 @@ def autostart_enabled() -> bool:
             return True
     except OSError:
         return False
+
+
+# -- links to notes: starlight://note/... (docs/plan-notes-app.md, block G6) ------------------
+# Windows opens a starlight:// link with Starlight.exe --open "<link>" (registered for your own
+# account, HKCU\Software\Classes\starlight, by each start of Starlight.exe; "links": false in
+# config/launcher.json takes it away). A link only ever opens a page of the web chat: it
+# never asks Starlight anything or runs a tool, so a link in a web page or a mail can do no
+# more than show one of your notes.
+
+LINK_SCHEME = "starlight"
+LINK_KEY = r"Software\Classes\starlight"
+
+
+def link_target(link: str) -> str | None:
+    """The page a starlight:// link opens, as a path of the web chat, or None when it is
+    not one of these:
+
+    starlight://note/Notes/Plan.md     the note at that path in the Starlight folder
+    starlight://note/Plan              the note called Plan (by its name or an alias)
+    starlight://note/Plan#Shopping     ... at that heading
+    starlight://notes                  the Notes page
+    starlight://chat                   the chat
+    """
+    try:
+        parsed = urllib.parse.urlsplit(link.strip())
+    except ValueError:
+        return None
+    if parsed.scheme.lower() != LINK_SCHEME:
+        return None
+    kind = parsed.netloc.lower()
+    name = urllib.parse.unquote(parsed.path).strip("/").strip()
+    heading = urllib.parse.unquote(parsed.fragment).strip()
+    if kind == "chat" and not name:
+        return "/"
+    if kind == "notes" and not name:
+        return "/notes"
+    if kind != "note":
+        return None
+    if not name:
+        return "/notes"
+    parts = name.split("/")
+    if (
+        len(name) > 500
+        or len(heading) > 200
+        or any(ord(c) < 32 or c in '\\<>|"?*' for c in name + heading)
+        or re.match(r"^[A-Za-z]:", name)
+        or any(part in ("", ".", "..") for part in parts)
+    ):
+        return None
+    query = {"path": name} if name.lower().endswith(".md") else {"open": name}
+    if heading:
+        query["heading"] = heading
+    return "/notes?" + urllib.parse.urlencode(query, quote_via=urllib.parse.quote)
+
+
+def link_command(root: Path) -> str:
+    """What Windows runs for a starlight:// link: Starlight.exe (or this script) with it."""
+    return autostart_command(root) + ' --open "%1"'
+
+
+def register_links(on: bool, command: str) -> bool:
+    """Let starlight:// links open in Starlight, for your own account (HKCU), or take that
+    away. Writes only what differs; True when something changed. Windows only."""
+    if sys.platform != "win32":
+        return False
+    import winreg
+
+    if not on:
+        changed = False
+        for sub in (r"\shell\open\command", r"\shell\open", r"\shell", ""):
+            with contextlib.suppress(FileNotFoundError):
+                winreg.DeleteKey(winreg.HKEY_CURRENT_USER, LINK_KEY + sub)
+                changed = True
+        return changed
+    wanted = {
+        LINK_KEY: {"": "URL:Starlight", "URL Protocol": ""},
+        LINK_KEY + r"\shell\open\command": {"": command},
+    }
+    changed = False
+    for path, values in wanted.items():
+        with winreg.CreateKey(winreg.HKEY_CURRENT_USER, path) as key:
+            for name, value in values.items():
+                try:
+                    if winreg.QueryValueEx(key, name)[0] == value:
+                        continue
+                except FileNotFoundError:
+                    pass
+                winreg.SetValueEx(key, name, 0, winreg.REG_SZ, value)
+                changed = True
+    return changed
+
+
+def ensure_links(settings: Settings, ui: Ui) -> None:
+    """Set up starlight:// links (or take them away: "links": false), for Starlight.exe only:
+    a script run, such as the tests, must not take them over. A problem is only said."""
+    if not getattr(sys, "frozen", False):
+        return
+    try:
+        register_links(settings.links, link_command(settings.root))
+    except OSError as exc:
+        ui.say(f"   starlight:// links could not be set up: {exc}")
+
+
+def open_link_if_running(target: str, wait: float = 20) -> bool:
+    """Starlight's web chat is running already: open ``target`` in the browser (once the
+    chat answers, at most ``wait`` seconds) and say True. False: it is not running."""
+    if not port_in_use(WEB_PORT):
+        return False
+    end = time.monotonic() + wait
+    while time.monotonic() < end and fetch_json(f"{chat_url()}/api/status") is None:
+        time.sleep(0.5)
+    _open_browser(chat_url() + target)
+    return True
 
 
 def set_autostart(on: bool, command: str) -> None:
@@ -2972,7 +3090,7 @@ def start(settings: Settings, ui: Ui, installed: Installed, ask: str | None) -> 
             result = subprocess.run(starlight(uv, "ask", "-y", ask), cwd=settings.root, check=False)
             return result.returncode
         if settings.both:
-            url = chat_url()
+            url = chat_url() + settings.first_page
             ui.say(f"\nOpening the chat in your browser: {url}")
             ui.say("A terminal chat opens here too - both talk to the same Starlight.")
             ui.say("Type /quit to leave the terminal; close this window to stop everything.\n")
@@ -2983,7 +3101,7 @@ def start(settings: Settings, ui: Ui, installed: Installed, ask: str | None) -> 
                 starlight(uv, "connect"), cwd=settings.root, check=False
             ).returncode
         if settings.web:
-            url = chat_url()
+            url = chat_url() + settings.first_page
             ui.say(f"\nOpening the chat in your browser: {url}")
             ui.say("Close this window (or press Ctrl+C) to stop everything.\n")
             threading.Timer(2.5, _open_browser, args=(url,)).start()
@@ -3096,6 +3214,12 @@ def build_parser() -> argparse.ArgumentParser:
         "--gui", action="store_true", help="always show the window, even with those options"
     )
     parser.add_argument("--gui-selftest", action="store_true", help=argparse.SUPPRESS)
+    parser.add_argument(
+        "--open",
+        metavar="LINK",
+        help="open a starlight:// link (starlight://note/Plan): in the running Starlight, "
+        "or start it with that page",
+    )
     return parser
 
 
@@ -3175,6 +3299,14 @@ def run_window(args: argparse.Namespace) -> int | None:
 
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
+    if args.open is not None:  # a starlight:// link (block G6)
+        target = link_target(args.open)
+        if target is None:
+            print(f"Not a Starlight link: {args.open[:200]}", file=sys.stderr)
+            return 2
+        if open_link_if_running(target):
+            return 0
+        args.page = target  # not running: start it, with that page first
     if gui_wanted(args):
         window_code = run_window(args)
         if window_code is not None:

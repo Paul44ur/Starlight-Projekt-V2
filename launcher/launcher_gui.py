@@ -2158,7 +2158,7 @@ class App:
         self.was_ready = ready
         if ready and not self.opened_browser and self.settings.web:
             self.opened_browser = True
-            self.open_chat()
+            webbrowser.open(self.L.chat_url() + self.settings.first_page)  # (--open: that page)
 
     def open_chat(self) -> None:
         webbrowser.open(self.L.chat_url())

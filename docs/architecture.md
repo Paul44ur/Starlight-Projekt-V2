@@ -571,6 +571,21 @@ becomes a checkbox widget, whose mousedown ticks that line with `toggleTask(view
 (the selection stays). Fenced code, the properties block, images and `![[embeds]]` are left
 alone. The document never changes. The toolbar's 👁 keeps the choice in `localStorage`
 (`starlight.editor.preview`); the bundle needed nothing new.
+Block G6 is deep links. `starlight://note/<path>` (or `/<name>`, `#heading`),
+`starlight://notes` and `starlight://chat` only ever open a page of the web chat.
+`launcher.link_target` turns a link into that page (`/notes?path=` for a `.md` path, else
+`/notes?open=`); `..`, empty parts, drive letters, backslashes, control characters and any
+other kind are refused. `Starlight.exe --open <link>` opens the page in the browser when
+port 8700 answers (it waits up to 20 s for `/api/status`), else it starts as usual with
+`Settings.first_page`: the text start and the window open that page instead of the chat
+(the window's Open chat button still opens the chat). `ensure_links` (from `setup`, only
+when frozen, so script runs and tests never touch the registry) calls `register_links`:
+`HKCU\Software\Classes\starlight` with `URL Protocol` and `shell\open\command` =
+`"<exe>" --open "%1"`, written only where it differs; `"links": false` in launcher.json
+deletes the keys. `notebook.links.deep_link(path, heading)` makes a link; `notes.link(title)`
+gives one to the assistant. `markdown.js` reads `starlight://` links (in `[text](…)` and
+bare) with the same rules and makes them note links on this site (same tab; the Notes page
+opens them in place). The Notes page's 🔗 copies a note's link.
 
 **Safety limits you set (`core/safety.py`).** Settings -> Safety limits chooses a level
 (strict, balanced, relaxed) and any of 29 switches on top, kept in

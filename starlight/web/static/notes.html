@@ -626,10 +626,15 @@ async function openNote(path, heading, editing = false) {
   out.type = "button"; out.title = t("Export: HTML, PDF or print"); out.setAttribute("aria-label", t("Export: HTML, PDF or print"));
   out.setAttribute("aria-haspopup", "menu"); out.id = "export-toggle";
   out.onclick = (event) => { event.stopPropagation(); exportMenu(out); };
+  const share = el("button", "icon", "🔗");  // a link that opens it from other programs (G6)
+  share.type = "button"; share.id = "link-copy";
+  share.title = t("Copy a link to this note (it opens the note from other programs)");
+  share.setAttribute("aria-label", t("Copy a link to this note (it opens the note from other programs)"));
+  share.onclick = () => copyLink(note.path);
   const bin = el("button", "icon", "🗑");
   bin.type = "button"; bin.title = t("Move to the trash"); bin.setAttribute("aria-label", t("Move to the trash"));
   bin.onclick = () => deleteNote();
-  actions.append(editButton, ask, pin, past, out, bin, toggle);
+  actions.append(editButton, ask, pin, past, out, share, bin, toggle);
 
   const title = column.appendChild(el("h1", "title", note.title));
   title.setAttribute("translate", "no");
@@ -809,6 +814,22 @@ function kanbanCard(card, stage, data) {
   });
   item.addEventListener("dragend", () => { dragged = null; });
   return item;
+}
+
+// starlight://note/Notes/Plan.md: Windows opens it with Starlight (block G6), and the chat
+// and notes show it as a link to the note.
+function deepLink(path) {
+  return "starlight://note/" + path.split("/").map(encodeURIComponent).join("/");
+}
+
+async function copyLink(path) {
+  const link = deepLink(path);
+  try {
+    await navigator.clipboard.writeText(link);
+    toast(t("Link copied:") + " " + link);
+  } catch (e) {
+    window.prompt(t("The link to this note:"), link);
+  }
 }
 
 async function moveCard(card, to) {

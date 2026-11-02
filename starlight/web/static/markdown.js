@@ -1,6 +1,7 @@
 // Markdown in Starlight's answers (headings, lists, tables, code, bold, links), drawn as page
 // elements. The model's text only ever becomes textContent, never HTML: an answer cannot run
-// a script or load anything, and a link opens only if it is http(s) or mailto.
+// a script or load anything, and a link opens only if it is http(s) or mailto. A
+// starlight://note/... link (block G6) becomes a link to that note on the Notes page.
 //
 // render.js fills in mdHooks for notes: links between notes ([[Note]]), pictures, tags,
 // callouts and task boxes. Without it those stay plain text.
@@ -23,7 +24,7 @@ const MD_INLINE = new RegExp([
   "\\*(?=[^\\s*])([\\s\\S]*?[^\\s*])\\*",
   "(?<![\\w])_(?=[^\\s_])([\\s\\S]*?[^\\s_])_(?![\\w])",
   "\\[([^\\]\\n]+)\\]\\(\\s*<?([^\\s()<>]+(?:\\([^\\s()]*\\))?)>?\\s*\\)",
-  "(https?:\\/\\/[^\\s<>]*[^\\s<>()\\[\\].,;:!?'\"*_~])",
+  "((?:https?|starlight):\\/\\/[^\\s<>]*[^\\s<>()\\[\\].,;:!?'\"*_~])",
   "\\$\\$([^$\\n]+?)\\$\\$",
   "\\\\\\(([^\\n]+?)\\\\\\)",
   "(?<![\\w$\\\\])\\$(?=[^\\s$])([^$\\n]*?[^\\s$\\\\])\\$(?![\\d$])",
@@ -39,7 +40,33 @@ function mdSafeHref(href) {
   } catch (e) { return null; }
 }
 
+// starlight://note/Notes/Plan.md (or /Plan, #Heading), starlight://notes, starlight://chat:
+// the page of this web app it means, or null (the same rules as the launcher's link_target).
+function mdStarlightHref(href) {
+  const m = /^starlight:\/\/(note|notes|chat)(?:\/([^#]*))?(?:#(.*))?$/i.exec(href);
+  if (!m) return null;
+  let name, heading;
+  try {
+    name = decodeURIComponent(m[2] || "").replace(/^\/+|\/+$/g, "").trim();
+    heading = decodeURIComponent(m[3] || "").trim();
+  } catch (e) { return null; }
+  const kind = m[1].toLowerCase();
+  if (kind !== "note") return name ? null : (kind === "chat" ? "/" : "/notes");
+  if (!name) return "/notes";
+  if (name.length > 500 || heading.length > 200 || /[\x00-\x1f\\<>|"?*]/.test(name + heading)
+      || /^[A-Za-z]:/.test(name) || name.split("/").some((p) => !p || p === "." || p === "..")) return null;
+  const query = new URLSearchParams(/\.md$/i.test(name) ? { path: name } : { open: name });
+  if (heading) query.set("heading", heading);
+  return "/notes?" + query.toString();
+}
+
 function mdLink(text, href) {
+  const local = /^starlight:/i.test(href) ? mdStarlightHref(href) : null;
+  if (local) {  // (in this tab: the Notes page opens it in place)
+    const a = el("a", "note-link", text);
+    a.href = local;
+    return a;
+  }
   const safe = mdSafeHref(href);
   if (!safe) return document.createTextNode(text);
   const a = el("a", "", text);
@@ -329,7 +356,7 @@ function markdownToSpeech(text) {
     .replace(/!\[\[[^\]\n]*\]\]/g, "")
     .replace(/\[\[(?:[^\]|\n]*\|)?([^\]\n]+)\]\]/g, "$1")
     .replace(/!?\[([^\]]*)\]\([^)]*\)/g, "$1")
-    .replace(/https?:\/\/[^\s<>]*[^\s<>().,;:!?'"]/g, "a link")
+    .replace(/(?:https?|starlight):\/\/[^\s<>]*[^\s<>().,;:!?'"]/g, "a link")
     .replace(/(\*\*|__|~~|`)/g, "")
     .replace(/(?<![\w*])\*(?=\S)([^*\n]+?)\*/g, "$1")
     .replace(/^\s*\|?\s*:?-{2,}[-|: ]*$/gm, "")

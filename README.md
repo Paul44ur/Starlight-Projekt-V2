@@ -221,6 +221,7 @@ Run `Starlight.exe --help` in a terminal to see every option. The most useful on
 | `--update` | Download the newest uv and llama.cpp again (after copying your settings and data to `backups`). |
 | `--rollback` | Go back to the uv and llama.cpp from before the last `--update` (and, if you say yes, your settings and data). |
 | `--setup-only` | Download and set up, then exit without starting. |
+| `--open starlight://note/Plan` | Open a note: in the running Starlight, or start Starlight with it (Windows runs this for you when you click such a link). |
 
 To use options every time, put them into `config\launcher.json`, for example:
 
@@ -570,6 +571,16 @@ as it will look, like in a word processor. A bullet shows as •, and a task as 
 tick with a click. Move onto a line to see and change its marks. Code, the properties at
 the top and pictures (`![[…]]`) stay as written, and the file keeps every mark. **👁** in
 the toolbar switches it off and on; this browser remembers your choice.
+
+**Links to a note from other programs.** **🔗** on a note copies a link like
+`starlight://note/Notes/Plan.md`. Put it in a mail, a document, a calendar entry or another
+program: clicking it opens the note in your browser (Starlight starts first if it is not
+running; your browser may ask once whether to open Starlight). `starlight://note/Plan` finds
+the note by its name, `#Heading` opens it at a heading, `starlight://notes` opens the Notes
+page. In the chat and in notes such a link opens the note right there, and "give me a link
+to my Plan note" makes one. Starlight.exe sets the links up for your own Windows account
+each time it starts; `"links": false` in `config\launcher.json` takes them away again. A
+link only ever opens a page: it cannot ask Starlight anything or make it do something.
 
 **Exporting a note.** **⤓** on a note saves it as one HTML file (it opens on any computer,
 its pictures inside it) or as a PDF, or prints it. In the chat: "save my Project X note as

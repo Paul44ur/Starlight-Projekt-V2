@@ -15,6 +15,7 @@ import re
 import unicodedata
 from collections.abc import Iterable
 from dataclasses import dataclass
+from urllib.parse import quote
 
 
 def key(name: str) -> str:
@@ -98,3 +99,11 @@ def retarget(inside: str, new_name: str) -> str:
     folder, slash, _ = bare.rpartition("/")
     suffix = ".md" if bare.rstrip().casefold().endswith(".md") else ""
     return (folder + slash if slash else "") + new_name + suffix + ("\\" if escaped else "") + rest
+
+
+def deep_link(path: str, heading: str = "") -> str:
+    """A link that opens the note from other programs, a mail or an automation's message
+    (block G6): ``starlight://note/Notes/Plan.md``. Starlight.exe opens it (see
+    launcher/starlight_launcher.py, link_target); the pages show it as a link to the note."""
+    link = "starlight://note/" + quote(path, safe="/")
+    return link + ("#" + quote(heading, safe="") if heading else "")
