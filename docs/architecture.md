@@ -422,6 +422,17 @@ below. The to-do module lists them (`todo.list`, `todo.due`, marked with `note` 
 ticks them (`todo.done`, also by a word, and `todo.reopen`), and sends `todo.change` and
 `todo.remove` to the note; `note_tasks: false` leaves them out. The briefing, reminders and
 `{{todo}}` get them through `todo.due`.
+Block D4 puts tasks on the page. `GET /api/note` lists the note's tasks with their lines as
+written (`tasks: [{line, status, text, raw}]`); `POST /api/note/task` ticks one by
+`{path, line, expected}` (the reading view) or `{path, id}` (the Tasks view), with `done`
+true or false, and answers 409 when the task changed. `GET /api/notes/tasks` gives the open
+tasks grouped `overdue`, `today`, `upcoming`, `none`, and the `date`. The page's save also
+runs `tasks.with_next_ones`: a repeating task ticked in the editor gets its next one.
+render.js shows a task's fields as chips (`taskFields`, `taskChip`; due red when overdue,
+amber today). On the Notes page the reading view's boxes are matched to the note's tasks in
+order (not those in quotes or callouts; when the count or the ticks differ, none is
+enabled); the editor's Ctrl+Enter writes or removes `done:` itself; the Tasks view lists
+the groups with a box, the chips and the note.
 
 **Safety limits you set (`core/safety.py`).** Settings -> Safety limits chooses a level
 (strict, balanced, relaxed) and any of 29 switches on top, kept in

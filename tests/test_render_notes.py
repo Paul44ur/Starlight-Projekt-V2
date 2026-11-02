@@ -87,12 +87,14 @@ async def test_notes_syntax_in_an_answer(static_site: str, monkeypatch: pytest.M
 
             items = await body.locator("li.task").evaluate_all(
                 "ls => ls.map(l => [l.dataset.status, l.querySelector('input').checked,"
-                " l.querySelector('input').disabled, l.textContent.trim()])"
+                " l.querySelector('input').disabled,"
+                " (l.querySelector('.task-text') || l).textContent.trim(),"
+                " l.querySelector('.task-chip')?.dataset.date])"
             )
             assert items == [
-                ["open", False, True, "milk due: 2026-11-05"],
-                ["done", True, True, "bread"],
-                ["cancelled", True, True, "cake"],
+                ["open", False, True, "milk", "2026-11-05"],  # (the due date as a chip)
+                ["done", True, True, "bread", None],
+                ["cancelled", True, True, "cake", None],
             ]
             assert await body.locator("li:not(.task)").count() == 1
 

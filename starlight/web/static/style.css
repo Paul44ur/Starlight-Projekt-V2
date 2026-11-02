@@ -125,3 +125,10 @@ button:focus:not(:focus-visible), a:focus:not(:focus-visible) { outline: none; }
 .md li.task[data-status="done"], .md li.task[data-status="cancelled"] { color: var(--dim); }
 .md li.task[data-status="done"] { text-decoration: line-through; text-decoration-color: var(--dim); }
 .md li.task[data-status="cancelled"] { text-decoration: line-through; font-style: italic; }
+/* a task's fields as chips (render.js); inline-block, so a done task's line-through skips them */
+.md .task-chip { display: inline-block; margin-left: .4em; padding: 0 .5em; border: 1px solid var(--border);
+                 border-radius: 999px; font-size: .8em; line-height: 1.55; color: var(--dim); white-space: nowrap;
+                 font-style: normal; vertical-align: .05em; }
+.md .task-chip.overdue { color: #fff; background: #c62828; border-color: #c62828; }
+.md .task-chip.today { color: #2b1d00; background: var(--warn); border-color: var(--warn); }
+.md .task-priority { padding: 0 .3em; }

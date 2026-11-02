@@ -70,6 +70,18 @@
   .card-note .w { color: var(--dim); font-size: 12.5px; }
   .card-note .s { color: var(--dim); font-size: 13.5px; margin-top: 3px; }
   .soon { border: 1px dashed var(--border); border-radius: 12px; padding: 22px; color: var(--dim); text-align: center; }
+  .task-group h3 { font-size: .95rem; margin: 22px 0 6px; display: flex; gap: 8px; align-items: center; }
+  .task-group h3 .count { color: var(--dim); font-weight: normal; font-size: .85rem; }
+  .task-group[data-group="overdue"] h3 { color: var(--bad); }
+  .task-rows { list-style: none; padding: 0; margin: 0; }
+  .task-row { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 6px; padding: 7px 4px;
+              border-bottom: 1px solid var(--border); }
+  .task-row .task-box { width: 1.05em; height: 1.05em; margin: 0 6px 0 0; accent-color: var(--ok);
+                        position: relative; top: .15em; flex: none; }
+  .task-row .task-text { flex: 1 1 14em; min-width: 0; overflow-wrap: anywhere; }
+  .task-row .task-note { color: var(--dim); font-size: .85rem; text-decoration: none; margin-left: auto; }
+  .task-row .task-note:hover { color: var(--accent); text-decoration: underline; }
+  .task-row.done .task-text { text-decoration: line-through; color: var(--dim); }
 
   /* What belongs to the note. */
   .info ul.plain li button { display: block; width: 100%; text-align: left; background: none; border: none;
@@ -511,6 +523,7 @@ async function openNote(path, heading, editing = false) {
   body.setAttribute("translate", "no");
   renderMarkdown(body, note.body);
   if (!note.body.trim()) body.appendChild(el("p", "dim", t("This note is empty.")));
+  enableTasks(body, note);
 
   state.parts = { title, body };
   if (/^Journal\/\d{4}-\d{2}-\d{2}\.md$/.test(note.path)) column.prepend(calendarStrip(nameOf(note.path)));
@@ -521,6 +534,92 @@ async function openNote(path, heading, editing = false) {
   document.getElementById("note").scrollTop = 0;
   if (heading) showHeading(body, note.headings, heading);
   if (editing) await startEditing();
+}
+
+// -- tasks (block D4) -------------------------------------------------------------------------
+// A task's box ticks it in the note (with "done:" and the day), or opens it again. The boxes
+// are matched to the note's tasks in order; when they do not match (a task in a quote, say)
+// they stay read-only. The server refuses when the line changed meanwhile.
+
+function enableTasks(body, note) {
+  const boxes = [...body.querySelectorAll("li.task > .task-box")]
+    .filter(box => !box.closest("blockquote, .callout, .embed"));
+  const tasks = note.tasks || [];
+  if (boxes.length !== tasks.length || boxes.some((box, n) => box.checked !== (tasks[n].status !== " "))) return;
+  boxes.forEach((box, n) => {
+    if (![" ", "x", "X"].includes(tasks[n].status)) return;  // (cancelled and so on: as written)
+    box.disabled = false;
+    box.title = t(box.checked ? "Open it again" : "Tick it off");
+    box.onchange = () => tickInNote(box, note, tasks[n]);
+  });
+}
+
+async function tickInNote(box, note, task) {
+  box.disabled = true;
+  const scroller = document.getElementById("note"), at = scroller.scrollTop;
+  try {
+    await api("/api/note/task", { method: "POST", body: { path: note.path, line: task.line, expected: task.raw, done: box.checked } });
+  } catch (e) {
+    toast(e.message);
+  }
+  await openNote(note.path);  // as it is now: its done date, a repeating task's next one
+  scroller.scrollTop = at;
+}
+
+// The Tasks view: the open tasks of all notes, overdue first
+async function showTasks() {
+  clearInfo(); state.view = "tasks"; markCurrent();
+  column.replaceChildren(el("h1", "title", t("Tasks")));
+  let data;
+  try { data = await api("/api/notes/tasks"); }
+  catch (e) { toast(e.message); return; }
+  if (state.view !== "tasks") return;  // (another view was chosen meanwhile)
+  if (!data.count) {
+    column.appendChild(el("div", "soon", t("No open tasks. Write one in any note, for example: - [ ] Call Tom due: friday")));
+    return;
+  }
+  const groups = [["overdue", "Overdue"], ["today", "Today"], ["upcoming", "Upcoming"], ["none", "No date"]];
+  for (const [key, label] of groups) {
+    if (!data[key].length) continue;
+    const section = column.appendChild(el("section", "task-group"));
+    section.dataset.group = key;
+    const heading = section.appendChild(el("h3", "", t(label)));
+    heading.appendChild(el("span", "count", String(data[key].length)));
+    const list = section.appendChild(el("ul", "task-rows md"));
+    for (const task of data[key]) list.appendChild(taskRow(task, data.date));
+  }
+}
+
+function taskRow(task, today) {
+  const row = el("li", "task-row");
+  row.dataset.id = task.id;
+  const box = row.appendChild(el("input", "task-box"));
+  box.type = "checkbox";
+  box.title = t("Tick it off");
+  box.setAttribute("aria-label", task.text);
+  const words = row.appendChild(el("span", "task-text"));
+  words.setAttribute("translate", "no");
+  mdInline(words, task.text);
+  for (const name of ["due", "start", "repeat", "priority"]) {
+    const chip = task[name] && (name !== "priority" || task.priority !== "normal") && taskChip(name, task[name], true, today);
+    if (chip) row.appendChild(chip);
+  }
+  const where = row.appendChild(el("a", "task-note", task.note));
+  where.setAttribute("translate", "no");
+  where.href = "/notes?" + new URLSearchParams({ path: task.path });
+  where.onclick = (event) => { event.preventDefault(); go({ path: task.path }); };
+  box.onchange = async () => {
+    box.disabled = true;
+    try {
+      await api("/api/note/task", { method: "POST", body: { path: task.path, id: task.id, done: box.checked } });
+      row.classList.toggle("done", box.checked);  // (it stays in the list until you look again)
+    } catch (e) {
+      box.checked = !box.checked;
+      toast(e.message);
+    }
+    box.disabled = false;
+  };
+  return row;
 }
 
 function showHeading(body, headings, wanted) {
@@ -749,11 +848,10 @@ function showView(view) {
     return;
   }
   if (view === "trash") return showTrash();
+  if (view === "tasks") return showTasks();
   clearInfo(); state.view = view; markCurrent();
-  column.replaceChildren(el("h1", "title", t(view === "tasks" ? "Tasks" : "Graph")));
-  column.appendChild(el("div", "soon", t(view === "tasks"
-    ? "All tasks from your notes in one place: coming in a later update."
-    : "A map of how your notes link together: coming in a later update.")));
+  column.replaceChildren(el("h1", "title", t("Graph")));
+  column.appendChild(el("div", "soon", t("A map of how your notes link together: coming in a later update.")));
 }
 
 document.querySelectorAll(".quick button").forEach(b => b.onclick = () => go({ view: b.dataset.view }));

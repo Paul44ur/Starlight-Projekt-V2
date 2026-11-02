@@ -150,14 +150,27 @@ function heading(view) {  // none -> # -> ## -> ### -> none
   return true;
 }
 
-function toggleTask(view) {  // Ctrl+Enter: [ ] <-> [x] on the task lines
+// Ctrl+Enter: tick the task lines (with "done:" and the day) or open them again (without).
+// A repeating task's next one is added when the note is saved (the server does that).
+function toggleTask(view) {
   const changes = [];
   for (const line of lines(view)) {
-    const m = line.text.match(/^(\s*[-*+] \[)(.)(\])/);
-    if (m) changes.push({ from: line.from + m[1].length, to: line.from + m[1].length + 1, insert: m[2] === " " ? "x" : " " });
+    const m = line.text.match(/^(\s*(?:[-*+]|\d{1,9}[.)])[ \t]+\[)(.)(\])/);
+    if (!m) continue;
+    const at = line.from + m[1].length;
+    const done = line.text.match(/[ \t]+(?:done|erledigt):[ \t]*\S*/i);
+    changes.push({ from: at, to: at + 1, insert: m[2] === " " ? "x" : " " });
+    if (m[2] === " " && !done) {  // at the end, before a block id (^id)
+      const block = line.text.match(/[ \t]+\^[A-Za-z0-9-]+[ \t]*$/);
+      const end = block ? block.index : line.text.trimEnd().length;
+      changes.push({ from: line.from + end, insert: " done: " + today() });
+    } else if (m[2] !== " " && done) {
+      changes.push({ from: line.from + done.index, to: line.from + done.index + done[0].length, insert: "" });
+    }
   }
   if (!changes.length) return false;
-  view.dispatch({ changes });
+  const changed = view.state.changes(changes);  // a cursor at the line's end stays at its end
+  view.dispatch({ changes: changed, selection: view.state.selection.map(changed, 1) });
   return true;
 }
 
@@ -340,20 +353,25 @@ export function createEditor(parent, options) {
       view.dispatch({ changes: { from: 0, to: view.state.doc.length, insert: text } });
     },
     // The note as it was saved, when saving changed it (typed dates in tasks became ISO
-    // dates): only the parts that differ change, so the cursor stays, and Undo skips them.
+    // dates, a repeating task got its next one): only the parts that differ change, so the
+    // cursor stays, and Undo skips them.
     update(text) {
-      const doc = view.state.doc, lines = text.split("\n"), changes = [];
-      if (lines.length !== doc.lines) return false;
-      lines.forEach((wanted, n) => {
-        const line = doc.line(n + 1), had = line.text;
-        if (had === wanted) return;
+      const doc = view.state.doc, wanted = text.split("\n"), changes = [];
+      const differ = (had, want, from) => {  // the one change from had to want, at from
         let a = 0, b = 0;
-        while (a < had.length && a < wanted.length && had[a] === wanted[a]) a++;
-        while (b < had.length - a && b < wanted.length - a && had.at(-1 - b) === wanted.at(-1 - b)) b++;
-        changes.push({ from: line.from + a, to: line.to - b, insert: wanted.slice(a, wanted.length - b) });
-      });
+        while (a < had.length && a < want.length && had[a] === want[a]) a++;
+        while (b < had.length - a && b < want.length - a && had.at(-1 - b) === want.at(-1 - b)) b++;
+        return { from: from + a, to: from + had.length - b, insert: want.slice(a, want.length - b) };
+      };
+      if (wanted.length === doc.lines) {
+        wanted.forEach((want, n) => {
+          const line = doc.line(n + 1);
+          if (line.text !== want) changes.push(differ(line.text, want, line.from));
+        });
+      } else if (doc.toString() !== text) {
+        changes.push(differ(doc.toString(), text, 0));
+      }
       if (changes.length) view.dispatch({ changes, annotations: cm.Transaction.addToHistory.of(false) });
-      return true;
     },
     insertAt(at, text) {
       view.dispatch({ changes: { from: at, insert: text }, selection: { anchor: at + text.length } });

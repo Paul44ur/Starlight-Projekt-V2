@@ -5,7 +5,10 @@
 //   ![[Note]]                                         an embedded note (a link for now)
 //   #tag, #work/projects                              a tag
 //   > [!tip] Title  (note, tip, warning, quote, todo) a callout; [!tip]- folded, [!tip]+ open
-//   - [ ] milk, - [x] bread                           a task box (read-only here)
+//   - [ ] milk, - [x] bread                           a task box (read-only here; the
+//                                                     Notes page makes it tick)
+//   - [ ] Call Tom due: 2026-11-05 priority: high     its fields as chips: the due date red
+//                                                     when overdue, amber when today
 // As in markdown.js, the text only ever becomes textContent. Links lead only to the Notes
 // page, pictures only come from /api/notes/file/ inside the notebook folder.
 
@@ -104,6 +107,74 @@ mdHooks.quote = (parent, quoted) => {
   return true;
 };
 
+// A task's fields in plain words, as starlight/notebook/markdown.py reads them (English or
+// German keys; a date of more than one word as typed, "next friday"); none inside code.
+const TASK_KEYS = {
+  due: "due", "fällig": "due", faellig: "due", start: "start", beginn: "start",
+  done: "done", erledigt: "done", priority: "priority", "priorität": "priority",
+  prioritaet: "priority", repeat: "repeat", wiederholen: "repeat", wiederholung: "repeat",
+};
+const TASK_FIELD = new RegExp("(?<!\\S)(" + Object.keys(TASK_KEYS).join("|") + "):[ \\t]*", "giu");
+const TASK_PHRASE = /^(?:(?:in|nach)[ \t]+\d{1,3}[ \t]+\S+|(?:next|nächste[nrs]?|naechste[nrs]?|kommende[nrs]?|this|diese[nrs]?)[ \t]+\S+)/iu;
+const TASK_PRIORITY = { high: "high", hoch: "high", low: "low", niedrig: "low" };
+
+function taskFields(text) {
+  const masked = text.replace(/(`+)[\s\S]*?\1/g, (code) => " ".repeat(code.length));
+  const matches = [...masked.matchAll(TASK_FIELD)], fields = {}, cuts = [];
+  matches.forEach((m, n) => {
+    const name = TASK_KEYS[m[1].toLowerCase()];
+    const start = m.index + m[0].length;
+    const rest = text.slice(start, n + 1 < matches.length ? matches[n + 1].index : text.length);
+    const phrase = name !== "priority" && name !== "repeat" && rest.match(TASK_PHRASE);
+    const value = name === "repeat" ? rest.split(/(?<!\S)[#^]\S/)[0].trimEnd()
+      : phrase ? phrase[0] : (rest.match(/^\S*/) || [""])[0];
+    if (!value || fields[name] !== undefined) return;
+    fields[name] = value;
+    cuts.push([m.index, start + value.length]);
+  });
+  let shown = text;
+  for (const [a, b] of cuts.reverse()) shown = shown.slice(0, a) + shown.slice(b);
+  return { fields, text: shown.replace(/[ \t]{2,}/g, " ").trim() };
+}
+
+function isoToday() {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+
+// A date as people read it ("5 Nov", "5. Nov."; with the year when it is not this year)
+function shownDate(iso) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(iso)) return iso;
+  const day = new Date(iso + "T12:00:00");
+  const german = window.starlightLanguage === "de";
+  const options = { day: "numeric", month: "short" };
+  if (day.getFullYear() !== new Date().getFullYear()) options.year = "numeric";
+  return day.toLocaleDateString(german ? "de-DE" : "en-GB", options);
+}
+
+const taskWords = (words) => (typeof t === "function" ? t(words) : words);
+
+// A chip for one of a task's fields; the due date is red when overdue, amber when today
+function taskChip(name, value, open = true, today = isoToday()) {
+  const icons = { due: "📅", start: "🛫", done: "✅", repeat: "🔁" };
+  const titles = { due: "Due", start: "Starts", done: "Done on", repeat: "Repeats" };
+  if (name === "priority") {
+    const level = TASK_PRIORITY[value.toLowerCase()];
+    if (!level) return null;
+    const chip = el("span", "task-chip task-priority " + level, level === "high" ? "⏫" : "🔽");
+    chip.title = taskWords(level === "high" ? "High priority" : "Low priority");
+    return chip;
+  }
+  const chip = el("span", "task-chip task-" + name, icons[name] + " " + (name === "repeat" ? value : shownDate(value)));
+  chip.title = taskWords(titles[name]) + ": " + value;
+  if (name !== "repeat") chip.dataset.date = value;
+  if (name === "due" && open && /^\d{4}-\d{2}-\d{2}$/.test(value)) {
+    if (value < today) chip.classList.add("overdue");
+    else if (value === today) chip.classList.add("today");
+  }
+  return chip;
+}
+
 mdHooks.item = (li, text) => {
   const m = text.match(RENDER_TASK);
   if (!m) return text;
@@ -115,5 +186,13 @@ mdHooks.item = (li, text) => {
   li.dataset.status = mark === " " ? "open" : mark === "x" ? "done" : mark === "-" ? "cancelled" : "other";
   li.appendChild(box);
   if (li.parentElement) li.parentElement.classList.add("task-list");
-  return m[2] || "";
+  const { fields, text: words } = taskFields(m[2] || "");
+  if (!Object.keys(fields).length) return m[2] || "";
+  // the words, then the fields as chips (the rest of the item goes on below them)
+  mdInline(li.appendChild(el("span", "task-text")), words);
+  for (const name of ["due", "start", "repeat", "priority", "done"]) {
+    const chip = fields[name] && taskChip(name, fields[name], mark === " ");
+    if (chip) li.appendChild(chip);
+  }
+  return "";
 };

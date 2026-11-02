@@ -31,6 +31,8 @@ texts, and the page lets you choose.
                                               typed dates in tasks become ISO dates, and
                                               then the saved text comes back
     POST   /api/note                         {folder, title, text | template, lang}: a new note
+    POST   /api/note/task                    {path, line, expected | id, done}: tick a task
+    GET    /api/notes/tasks                  open tasks: overdue, today, upcoming, none
     POST   /api/note/rename                  {path, title, fix_links}: links follow
     DELETE /api/note?path=                   to the trash
     GET    /api/note/versions?path=          the kept versions
@@ -54,7 +56,7 @@ from fastapi.responses import FileResponse
 from starlight.core.fsutil import write_atomic
 from starlight.core.safepaths import inside
 from starlight.core.tools import ToolError
-from starlight.notebook import NoteConflict, markdown, stamp, templates, write_note
+from starlight.notebook import NoteConflict, markdown, stamp, tasks, templates, write_note
 from starlight.notebook.rename import plan as plan_rename
 from starlight.notebook.rename import rename as carry_out_rename
 from starlight.notebook.write import MISSING
@@ -431,6 +433,7 @@ def add_notes_api(
         current = stamp(file)
         text = decode_text(file.read_bytes())
         note = markdown.parse(text)
+        lines = text.splitlines()
         found = index()
         found.refresh()  # (every few seconds at most: links and backlinks are current)
         found.touch(file)
@@ -448,6 +451,11 @@ def add_notes_api(
             "links": found.links(relative),
             "backlinks": found.backlinks(relative),
             "pinned": relative in pinned(),
+            # each task with its line as written: ticking one sends that line back
+            "tasks": [
+                {"line": t.line, "status": t.status, "text": t.text, "raw": lines[t.line]}
+                for t in note.tasks
+            ],
         }
 
     @app.put("/api/note")
@@ -468,6 +476,7 @@ def add_notes_api(
 
                     before = decode_text(file.read_bytes())
                     text = markdown.iso_dates(text, dt.date.today(), before=before)
+                    text = tasks.with_next_ones(text, before, dt.date.today())  # (repeating)
                 gap = 0.0 if data.get("first") else TYPING_GAP
                 written = write_note(
                     file, text, "notes.page", history(), expected=expected, min_gap=gap
@@ -489,6 +498,60 @@ def add_notes_api(
                 raise _bad(f"could not save {file.name}: {locked(exc)}", 409) from exc
         saved = {"path": rel(file), "stamp": written.stamp, "version": written.version}
         return {**saved, "text": text} if text != sent else saved  # (the page shows the dates)
+
+    @app.post("/api/note/task")
+    async def tick_task(request: Request) -> dict[str, Any]:
+        """Tick a task in its note, or open it again: by its line and the line as the page
+        shows it (the reading view), or by its id (the Tasks view). Refused (409) when the
+        task changed meanwhile."""
+        local_only(request)
+        data = await body(request)
+        file = note_file(str(data.get("path") or ""))
+        done = data.get("done", True) is not False
+        line, expected, task_id = data.get("line"), data.get("expected"), data.get("id")
+        with writing:
+            try:
+                if isinstance(task_id, str) and task_id:
+                    ticked = tasks.tick_by_id(
+                        file, rel(file), task_id, history(), done=done, reason="notes.page task"
+                    )
+                elif isinstance(line, int) and isinstance(expected, str):
+                    ticked = tasks.tick(
+                        file, history(), line=line, expected=expected, done=done,
+                        reason="notes.page task",
+                    )  # fmt: skip
+                else:
+                    raise _bad("send {path, line, expected, done} or {path, id, done}")
+            except NoteConflict as exc:
+                raise _bad(str(exc), 409) from exc
+            except OSError as exc:
+                raise _bad(f"could not save {file.name}: {locked(exc)}", 409) from exc
+        return {
+            "path": rel(file),
+            "stamp": stamp(file),
+            "done": done,
+            "changed": ticked.written is not None,
+            "repeated": ticked.repeated,
+            "next_due": ticked.next_due,
+        }
+
+    @app.get("/api/notes/tasks")
+    def all_tasks(request: Request) -> dict[str, Any]:
+        """The open tasks in all notes: overdue, today, upcoming and without a date."""
+        local_only(request)
+        today = dt.date.today().isoformat()
+        groups: dict[str, list[dict[str, Any]]] = {
+            "overdue": [], "today": [], "upcoming": [], "none": [],
+        }  # fmt: skip
+        rank = {"high": 0, "low": 2}
+        found = [t for t in tasks.note_tasks(index()) if t.open]
+        for task in sorted(found, key=lambda t: (t.due or "~", rank.get(t.priority, 1))):
+            group = (
+                "none" if not task.due else "overdue" if task.due < today
+                else "today" if task.due == today else "upcoming"
+            )  # fmt: skip
+            groups[group].append({**task.view(), "line": task.line})
+        return {"date": today, "count": len(found), **groups}
 
     @app.post("/api/note")
     async def new_note(request: Request) -> dict[str, Any]:

@@ -506,7 +506,7 @@ too. The first visit brings a short welcome note with examples.
 shows bold while you type, so you need no special knowledge: the toolbar makes text bold,
 adds a heading, a list, a task or a link to another note, and puts in a picture. Type
 **/** for a menu (heading, task, table, link, callout, today's date, picture). Paste or drop
-a picture to add it. **Ctrl+Enter** ticks a task. Your text is saved by itself a second
+a picture to add it. **Ctrl+Enter** ticks a task (with the day). Your text is saved by itself a second
 after you stop typing ("Saved" shows it). If the note was changed elsewhere in the
 meantime (in another program or tab), nothing is overwritten: you choose to keep yours,
 take the other one, or keep both. **＋** (Ctrl+N) starts a new note; type over its title to
@@ -558,6 +558,13 @@ Inbox view) proposes where each item belongs and asks before moving anything.
 **Voice memos.** Press 🎤 at the top of the Notes page, speak, and press ⏹: Starlight
 writes down what you said and keeps it as text in the Inbox (or in the journal day you have
 open). The recording itself is not kept. At the PC's microphone: "take a voice memo".
+
+**Tasks.** A line like `- [ ] Call Tom due: friday priority: high` in any note is a task.
+Its box ticks it right in the reading view, and **Ctrl+Enter** ticks it while writing; both
+add `done:` with the day (ticking again takes it away). Dates show as small chips: red when
+overdue, amber when due today. A repeating task (`repeat: every week`) gets its next one
+below when you tick it. **Tasks** on the left lists the open tasks of all your notes:
+overdue, today, upcoming and without a date; tick them there or open their note.
 
 **Settings** lists the modules, each with an on/off switch; open one to
 choose for each of its tools whether it runs on its own, asks first or is blocked (the search

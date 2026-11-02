@@ -87,7 +87,7 @@ async def test_toolbar_slash_menu_and_task_ticking(
         await page.wait_for_timeout(150)  # (Enter picks an item only after 75 ms)
         await page.keyboard.press("Enter")
         await page.keyboard.type("buy apples")
-        await page.keyboard.press("Control+Enter")  # ticks it
+        await page.keyboard.press("Control+Enter")  # ticks it, with the day (block D4)
         await page.keyboard.press("Enter")  # the list goes on
         assert (await page.locator(".cm-activeLine").text_content() or "").startswith("- [ ]")
         await page.wait_for_function(SAVED)
@@ -96,7 +96,8 @@ async def test_toolbar_slash_menu_and_task_ticking(
             "() => { const d = new Date(); return [d.getFullYear(), String(d.getMonth() + 1)"
             ".padStart(2, '0'), String(d.getDate()).padStart(2, '0')].join('-'); }"
         )
-        assert text.endswith(f"\n**bold**\n# {today}\n- [x] buy apples\n- [ ] "), text[-60:]
+        ticked = f"- [x] buy apples done: {today}"
+        assert text.endswith(f"\n**bold**\n# {today}\n{ticked}\n- [ ] "), text[-60:]
         assert page.errors == []  # type: ignore[attr-defined]
 
 

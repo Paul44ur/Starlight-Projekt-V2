@@ -27,8 +27,8 @@ Work goes block by block (section 9). One block is one session and one commit; m
 | D1 | Capture: clipper (with the guard), highlights, inbox | M | C2 | **done** 2026-11-01 ("Notes plan D1: …") |
 | D2 | Voice memos | S | D1 | **done** 2026-11-01 ("Notes plan D2: …") |
 | D3 | Tasks in notes: parser, writing back, to-do integration | M | B2 | **done** 2026-11-02 ("Notes plan D3: …") |
-| D4 | Tasks on the page: boxes, date chips, Tasks view | M | D3, B6 | **next** |
-| E1 | Search operators with highlighted hits | M | B5 | open |
+| D4 | Tasks on the page: boxes, date chips, Tasks view | M | D3, B6 | **done** 2026-11-02 ("Notes plan D4: …") |
+| E1 | Search operators with highlighted hits | M | B5 | **next** |
 | E2 | Related notes, mentions without a link, OCR text | M | E1 | open |
 | E3 | Query language (`query.py`) and `notes.query` | M | B2 | open |
 | E4 | Query blocks as live tables | M | E3, B6 | open |
@@ -38,7 +38,11 @@ Work goes block by block (section 9). One block is one session and one commit; m
 | F4 | Board view on the page | L | F3, B6 | open |
 | G1–G6 | Extras (export, Kanban, flashcards, live preview, Mermaid, deep links) | S–M each | see 9 | optional |
 
-Last updated: 2026-11-02 (A1 to D3 done. D3: the code is `starlight/notebook/tasks.py`
+Last updated: 2026-11-02 (A1 to D4 done. D4: the Tasks view is `showTasks` in notes.html
+(the sidebar's Tasks button); the Graph button is still a placeholder (F1/F2). Chips come
+from render.js (`taskChip`), so chat answers show them too. The page's ticking endpoint is
+`POST /api/note/task`; its errors are plain text (409), shown as a toast.
+D3: the code is `starlight/notebook/tasks.py`
 (`note_tasks`, `tick(file, history, line=, expected=, done=)`, `tick_by_id`); D4's page
 ticking should call `tick` with the line it shows, through a new endpoint, and show the
 NoteConflict as "changed elsewhere". A weekday date ("Freitag") means the next one after

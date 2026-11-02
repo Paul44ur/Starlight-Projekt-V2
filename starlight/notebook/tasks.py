@@ -335,3 +335,26 @@ def tick_by_id(
     raise NoteConflict(
         f"that task is not in {file.stem} as it was any more (its text changed); look again"
     )
+
+
+def with_next_ones(text: str, before: str, today: dt.date) -> str:
+    """``text`` with the next one of each repeating task ticked since ``before`` (the note as
+    it was): ticked in the editor (Ctrl+Enter) or by hand. Each goes below its task."""
+    old = {line.rstrip("\r\n") for line in before.splitlines()}
+    lines = text.splitlines(keepends=True)
+    added = 0
+    for task in markdown.parse(text).tasks:
+        if task.status not in DONE or not task.repeat:
+            continue
+        at = task.line + added
+        body = lines[at].rstrip("\r\n")
+        if body in old or _ticked(body, task, False, today) not in old:
+            continue  # ticked before, or not ticked from an open task here
+        copy = _next_one(body, task, today)
+        if copy is None or (at + 1 < len(lines) and lines[at + 1].rstrip("\r\n") == copy):
+            continue
+        ending = lines[at][len(body) :]
+        lines[at] = body + (ending or "\n")
+        lines.insert(at + 1, copy + ending)
+        added += 1
+    return "".join(lines) if added else text

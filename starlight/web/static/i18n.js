@@ -161,8 +161,13 @@
     "Notes written without a title wait here. Starlight can file them into your notes; it asks before moving anything.":
       "Notizen ohne Titel warten hier. Starlight kann sie in deine Notizen einsortieren; es fragt, bevor es etwas verschiebt.",
     "Sort my inbox": "Eingang sortieren",
-    "All tasks from your notes in one place: coming in a later update.":
-      "Alle Aufgaben aus deinen Notizen an einem Ort: kommt mit einem späteren Update.",
+    // the Notes page: tasks
+    "Overdue": "Überfällig", "Upcoming": "Demnächst", "No date": "Ohne Datum",
+    "Tick it off": "Abhaken", "Open it again": "Wieder öffnen",
+    "No open tasks. Write one in any note, for example: - [ ] Call Tom due: friday":
+      "Keine offenen Aufgaben. Schreib eine in eine beliebige Notiz, zum Beispiel: - [ ] Tom anrufen fällig: Freitag",
+    "Due": "Fällig", "Starts": "Beginnt", "Done on": "Erledigt am", "Repeats": "Wiederholt sich",
+    "High priority": "Hohe Priorität", "Low priority": "Niedrige Priorität",
     "A map of how your notes link together: coming in a later update.":
       "Eine Karte, wie deine Notizen zusammenhängen: kommt mit einem späteren Update.",
     "No note with that name": "Keine Notiz mit diesem Namen",
