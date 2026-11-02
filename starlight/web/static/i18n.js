@@ -177,8 +177,12 @@
       "Keine offenen Aufgaben. Schreib eine in eine beliebige Notiz, zum Beispiel: - [ ] Tom anrufen fällig: Freitag",
     "Due": "Fällig", "Starts": "Beginnt", "Done on": "Erledigt am", "Repeats": "Wiederholt sich",
     "High priority": "Hohe Priorität", "Low priority": "Niedrige Priorität",
-    "A map of how your notes link together: coming in a later update.":
-      "Eine Karte, wie deine Notizen zusammenhängen: kommt mit einem späteren Update.",
+    "A map of how your notes link together": "Eine Karte, wie deine Notizen zusammenhängen",
+    "All folders": "Alle Ordner", "All tags": "Alle Schlagwörter", "Memories": "Erinnerungen",
+    "Folder": "Ordner", "Tag": "Schlagwort", "note": "Notiz", "links": "Links",
+    "only the ones with the most links": "nur die mit den meisten Links",
+    "No notes to show.": "Keine Notizen zu zeigen.", "Zoom in": "Vergrößern", "Zoom out": "Verkleinern",
+    "Fit": "Einpassen",
     "No note with that name": "Keine Notiz mit diesem Namen",
     // the Notes page: editing
     "New note (Ctrl+N)": "Neue Notiz (Strg+N)", "Trash": "Papierkorb",

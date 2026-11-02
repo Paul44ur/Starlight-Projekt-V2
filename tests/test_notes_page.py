@@ -187,7 +187,7 @@ async def test_tags_search_views_and_pins(
         await page.locator('.quick button[data-view="inbox"]').click()
         await page.wait_for_selector("text=The inbox is empty")
         await page.locator('.quick button[data-view="graph"]').click()
-        await page.wait_for_selector("text=coming in a later update")
+        await page.wait_for_selector(".graph-stage .whole-graph")  # (block F2)
 
         await page.locator('#folders details[data-folder="Recipes"] > summary').click()
         await page.locator(".side .item", has_text="Pancakes").click()

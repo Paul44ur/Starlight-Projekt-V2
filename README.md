@@ -500,7 +500,11 @@ The list on the left has your folders, pinned notes and a search box; **Ctrl+K**
 note by its name. A note reads like a page: links to other notes (`[[Shopping]]`) open
 them, tags (`#home`) list the notes that have them, and the right side shows its outline,
 the notes that link to it, a small graph of the notes it is linked with (click a point to
-open that note) and its properties. Links and tags in chat answers open here
+open that note) and its properties. **Graph** on the left shows all your notes as points and
+their links as lines: coloured by folder, bigger with more links. Drag to move it, use the
+wheel or + and − to zoom (names show when you zoom in), drag a point to move it, and click
+a point to open its note. Choose a folder or a tag to see only those notes, and tick
+**Memories** to see what Starlight remembers among them. Links and tags in chat answers open here
 too. The first visit brings a short welcome note with examples.
 
 **Searching notes.** The search box finds notes with all your words (the last one may be

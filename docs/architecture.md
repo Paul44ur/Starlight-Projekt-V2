@@ -485,6 +485,15 @@ links). `GET /api/notes/graph`. The layout is d3-force, shipped as
 `graph.sha256` and `graph-LICENSES.txt`; served by `/vendor/`). The Notes page loads it on
 first use and draws the note and its neighbours as SVG in the right panel; a point opens
 its note (click or Enter).
+Block F2 is the whole graph. `graph.graph` also takes `folder=` (that folder and below),
+`tag=` (with the tags below it) and `memories=[(id, topic, text)]` (points "memory:<id>"
+in the "Memories" folder, linked by their [[links]] to notes and to other memories); the
+endpoint passes `kernel.memory.store` when `memories=true`. The page's Graph view
+(`showGraph`, `drawWhole` in notes.html) lays out up to 1,500 points with d3-force, draws
+SVG up to 300 points (points reachable with Tab, Enter opens) and a canvas beyond; one set
+of pointer handlers pans, drags points (hit test by distance) and opens a point on a click
+without moving; the wheel and + − zoom around the pointer or the centre; names show from
+a zoom of 1.3 (or always for 25 points or fewer). Colours by top folder, size by links.
 
 **Safety limits you set (`core/safety.py`).** Settings -> Safety limits chooses a level
 (strict, balanced, relaxed) and any of 29 switches on top, kept in
