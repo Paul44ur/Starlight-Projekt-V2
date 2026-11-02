@@ -34,11 +34,15 @@ Work goes block by block (section 9). One block is one session and one commit; m
 | E4 | Query blocks as live tables | M | E3, B6 | **done** 2026-11-02 ("Notes plan E4: …") |
 | F1 | Graph data, d3-force bundle, small graph per note | M | C1 | **done** 2026-11-02 ("Notes plan F1: …") |
 | F2 | Whole-graph view | M | F1 | **done** 2026-11-02 ("Notes plan F2: …") |
-| F3 | Boards: JSON Canvas files, tools, API | M | A2 | **next** |
-| F4 | Board view on the page | L | F3, B6 | open |
+| F3 | Boards: JSON Canvas files, tools, API | M | A2 | **done** 2026-11-02 ("Notes plan F3: …") |
+| F4 | Board view on the page | L | F3, B6 | **next** |
 | G1–G6 | Extras (export, Kanban, flashcards, live preview, Mermaid, deep links) | S–M each | see 9 | optional |
 
-Last updated: 2026-11-02 (A1 to F2 done. F2: the Graph view lives in notes.html (not a
+Last updated: 2026-11-02 (A1 to F3 done. F3: the tools are a new module, `modules/boards`
+(in `SHIPPED`), with `folder: Boards`; the API is `/api/boards`, `/api/board?path=` (as
+notes are), not `/api/boards/...`. F4's page saves with `PUT /api/board` and the stamp, and
+gets 409 `{error, stamp}` on a conflict.
+F2: the Graph view lives in notes.html (not a
 separate graph.html); a memory's point opens the Memory page. The view asks for at most
 1,500 points (`limit`).
 F1: the bundle is `bundles/graph/` (not

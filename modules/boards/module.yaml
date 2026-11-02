@@ -1,0 +1,8 @@
+name: boards
+version: 0.1.0
+description: Boards - cards and arrows on an endless surface (.canvas files), read and added to from the chat
+keywords: ["board", "boards", "canvas", "card", "cards", "pinboard", "Board", "Pinnwand", "Karte", "Karten", "Tafel"]
+entrypoint: module:BoardsModule
+permissions: [safe]
+dependencies: []
+enabled_by_default: true

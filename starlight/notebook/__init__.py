@@ -16,6 +16,7 @@ This package grows block by block. So far:
 * ``query``: a small language to find notes by properties ("status is open and tag is
   work"), turned into SQL with every value as a parameter.
 * ``graph``: the notes as points and their links as lines (all, or around one note).
+* ``boards``: .canvas boards (JSON Canvas): reading, checking, writing, adding cards.
 """
 
 from __future__ import annotations

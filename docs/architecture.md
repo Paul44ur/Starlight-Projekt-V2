@@ -41,7 +41,7 @@ modules/            hello, web, login, network, recon, cve, certs, breach, deskt
                     reminders, mail, pdf, code, files, access, whatsapp, todo,
                     calendar, briefing, calc, translate, automations, apps, media,
                     commands, office, dev, research, docs, notes, transcripts,
-                    voice, home, lan, backup, watch, focus (+ _template)
+                    voice, home, lan, backup, watch, focus, boards (+ _template)
 skills/             skills it learns (one folder each)
 scripts/            install.ps1, install.sh, e2e_chat.py (the end-to-end chat test CI runs)
 memory/             what the AI learns (one Markdown file per fact)
@@ -494,6 +494,18 @@ SVG up to 300 points (points reachable with Tab, Enter opens) and a canvas beyon
 of pointer handlers pans, drags points (hit test by distance) and opens a point on a click
 without moving; the wheel and + − zoom around the pointer or the centre; names show from
 a zoom of 1.3 (or always for 25 points or fewer). Colours by top folder, size by links.
+Block F3 is boards. `notebook/boards.py` reads and writes `.canvas` files (JSON Canvas 1.0,
+as Obsidian writes them, with tabs): `load` and `check` refuse what is not a board in plain
+words (ids present and unique, a type, whole-number place and size, arrows between cards
+that exist) and keep every field they do not know, on the board, its cards and its arrows;
+`dump` writes it back; `add_card` places a card to the right of the others or under a card
+(with an arrow), with a new 16-hex id; `summary` tells the assistant the cards (and the
+group each is in) and the arrows in words; `find` lists the boards in the Starlight folder.
+The new `boards` module has `boards.list`, `boards.read` and `boards.add_card` (a note card
+by the note's name; a new board in `Boards/` when there is none); writes go through
+`write_note`, so versions are kept. API: `GET /api/boards`, `GET/PUT /api/board?path=`
+(with stamps: 409 on a conflict; 422 when it is not a board), `POST /api/board`; paths must
+end in `.canvas` and stay in the Starlight folder (`relative_path`).
 
 **Safety limits you set (`core/safety.py`).** Settings -> Safety limits chooses a level
 (strict, balanced, relaxed) and any of 29 switches on top, kept in

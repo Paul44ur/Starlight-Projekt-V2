@@ -1,0 +1,4 @@
+# The boards module (modules/boards): cards and arrows on an endless surface, kept as .canvas
+# files (JSON Canvas, the format Obsidian uses) in your Starlight folder. Every change keeps
+# the board as it was before (versions).
+folder: Boards               # where new boards go (inside your Starlight folder)

@@ -38,6 +38,10 @@ texts, and the page lets you choose.
     POST   /api/note/link-mention            {path, source, line, expected}: link one
     GET    /api/notes/tasks                  open tasks: overdue, today, upcoming, none
     POST   /api/notes/query                  {text}: a ```query block's table
+    GET    /api/boards                       the .canvas boards in the Starlight folder
+    GET    /api/board?path=                  a board: {board, stamp}
+    PUT    /api/board?path=                  {board, stamp, first}: save (409 on a conflict)
+    POST   /api/board                        {folder, title}: a new, empty board
     GET    /api/notes/graph?around=&depth=   the notes and their links (around one note;
                                               folder=, tag=, memories=true, limit=)
     POST   /api/note/rename                  {path, title, fix_links}: links follow
@@ -65,6 +69,7 @@ from starlight.core.safepaths import inside
 from starlight.core.tools import ToolError
 from starlight.notebook import (
     NoteConflict,
+    boards,
     graph,
     markdown,
     query,
@@ -599,6 +604,86 @@ def add_notes_api(
             except OSError as exc:
                 raise _bad(f"could not save {source.name}: {locked(exc)}", 409) from exc
         return {"path": rel(source), "stamp": written.stamp, "version": written.version}
+
+    # -- boards (block F3) -----------------------------------------------------------------
+
+    def board_file(text: str) -> Path:
+        file = relative_path(root(), text, (boards.SUFFIX,))
+        if not file.is_file():
+            raise _bad(f"there is no board {text}", 404)
+        return file
+
+    @app.get("/api/boards")
+    def list_boards(request: Request) -> dict[str, Any]:
+        local_only(request)
+        found = []
+        for file in boards.find(root()):
+            info = file.stat()
+            found.append({"path": rel(file), "title": file.stem, "modified": info.st_mtime})
+        return {"boards": found}
+
+    @app.get("/api/board")
+    def read_board(request: Request, path: str) -> dict[str, Any]:
+        local_only(request)
+        file = board_file(path)
+        from starlight.text import decode_text
+
+        current = stamp(file)
+        if file.stat().st_size > boards.MAX_BYTES:
+            raise _bad("this board is over 5 MB; open it in another program", 413)
+        try:
+            board = boards.load(decode_text(file.read_bytes()))
+        except boards.BoardError as exc:
+            raise _bad(str(exc), 422) from exc
+        data = {"nodes": board.nodes, "edges": board.edges, **board.other}
+        return {"path": rel(file), "title": file.stem, "stamp": current, "board": data}
+
+    @app.put("/api/board")
+    async def save_board(request: Request, path: str) -> dict[str, Any]:
+        """{board, stamp, first}: the whole board, checked, saved with a version first;
+        409 when it changed elsewhere since ``stamp``."""
+        local_only(request)
+        data = await body(request)
+        expected = data.get("stamp")
+        if not isinstance(expected, str):
+            raise _bad("send {board, stamp}: the board and the stamp it was read with")
+        file = relative_path(root(), path, (boards.SUFFIX,))
+        try:
+            text = boards.dump(boards.check(data.get("board")))
+        except boards.BoardError as exc:
+            raise _bad(str(exc), 422) from exc
+        if len(text.encode("utf-8")) > boards.MAX_BYTES:
+            raise _bad("a board can be up to 5 MB", 413)
+        with writing:
+            try:
+                gap = 0.0 if data.get("first") else TYPING_GAP
+                written = write_note(
+                    file, text, "notes.page board", history(), expected=expected, min_gap=gap
+                )
+            except NoteConflict as exc:
+                raise HTTPException(
+                    status_code=409, detail={"error": str(exc), "stamp": stamp(file)}
+                ) from exc
+            except OSError as exc:
+                raise _bad(f"could not save {file.name}: {locked(exc)}", 409) from exc
+        return {"path": rel(file), "stamp": written.stamp, "version": written.version}
+
+    @app.post("/api/board")
+    async def new_board(request: Request) -> dict[str, Any]:
+        """{folder, title}: a new, empty board (never over an existing one)."""
+        local_only(request)
+        data = await body(request)
+        title = clean_name(str(data.get("title") or ""), 80) or "Board"
+        base = relative_path(root(), str(data.get("folder") or "Boards"), None)
+        with writing:
+            file, number = base / f"{title}{boards.SUFFIX}", 2
+            while file.exists():
+                file, number = base / f"{title} {number}{boards.SUFFIX}", number + 1
+            relative_path(root(), rel(file), (boards.SUFFIX,))
+            base.mkdir(parents=True, exist_ok=True)
+            written = write_note(file, boards.dump(boards.Board()), "notes.page board", history(),
+                                 expected=MISSING)  # fmt: skip
+        return {"path": rel(file), "title": file.stem, "stamp": written.stamp}
 
     @app.get("/api/notes/graph")
     def notes_graph(
