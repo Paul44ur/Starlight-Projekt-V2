@@ -17,6 +17,9 @@ This package grows block by block. So far:
   work"), turned into SQL with every value as a parameter.
 * ``graph``: the notes as points and their links as lines (all, or around one note).
 * ``boards``: .canvas boards (JSON Canvas): reading, checking, writing, adding cards.
+* ``export``: a note as a PDF, and the pictures a note shows (for the HTML export).
+* ``flashcards``: "Question::Answer" cards in notes tagged #flashcards, and when each
+  comes back (a small SM-2, in data/notebook/flashcards.json).
 """
 
 from __future__ import annotations

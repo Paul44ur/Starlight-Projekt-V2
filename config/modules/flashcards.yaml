@@ -1,0 +1,5 @@
+# The flashcards module (modules/flashcards): lines "Question::Answer" in notes tagged
+# #flashcards are cards ("Question:::Answer" asks both ways; #flashcards/spanish names the
+# deck). When each card comes back is kept in data/notebook/flashcards.json.
+new_per_day: 20              # new cards a day at most (due cards always come)
+folder: Notes/Flashcards     # where flashcards.add makes the note of a new deck

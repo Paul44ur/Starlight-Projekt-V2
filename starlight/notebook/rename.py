@@ -3,7 +3,8 @@
 Every [[link]] that means the note (by its name, a folder in the link, or an alias that now
 points elsewhere) is rewritten to the new name, in every note; each note that changes keeps
 its earlier version first (write_note). ``plan`` says what would change without changing
-anything, so the assistant can ask first; ``rename`` does it.
+anything, so the assistant can ask first; ``rename`` does it. Flashcards in a deck named
+after the note keep their progress (flashcards.renamed).
 """
 
 from __future__ import annotations
@@ -86,4 +87,8 @@ def rename(index: Any, history: Any, planned: RenamePlan) -> list[Path]:
     for path, text in planned.texts.items():
         target = new if path == old else path
         write_note(target, text, f"links to {new.stem}", history)
+    if getattr(index, "db_path", None) is not None:  # (flashcards of a deck named after it)
+        from starlight.notebook import flashcards
+
+        flashcards.renamed(index, old.stem, new)
     return planned.others()

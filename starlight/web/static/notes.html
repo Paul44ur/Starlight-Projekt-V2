@@ -94,6 +94,32 @@
   .kanban-moves { display: flex; gap: 4px; justify-content: flex-end; margin-top: 4px; }
   .kanban-moves button { padding: 0 7px; font-size: 13px; }
   .kanban-empty { color: var(--dim); font-size: .9rem; padding: 6px 4px; }
+  .deck-head { display: flex; gap: 12px; align-items: center; justify-content: space-between; flex-wrap: wrap; margin: 4px 0 12px; }
+  .deck-list { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 8px; }
+  .deck-row { display: flex; gap: 12px; align-items: center; background: var(--panel); border: 1px solid var(--border); border-radius: 12px; padding: 10px 14px; }
+  .deck-words { flex: 1; min-width: 0; }
+  .deck-name { font-weight: 600; overflow-wrap: anywhere; }
+  .deck-facts { color: var(--dim); font-size: .88rem; }
+  .study { max-width: 640px; margin: 8px auto 0; }
+  .study-progress { display: flex; gap: 10px; align-items: center; font-size: .85rem; margin-bottom: 10px; }
+  .study-bar { flex: 1; height: 6px; background: var(--panel2); border-radius: 3px; overflow: hidden; }
+  .study-bar span { display: block; height: 100%; width: 0; background: var(--accent); transition: width .2s; }
+  .study-card { background: var(--panel); border: 1px solid var(--border); border-radius: 14px; padding: 20px 24px; min-height: 150px; overflow-wrap: anywhere; }
+  .study-q { font-size: 1.25rem; }
+  .study-a { font-size: 1.1rem; }
+  .study-q > :first-child, .study-a > :first-child { margin-top: 0; }
+  .study-q > :last-child, .study-a > :last-child { margin-bottom: 0; }
+  .study-card hr { border: 0; border-top: 1px dashed var(--border); margin: 16px 0; }
+  .study-from { display: inline-block; margin-top: 12px; font-size: .85rem; color: var(--dim); }
+  .study-controls { display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; margin-top: 14px; }
+  .study-controls .grade { display: flex; flex-direction: column; align-items: center; flex: 1 1 0; min-width: 64px; max-width: 128px; padding: 6px 8px; }
+  .study-controls .grade small { color: var(--dim); font-size: .78rem; }
+  .grade-again span { color: var(--bad); }
+  .grade-good span { color: var(--ok); }
+  .grade-easy span { color: var(--accent); }
+  .study-hint { text-align: center; color: var(--dim); font-size: .8rem; margin: 10px 0 0; }
+  .study-back { margin-top: 14px; }
+  .study-done { font-size: 1.2rem; font-weight: 600; margin: 0 0 6px; }
   .task-group h3 { font-size: .95rem; margin: 22px 0 6px; display: flex; gap: 8px; align-items: center; }
   .task-group h3 .count { color: var(--dim); font-weight: normal; font-size: .85rem; }
   .task-group[data-group="overdue"] h3 { color: var(--bad); }
@@ -326,6 +352,7 @@
       <button data-view="tasks"><span class="ico">☑</span>Tasks</button>
       <button data-view="graph"><span class="ico">✳</span>Graph</button>
       <button data-view="boards"><span class="ico">🗂</span>Boards</button>
+      <button data-view="cards"><span class="ico">🃏</span>Flashcards</button>
       <button data-view="trash"><span class="ico">🗑</span>Trash</button>
     </div>
     <div id="pinned-box" hidden><h3>Pinned</h3><ul class="plain" id="pinned" translate="no"></ul></div>
@@ -1172,6 +1199,7 @@ function showView(view) {
   if (view === "trash") return showTrash();
   if (view === "tasks") return showTasks();
   if (view === "boards") return showBoards();
+  if (view === "cards") return showCards();
   return showGraph();
 }
 
@@ -1206,6 +1234,167 @@ async function showBoards() {
     b.append(el("div", "t", board.title), el("div", "w", board.path.split("/").slice(0, -1).join("/")));
     b.onclick = () => go({ board: board.path });
   }
+}
+
+// -- flashcards (block G3) -----------------------------------------------------------------
+// Lines "Question::Answer" in notes tagged #flashcards. The Flashcards view lists the decks;
+// studying shows one card at a time: Space shows the answer, 1 to 4 grade it. A card not
+// known ("Again") comes back at the end of the round, and the server keeps when each comes
+// back (data/notebook/flashcards.json).
+
+const GRADES = [["again", "Again"], ["hard", "Hard"], ["good", "Good"], ["easy", "Easy"]];
+
+function inDays(days) {
+  if (days <= 0) return t("today");
+  if (days < 31) return t(days === 1 ? "in 1 day" : `in ${days} days`);
+  if (days < 365) {
+    const months = Math.round(days / 30);
+    return t(months === 1 ? "in 1 month" : `in ${months} months`);
+  }
+  const years = Math.round(days / 365);
+  return t(years === 1 ? "in 1 year" : `in ${years} years`);
+}
+
+async function showCards() {
+  clearInfo(); state.view = "cards"; state.study = null; markCurrent();
+  column.replaceChildren(el("h1", "title", t("Flashcards")));
+  let data;
+  try { data = await api("/api/notes/flashcards"); }
+  catch (e) { if (state.view === "cards") column.appendChild(el("div", "soon", e.message)); return; }
+  if (state.view !== "cards") return;
+  if (!data.count) {
+    const box = column.appendChild(el("div", "soon"));
+    box.appendChild(el("p", "", t("No flashcards yet. Write lines like this in a note tagged #flashcards:")));
+    box.appendChild(el("p")).appendChild(el("code", "", "Hola::Hello"));
+    box.appendChild(el("p", "", t("Question:::Answer asks both ways; #flashcards/spanish puts the cards in a deck called spanish.")));
+    return;
+  }
+  const head = column.appendChild(el("div", "deck-head"));
+  head.appendChild(el("span", "dim", t(`Today: ${data.due} due, ${data.new} new`)));
+  const all = head.appendChild(el("button", "ok", t("Study all")));
+  all.type = "button";
+  all.disabled = !(data.due + data.new);
+  all.onclick = () => studyCards("");
+  const list = column.appendChild(el("ul", "deck-list"));
+  for (const deck of data.decks) {
+    const row = list.appendChild(el("li", "deck-row"));
+    row.dataset.deck = deck.deck;
+    const words = row.appendChild(el("div", "deck-words"));
+    words.appendChild(el("div", "deck-name", deck.deck)).setAttribute("translate", "no");
+    const cards = deck.cards === 1 ? "1 card" : `${deck.cards} cards`;
+    words.appendChild(el("div", "deck-facts", t(`${cards} · ${deck.due} due · ${deck.new} new`)));
+    const study = row.appendChild(el("button", "", t("Study")));
+    study.type = "button";
+    study.disabled = !(deck.due + deck.new);
+    study.onclick = () => studyCards(deck.deck);
+  }
+}
+
+async function studyCards(deck) {
+  let data;
+  try { data = await api("/api/notes/flashcards/due?" + new URLSearchParams({ deck, limit: 200 })); }
+  catch (e) { toast(e.message); return; }
+  if (state.view !== "cards") return;
+  const queue = data.cards.slice();
+  const round = { total: queue.length, known: 0, again: 0 };
+  const title = el("h1", "title", deck || t("All decks"));
+  if (deck) title.setAttribute("translate", "no");
+  column.replaceChildren(title);
+  const box = column.appendChild(el("div", "study"));
+  const progress = box.appendChild(el("div", "study-progress"));
+  const bar = progress.appendChild(el("div", "study-bar")).appendChild(el("span"));
+  const count = progress.appendChild(el("span", "dim"));
+  const face = box.appendChild(el("div", "study-card"));
+  face.setAttribute("aria-live", "polite");
+  const controls = box.appendChild(el("div", "study-controls"));
+  box.appendChild(el("p", "study-hint", t("Space: show the answer · 1 to 4: grade it")));
+  const back = column.appendChild(el("button", "icon study-back", "← " + t("Back to the decks")));
+  back.type = "button";
+  back.onclick = () => showCards();
+  let step = 0, busy = false;
+
+  const side = (text, card, cls) => {
+    const part = face.appendChild(el("div", "md " + cls));
+    part.setAttribute("translate", "no");
+    renderMarkdown(part, text);
+    showEmbeds(part, card.path, new Set([card.path]), 0);
+  };
+  function ask() {
+    if (state.view !== "cards") return;
+    if (!queue.length) return finish();
+    const card = queue[0], now = ++step;
+    bar.style.width = (100 * round.known / Math.max(1, round.total)) + "%";
+    count.textContent = t(`${round.known} of ${round.total}`);
+    face.replaceChildren();
+    side(card.question, card, "study-q");
+    const from = face.appendChild(el("a", "study-from", "↗ " + card.note));
+    from.setAttribute("translate", "no");
+    from.href = "/notes?" + new URLSearchParams({ path: card.path });
+    from.onclick = (event) => { event.preventDefault(); go({ path: card.path }); };
+    controls.replaceChildren();
+    const reveal = controls.appendChild(el("button", "ok", t("Show answer")));
+    reveal.type = "button";
+    reveal.onclick = () => answer(card, now);
+    state.study = (event) => {  // (a focused button takes Space and Enter itself)
+      if (![" ", "Enter"].includes(event.key) || document.activeElement?.tagName === "BUTTON") return false;
+      answer(card, now);
+      return true;
+    };
+    reveal.focus();
+  }
+  function answer(card, now) {
+    if (now !== step || face.querySelector(".study-a")) return;
+    const from = face.querySelector(".study-from");
+    from.before(el("hr"));
+    side(card.answer, card, "study-a");
+    face.appendChild(from);  // (the note's name stays at the bottom)
+    controls.replaceChildren();
+    GRADES.forEach(([grade, label], i) => {
+      const b = controls.appendChild(el("button", "grade grade-" + grade));
+      b.type = "button";
+      b.dataset.grade = grade;
+      b.append(el("span", "", t(label)), el("small", "", inDays(card.in_days[grade])));
+      b.title = t(label) + " (" + (i + 1) + ")";
+      b.onclick = () => mark(card, grade, now);
+    });
+    state.study = (event) => {
+      const i = ["1", "2", "3", "4"].indexOf(event.key);
+      if (i < 0) return false;
+      mark(card, GRADES[i][0], now);
+      return true;
+    };
+    controls.querySelector('[data-grade="good"]').focus();
+  }
+  async function mark(card, grade, now) {
+    if (busy || now !== step) return;
+    busy = true;
+    let result;
+    try { result = await api("/api/notes/flashcards/grade", { method: "POST", body: { id: card.id, grade } }); }
+    catch (e) { toast(e.message); return; }
+    finally { busy = false; }
+    queue.shift();
+    if (grade === "again") {
+      round.again++;
+      queue.push({ ...card, in_days: result.next_in_days || card.in_days });
+    } else round.known++;
+    ask();
+  }
+  function finish() {
+    state.study = null;
+    bar.style.width = "100%";
+    count.textContent = t(`${round.known} of ${round.total}`);
+    face.replaceChildren(el("p", "study-done", t("Done for now.")));
+    const missed = round.again ? `, ${round.again} again` : "";
+    if (round.total) face.appendChild(el("p", "dim", t(`${round.known} known${missed}`)));
+    box.querySelector(".study-hint")?.remove();
+    controls.replaceChildren();
+    const more = controls.appendChild(el("button", "ok", t("Back to the decks")));
+    more.type = "button";
+    more.onclick = () => showCards();
+    back.remove();
+    more.focus();
+  }
+  ask();
 }
 
 let boardKit = null;
@@ -1528,6 +1717,7 @@ document.addEventListener("keydown", (event) => {
   else if (mod && key === "s") { event.preventDefault(); if (edit.editor) save(); }
   else if (mod && key === "n" && !event.shiftKey) { event.preventDefault(); newNote(); }
   else if (event.key === "Escape" && document.body.classList.contains("show-info")) document.body.classList.remove("show-info");
+  else if (state.study && state.view === "cards" && !mod && !event.altKey && state.study(event)) event.preventDefault();
 });
 // ＋: an empty note, or one from a template (Meeting, Daily, Project and your own)
 document.getElementById("new-note").onclick = async (event) => {

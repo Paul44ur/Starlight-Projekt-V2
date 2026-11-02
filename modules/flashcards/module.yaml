@@ -1,0 +1,8 @@
+name: flashcards
+version: 0.1.0
+description: Flashcards with spaced repetition - "Question::Answer" lines in notes tagged #flashcards; quiz me, grade, add cards
+keywords: ["flashcard", "flashcards", "quiz", "quiz me", "study", "learn", "vocabulary", "spaced repetition", "deck", "Lernkarte", "Lernkarten", "Karteikarte", "Karteikarten", "abfragen", "frag mich ab", "lernen", "Vokabeln", "üben"]
+entrypoint: module:FlashcardsModule
+permissions: [safe]
+dependencies: []
+enabled_by_default: true

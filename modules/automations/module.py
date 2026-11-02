@@ -178,6 +178,17 @@ TEMPLATES: dict[str, dict[str, Any]] = {
             },
         ],
     },
+    "daily-flashcards": {
+        "when": "every day at 19:00",
+        "actions": [
+            {"tool": "flashcards.due", "args": {"limit": 1}},
+            {
+                "say": "{result.total} flashcard(s) are waiting for you today. Say 'quiz me', "
+                "or study them in Notes, Cards.",
+                "only_if": "total > 0",
+            },
+        ],
+    },
     "nightly-backups": {
         "when": "every day at 3:00",
         "actions": [{"ask": "Run all my backups (backup.list, then backup.run for each)."}],

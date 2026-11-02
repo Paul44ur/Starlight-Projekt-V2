@@ -79,6 +79,7 @@ and answer you on WhatsApp. It will ask you before it does anything risky. And o
 | **Journal** | "Journal: a long hike today, tired but happy" — one file a day in `Documents\Starlight\Journal`; read a day back or search it. "My weekly review" writes up the last seven days (with your to-dos and next week's calendar): what happened, what got done, what is open, what to focus on. Schedule it with an automation ("every Sunday at 18:00"). |
 | **Notes** | Quick notes as plain files ("note: …", "add eggs to my shopping note"), searchable and part of your knowledge base. |
 | **Boards** | Cards and arrows on an endless surface: "what's on my project board?", "add the article https://… to my reading board", "put 'call the bank' under the card about money". Boards are `.canvas` files in `Documents\Starlight\Boards` (the open JSON Canvas format, so Obsidian opens them too); every change keeps the earlier version. |
+| **Flashcards** | "Quiz me on Spanish": write `Question::Answer` lines in a note tagged `#flashcards` (`#lernkarten` works too), and Starlight asks you one card at a time. A card you know comes back later and later; one you don't comes back the same day. "Make a card: capital of Peru, Lima" adds one. Study them on the Notes page too. |
 | **YouTube summaries** | Summarizes a video or answers a question about it from its captions, with the times it was said. |
 | **Talk to it** | Speak instead of typing and hear the answers — 🎤 and 🔊 in the web chat (on your phone too), `/talk` in the terminal. **🗣 Conversation** in the web chat: just talk; when you pause, it is sent, the answer is read out, and it listens again — speaking while an answer is read out stops it. **"Hey Starlight"**: with it switched on (Settings → Voice, or "listen for Hey Starlight"), say the phrase near the PC and then what you want; the answer comes out of the PC's speakers. Only short bits of speech are written down, on the PC, to look for the phrase. **Settings → Voice** chooses the voice for each language and installs more (nine German and seven English voices, from Piper). Speech recognition (whisper.cpp) and the voices (Piper) run on your PC. Install with `Starlight.exe --voice`. |
 | **Summarize recordings** | "Summarize meeting.m4a" — transcribes a meeting, voice memo or lecture on your PC and writes the main points, decisions and to-dos; both are saved in `Documents\Starlight\Recordings`. Any length (it works in five-minute pieces). .wav works as it is; mp3, m4a, ogg or a video need ffmpeg (`winget install ffmpeg`). |
@@ -623,6 +624,18 @@ overdue, today, upcoming and without a date; tick them there or open their note.
 tasks too. Drag a card to another column, or use its buttons (▶ doing, ✓ done, ↺ open).
 A task you are working on gets `status: doing` in its note (`status: in Arbeit` works too)
 and shows a ▶ chip. In the chat: "I'm working on the fence now" moves it to Doing.
+
+**Flashcards.** A line `Question::Answer` in a note tagged `#flashcards` (or `#lernkarten`,
+`#karteikarten`) is a card. `Question:::Answer` makes two cards, the second asked the other
+way round. `#flashcards/spanish` puts the note's cards in a deck called spanish; without
+it, the note's title names the deck. **Flashcards** on the left lists your decks with how
+many cards are due and new today. **Study** shows one card at a time: press Space (or
+**Show answer**), then 1 to 4: Again, Hard, Good, Easy. Each button says when the card comes
+back. A card you missed comes back at the end of the round. At most 20 new cards come a
+day (`new_per_day` in `config/modules/flashcards.yaml`); due cards always come. When each
+card comes back is kept in `data/notebook/flashcards.json`, so editing an answer or moving
+the note keeps a card's progress. In the chat, say "quiz me" or "quiz me on Spanish". The
+automation template `daily-flashcards` tells you each evening when cards are waiting.
 
 **Settings** lists the modules, each with an on/off switch; open one to
 choose for each of its tools whether it runs on its own, asks first or is blocked (the search

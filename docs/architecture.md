@@ -542,6 +542,25 @@ the columns (note tasks from the index, the list's own through `todo.list`; done
 30), `POST /api/notes/kanban/move` moves a card (with `path`: in the note; else
 `todo.move`). The Tasks view has List and Columns (remembered in the browser); cards move by
 HTML drag and drop or their buttons; render.js shows `status: doing` as a ▶ chip.
+Block G3 is flashcards. `markdown.parse` finds `Question::Answer` lines (`Note.cards`; `:::`
+asks both ways; not in code, tables, headings or tasks, and `::` inside code, a link or an
+address does not count). `notebook/flashcards.py` reads the cards of the notes tagged
+`#flashcards`, `#lernkarten` or `#karteikarten` (not clipped notes with `source`, not
+Templates); a subtag names the deck, else the note's title. The index stores no cards: the
+tagged notes are read when asked. A card's id comes from its deck and question. When each
+card comes back is in `data/notebook/flashcards.json` (next to the index), by deck and
+question, under a lock: a small SM-2 by days (again: today, the gap starts over; new cards
+1, 2 or 4 days; then 1.2 times, the ease (2.5 at first) or 1.3 times the ease; the ease
+drops after again and hard, never below 1.3; at most ten years). `plan` gives the due cards
+(longest due first) and as many new ones as `new_per_day` still allows. `rename.rename`
+calls `flashcards.renamed`, so a deck named after a note follows a rename. The new
+`flashcards` module has `flashcards.decks`, `.due` (with the answers, and the gap after each
+grade), `.grade` (English, German or 1 to 4) and `.add` (a line in the deck's note, or a new
+note in `Notes/Flashcards`; versions kept). The API goes through the module, so its settings
+count: `GET /api/notes/flashcards`, `GET /api/notes/flashcards/due?deck=`, `POST
+/api/notes/flashcards/grade` (503 when the module is off). The Notes page has a Flashcards
+view (decks, then one card at a time; Space and 1 to 4). The automation template
+`daily-flashcards` says at 19:00 when cards are waiting.
 
 **Safety limits you set (`core/safety.py`).** Settings -> Safety limits chooses a level
 (strict, balanced, relaxed) and any of 29 switches on top, kept in

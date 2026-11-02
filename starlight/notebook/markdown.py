@@ -4,8 +4,9 @@ What it finds: the properties block at the top (``--- … ---``), headings and s
 links (``[[Note]]``, ``[[Note|text]]``, ``[[Note#Heading]]``, ``[[Note#^id]]``, embeds
 ``![[…]]`` and Markdown links to local files), tags (``#tag``, ``#work/projects`` and the
 ``tags`` property), block ids (``^id``), tasks with their plain-word fields (``due:``,
-``priority:``, ``repeat:``, ``start:``, ``done:``, ``status:``, and the German keys) and
-``query`` blocks.
+``priority:``, ``repeat:``, ``start:``, ``done:``, ``status:``, and the German keys),
+``query`` blocks and flashcard lines (``Question::Answer``; ``:::`` asks both ways; block G3
+uses them in notes tagged #flashcards).
 
 Code is not text: nothing inside fenced code blocks or `inline code` counts, and neither does
 anything inside a web address (``https://example.org/#top`` has no tag) or an escaped
@@ -49,6 +50,9 @@ BLOCK_ID = re.compile(r"(?:^|\s)\^([A-Za-z0-9\-]+)[ \t]*$")
 TASK = re.compile(r"^([ \t]*)(?:[-*+]|\d{1,9}[.)])[ \t]+\[(.)\](?=[ \t]|$)(.*)$")
 SCHEME = re.compile(r"^[A-Za-z][A-Za-z0-9+.\-]*:")
 ISO_DATE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
+# a flashcard line: "Question::Answer", or ":::" for both ways (exactly two or three colons)
+CARD = re.compile(r"(?<!:):{2,3}(?!:)")
+CARD_LEAD = re.compile(r"^[ \t]*(?:>[ \t]*)*(?:(?:[-*+]|\d{1,9}[.)])[ \t]+)?")  # list, quote
 
 # Task fields in plain words: the key as written (English or German) -> the field.
 TASK_KEYS = {
@@ -256,6 +260,14 @@ class Task:
 
 
 @dataclass(frozen=True)
+class Card:
+    line: int
+    question: str  # as written (Markdown), without a list or quote mark before it
+    answer: str  # without a block id after it
+    both_ways: bool = False  # ":::": also asked the other way round
+
+
+@dataclass(frozen=True)
 class CodeBlock:
     line: int  # the opening fence
     end: int  # the closing fence (the last line when it is never closed)
@@ -276,6 +288,7 @@ class Note:
     block_ids: dict[str, int] = field(default_factory=dict)  # id -> line
     code: list[CodeBlock] = field(default_factory=list)
     words: int = 0
+    cards: list[Card] = field(default_factory=list)  # Question::Answer lines
 
     @property
     def aliases(self) -> list[str]:
@@ -383,6 +396,7 @@ def parse(text: str) -> Note:
     links: list[Link] = []
     tags = [Tag(name, -1) for name in property_tags(front.properties)]
     tasks: list[Task] = []
+    cards: list[Card] = []
     block_ids: dict[str, int] = {}
     code: list[CodeBlock] = []
     words = 0
@@ -440,6 +454,10 @@ def parse(text: str) -> Note:
             indent = len(task.group(1).expandtabs(4))
             placed = tuple((n, k + start, a + start, b + start) for n, k, a, b in spans)
             tasks.append(Task(number, indent, task.group(2), rest, **values, spans=placed))
+        elif not heading and not masked.lstrip().startswith("|"):  # (not in a table either)
+            card = _card(line, masked, number, block)
+            if card is not None:
+                cards.append(card)
         words += len(re.findall(r"\w+", masked))
     if fence is not None:  # never closed: code to the end, as editors show it
         code.append(CodeBlock(fence[1], len(lines) - 1, fence[2], "".join(fenced)))
@@ -455,7 +473,23 @@ def parse(text: str) -> Note:
         block_ids,
         code,
         words,
+        cards,
     )
+
+
+def _card(line: str, masked: str, number: int, block: re.Match[str] | None) -> Card | None:
+    """The flashcard on a line (``Question::Answer``), or None. The separator counts only
+    in text: not in code, a link or a web address (those are masked)."""
+    separator = CARD.search(masked)
+    if separator is None:
+        return None
+    end = block.start(1) - 1 if block and block.start(1) > separator.end() else len(line)
+    lead = CARD_LEAD.match(line)
+    question = line[lead.end() if lead else 0 : separator.start()].strip()
+    answer = line[separator.end() : end].strip()
+    if not question or not answer:
+        return None
+    return Card(number, question, answer, len(separator.group(0)) == 3)
 
 
 def wikilink_spans(text: str) -> list[tuple[int, int, str, bool]]:

@@ -40,6 +40,9 @@ texts, and the page lets you choose.
     GET    /api/notes/tasks                  open tasks: overdue, today, upcoming, none
     GET    /api/notes/kanban                 the task board: open, doing, done
     POST   /api/notes/kanban/move            {id, to, path?}: a card to another column
+    GET    /api/notes/flashcards             the flashcard decks: cards, due, new today
+    GET    /api/notes/flashcards/due?deck=   the cards to study now, with their answers
+    POST   /api/notes/flashcards/grade       {id, grade}: again, hard, good or easy
     POST   /api/notes/query                  {text}: a ```query block's table
     GET    /api/boards                       the .canvas boards in the Starlight folder
     GET    /api/board?path=                  a board: {board, stamp}
@@ -839,6 +842,39 @@ def add_notes_api(
         if not result.ok:
             raise _bad(str(result.error), 409)
         return {"moved": to, "changed": True}
+
+    # -- flashcards (block G3): through the flashcards module, so its settings count -------
+
+    async def cards_tool(name: str, args: dict[str, Any]) -> dict[str, Any]:
+        tool = f"flashcards.{name}"
+        if kernel().dispatcher.get(tool) is None:
+            raise _bad("the flashcards module is off; turn it on in Settings", 503)
+        result = await kernel().dispatcher.call(tool, args)
+        if not result.ok:
+            raise _bad(str(result.error), 400)
+        return dict(result.output)
+
+    @app.get("/api/notes/flashcards")
+    async def card_decks(request: Request) -> dict[str, Any]:
+        """The flashcard decks: cards, due today, new today."""
+        local_only(request)
+        return await cards_tool("decks", {})
+
+    @app.get("/api/notes/flashcards/due")
+    async def cards_due(request: Request, deck: str = "", limit: int = 200) -> dict[str, Any]:
+        """The cards to study now (due first, then new), with their answers."""
+        local_only(request)
+        return await cards_tool("due", {"deck": deck, "limit": max(1, min(limit, 500))})
+
+    @app.post("/api/notes/flashcards/grade")
+    async def cards_grade(request: Request) -> dict[str, Any]:
+        """{id, grade}: how well a card was known (again, hard, good, easy)."""
+        local_only(request)
+        data = await body(request)
+        card, grade = str(data.get("id") or ""), str(data.get("grade") or "")
+        if not card or not grade:
+            raise _bad("send {id, grade: again, hard, good or easy}")
+        return await cards_tool("grade", {"id": card, "grade": grade})
 
     @app.get("/api/notes/tasks")
     def all_tasks(request: Request) -> dict[str, Any]:

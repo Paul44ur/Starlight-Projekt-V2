@@ -38,12 +38,16 @@ Work goes block by block (section 9). One block is one session and one commit; m
 | F4 | Board view on the page | L | F3, B6 | **done** 2026-11-02 ("Notes plan F4: …") |
 | G1 | Export a note as HTML or PDF | S | – | **done** 2026-11-02 ("Notes plan G1: …") |
 | G2 | Kanban for tasks | M | D4 | **done** 2026-11-02 ("Notes plan G2: …") |
-| G3 | Flashcards (spaced repetition) | M | B2 | **next** |
-| G4 | Live preview in the editor | M | B6 | open |
+| G3 | Flashcards (spaced repetition) | M | B2 | **done** 2026-11-02 ("Notes plan G3: …") |
+| G4 | Live preview in the editor | M | B6 | **next** |
 | G5 | Mermaid diagrams (a 2–3 MB library: only if wanted) | S–M | B4 | open |
 | G6 | Deep links (`starlight://note/…`) | S | B5 | open |
 
-Last updated: 2026-11-02 (A1 to G2 done; the user asked for the G extras too. G2: the
+Last updated: 2026-11-02 (A1 to G3 done; the user asked for the G extras too. G3: a new
+`flashcards` module; cards need a #flashcards (or #lernkarten, #karteikarten) tag, so
+Dataview-style `key:: value` lines in other notes are not cards. The index stores no cards;
+the schedule is in data/notebook/flashcards.json. The page's API calls the module's tools.
+G2: the
 board is a "Columns" layout of the Tasks view, not a page of its own; to-dos have a doing
 stage too (`stage` in todo.json). The index's schema is at step 2 now.
 G1: the
