@@ -17,6 +17,7 @@ from typing import Any, Literal
 from pydantic import BaseModel, Field
 
 from starlight.core import Module, ModuleContext, ToolError, tool
+from starlight.core.config import ConfigError
 from starlight.core.jsonfile import load_json, save_json
 from starlight.core.schedule import names_time_of_day, parse_when
 from starlight.notebook import NoteConflict
@@ -64,10 +65,15 @@ class TodoModule(Module):
         save_json(self.file, kept)
 
     def _notes(self) -> list[NoteTask]:
-        """The tasks in your notes (none when that is switched off)."""
+        """The tasks in your notes (none when that is switched off, or when the Starlight
+        folder cannot be found: the list's own tasks still work then)."""
         if not self.config.note_tasks:
             return []
-        return note_tasks.note_tasks(self.ctx.notebook)
+        try:
+            index = self.ctx.notebook
+        except ConfigError:  # (output.folder is set wrong: the error says so elsewhere)
+            return []
+        return note_tasks.note_tasks(index) if index is not None else []
 
     def _find(
         self, items: list[dict[str, Any]], id: str, notes: list[NoteTask] | None = None

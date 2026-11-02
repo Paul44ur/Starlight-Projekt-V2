@@ -420,7 +420,8 @@ the line changed) and `tick_by_id` tick or open a task again, keep a version, ke
 file's line endings and its BOM, write `done:`, and add the next one of a repeating task
 below. The to-do module lists them (`todo.list`, `todo.due`, marked with `note` and `path`),
 ticks them (`todo.done`, also by a word, and `todo.reopen`), and sends `todo.change` and
-`todo.remove` to the note; `note_tasks: false` leaves them out. The briefing, reminders and
+`todo.remove` to the note; `note_tasks: false` leaves them out, and so does a Starlight
+folder that cannot be found (a wrong `output.folder`: the list's own tasks still work). The briefing, reminders and
 `{{todo}}` get them through `todo.due`.
 Block D4 puts tasks on the page. `GET /api/note` lists the note's tasks with their lines as
 written (`tasks: [{line, status, text, raw}]`); `POST /api/note/task` ticks one by

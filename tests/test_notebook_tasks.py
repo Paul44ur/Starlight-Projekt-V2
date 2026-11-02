@@ -295,6 +295,22 @@ async def test_note_tasks_can_be_left_out(paths: Paths, garden: Path) -> None:
         assert (await call(k, "todo.list"))["count"] == 0
 
 
+async def test_the_list_works_when_the_starlight_folder_setting_is_wrong(
+    paths: Paths, use_module: Callable[[str], Path]
+) -> None:
+    use_module("todo")
+    inside = paths.root / "my files"  # (inside Starlight's own folder: refused)
+    paths.config_file.write_text(
+        paths.config_file.read_text() + f"output:\n  folder: '{inside.as_posix()}'\n"
+    )
+    async with Kernel(paths) as k:
+        await call(k, "todo.add", text="pay rent", due="today")
+        listed = await call(k, "todo.list")
+        assert [t["text"] for t in listed["tasks"]] == ["pay rent"]
+        assert (await call(k, "todo.due"))["count"] == 1
+        assert (await call(k, "todo.done", id="rent"))["text"] == "pay rent"
+
+
 async def test_starlight_writes_typed_dates_as_iso_dates(
     paths: Paths, use_module: Callable[[str], Path], documents: Path
 ) -> None:
