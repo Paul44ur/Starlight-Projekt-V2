@@ -18,7 +18,6 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import email.policy
-import html
 import json
 import mimetypes
 import re
@@ -54,6 +53,7 @@ from starlight.core.permissions import (
 from starlight.core.ui import current_ui
 from starlight.notebook import undo_change
 from starlight.web.auth import COOKIE, Device, Devices
+from starlight.web.export import export_html
 from starlight.web.notes_api import add_notes_api
 
 STATIC = Path(__file__).with_name("static")
@@ -1478,79 +1478,6 @@ def answer_stats(usage: list[dict[str, Any]]) -> dict[str, Any]:
     if speeds:
         stats["tokens_per_second"] = round(speeds[-1], 1)
     return stats
-
-
-EXPORT_PAGE = """<!doctype html>
-<html lang="en"><head><meta charset="utf-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>__TITLE__</title>
-<style>
-  body { font: 15px/1.55 system-ui, "Segoe UI", sans-serif; color: #1f2328; background: #fff;
-         max-width: 820px; margin: 24px auto; padding: 0 16px; }
-  h1 { font-size: 22px; margin-bottom: 2px; } .when { color: #5a6372; font-size: 13px; }
-  .msg { border: 1px solid #d8dce3; border-radius: 10px; padding: 10px 14px; margin: 12px 0;
-         break-inside: avoid; }
-  .msg.you { background: #eef4ff; } .who { font-size: 11px; text-transform: uppercase;
-         letter-spacing: .05em; color: #5a6372; margin-bottom: 4px; }
-  .you .body { white-space: pre-wrap; }
-  pre { background: #f6f7f9; border-radius: 6px; padding: 8px 10px; overflow-x: auto; }
-  code { font-family: ui-monospace, Consolas, monospace; font-size: .92em; }
-  .md-code-bar { font-size: 12px; color: #5a6372; } .md-code-bar button { display: none; }
-  table { border-collapse: collapse; } th, td { border: 1px solid #d8dce3; padding: 3px 7px; }
-  blockquote { border-left: 3px solid #d8dce3; margin: 0; padding-left: 10px; color: #5a6372; }
-  .tok-k { color: #8250df; } .tok-s { color: #116329; } .tok-n { color: #b35900; }
-  .tok-c { color: #6e7781; font-style: italic; } .tok-f { color: #0550ae; }
-  .tok-v { color: #953800; }
-  .math { font-family: "Cambria Math", "STIX Two Math", Georgia, serif; }
-  .math-block { display: block; text-align: center; margin: .4em 0; }
-  .bar { position: sticky; top: 0; background: #fff; padding: 6px 0; text-align: right; }
-  @media print { .bar { display: none; } body { margin: 0 auto; } }
-</style></head><body>
-<div class="bar"><button onclick="print()">Print or save as PDF</button></div>
-<h1 id="title"></h1><div class="when" id="when"></div><div id="log"></div>
-<script type="application/json" id="data">__DATA__</script>
-<script>
-function el(tag, cls, text) { const e = document.createElement(tag); if (cls) e.className = cls;
-  if (text !== undefined) e.textContent = text; return e; }
-function toast() {}
-</script>
-<script>__MARKDOWN__</script>
-<script>
-const data = JSON.parse(document.getElementById("data").textContent);
-document.getElementById("title").textContent = data.title;
-document.getElementById("when").textContent = (data.created || "").slice(0, 16).replace("T", " ");
-for (const m of data.messages) {
-  const box = el("div", "msg " + (m.role === "user" ? "you" : "bot"));
-  box.appendChild(el("div", "who", m.role === "user" ? "You" : "Starlight"));
-  const body = box.appendChild(el("div", "body"));
-  if (m.role === "user") body.textContent = m.content; else renderMarkdown(body, m.content);
-  document.getElementById("log").appendChild(box);
-}
-if (data.print) setTimeout(() => print(), 300);
-</script></body></html>
-"""
-
-
-def export_html(data: dict[str, Any], markdown_js: str, print_now: bool = False) -> str:
-    """A conversation as one HTML file that shows it on its own (no server, no network):
-    the answers drawn from their Markdown by the chat's own safe renderer."""
-    payload = {
-        "title": data.get("title") or "Conversation",
-        "created": data.get("created") or "",
-        "messages": [
-            {"role": m.get("role"), "content": str(m.get("content", ""))}
-            for m in data.get("messages", [])
-        ],
-        "print": print_now,
-    }
-    # "</" would end the script element early: a message cannot close it
-    embedded = json.dumps(payload, ensure_ascii=False).replace("</", "<\\/")
-    parts = {
-        "__TITLE__": html.escape(str(payload["title"])),
-        "__MARKDOWN__": markdown_js.replace("</script", "<\\/script"),
-        "__DATA__": embedded,
-    }  # in one pass: a title or message that says "__DATA__" stays as it is
-    return re.sub("__(?:TITLE|MARKDOWN|DATA)__", lambda m: parts[m.group(0)], EXPORT_PAGE)
 
 
 async def _run_ask(

@@ -319,6 +319,36 @@ class NotesModule(Module):
             answer["untrusted"] = True
         return answer
 
+    @tool
+    def export(self, title: str, format: str = "pdf") -> dict[str, Any]:
+        """Save a note as a PDF (format "pdf") or as one HTML file that works on its own
+        ("html"), in the Exports folder of the Starlight folder: to keep, print or send.
+        Say where it was saved."""
+        from starlight.core.fsutil import write_atomic_bytes
+        from starlight.notebook import export as exporter
+        from starlight.web.export import note_html
+
+        kind = format.strip().lower().lstrip(".")
+        if kind not in ("pdf", "html"):
+            raise ToolError("a note can be saved as pdf or html")
+        path = self._find(title)
+        front = split(path.read_text("utf-8", errors="replace"))
+        root = self.ctx.output_dir
+        when = datetime.fromtimestamp(path.stat().st_mtime).strftime("%Y-%m-%d %H:%M")
+        if kind == "pdf":
+            data = exporter.to_pdf(path.stem, front.body, root, when=when)
+        else:
+            page = note_html(path.stem, front.body, when=when,
+                             pictures=exporter.pictures(root, front.body))  # fmt: skip
+            data = page.encode("utf-8")
+        folder = root / "Exports"
+        target, number = folder / f"{path.stem}.{kind}", 2
+        while target.exists():
+            target, number = folder / f"{path.stem} {number}.{kind}", number + 1
+        folder.mkdir(parents=True, exist_ok=True)
+        write_atomic_bytes(target, data)
+        return {"saved": str(target), "format": kind, "note": path.stem, "bytes": len(data)}
+
     @tool(name="query")
     def query_notes(
         self, where: str = "", sort: str = "", fields: str = "", limit: int = 50

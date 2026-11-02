@@ -519,6 +519,18 @@ a text card or makes one; Delete removes the selection. Changes are saved 0.7 s 
 `PUT /api/board` and the stamp; a 409 keeps the board unsaved and offers "Load it again".
 notes.html: a Boards view (`showBoards`), `?board=` opens one (`openBoardView`), and
 leaving a board saves its last change first (`stopEditing`).
+Block G1 exports a note. `starlight/web/export.py` now holds both pages that work on their
+own: the conversation export (moved from app.py) and `note_html` (the note's Markdown drawn
+by markdown.js and render.js inside the file; links between notes and tags become plain
+text; pictures come from `notebook/export.pictures`, read from the Starlight folder as
+`data:` addresses, PNG, JPEG, GIF and WebP only, 10 MB each and 25 MB together; a first
+heading that only repeats the title is left out). `notebook/export.to_pdf` makes a PDF with
+reportlab: headings, paragraphs (`inline` turns bold, italic, code and struck text into
+reportlab's markup, everything else escaped), lists and tasks, quotes and callouts, tables,
+code blocks, rules and pictures; the font is Segoe UI or Arial on Windows, DejaVu or
+reportlab's own Vera elsewhere, so umlauts show. `GET /api/note/export?path=&format=html|pdf
+&show=` (show: opened inline, printing itself); the Notes page's ⤓ menu; the tool
+`notes.export(title, format)` saves into `Exports/` (never over an earlier file).
 
 **Safety limits you set (`core/safety.py`).** Settings -> Safety limits chooses a level
 (strict, balanced, relaxed) and any of 29 switches on top, kept in

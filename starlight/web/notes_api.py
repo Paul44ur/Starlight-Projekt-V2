@@ -32,6 +32,7 @@ texts, and the page lets you choose.
                                               typed dates in tasks become ISO dates, and
                                               then the saved text comes back
     POST   /api/note                         {folder, title, text | template, lang}: a new note
+    GET    /api/note/export?path=&format=    the note as one HTML file or a PDF (show: print)
     POST   /api/note/task                    {path, line, expected | id, done}: tick a task
     GET    /api/note/related?path=           related notes (by meaning, or links and tags)
     GET    /api/note/mentions?path=          lines that name the note without a link
@@ -521,6 +522,60 @@ def add_notes_api(
                 raise _bad(f"could not save {file.name}: {locked(exc)}", 409) from exc
         saved = {"path": rel(file), "stamp": written.stamp, "version": written.version}
         return {**saved, "text": text} if text != sent else saved  # (the page shows the dates)
+
+    @app.get("/api/note/export")
+    def export_note(
+        request: Request, path: str, format: str = "html", show: bool = False, lang: str = ""
+    ) -> Response:
+        """The note as one HTML file that works on its own (``show``: opened to print) or as
+        a PDF (format=pdf), to keep or to send."""
+        local_only(request)
+        file = note_file(path)
+        from starlight.notebook import export
+        from starlight.text import decode_text
+        from starlight.web.export import note_html
+
+        text = decode_text(file.read_bytes())
+        front = markdown.split(text)
+        when = (
+            rel(file).rpartition("/")[0]
+            + " · "
+            + dt.datetime.fromtimestamp(file.stat().st_mtime).strftime("%Y-%m-%d %H:%M")
+        )
+        if format == "pdf":
+            try:
+                data = export.to_pdf(file.stem, front.body, root(), when=when)
+            except export.ExportError as exc:
+                raise _bad(str(exc), 501) from exc
+            return download(data, file.stem, ".pdf", "application/pdf", show)
+        shown = " · ".join(
+            f"{k}: {', '.join(map(str, v)) if isinstance(v, list) else v}"
+            for k, v in front.properties.items() if k not in ("aliases", "alias")
+        )  # fmt: skip
+        page_html = note_html(
+            file.stem, front.body, when=when, properties=shown,
+            pictures=export.pictures(root(), front.body), print_now=show,
+            german=lang.lower().startswith("de"),
+        )  # fmt: skip
+        return download(page_html.encode("utf-8"), file.stem, ".html", "text/html", show)
+
+    def download(data: bytes, title: str, suffix: str, media: str, show: bool) -> Response:
+        """A file to save (or, ``show``, to open), under the note's name."""
+        import unicodedata
+        from urllib.parse import quote
+
+        name = re.sub(r"[^\w\- ]+", "", title).strip()[:60] or "note"
+        decomposed = unicodedata.normalize("NFKD", name.replace("ß", "ss"))
+        plain = re.sub(r"[^\w\- ]+", "", decomposed, flags=re.ASCII).strip() or "note"
+        charset = "; charset=utf-8" if media.startswith("text/") else ""
+        return Response(
+            data,
+            media_type=media + charset,
+            headers={
+                "Content-Disposition": f"{'inline' if show else 'attachment'}; "
+                f"filename=\"{plain}{suffix}\"; filename*=UTF-8''{quote(name + suffix)}"
+            },
+        )
 
     @app.post("/api/note/task")
     async def tick_task(request: Request) -> dict[str, Any]:

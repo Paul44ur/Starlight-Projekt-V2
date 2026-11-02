@@ -574,10 +574,14 @@ async function openNote(path, heading, editing = false) {
   const ask = el("button", "icon", "✨ Ask");
   ask.type = "button"; ask.title = t("Ask Starlight about this note"); ask.setAttribute("aria-haspopup", "menu");
   ask.onclick = (event) => { event.stopPropagation(); askMenu(ask); };
+  const out = el("button", "icon", "⤓");
+  out.type = "button"; out.title = t("Export: HTML, PDF or print"); out.setAttribute("aria-label", t("Export: HTML, PDF or print"));
+  out.setAttribute("aria-haspopup", "menu"); out.id = "export-toggle";
+  out.onclick = (event) => { event.stopPropagation(); exportMenu(out); };
   const bin = el("button", "icon", "🗑");
   bin.type = "button"; bin.title = t("Move to the trash"); bin.setAttribute("aria-label", t("Move to the trash"));
   bin.onclick = () => deleteNote();
-  actions.append(editButton, ask, pin, past, bin, toggle);
+  actions.append(editButton, ask, pin, past, out, bin, toggle);
 
   const title = column.appendChild(el("h1", "title", note.title));
   title.setAttribute("translate", "no");
@@ -1798,6 +1802,35 @@ function askMenu(button) {
       menu.remove();
       if (!(await stopEditing())) return;
       location.href = "/?" + new URLSearchParams({ ask: request(note.title, note.path.replace(/\.md$/i, "")) });
+    };
+  }
+  button.after(menu);
+  menu.querySelector("button").focus();
+  const close = (event) => { if (!menu.contains(event.target)) { menu.remove(); document.removeEventListener("click", close); } };
+  setTimeout(() => document.addEventListener("click", close));
+  menu.addEventListener("keydown", (event) => { if (event.key === "Escape") { menu.remove(); button.focus(); } });
+}
+
+// Export (block G1): the note as one HTML file, as a PDF, or printed (the HTML file opened
+// in a new tab, which prints itself). The editor's last change is saved first.
+function exportMenu(button) {
+  const open = document.querySelector(".ask-menu");
+  if (open) { open.remove(); return; }
+  const note = state.current;
+  const menu = el("div", "ask-menu export-menu");
+  menu.setAttribute("role", "menu");
+  const address = (format, show) => "/api/note/export?" + new URLSearchParams(
+    { path: note.path, format, ...(show ? { show: "true" } : {}), lang: window.starlightLanguage || "en" });
+  for (const [label, format, show] of [["HTML file", "html", false], ["PDF file", "pdf", false], ["Print", "html", true]]) {
+    const item = menu.appendChild(el("button", "", t(label)));
+    item.type = "button"; item.setAttribute("role", "menuitem"); item.dataset.format = format + (show ? "-print" : "");
+    item.onclick = async () => {
+      menu.remove();
+      if (!(await save())) return;
+      if (show) { window.open(address(format, true), "_blank", "noopener"); return; }
+      const a = el("a");
+      a.href = address(format, false); a.download = "";
+      document.body.appendChild(a); a.click(); a.remove();
     };
   }
   button.after(menu);

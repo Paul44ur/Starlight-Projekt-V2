@@ -563,6 +563,10 @@ take the other one, or keep both. **＋** (Ctrl+N) starts a new note; type over 
 rename it. 🗑 moves a note to the **Trash**, where **Bring back** returns it. 🕘 shows the
 earlier versions with what changed, and puts one back.
 
+**Exporting a note.** **⤓** on a note saves it as one HTML file (it opens on any computer,
+its pictures inside it) or as a PDF, or prints it. In the chat: "save my Project X note as
+a PDF" puts it in the `Exports` folder of your Starlight folder.
+
 **Linking notes.** Type `[[` while writing and Starlight suggests your notes. A link to a
 note that does not exist yet looks paler; click it and **Write it** starts that note.
 `![[Shopping]]` shows another note inside this one (`![[Shopping#Food]]` just that part).

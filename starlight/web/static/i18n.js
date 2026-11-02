@@ -162,6 +162,8 @@
       "Notizen ohne Titel warten hier. Starlight kann sie in deine Notizen einsortieren; es fragt, bevor es etwas verschiebt.",
     "Sort my inbox": "Eingang sortieren",
     "Search tips:": "Suchtipps:",
+    "Export: HTML, PDF or print": "Exportieren: HTML, PDF oder drucken", "HTML file": "HTML-Datei",
+    "PDF file": "PDF-Datei", "Print": "Drucken",
     "Boards": "Boards", "Board": "Board", "＋ New board": "＋ Neues Board",
     "What should the board be called?": "Wie soll das Board heißen?",
     "No boards yet. A board holds cards and arrows: ideas, notes, links, side by side.":

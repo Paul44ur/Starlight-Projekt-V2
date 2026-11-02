@@ -68,6 +68,7 @@ async def notes_page(
             status=answer.status_code,
             body=answer.content,
             content_type=answer.headers.get("content-type", "application/json"),
+            headers={k: v for k, v in answer.headers.items() if k == "content-disposition"},
         )
 
     async with async_api.async_playwright() as playwright:

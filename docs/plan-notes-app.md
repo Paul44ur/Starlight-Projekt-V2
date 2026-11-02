@@ -36,9 +36,17 @@ Work goes block by block (section 9). One block is one session and one commit; m
 | F2 | Whole-graph view | M | F1 | **done** 2026-11-02 ("Notes plan F2: …") |
 | F3 | Boards: JSON Canvas files, tools, API | M | A2 | **done** 2026-11-02 ("Notes plan F3: …") |
 | F4 | Board view on the page | L | F3, B6 | **done** 2026-11-02 ("Notes plan F4: …") |
-| G1–G6 | Extras (export, Kanban, flashcards, live preview, Mermaid, deep links) | S–M each | see 9 | optional (**next** if wanted) |
+| G1 | Export a note as HTML or PDF | S | – | **done** 2026-11-02 ("Notes plan G1: …") |
+| G2 | Kanban for tasks | M | D4 | **next** |
+| G3 | Flashcards (spaced repetition) | M | B2 | open |
+| G4 | Live preview in the editor | M | B6 | open |
+| G5 | Mermaid diagrams (a 2–3 MB library: only if wanted) | S–M | B4 | open |
+| G6 | Deep links (`starlight://note/…`) | S | B5 | open |
 
-Last updated: 2026-11-02 (A1 to F4 done: every planned block. F4: the board view is
+Last updated: 2026-11-02 (A1 to G1 done; the user asked for the G extras too. G1: the
+export pages are in `starlight/web/export.py`; `export_html` moved there from app.py. The
+Notes page test helper (`notes_page`) now passes the Content-Disposition header through.
+F4: the board view is
 `static/board.js` (`openBoard(parent, board, options)` returns `save`, `dirty`, `data`);
 note cards are added by name (a prompt), web links by address (http and https only).
 Boards are not in the folder list on the left, only in the Boards view. The G blocks are
