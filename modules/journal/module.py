@@ -22,6 +22,7 @@ from pydantic import BaseModel
 from starlight.core import Module, ModuleContext, ToolError, tool
 from starlight.core.model import Message
 from starlight.notebook import append_note, templates, write_note
+from starlight.notebook.markdown import iso_dates
 
 _BAD = re.compile(r'[<>:"/\\|?*\x00-\x1f]')
 
@@ -148,7 +149,7 @@ class JournalModule(Module):
     async def write(self, text: str, day: str = "") -> dict[str, Any]:
         """Add an entry to the journal (today's, or another day's): how the day went,
         a thought, something to remember. Kept as written, with the time."""
-        text = text.strip()
+        text = iso_dates(text.strip(), self._today())  # "due: tomorrow" -> an ISO date
         if not text:
             raise ToolError("what should go in the journal?")
         when = parse_day(day, self._today())

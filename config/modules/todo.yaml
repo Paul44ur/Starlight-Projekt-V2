@@ -2,3 +2,4 @@
 default_list: inbox    # where a task goes when you don't name a list
 max_items: 1000
 keep_done_days: 30     # finished tasks are cleared away after this many days
+note_tasks: true       # also the tasks written in your notes ("- [ ] Call Tom due: friday")

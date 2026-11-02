@@ -408,6 +408,20 @@ minutes at most), transcribes, and keeps only the text through `notes.note` (the
 `journal.write`; the page's 🎤 records in the browser (`startRecording` and `wav`, moved from
 chat.html to `common.js`), sends the WAV to `/api/transcribe`, then the text to
 `POST /api/notes/memo` (the inbox, or the open journal day when not editing it).
+Block D3 makes tasks in notes count as to-dos. `notebook/markdown.py` keeps where each task
+field is (`Task.spans`), reads dates of more than one word ("next friday", "in 3 Tagen")
+and has `natural_date` and `iso_dates`. `iso_dates` writes typed dates as ISO dates; it
+runs when `notes.note`, `notes.append`, `journal.write` and the page's `PUT /api/note` save
+(the page leaves lines that were already there alone and gets the saved text back, which
+the editor shows). `notebook/tasks.py`: `note_tasks(index)` lists every task (not
+Templates, not notes with a `source:`), with an id from the note and its text ("n" and six
+characters; the same text twice is told apart by its order); `tick` (by line, refused when
+the line changed) and `tick_by_id` tick or open a task again, keep a version, keep the
+file's line endings and its BOM, write `done:`, and add the next one of a repeating task
+below. The to-do module lists them (`todo.list`, `todo.due`, marked with `note` and `path`),
+ticks them (`todo.done`, also by a word, and `todo.reopen`), and sends `todo.change` and
+`todo.remove` to the note; `note_tasks: false` leaves them out. The briefing, reminders and
+`{{todo}}` get them through `todo.due`.
 
 **Safety limits you set (`core/safety.py`).** Settings -> Safety limits chooses a level
 (strict, balanced, relaxed) and any of 29 switches on top, kept in

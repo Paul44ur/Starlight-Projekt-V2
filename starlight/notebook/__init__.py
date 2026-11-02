@@ -8,6 +8,9 @@ This package grows block by block. So far:
 * ``write``: the one safe way to change such a file: refuse if it changed since it was
   read, keep a version, write it as a whole; and undoing such a change (``undo_change``,
   the chat's Undo chip and the terminal's /undo).
+* ``markdown``, ``links``, ``index``, ``rename``, ``templates``: reading notes, their links,
+  the index, renaming with links that follow, templates.
+* ``tasks``: tasks in notes as to-dos (their ids, ticking them in the note).
 """
 
 from __future__ import annotations

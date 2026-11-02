@@ -27,6 +27,7 @@ from starlight.core import Module, ModuleContext, ToolError, tool
 from starlight.notebook import Written, append_note, templates, write_note
 from starlight.notebook.markdown import (
     add_tag,
+    iso_dates,
     remove_property,
     remove_tag,
     set_property,
@@ -147,6 +148,7 @@ class NotesModule(Module):
         Without a title it goes to the inbox (notes.sort_inbox files it later)."""
         if not text.strip():
             raise ToolError("what should the note say?")
+        text = iso_dates(text, datetime.now().date())  # "due: tomorrow" -> "due: 2026-11-03"
         if not title.strip():
             return self._to_inbox(text)
         path = self._file(title)
@@ -174,6 +176,7 @@ class NotesModule(Module):
                 f"the note '{path.stem}' would be over 1 MB: start a new one "
                 f"(for example '{path.stem} 2')"
             )
+        text = iso_dates(text, datetime.now().date())
         addition = f"\n_{self._stamp()}_\n{text.strip()}\n"
         written = append_note(path, addition, "notes.append", self.ctx.history)
         return {"added_to": path.stem, "file": str(path), "changed": written.changed(path)}

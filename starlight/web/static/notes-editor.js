@@ -339,6 +339,22 @@ export function createEditor(parent, options) {
     setText(text) {  // (another version: undo can still go back to what was there)
       view.dispatch({ changes: { from: 0, to: view.state.doc.length, insert: text } });
     },
+    // The note as it was saved, when saving changed it (typed dates in tasks became ISO
+    // dates): only the parts that differ change, so the cursor stays, and Undo skips them.
+    update(text) {
+      const doc = view.state.doc, lines = text.split("\n"), changes = [];
+      if (lines.length !== doc.lines) return false;
+      lines.forEach((wanted, n) => {
+        const line = doc.line(n + 1), had = line.text;
+        if (had === wanted) return;
+        let a = 0, b = 0;
+        while (a < had.length && a < wanted.length && had[a] === wanted[a]) a++;
+        while (b < had.length - a && b < wanted.length - a && had.at(-1 - b) === wanted.at(-1 - b)) b++;
+        changes.push({ from: line.from + a, to: line.to - b, insert: wanted.slice(a, wanted.length - b) });
+      });
+      if (changes.length) view.dispatch({ changes, annotations: cm.Transaction.addToHistory.of(false) });
+      return true;
+    },
     insertAt(at, text) {
       view.dispatch({ changes: { from: at, insert: text }, selection: { anchor: at + text.length } });
       view.focus();

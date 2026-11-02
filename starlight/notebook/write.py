@@ -70,12 +70,14 @@ def write_note(
     *,
     expected: str | None = None,
     min_gap: float = 0.0,
+    newline: str | None = None,
 ) -> Written:
-    """Replace the file's content with ``text`` (UTF-8), safely (see the module's notes)."""
+    """Replace the file's content with ``text`` (UTF-8), safely (see the module's notes).
+    ``newline`` ("\\r\\n" or "\\n") keeps a file's own line endings; else the platform's."""
     _check(path, expected)
     new = not path.exists()
     version = history.save(path, reason, min_gap=min_gap) if history is not None else None
-    write_atomic_bytes(path, _encode(text, os.linesep.encode()))
+    write_atomic_bytes(path, _encode(text, (newline or os.linesep).encode()))
     if history is not None:
         history.changed(path)  # (the index reads it again)
     return Written(stamp(path), version, new)

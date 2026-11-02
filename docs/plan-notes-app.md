@@ -26,8 +26,8 @@ Work goes block by block (section 9). One block is one session and one commit; m
 | C4 | Templates, daily notes, calendar strip, monthly and yearly reviews | M | B6 | **done** 2026-11-01 ("Notes plan C4: …") |
 | D1 | Capture: clipper (with the guard), highlights, inbox | M | C2 | **done** 2026-11-01 ("Notes plan D1: …") |
 | D2 | Voice memos | S | D1 | **done** 2026-11-01 ("Notes plan D2: …") |
-| D3 | Tasks in notes: parser, writing back, to-do integration | M | B2 | **next** |
-| D4 | Tasks on the page: boxes, date chips, Tasks view | M | D3, B6 | open |
+| D3 | Tasks in notes: parser, writing back, to-do integration | M | B2 | **done** 2026-11-02 ("Notes plan D3: …") |
+| D4 | Tasks on the page: boxes, date chips, Tasks view | M | D3, B6 | **next** |
 | E1 | Search operators with highlighted hits | M | B5 | open |
 | E2 | Related notes, mentions without a link, OCR text | M | E1 | open |
 | E3 | Query language (`query.py`) and `notes.query` | M | B2 | open |
@@ -38,7 +38,15 @@ Work goes block by block (section 9). One block is one session and one commit; m
 | F4 | Board view on the page | L | F3, B6 | open |
 | G1–G6 | Extras (export, Kanban, flashcards, live preview, Mermaid, deep links) | S–M each | see 9 | optional |
 
-Last updated: 2026-11-01 (A1 to D2 done. D2: memos are marked "🎤 " in front of their text;
+Last updated: 2026-11-02 (A1 to D3 done. D3: the code is `starlight/notebook/tasks.py`
+(`note_tasks`, `tick(file, history, line=, expected=, done=)`, `tick_by_id`); D4's page
+ticking should call `tick` with the line it shows, through a new endpoint, and show the
+NoteConflict as "changed elsewhere". A weekday date ("Freitag") means the next one after
+today. Ticking a repeating task adds the next one below it (not above, so the ids stay).
+Tasks without text, in Templates, or in notes with `source:` are not to-dos. The page's
+save returns `text` when dates were rewritten; the editor applies it with `update(text)`
+(outside the undo history).
+D2: memos are marked "🎤 " in front of their text;
 the browser recorder lives in common.js now (chat and Notes share it).
 D1: notes.note now takes (text, title="") so a
 note without a title goes to Inbox/Inbox.md; call it with keywords. Clippings are marked by
@@ -80,7 +88,7 @@ first use, root = the Starlight folder) is the Index; its API: `refresh`, `touch
 `note`, `properties`, `search`, `tags`, `with_tag`, `tasks`, `links`, `backlinks`,
 `resolve`, `resolver`. `History.listeners` / `History.changed(path)` is the change feed
 every writer already reaches; B3 should use `write_note(..., expected=stamp)` and nothing
-else to write. Natural dates in tasks (`due: tomorrow`) are still raw text (D3).
+else to write. Natural dates in tasks (`due: tomorrow`) become ISO dates on save since D3.
 B1: the build lives in `bundles/editor/`,
 not `tools/editor/` (`/tools/` is gitignored: the launcher downloads there); the bundle is
 625 KB (212 KB gzipped) because `entry.js` re-exports whole packages, so later blocks need

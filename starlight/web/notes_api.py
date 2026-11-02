@@ -27,7 +27,9 @@ texts, and the page lets you choose.
     POST   /api/notes/pictures?name=         the picture's bytes as the body
     GET    /api/notes/file/{path}            a picture (an SVG only as a download)
     GET    /api/note?path=                   text, stamp, properties, outline, links, backlinks
-    PUT    /api/note?path=                   {text, stamp, first}: save (409 on a conflict)
+    PUT    /api/note?path=                   {text, stamp, first}: save (409 on a conflict);
+                                              typed dates in tasks become ISO dates, and
+                                              then the saved text comes back
     POST   /api/note                         {folder, title, text | template, lang}: a new note
     POST   /api/note/rename                  {path, title, fix_links}: links follow
     DELETE /api/note?path=                   to the trash
@@ -458,8 +460,14 @@ def add_notes_api(
         if len(text.encode("utf-8")) > MAX_NOTE:
             raise _bad("a note can be up to 1 MB; start another one", 413)
         file = relative_path(root(), path)
+        sent = text
         with writing:
             try:
+                if file.is_file():  # typed dates ("due: tomorrow") become ISO dates
+                    from starlight.text import decode_text
+
+                    before = decode_text(file.read_bytes())
+                    text = markdown.iso_dates(text, dt.date.today(), before=before)
                 gap = 0.0 if data.get("first") else TYPING_GAP
                 written = write_note(
                     file, text, "notes.page", history(), expected=expected, min_gap=gap
@@ -474,12 +482,13 @@ def add_notes_api(
                         "error": str(exc),
                         "theirs": theirs,
                         "stamp": stamp(file),
-                        "yours": text,
+                        "yours": sent,
                     },
                 ) from exc
             except OSError as exc:
                 raise _bad(f"could not save {file.name}: {locked(exc)}", 409) from exc
-        return {"path": rel(file), "stamp": written.stamp, "version": written.version}
+        saved = {"path": rel(file), "stamp": written.stamp, "version": written.version}
+        return {**saved, "text": text} if text != sent else saved  # (the page shows the dates)
 
     @app.post("/api/note")
     async def new_note(request: Request) -> dict[str, Any]:

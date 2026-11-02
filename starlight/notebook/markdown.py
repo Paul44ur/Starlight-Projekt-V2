@@ -13,6 +13,10 @@ length, so what is found is cut from the original line.
 
 Property edits (``set_property``, ``remove_property``) change only the lines of that one
 property; comments, the order of keys, the line endings and the rest of the note stay.
+
+Dates in tasks: ``natural_date`` reads "tomorrow", "Freitag", "in 3 days", "24.12." and ISO
+dates; ``iso_dates`` writes a note's typed dates as ISO dates (Starlight and the Notes page
+do that when they save).
 """
 
 from __future__ import annotations
@@ -62,6 +66,13 @@ TASK_KEYS = {
     "wiederholung": "repeat",
 }
 FIELD = re.compile(r"(?<!\S)(" + "|".join(TASK_KEYS) + r"):[ \t]*", re.IGNORECASE)
+DATE_FIELDS = ("due", "start", "done")
+# a date in more than one word, after a date field's key (natural_date reads it)
+NATURAL_DATE = re.compile(
+    r"(?:in|nach)[ \t]+\d{1,3}[ \t]+\w+"
+    r"|(?:next|nächste[nrs]?|naechste[nrs]?|kommende[nrs]?|this|diese[nrs]?)[ \t]+\w+",
+    re.IGNORECASE,
+)
 PRIORITIES = {
     "high": "high",
     "hoch": "high",
@@ -220,10 +231,19 @@ class Task:
     done: str = ""  # the day it was done
     priority: str = ""  # high, normal or low ("" when not given)
     repeat: str = ""  # "every month", "jeden Montag" ... as written
+    # where each field is on the line: (field, key starts, value starts, value ends)
+    spans: tuple[tuple[str, int, int, int], ...] = field(default=(), compare=False, repr=False)
 
     @property
     def open(self) -> bool:
         return self.status == " "
+
+    def span(self, name: str) -> tuple[int, int, int] | None:
+        """Where the field ``name`` ("due" ...) is on the line, or None."""
+        for found, key, start, end in self.spans:
+            if found == name:
+                return key, start, end
+        return None
 
 
 @dataclass(frozen=True)
@@ -302,31 +322,37 @@ def _markdown_link(match: re.Match[str], line: int) -> Link | None:
     )
 
 
-def _fields(text: str, masked: str) -> tuple[str, dict[str, str]]:
-    """A task's plain-word fields (``due: 2026-11-05 priority: high``) and the rest. Keys are
-    found in ``masked`` (so none inside code counts); values are cut from ``text``."""
+def _fields(text: str, masked: str) -> tuple[str, dict[str, str], list[tuple[str, int, int, int]]]:
+    """A task's plain-word fields (``due: 2026-11-05 priority: high``), the rest, and where
+    each field is. Keys are found in ``masked`` (so none inside code counts); values are cut
+    from ``text``."""
     found: dict[str, str] = {}
+    spans: list[tuple[str, int, int, int]] = []
     matches = list(FIELD.finditer(masked))
     keep, last = [], 0
     for number, match in enumerate(matches):
         name = TASK_KEYS[match.group(1).lower()]
         stop = matches[number + 1].start() if number + 1 < len(matches) else len(text)
         segment = text[match.end() : stop]
+        phrase = NATURAL_DATE.match(segment) if name in DATE_FIELDS else None
         if name == "repeat":  # words, up to the next field, tag or block id
             value = re.split(r"(?<!\S)[#^]\S", segment, maxsplit=1)[0].rstrip()
+        elif phrase and natural_date(phrase.group(0), dt.date(2026, 1, 1)):
+            value = phrase.group(0)  # "in 3 days", "next friday", "nächsten Freitag"
         else:  # one word; what follows stays text
             word = re.match(r"\S*", segment)
             value = word.group(0) if word else ""
         if not value or name in found:
             continue  # (an empty field stays text; the first of two counts)
         found[name] = value
+        spans.append((name, match.start(), match.end(), match.end() + len(value)))
         keep.append(text[last : match.start()])
         last = match.end() + len(value)
     keep.append(text[last:])
     rest = re.sub(r"[ \t]{2,}", " ", "".join(keep)).strip()
     if "priority" in found:
         found["priority"] = PRIORITIES.get(found["priority"].casefold(), found["priority"])
-    return rest, found
+    return rest, found, spans
 
 
 def _keep_shown_text(match: re.Match[str]) -> str:
@@ -396,9 +422,10 @@ def parse(text: str) -> Note:
             if block:  # the block id is not part of what to do
                 cut = block.start(1) - 1 - start
                 text_part, masked_part = text_part[:cut], masked_part[:cut]
-            rest, values = _fields(text_part, masked_part)
+            rest, values, spans = _fields(text_part, masked_part)
             indent = len(task.group(1).expandtabs(4))
-            tasks.append(Task(number, indent, task.group(2), rest, **values))
+            placed = tuple((n, k + start, a + start, b + start) for n, k, a, b in spans)
+            tasks.append(Task(number, indent, task.group(2), rest, **values, spans=placed))
         words += len(re.findall(r"\w+", masked))
     if fence is not None:  # never closed: code to the end, as editors show it
         code.append(CodeBlock(fence[1], len(lines) - 1, fence[2], "".join(fenced)))
@@ -442,6 +469,104 @@ def wikilink_spans(text: str) -> list[tuple[int, int, str, bool]]:
             inside = bare[match.start(2) : match.end(2)]
             found.append((start + match.start(), start + match.end(), inside, bool(match.group(1))))
     return found
+
+
+# -- dates in tasks ----------------------------------------------------------------------------
+
+WEEKDAY_NAMES = {
+    **{d: n for n, d in enumerate(("monday", "tuesday", "wednesday", "thursday", "friday",
+                                   "saturday", "sunday"))},
+    **{d: n for n, d in enumerate(("montag", "dienstag", "mittwoch", "donnerstag", "freitag",
+                                   "samstag", "sonntag"))},
+}  # fmt: skip
+DAY_WORDS = {
+    "today": 0, "heute": 0, "tomorrow": 1, "morgen": 1, "übermorgen": 2, "uebermorgen": 2,
+    "yesterday": -1, "gestern": -1,
+}  # fmt: skip
+UNIT_DAYS = {"day": 1, "days": 1, "tag": 1, "tage": 1, "tagen": 1,
+             "week": 7, "weeks": 7, "woche": 7, "wochen": 7}  # fmt: skip
+UNIT_MONTHS = {"month": 1, "months": 1, "monat": 1, "monate": 1, "monaten": 1,
+               "year": 12, "years": 12, "jahr": 12, "jahre": 12, "jahren": 12}  # fmt: skip
+
+
+def add_months(day: dt.date, months: int) -> dt.date:
+    """``day`` some months later; the 31st becomes the month's last day where it is shorter."""
+    month = day.month - 1 + months
+    year, month = day.year + month // 12, month % 12 + 1
+    following = dt.date(year + (month == 12), month % 12 + 1, 1)
+    return dt.date(year, month, min(day.day, (following - dt.timedelta(days=1)).day))
+
+
+def natural_date(value: str, today: dt.date) -> dt.date | None:
+    """The day a task's date means, counted from ``today``: 2026-11-05, today, tomorrow,
+    friday, next friday, in 3 days, in 2 weeks, next week (its Monday), 24.12. or
+    24.12.2026; in German too (heute, morgen, übermorgen, Freitag, nächsten Freitag, in 3
+    Tagen, nächste Woche). A weekday is the next one after today. None when it is not a
+    date."""
+    raw = " ".join(value.strip().casefold().split()).rstrip(",;")
+    if ISO_DATE.match(raw):
+        try:
+            return dt.date.fromisoformat(raw)
+        except ValueError:
+            return None
+    if raw in DAY_WORDS:
+        return today + dt.timedelta(days=DAY_WORDS[raw])
+    match = re.fullmatch(r"(?:in|nach) (\d{1,3}) (\w+)", raw)
+    if match:
+        count, unit = int(match.group(1)), match.group(2)
+        if unit in UNIT_DAYS:
+            return today + dt.timedelta(days=count * UNIT_DAYS[unit])
+        if unit in UNIT_MONTHS:
+            return add_months(today, count * UNIT_MONTHS[unit])
+        return None
+    match = re.fullmatch(
+        r"(next|nächste[nrs]?|naechste[nrs]?|kommende[nrs]?|this|diese[nrs]?) (\w+)", raw
+    )
+    if match:
+        coming, raw = not match.group(1).startswith(("this", "diese")), match.group(2)
+        if coming and raw in ("week", "woche"):  # the Monday of next week
+            return today + dt.timedelta(days=7 - today.weekday())
+        if coming and raw in ("month", "monat"):
+            return add_months(today.replace(day=1), 1)
+        if raw not in WEEKDAY_NAMES:
+            return None
+    if raw in WEEKDAY_NAMES:
+        return today + dt.timedelta(days=(WEEKDAY_NAMES[raw] - today.weekday()) % 7 or 7)
+    match = re.fullmatch(r"(\d{1,2})\.(\d{1,2})\.(\d{4})?", raw)
+    if match:
+        try:
+            day = dt.date(
+                int(match.group(3) or today.year), int(match.group(2)), int(match.group(1))
+            )
+        except ValueError:
+            return None
+        if not match.group(3) and day < today:  # 24.12. in January: this year's
+            day = day.replace(year=day.year + 1)  # (and in late December: next year's)
+        return day
+    return None
+
+
+def iso_dates(text: str, today: dt.date, before: str | None = None) -> str:
+    """``text`` with the natural dates in its tasks (``due: tomorrow``, ``fällig:
+    Freitag``) written as ISO dates (``due: 2026-11-03``), counted from ``today``. Only the
+    date is changed, the rest of the line stays. With ``before`` (the note as it was), lines
+    that were there already are left alone: their dates were written on another day."""
+    lines = _lines(text)
+    old = {line.rstrip("\r\n") for line in _lines(before or "")}
+    changed = False
+    for task in parse(text).tasks:
+        line = lines[task.line]
+        if line.rstrip("\r\n") in old:
+            continue
+        for name, _key, start, end in sorted(task.spans, key=lambda s: -s[2]):
+            if name not in DATE_FIELDS or ISO_DATE.match(line[start:end]):
+                continue
+            day = natural_date(line[start:end], today)
+            if day is not None:
+                line = line[:start] + day.isoformat() + line[end:]
+        if line != lines[task.line]:
+            lines[task.line], changed = line, True
+    return "".join(lines) if changed else text
 
 
 # -- parts of a note (for embeds) ---------------------------------------------------------------

@@ -381,6 +381,16 @@ class Index:
             ).fetchall()
         return {name: json.loads(value) for name, value in rows}
 
+    def with_property(self, name: str) -> set[str]:
+        """The notes where the property ``name`` is set (not empty)."""
+        with self._db() as db:
+            rows = db.execute(
+                "SELECT DISTINCT f.path FROM properties p JOIN files f ON f.id = p.file_id"
+                " WHERE p.key = ? AND p.value NOT IN ('null', '\"\"', '[]', '{}')",
+                (name,),
+            ).fetchall()
+        return {r[0] for r in rows}
+
     def search(self, text: str, limit: int = 20) -> list[Hit]:
         """Notes with all these words (the last one may be the start of a word), best
         first. Without FTS5: the same words, found by a plain scan."""
