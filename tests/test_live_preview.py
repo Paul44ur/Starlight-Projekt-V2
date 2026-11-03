@@ -8,6 +8,7 @@ from __future__ import annotations
 import datetime as dt
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlsplit
 
 import pytest
 
@@ -45,7 +46,7 @@ PREVIEW = [
     " Water the roses due: 2026-11-05",  # (the box is an input: no text)
     " Dig the bed", "",
     "```", "# not a heading **kept**", "```",  # code stays as written
-    "![[photo.png]]",  # an embed too
+    "",  # a picture shows as the picture (an image: no text)
     "",
 ]  # fmt: skip
 
@@ -138,4 +139,43 @@ async def test_switching_it_off_is_remembered(
         await saved(page)
         file = (notebook / "Notes" / "Garden.md").read_text("utf-8")
         assert file == GARDEN + "More **text**."  # (what is typed is kept as typed)
+        assert page.errors == []  # type: ignore[attr-defined]
+
+
+async def test_pictures_show_as_pictures_away_from_the_cursor(
+    static_site: str, app: Any, notebook: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from tests.test_note_export import png
+
+    monkeypatch.setenv("NO_PROXY", "127.0.0.1")
+    attachments = notebook / "Notes" / "Attachments"
+    attachments.mkdir(parents=True, exist_ok=True)
+    (attachments / "photo.png").write_bytes(png(40, 20))
+    (notebook / "Notes" / "Pictures.md").write_text(
+        "# Pictures\n\n![[photo.png|120]]\n![[https://example.org/x.png]]\n![[Plan]]\n\nEnd.\n",
+        encoding="utf-8",
+    )
+    async with notes_page(static_site, app) as page:
+        requests: list[str] = []
+        page.on("request", lambda r: requests.append(r.url))
+        await start_editing(page, static_site, "Notes%2FPictures.md")
+        await page.keyboard.press("Control+End")
+        picture = page.locator(".cm-content img.cm-picture")
+        await picture.wait_for()
+        assert await picture.count() == 1
+        assert (await picture.get_attribute("src")).endswith(
+            "/api/notes/file/Notes/Attachments/photo.png"
+        )
+        await page.wait_for_function(
+            "() => document.querySelector('img.cm-picture').naturalWidth === 40"
+        )  # (loaded from the Starlight folder)
+        assert await picture.evaluate("i => i.style.width") == "120px"
+        shown = await lines(page)
+        assert shown[2:5] == ["", "![[https://example.org/x.png]]", "![[Plan]]"]  # (others: text)
+        await page.keyboard.press("Control+Home")
+        await page.keyboard.press("ArrowDown")
+        await page.keyboard.press("ArrowDown")  # onto the picture's line: its text
+        assert await page.locator(".cm-content img.cm-picture").count() == 0
+        assert (await lines(page))[2] == "![[photo.png|120]]"
+        assert not [u for u in requests if urlsplit(u).hostname == "example.org"]  # (no web)
         assert page.errors == []  # type: ignore[attr-defined]

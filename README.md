@@ -567,9 +567,10 @@ earlier versions with what changed, and puts one back.
 
 **Live preview.** While you write, the Markdown marks (`#`, `**`, `*`, `~~`, backticks, a
 link's address, `[[ ]]`) hide on every line except the one you are on, so the note reads
-as it will look, like in a word processor. A bullet shows as •, and a task as a box you can
-tick with a click. Move onto a line to see and change its marks. Code, the properties at
-the top and pictures (`![[…]]`) stay as written, and the file keeps every mark. **👁** in
+as it will look, like in a word processor. A bullet shows as •, a task as a box you can
+tick with a click, and a picture (`![[photo.png]]`) as the picture. Move onto a line to see
+and change its marks. Code, the properties at the top and embedded notes stay as written,
+and the file keeps every mark. **👁** in
 the toolbar switches it off and on; this browser remembers your choice.
 
 **Diagrams.** A code block marked `mermaid` becomes a diagram in the reading view:

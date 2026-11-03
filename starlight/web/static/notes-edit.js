@@ -94,6 +94,7 @@ async function startEditing() {
     pickPicture,
     notice: toast,
     say: t,
+    pictureSrc: notePictureSrc,  // (render.js: a picture's address inside the Starlight folder)
     placeholder: t("Write here. Type / for headings, tasks, tables and more."),
     preview: previewOn(),
     noteNames: () => state.notes.flatMap(n => [

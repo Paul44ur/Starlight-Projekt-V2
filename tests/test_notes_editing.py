@@ -141,8 +141,9 @@ async def test_pasting_a_picture_puts_it_into_the_note(
             }""",
             list(PNG),
         )
-        await page.wait_for_function(
-            SAVED + " && document.querySelector('.cm-content').textContent.includes('holiday.png')"
+        await page.wait_for_function(  # (its text, or the picture itself: live preview)
+            SAVED + " && (document.querySelector('.cm-content').textContent.includes('holiday.png')"
+            " || !!document.querySelector('.cm-content img.cm-picture[alt=\"holiday.png\"]'))"
         )
         assert (notebook / "Notes" / "Attachments" / "holiday.png").read_bytes() == PNG
         assert "![[holiday.png]]" in (notebook / "Notes" / "Plan.md").read_text("utf-8")

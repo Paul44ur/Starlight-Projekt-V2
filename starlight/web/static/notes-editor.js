@@ -32,6 +32,7 @@ const look = cm.EditorView.theme({
   ".cm-panels": { backgroundColor: "var(--panel)", color: "var(--text)", borderColor: "var(--border)" },
   ".cm-searchMatch": { backgroundColor: "color-mix(in srgb, var(--warn) 35%, transparent)" },
   ".cm-bullet": { color: "var(--dim)", display: "inline-block", width: "1.1em" },
+  ".cm-picture": { maxWidth: "100%", maxHeight: "320px", verticalAlign: "bottom", borderRadius: "6px" },
   ".cm-task-box": { width: "1em", height: "1em", margin: "0 .45em 0 0", verticalAlign: "-0.12em",
                     accentColor: "var(--accent)", cursor: "pointer" },
 });
@@ -181,8 +182,9 @@ function toggleTask(view, only = null) {  // (only: these lines, not the selecti
 // -- live preview (block G4): the marks hide away from the lines you are on -----------------
 // "# ", "**", "*", "~~", "`" and a link's "[", "](address)" and "[[", "|", "]]" are hidden on
 // every line the cursor or the selection is not on, so the note reads as it will look; a
-// bullet shows as •, a task's [ ] as a box you can tick. Moving onto a line shows its marks
-// again to change them. Code blocks, the properties block and embeds (![[…]]) stay as written.
+// bullet shows as •, a task's [ ] as a box you can tick, a picture (![[photo.png]]) as the
+// picture. Moving onto a line shows its marks again to change them. Code blocks, the
+// properties block and other embeds (![[Note]]) stay as written.
 
 const HIDDEN = cm.Decoration.replace({});
 
@@ -210,7 +212,25 @@ class TaskBox extends cm.WidgetType {
   ignoreEvent() { return false; }
 }
 
+// A picture (![[photo.png|300]]) shows as the picture; its address comes from the page
+// (render.js's notePictureSrc: only from inside the Starlight folder, never from the web).
+class Picture extends cm.WidgetType {
+  constructor(src, alt, width) { super(); this.src = src; this.alt = alt; this.width = width; }
+  eq(other) { return other.src === this.src && other.width === this.width; }
+  toDOM() {
+    const img = document.createElement("img");
+    img.className = "cm-picture";
+    img.src = this.src;
+    img.alt = this.alt;
+    if (this.width) img.style.width = this.width + "px";
+    // (nothing may change it once it is shown: the editor would take that for typing and
+    // write it into the note. A missing picture shows as the browser shows one: its name)
+    return img;
+  }
+}
+
 const WIKILINK = /(!?)\[\[([^\[\]\n]+?)\]\]/g;
+const PICTURE = /\.(png|jpe?g|gif|webp|svg)$/i;
 
 function onLines(state) {  // the lines the cursor or the selection is on (their numbers)
   const numbers = new Set();
@@ -221,7 +241,7 @@ function onLines(state) {  // the lines the cursor or the selection is on (their
   return numbers;
 }
 
-function previewMarks(view, say) {
+function previewMarks(view, say, pictureSrc) {
   const { state } = view, doc = state.doc, shown = onLines(state), found = [];
   const open = (from, to) => {  // all of from..to is on lines without the cursor
     const a = doc.lineAt(from).number, b = doc.lineAt(to).number;
@@ -273,10 +293,19 @@ function previewMarks(view, say) {
     });
     const text = doc.sliceString(from, to);
     for (const m of text.matchAll(WIKILINK)) {
-      if (m[1]) continue;  // an embed: it stays as written
       const start = from + m.index, end = start + m[0].length;
       const inside = tree.resolveInner(start + 2, 1).name;
       if (/Code|Properties/.test(inside)) continue;
+      if (m[1]) {  // an embed: a picture shows as the picture, anything else stays as written
+        const [target, shown = ""] = m[2].split("|").map((part) => part.trim());
+        const src = PICTURE.test(target) ? pictureSrc(target) : null;
+        if (src && open(start, end)) {
+          const width = /^\d{1,4}$/.test(shown) ? Number(shown) : 0;
+          const alt = shown && !width ? shown : target;
+          found.push(cm.Decoration.replace({ widget: new Picture(src, alt, width) }).range(start, end));
+        }
+        continue;
+      }
       const bar = m[2].indexOf("|");
       hide(start, start + 2 + (bar >= 0 ? bar + 1 : 0));  // "[[" (and "Note|")
       hide(end - 2, end);  // "]]"
@@ -285,13 +314,13 @@ function previewMarks(view, say) {
   return cm.Decoration.set(found, true);
 }
 
-function livePreview(say) {
+function livePreview(say, pictureSrc) {
   return cm.ViewPlugin.fromClass(class {
-    constructor(view) { this.decorations = previewMarks(view, say); }
+    constructor(view) { this.decorations = previewMarks(view, say, pictureSrc); }
     update(update) {
       if (update.docChanged || update.viewportChanged || update.selectionSet
           || cm.syntaxTree(update.startState) !== cm.syntaxTree(update.state)) {
-        this.decorations = previewMarks(update.view, say);
+        this.decorations = previewMarks(update.view, say, pictureSrc);
       }
     }
   }, {
@@ -445,6 +474,7 @@ function changesTo(doc, text) {
 
 export function createEditor(parent, options) {
   const say = options.say || ((text) => text);
+  const pictureSrc = options.pictureSrc || (() => null);
   const preview = new cm.Compartment();
   let since = null;  // what was typed since a save started (see mark and rebase below)
   const view = new cm.EditorView({
@@ -461,7 +491,7 @@ export function createEditor(parent, options) {
         cm.syntaxHighlighting(styled),
         marks(/!?\[\[[^\[\]\n]+\]\]/g, "cm-wikilink"),
         marks(/(?<![\p{L}\p{N}_#&/\\])#[\p{L}\p{N}_\-/]*[\p{L}_][\p{L}\p{N}_\-/]*/gu, "cm-tag"),
-        preview.of(options.preview === false ? [] : livePreview(say)),
+        preview.of(options.preview === false ? [] : livePreview(say, pictureSrc)),
         cm.autocompletion({
           override: [slashMenu(options), linkMenu(options), tagMenu(options), propertyMenu(options)],
           icons: false,
@@ -537,7 +567,7 @@ export function createEditor(parent, options) {
     },
     focus: () => view.focus(),
     preview(on) {  // live preview on or off (block G4)
-      view.dispatch({ effects: preview.reconfigure(on ? livePreview(say) : []) });
+      view.dispatch({ effects: preview.reconfigure(on ? livePreview(say, pictureSrc) : []) });
     },
     run(name) {
       const commands = {

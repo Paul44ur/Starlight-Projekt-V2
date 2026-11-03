@@ -575,8 +575,11 @@ ATX `HeaderMark` and its space, `EmphasisMark`, `StrikethroughMark`, inline `Cod
 link's first `LinkMark` and `](address)`; a regular expression does `[[`, `Note|` and `]]`.
 A bullet's `ListMark` becomes a • widget; a task's `ListMark` hides and its `TaskMarker`
 becomes a checkbox widget, whose mousedown ticks that line with `toggleTask(view, [line])`
-(the selection stays). Fenced code, the properties block, images and `![[embeds]]` are left
-alone. The document never changes. The toolbar's 👁 keeps the choice in `localStorage`
+(the selection stays). A picture embed (`![[photo.png|300]]`) becomes an image widget whose
+address comes from the page (`options.pictureSrc`, render.js's `notePictureSrc`: only from
+inside the Starlight folder); nothing changes it once drawn (the editor would read a change
+as typing). Fenced code, the properties block, Markdown images and other `![[embeds]]` are
+left alone. The document never changes. The toolbar's 👁 keeps the choice in `localStorage`
 (`starlight.editor.preview`); the bundle needed nothing new.
 Block G6 is deep links. `starlight://note/<path>` (or `/<name>`, `#heading`),
 `starlight://notes` and `starlight://chat` only ever open a page of the web chat.
