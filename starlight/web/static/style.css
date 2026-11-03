@@ -1,20 +1,41 @@
-/* Starlight web pages: one look for chat, settings, memory and pairing. */
+/* Starlight web pages: one look for chat, settings, memory and pairing.
+   The design system lives here: tokens (colour, spacing, radius, type, elevation, motion),
+   base element styles, and small building blocks (.card, .pill, .row, .toast, utilities).
+   Pages share these instead of re-inventing them inline. A new shared rule belongs here. */
 :root {
+  /* colour — dark (the default) */
   --bg: #0f1115; --panel: #171a21; --panel2: #1e222b; --border: #2a2f3a;
   --text: #e6e8ec; --dim: #9aa3b2; --accent: #6ea8fe; --you: #0b2a4a;
-  --ok: #3fb950; --warn: #d29922; --bad: #f85149; --shadow: 0 8px 24px rgba(0,0,0,.35);
+  --ok: #3fb950; --warn: #d29922; --bad: #f85149;
+  --accent-tint: color-mix(in srgb, var(--accent) 14%, transparent);  /* soft accent wash for hovers */
+  /* elevation */
+  --shadow: 0 8px 24px rgba(0,0,0,.35);               /* kept: the name other code already uses */
+  --shadow-1: 0 1px 2px rgba(0,0,0,.28), 0 2px 6px rgba(0,0,0,.22);   /* resting: cards, menus */
+  --shadow-2: 0 8px 24px rgba(0,0,0,.35);             /* lifted: toasts, popovers */
+  /* spacing scale (4-based) */
+  --s-1: 4px; --s-2: 8px; --s-3: 12px; --s-4: 16px; --s-5: 24px; --s-6: 32px;
+  /* corner radius */
+  --r-1: 6px; --r-2: 8px; --r-3: 12px; --r-pill: 999px;
+  /* type scale */
+  --fs-xs: 12px; --fs-sm: 13px; --fs-md: 15px; --fs-lg: 16px; --fs-xl: 20px;
+  /* motion (durations are also capped by prefers-reduced-motion, below) */
+  --ease: cubic-bezier(.2,.6,.2,1); --dur-fast: 90ms; --dur: 160ms;
   /* code: keywords, strings, numbers, comments, names called, variables */
   --hl-k: #c792ea; --hl-s: #a5d6a7; --hl-n: #f78c6c; --hl-c: #7f8796; --hl-f: #82aaff; --hl-v: #ffcb6b;
 }
 :root[data-theme="light"] {
   --bg: #f6f7f9; --panel: #ffffff; --panel2: #f0f2f5; --border: #d8dce3; --text: #1f2328;
   --dim: #5a6372; --you: #dbeafe; --shadow: 0 8px 24px rgba(0,0,0,.12);
+  --shadow-1: 0 1px 2px rgba(23,35,56,.08), 0 2px 6px rgba(23,35,56,.08);
+  --shadow-2: 0 8px 24px rgba(0,0,0,.12);
   --hl-k: #8250df; --hl-s: #116329; --hl-n: #b35900; --hl-c: #6e7781; --hl-f: #0550ae; --hl-v: #953800;
 }
 @media (prefers-color-scheme: light) {
   :root:not([data-theme="dark"]) {
     --bg: #f6f7f9; --panel: #ffffff; --panel2: #f0f2f5; --border: #d8dce3; --text: #1f2328;
     --dim: #5a6372; --you: #dbeafe; --shadow: 0 8px 24px rgba(0,0,0,.12);
+    --shadow-1: 0 1px 2px rgba(23,35,56,.08), 0 2px 6px rgba(23,35,56,.08);
+    --shadow-2: 0 8px 24px rgba(0,0,0,.12);
     --hl-k: #8250df; --hl-s: #116329; --hl-n: #b35900; --hl-c: #6e7781; --hl-f: #0550ae; --hl-v: #953800;
   }
 }
@@ -22,49 +43,66 @@
 /* The hidden attribute must win over the display set by a class (.pill below). */
 [hidden] { display: none !important; }
 html, body { height: 100%; }
-body { margin: 0; font: 15px/1.5 -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+body { margin: 0; font: var(--fs-md)/1.5 -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
        background: var(--bg); color: var(--text); }
 a { color: var(--accent); text-decoration: none; }
 a:hover { text-decoration: underline; }
 button, select, input, textarea { font: inherit; color: var(--text); }
-button { background: var(--panel2); border: 1px solid var(--border); border-radius: 8px;
-         padding: 6px 12px; cursor: pointer; }
-button:hover { border-color: var(--accent); }
-button:disabled { opacity: .5; cursor: default; }
+button { background: var(--panel2); border: 1px solid var(--border); border-radius: var(--r-2);
+         padding: 6px 12px; cursor: pointer;
+         transition: border-color var(--dur) var(--ease), background var(--dur) var(--ease),
+                     color var(--dur) var(--ease), box-shadow var(--dur) var(--ease); }
+button:hover { border-color: var(--accent); background: var(--accent-tint); }
+button:active { transform: translateY(1px); }
+button:disabled { opacity: .5; cursor: default; transform: none; }
 button.danger { color: #fff; background: #b3231d; border-color: #b3231d; }
+button.danger:hover { background: #c93a33; border-color: #c93a33; }
 button.ok { color: #06240f; background: var(--ok); border-color: var(--ok); }
-button.icon { padding: 4px 8px; font-size: 13px; background: none; border-color: transparent; color: var(--dim); }
-button.icon:hover { color: var(--text); border-color: var(--border); }
+button.ok:hover { background: color-mix(in srgb, var(--ok) 88%, #fff); border-color: var(--ok); }
+button.primary { color: #06162b; background: var(--accent); border-color: var(--accent); font-weight: 600; }
+button.primary:hover { background: color-mix(in srgb, var(--accent) 88%, #fff); border-color: var(--accent); }
+button.icon { padding: 4px 8px; font-size: var(--fs-sm); background: none; border-color: transparent; color: var(--dim); }
+button.icon:hover { color: var(--text); border-color: var(--border); background: none; }
+button.quiet { background: none; border-color: transparent; color: var(--dim); }
+button.quiet:hover { color: var(--text); background: var(--accent-tint); border-color: transparent; }
 input[type=text], input[type=search], input[type=password], textarea, select {
-  background: var(--panel2); border: 1px solid var(--border); border-radius: 8px; padding: 8px 10px; }
-.pill { display: inline-block; font-size: 12px; padding: 2px 8px; border-radius: 999px;
+  background: var(--panel2); border: 1px solid var(--border); border-radius: var(--r-2); padding: 8px 10px;
+  transition: border-color var(--dur) var(--ease), box-shadow var(--dur) var(--ease); }
+input[type=text]:focus, input[type=search]:focus, input[type=password]:focus, textarea:focus, select:focus {
+  border-color: var(--accent); }
+.pill { display: inline-block; font-size: var(--fs-xs); padding: 2px 8px; border-radius: var(--r-pill);
         border: 1px solid var(--border); white-space: nowrap; }
 .pill.on { color: #06240f; background: var(--ok); border-color: var(--ok); }
 .pill.off { color: var(--dim); }
 .pill.warn { color: #2b1d00; background: var(--warn); border-color: var(--warn); }
 .dim { color: var(--dim); }
-.small { font-size: 13px; }
+.small { font-size: var(--fs-sm); }
 /* The bar wraps on a narrow screen, so every button stays on screen. */
 header.top { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; row-gap: 6px;
              padding: 10px 14px; border-bottom: 1px solid var(--border); background: var(--panel); }
-header.top h1 { display: flex; align-items: center; gap: 8px; font-size: 16px; margin: 0;
+header.top h1 { display: flex; align-items: center; gap: var(--s-2); font-size: var(--fs-lg); margin: 0;
                 font-weight: 700; white-space: nowrap; }
-img.logo { width: 22px; height: 22px; flex: none; border-radius: 6px; }
+img.logo { width: 22px; height: 22px; flex: none; border-radius: var(--r-1); }
 header.top .spacer { flex: 1; }
-header.top nav { display: flex; gap: 12px; font-size: 14px; }
+header.top nav { display: flex; gap: var(--s-3); font-size: 14px; }
 body.remote a[href="/notes"] { display: none; }  /* PC only */
 .page { max-width: 980px; margin: 0 auto; padding: 18px 16px 60px; }
 /* A wide table scrolls inside its card instead of pushing the whole page sideways. */
-.card { background: var(--panel); border: 1px solid var(--border); border-radius: 12px;
-        padding: 14px 16px; margin: 14px 0; overflow-x: auto; }
-.card h2 { font-size: 15px; margin: 0 0 10px; }
+.card { background: var(--panel); border: 1px solid var(--border); border-radius: var(--r-3);
+        padding: 14px 16px; margin: 14px 0; overflow-x: auto; box-shadow: var(--shadow-1); }
+.card h2 { font-size: var(--fs-md); margin: 0 0 10px; }
 table { width: 100%; border-collapse: collapse; font-size: 14px; }
 td, th { text-align: left; padding: 6px 8px; border-bottom: 1px solid var(--border); vertical-align: top; }
-th { color: var(--dim); font-weight: 600; font-size: 12px; text-transform: uppercase; letter-spacing: .04em; }
-.row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+th { color: var(--dim); font-weight: 600; font-size: var(--fs-xs); text-transform: uppercase; letter-spacing: .04em; }
+.row { display: flex; gap: var(--s-2); align-items: center; flex-wrap: wrap; }
 .grow { flex: 1; min-width: 0; }
+/* Small layout helpers, so pages stop re-declaring the same flexbox inline. */
+.stack { display: flex; flex-direction: column; gap: var(--s-2); }
+.cluster { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s-2); }
+.muted { color: var(--dim); }
+.truncate { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
 .toast { position: fixed; bottom: 18px; left: 50%; transform: translateX(-50%); background: var(--panel);
-         border: 1px solid var(--border); border-radius: 10px; padding: 8px 14px; box-shadow: var(--shadow);
+         border: 1px solid var(--border); border-radius: var(--r-3); padding: 8px 14px; box-shadow: var(--shadow-2);
          z-index: 50; }
 @media (max-width: 760px) { header.top nav { gap: 8px; font-size: 13px; } }
 /* Read by screen readers, not shown. */
@@ -74,7 +112,7 @@ th { color: var(--dim); font-weight: 600; font-size: 12px; text-transform: upper
 :focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
 button:focus:not(:focus-visible), a:focus:not(:focus-visible) { outline: none; }
 .skip { position: absolute; left: 8px; top: -60px; z-index: 100; background: var(--panel);
-        border: 1px solid var(--accent); border-radius: 8px; padding: 8px 12px; }
+        border: 1px solid var(--accent); border-radius: var(--r-2); padding: 8px 12px; }
 .skip:focus { top: 8px; }
 /* More contrast when the system asks for it (Windows: Contrast themes, "increase contrast"). */
 @media (prefers-contrast: more) {
@@ -83,7 +121,7 @@ button:focus:not(:focus-visible), a:focus:not(:focus-visible) { outline: none; }
   .pill, button, input, select, textarea { border-width: 2px; }
 }
 @media (forced-colors: active) {
-  .pill.on, .pill.warn, button.ok, button.danger { forced-color-adjust: none; }
+  .pill.on, .pill.warn, button.ok, button.danger, button.primary { forced-color-adjust: none; }
   :focus-visible { outline-color: Highlight; }
 }
 @media (prefers-reduced-motion: reduce) {

@@ -55,8 +55,8 @@ first, then the launcher (first impression), then the chat (daily driver).
 
 | Block | What | Size | Needs | State |
 |---|---|---|---|---|
-| U1 | Design-system foundation (scales, tokens, shared utilities) | M | – | **next** |
-| U2 | The launcher window (tkinter polish) | M | U1 (tokens as reference) | open |
+| U1 | Design-system foundation (scales, tokens, shared utilities) | M | – | **done** |
+| U2 | The launcher window (tkinter polish) | M | U1 (tokens as reference) | **next** |
 | U3 | The web chat page (messages, composer, streaming) | L | U1 | open |
 | U4 | Settings page (cards, forms, the permission UI) | M | U1 | open |
 | U5 | Automations, Memory, Activity, Kill, Pair | M | U1 | open |
@@ -66,7 +66,11 @@ first, then the launcher (first impression), then the chat (daily driver).
 | U9 | Icons and brand (one icon set, logo, favicons, kill/pair screens) | S–M | U1 | open |
 | U10 | Terminal chat refinement (ANSI theme, Markdown, spinner) | M | – | open |
 
-Last updated: 2026-11-03 (plan written; nothing built yet).
+Last updated: 2026-11-03. U1 built: `style.css` now carries scales (spacing `--s-*`, radius
+`--r-*`, type `--fs-*`), elevation (`--shadow-1/2`), motion (`--ease`, `--dur*`) and an
+`--accent-tint`; refined button states with `.primary`/`.quiet` variants, input focus, a soft
+card shadow, and `.stack`/`.cluster`/`.muted`/`.truncate` utilities. No class renamed; the
+accessibility block and the guarded strings are unchanged. Verified in both themes.
 
 ## Blocks
 
