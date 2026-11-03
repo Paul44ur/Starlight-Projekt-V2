@@ -34,7 +34,7 @@ const look = cm.EditorView.theme({
   ".cm-bullet": { color: "var(--dim)", display: "inline-block", width: "1.1em" },
   ".cm-picture": { maxWidth: "100%", maxHeight: "320px", verticalAlign: "bottom", borderRadius: "6px" },
   ".cm-task-box": { width: "1em", height: "1em", margin: "0 .45em 0 0", verticalAlign: "-0.12em",
-                    accentColor: "var(--accent)", cursor: "pointer" },
+                    accentColor: "var(--ok)", cursor: "pointer" },  // (a ticked task is green everywhere)
 });
 
 // how the Markdown looks while you write it

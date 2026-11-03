@@ -59,9 +59,9 @@ first, then the launcher (first impression), then the chat (daily driver).
 | U2 | The launcher window (tkinter polish) | M | U1 (tokens as reference) | **done** (d5bac3c) |
 | U3 | The web chat page (messages, composer, streaming) | L | U1 | **done** (f5eb064) |
 | U4 | Settings page (cards, forms, the permission UI) | M | U1 | **done** (1af5cf7) |
-| U5 | Automations, Memory, Activity, Kill, Pair | M | U1 | **done** |
-| U6 | Notes page: light consistency pass | S | U1 | **next** |
-| U7 | Responsive / phone pass (chat, settings, memory) | M | U3, U4 | open |
+| U5 | Automations, Memory, Activity, Kill, Pair | M | U1 | **done** (0f9b0c1) |
+| U6 | Notes page: light consistency pass | S | U1 | **done** |
+| U7 | Responsive / phone pass (chat, settings, memory) | M | U3, U4 | **next** |
 | U8 | Micro-interactions and feedback (toasts, loading, focus, shortcuts) | M | U1 | open |
 | U9 | Icons and brand (one icon set, logo, favicons, kill/pair screens) | S–M | U1 | open |
 | U10 | Terminal chat refinement (ANSI theme, Markdown, spinner) | M | – | open |
@@ -101,6 +101,12 @@ red outline; Import a skill is a real button (the keyboard could not reach the h
 box); Export sizes like the buttons; the approval waiting for you has an amber edge; Pair is
 a card with the code in a monospaced box and Pair as the main button; Kill uses --danger.
 `tests/test_pages_look.py`.
+U6 built: notes.css takes its corners (27 of them, nine different sizes) from the shared
+radius scale, its lifted shadows from --shadow-2 and its motion from --dur; only the small
+marks keep 3 or 4 px. A screenshot diff showed no visible change beyond a pixel at a corner.
+A ticked task in the editor was blue, green everywhere else; it is green now too. Checked the
+three panes and the editor's toolbar: they hold up. `tests/test_notes_look.py` keeps it so.
+Left for later: "mentioned without a link" cuts its snippet inside the highlighted word.
 
 ## Blocks
 
