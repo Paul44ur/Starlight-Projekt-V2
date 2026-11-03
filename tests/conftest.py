@@ -1,9 +1,10 @@
 from __future__ import annotations
 
 import gc
+import os
 import shutil
 import textwrap
-from collections.abc import AsyncIterator, Callable
+from collections.abc import AsyncIterator, Callable, Iterator
 from pathlib import Path
 
 import pytest
@@ -58,6 +59,18 @@ def documents(tmp_path_factory: pytest.TempPathFactory, monkeypatch: pytest.Monk
     folder = tmp_path_factory.mktemp("Documents").resolve()
     monkeypatch.setattr("starlight.core.output.documents_folder", lambda: folder)
     return folder
+
+
+@pytest.fixture(autouse=True)
+def _environment_back() -> Iterator[None]:
+    """Code under test may change environment variables for the whole process (the
+    launcher sets UV_CACHE_DIR, for example). They are put back after each test, so none
+    reaches the next one: a leaked one once made a later test download every package again."""
+    before = dict(os.environ)
+    yield
+    if dict(os.environ) != before:
+        os.environ.clear()
+        os.environ.update(before)
 
 
 @pytest.fixture(autouse=True)
