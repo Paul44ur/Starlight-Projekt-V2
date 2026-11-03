@@ -23,6 +23,14 @@ from tests.test_notes_page import notebook as notebook
 from tests.test_notes_page import notes_page, opened
 
 
+@pytest.fixture(autouse=True)
+def _uv_cache(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """The launcher's load_settings sets UV_CACHE_DIR (to the Starlight folder's cache) when
+    it is not set: set here, so it is put back after each test and never reaches the next
+    one (where uv would fill an empty cache from the internet)."""
+    monkeypatch.setenv("UV_CACHE_DIR", str(tmp_path / "uv-cache"))
+
+
 @pytest.mark.parametrize(
     ("link", "page"),
     [
