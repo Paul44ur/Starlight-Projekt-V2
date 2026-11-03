@@ -206,7 +206,9 @@ class Memory:
         return found
 
     def _note(self, target: str, heading: str) -> tuple[str, str, str] | None:
-        """A note a memory links to: (path, title, text), or None."""
+        """A note a memory links to: (path, title, text), or None. Not a note with a
+        ``source`` property (clipped from the web): that is outside content, and recall puts
+        what it finds into the prompt without the injection guard seeing it."""
         from starlight.notebook.markdown import section, split
 
         index = self.notebook() if callable(self.notebook) else None
@@ -220,9 +222,12 @@ class Memory:
             raw = (Path(index.root) / path).read_bytes()[:LINKED_READ].decode("utf-8", "replace")
         except (OSError, ValueError):
             return None
+        front = split(raw)
+        if front.properties.get("source") or path in index.with_property("source"):
+            return None  # (outside content; the index also knows a long file's properties)
         part = section(raw, heading) if heading and not heading.startswith("^") else None
         title = Path(path).stem + (f" > {heading}" if part else "")
-        return path, title, part or split(raw).body
+        return path, title, part or front.body
 
     # -- writing -----------------------------------------------------------------------
 

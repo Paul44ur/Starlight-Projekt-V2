@@ -422,9 +422,31 @@ function propertyMenu(options) {
 // drop), pickPicture(), notice(text), say(text) (the page's translation), placeholder,
 // noteNames() ([{name, detail}] for the [[ suggestions), tagNames() and propertyNames()
 // ([{name, count}] for # and for property names).
+// The changes that turn the document ``doc`` into ``text``: line by line when the number of
+// lines stays, else one change from the first to the last place they differ.
+function changesTo(doc, text) {
+  const wanted = text.split("\n"), changes = [];
+  const differ = (had, want, from) => {  // the one change from had to want, at from
+    let a = 0, b = 0;
+    while (a < had.length && a < want.length && had[a] === want[a]) a++;
+    while (b < had.length - a && b < want.length - a && had.at(-1 - b) === want.at(-1 - b)) b++;
+    return { from: from + a, to: from + had.length - b, insert: want.slice(a, want.length - b) };
+  };
+  if (wanted.length === doc.lines) {
+    wanted.forEach((want, n) => {
+      const line = doc.line(n + 1);
+      if (line.text !== want) changes.push(differ(line.text, want, line.from));
+    });
+  } else if (doc.toString() !== text) {
+    changes.push(differ(doc.toString(), text, 0));
+  }
+  return changes;
+}
+
 export function createEditor(parent, options) {
   const say = options.say || ((text) => text);
   const preview = new cm.Compartment();
+  let since = null;  // what was typed since a save started (see mark and rebase below)
   const view = new cm.EditorView({
     parent,
     state: cm.EditorState.create({
@@ -459,6 +481,7 @@ export function createEditor(parent, options) {
         ]),
         look,
         cm.EditorView.updateListener.of((update) => {
+          if (update.docChanged && since) since.changes = since.changes.compose(update.changes);
           if (update.docChanged && options.onChange) options.onChange(update.state.doc.toString());
         }),
         cm.EditorView.domEventHandlers({
@@ -491,22 +514,22 @@ export function createEditor(parent, options) {
     // dates, a repeating task got its next one): only the parts that differ change, so the
     // cursor stays, and Undo skips them.
     update(text) {
-      const doc = view.state.doc, wanted = text.split("\n"), changes = [];
-      const differ = (had, want, from) => {  // the one change from had to want, at from
-        let a = 0, b = 0;
-        while (a < had.length && a < want.length && had[a] === want[a]) a++;
-        while (b < had.length - a && b < want.length - a && had.at(-1 - b) === want.at(-1 - b)) b++;
-        return { from: from + a, to: from + had.length - b, insert: want.slice(a, want.length - b) };
-      };
-      if (wanted.length === doc.lines) {
-        wanted.forEach((want, n) => {
-          const line = doc.line(n + 1);
-          if (line.text !== want) changes.push(differ(line.text, want, line.from));
-        });
-      } else if (doc.toString() !== text) {
-        changes.push(differ(doc.toString(), text, 0));
-      }
+      const changes = changesTo(view.state.doc, text);
       if (changes.length) view.dispatch({ changes, annotations: cm.Transaction.addToHistory.of(false) });
+    },
+    // A save starts: remember the text, and collect what is typed from now on.
+    mark() {
+      since = { doc: view.state.doc, changes: cm.ChangeSet.empty(view.state.doc.length) };
+      return since;
+    },
+    // The save's answer changed the text (dates, a repeating task's next one) while typing
+    // went on: its changes are put into the text as it is now, around what was typed.
+    rebase(mark, text) {
+      const changes = cm.ChangeSet.of(changesTo(mark.doc, text), mark.doc.length);
+      if (changes.empty) return;
+      // (where both added text at the same place, the save's comes first: it belongs to the
+      // line before, such as a ticked task's next one)
+      view.dispatch({ changes: changes.map(mark.changes, true), annotations: cm.Transaction.addToHistory.of(false) });
     },
     insertAt(at, text) {
       view.dispatch({ changes: { from: at, insert: text }, selection: { anchor: at + text.length } });

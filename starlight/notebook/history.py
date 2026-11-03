@@ -284,6 +284,15 @@ class History:
         self.changed(path)
         return version
 
+    def moved(self, old: Path, new: Path) -> None:
+        """A file was renamed (or moved): its kept versions belong to its new name now, so
+        they can still be listed and put back there."""
+        with self._db() as db:
+            db.execute(
+                "UPDATE versions SET key = ?, path = ? WHERE key = ?",
+                (key_of(new), str(new), key_of(old)),
+            )
+
     def restore_deleted(self, path: Path) -> None:
         """Bring a deleted file back from the trash, as it was."""
         if path.exists():

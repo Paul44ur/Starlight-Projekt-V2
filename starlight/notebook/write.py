@@ -22,6 +22,8 @@ from starlight.core.fsutil import write_atomic_bytes
 from starlight.core.tools import ToolError
 from starlight.notebook.history import History, HistoryError
 
+BOM = b"\xef\xbb\xbf"  # UTF-8's byte order mark, which some editors put first
+
 MISSING = "missing"  # the stamp of a file that does not exist (yet)
 
 
@@ -97,11 +99,21 @@ def write_note(
     newline: str | None = None,
 ) -> Written:
     """Replace the file's content with ``text`` (UTF-8), safely (see the module's notes).
-    ``newline`` ("\\r\\n" or "\\n") keeps a file's own line endings; else the platform's."""
+    An existing file keeps its own line endings and its byte order mark (only the lines that
+    differ change); a new one gets the platform's line endings. ``newline`` ("\\r\\n" or
+    "\\n") sets them instead."""
     _check(path, expected)
-    new = not path.exists()
+    try:
+        before = path.read_bytes()[:65536]  # (enough to see the line endings)
+    except FileNotFoundError:
+        before = None
+    new = before is None
+    if newline is None:
+        newline = os.linesep if before is None else "\r\n" if b"\r\n" in before else "\n"
+    if before is not None and before.startswith(BOM) and not text.startswith("\ufeff"):
+        text = "\ufeff" + text
     version = history.save(path, reason, min_gap=min_gap) if history is not None else None
-    write_atomic_bytes(path, _encode(text, (newline or os.linesep).encode()))
+    write_atomic_bytes(path, _encode(text, newline.encode()))
     if history is not None:
         history.changed(path)  # (the index reads it again)
     return Written(stamp(path), version, new)
@@ -119,15 +131,15 @@ def append_note(
     bytes stay exactly as they were, and the new text uses its kind of line endings."""
     _check(path, expected)
     try:
-        existing = path.read_bytes()
+        existing, existed = path.read_bytes(), True
     except FileNotFoundError:
-        existing = b""
+        existing, existed = b"", False
     newline = b"\r\n" if b"\r\n" in existing else b"\n" if existing else os.linesep.encode()
-    version = history.save(path, reason) if history is not None and existing else None
+    version = history.save(path, reason) if history is not None and existed else None
     write_atomic_bytes(path, existing + _encode(text, newline))
     if history is not None:
         history.changed(path)
-    return Written(stamp(path), version, new=not existing)
+    return Written(stamp(path), version, new=not existed)  # (an empty file was there: not new)
 
 
 def undo_change(history: History, change: dict[str, object]) -> str:
@@ -137,6 +149,11 @@ def undo_change(history: History, change: dict[str, object]) -> str:
     path = Path(str(change.get("path") or ""))
     if change.get("new"):
         if path.is_file():
+            if not history.enabled:  # (the trash keeps nothing then: it would be gone for good)
+                raise HistoryError(
+                    f"keeping versions is switched off, so undoing would delete {path.stem} for "
+                    "good; delete it yourself if that is what you want"
+                )
             history.trash(path, "undo")
         return f"{path.stem} removed (it is in the trash)"
     version = change.get("version")

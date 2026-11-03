@@ -599,6 +599,22 @@ its size from the viewBox and shown as an `<img>` with a data URI, so nothing in
 react to clicks or load anything. "Show the code" (a details element) shows the source; an
 error shows Mermaid's reason and opens the code. Chat answers and exported notes keep the
 block as code.
+A code review of the notes app (2026-11-03) brought these fixes. `write_note` keeps an
+existing file's line endings and byte order mark unless `newline` says otherwise (the
+page's saves and property changes, tags, renames and the inbox no longer turn every line
+into CRLF on Windows). `rename.plan` records each note's stamp and `rename.rename` refuses
+before renaming anything when one changed meanwhile, then writes with those stamps;
+`History.moved(old, new)` moves the kept versions to the new name. `undo_change` refuses to
+remove a new file while versions are switched off (the trash would keep nothing).
+`append_note` calls a file new only when it did not exist (an empty one was there). The
+inbox is sorted from what was read, with its stamp: unclear targets stop it before the
+question, a change meanwhile stops it after, and the inbox loses exactly the items that
+reached a note (also when a later one fails). Recall leaves out notes with a `source`
+property. The task board's move answers a locked note with 409. `notes._find` falls back to
+the name when a title with "/" is no path. On the page, a save's changes (ISO dates, a
+repeating task's next one) reach the editor also when typing went on: the editor records
+the changes since the save started (`mark`) and maps the save's changes over them
+(`rebase`, CodeMirror's `ChangeSet.map`).
 
 **Safety limits you set (`core/safety.py`).** Settings -> Safety limits chooses a level
 (strict, balanced, relaxed) and any of 29 switches on top, kept in

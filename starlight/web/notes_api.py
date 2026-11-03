@@ -837,6 +837,8 @@ def add_notes_api(
                                        reason="notes.page kanban")  # fmt: skip
                 except NoteConflict as exc:
                     raise _bad(str(exc), 409) from exc
+                except OSError as exc:
+                    raise _bad(f"could not save {file.name}: {locked(exc)}", 409) from exc
             return {"moved": to, "changed": moved.written is not None}
         result = await kernel().dispatcher.call("todo.move", {"id": task_id, "to": to})
         if not result.ok:

@@ -19,6 +19,7 @@ where:, sort:, fields:); the Notes page shows it as a live table.
 
 from __future__ import annotations
 
+import contextlib
 import re
 from collections.abc import Callable
 from datetime import datetime
@@ -29,11 +30,13 @@ from pydantic import BaseModel
 
 from starlight.core import Module, ModuleContext, ToolError, tool
 from starlight.notebook import (
+    NoteConflict,
     Written,
     append_note,
     query,
     related,
     search,
+    stamp,
     templates,
     write_note,
 )
@@ -47,6 +50,7 @@ from starlight.notebook.markdown import (
 )
 from starlight.notebook.rename import plan as plan_rename
 from starlight.notebook.rename import rename as carry_out_rename
+from starlight.notebook.write import read_for_change
 
 _BAD = re.compile(r'[<>:"/\\|?*\x00-\x1f]')
 _RESERVED = re.compile(r"^(con|prn|aux|nul|com[0-9]|lpt[0-9])(\..*)?$", re.IGNORECASE)
@@ -106,8 +110,11 @@ class NotesModule(Module):
         return path
 
     def _find(self, title: str) -> Path:
-        if "/" in title or "\\" in title:  # a path in the Starlight folder
-            return self._by_path(title)
+        if "/" in title or "\\" in title:  # a path in the Starlight folder ...
+            try:
+                return self._by_path(title)
+            except NoteNotFound:  # ... or a title with a slash ("Pros/Cons" is ProsCons.md)
+                pass
         exact = self._file(title)
         if exact.is_file():
             return exact
@@ -579,12 +586,15 @@ class NotesModule(Module):
         written = append_note(path, start + entry, "notes.inbox", self.ctx.history)
         return {"saved_to": "inbox", "file": str(path), "changed": written.changed(path)}
 
-    def _inbox_items(self) -> list[tuple[int, int, str]]:
-        """The inbox's items: (first line, line after the last, text)."""
+    def _inbox_items(self, text: str | None = None) -> list[tuple[int, int, str]]:
+        """The inbox's items: (first line, line after the last, text). ``text``: the inbox
+        as read (else it is read now)."""
         path = self._inbox_file()
-        if not path.is_file():
-            return []
-        lines = path.read_text("utf-8", errors="replace").splitlines()
+        if text is None:
+            if not path.is_file():
+                return []
+            text = path.read_text("utf-8", errors="replace")
+        lines = text.splitlines()
         items: list[tuple[int, int, str]] = []
         for number, line in enumerate(lines):
             if line.startswith("- "):
@@ -613,7 +623,12 @@ class NotesModule(Module):
 
         from starlight.core.model import Message
 
-        items = self._inbox_items()
+        inbox = self._inbox_file()
+        try:
+            before = read_for_change(inbox)  # (its stamp: a change meanwhile is noticed)
+        except NoteConflict:  # (there is no inbox)
+            return {"moved": [], "note": "the inbox is empty"}
+        items = self._inbox_items(before.text)
         if not items:
             return {"moved": [], "note": "the inbox is empty"}
         model = self.ctx.model_for("summary")
@@ -641,16 +656,26 @@ class NotesModule(Module):
                 moves.append((number - 1, _BAD.sub("", title)[:80].strip() or "Inbox items"))
         if not moves:
             return {"moved": [], "note": "no proposal for any item; they stay in the inbox"}
+        for _, title in moves:  # every target first: nothing moves if one cannot be used
+            with contextlib.suppress(NoteNotFound):  # (a new note is fine)
+                self._find(title)  # ("matches several notes" stops it here)
         plan = "; ".join(f"'{items[i][2][:60]}' -> {title}" for i, title in moves)
         if not await self.ctx.ui.confirm(f"Move {len(moves)} inbox item(s): {plan}?"):
             raise ToolError("not confirmed, the inbox stays as it is")
-        for index, title in moves:
-            self.append(title, items[index][2])
-        path = self._inbox_file()
-        lines = path.read_text("utf-8", errors="replace").splitlines(keepends=True)
-        gone = {n for index, _ in moves for n in range(items[index][0], items[index][1])}
-        rest = "".join(line for number, line in enumerate(lines) if number not in gone)
-        write_note(path, rest, "notes.sort_inbox", self.ctx.history)
+        if stamp(inbox) != before.stamp:
+            raise ToolError("the inbox was changed meanwhile, so nothing was moved; ask again")
+        moved: list[int] = []
+        try:
+            for index, title in moves:
+                self.append(title, items[index][2])
+                moved.append(index)
+        finally:  # what was added to a note leaves the inbox, even when a later one failed
+            if moved:
+                lines = before.text.splitlines(keepends=True)
+                gone = {n for index in moved for n in range(items[index][0], items[index][1])}
+                rest = "".join(line for number, line in enumerate(lines) if number not in gone)
+                write_note(inbox, before.bom + rest, "notes.sort_inbox", self.ctx.history,
+                           expected=before.stamp, newline=before.newline)  # fmt: skip
         return {"moved": [{"item": items[i][2][:80], "to": title} for i, title in moves]}
 
     @tool

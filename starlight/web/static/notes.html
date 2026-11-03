@@ -1888,7 +1888,7 @@ async function save() {
   clearTimeout(edit.timer);
   while (edit.saving) await edit.saving;
   if (!edit.dirty || !edit.editor) return !edit.dirty;
-  const note = state.current, text = edit.editor.text();
+  const note = state.current, text = edit.editor.text(), mark = edit.editor.mark();
   edit.dirty = false;
   status("Saving…");
   edit.saving = (async () => {
@@ -1907,11 +1907,14 @@ async function save() {
       }
       if (!response.ok) throw new Error(typeof data.detail === "string" ? data.detail : response.statusText);
       note.stamp = data.stamp; note.text = text; edit.first = false;
-      if (typeof data.text === "string") {  // saved with ISO dates: show them (unless typing on)
+      if (typeof data.text === "string") {  // saved with ISO dates, a repeating task's next one
         note.text = data.text;
-        if (edit.editor && edit.editor.text() === text) {
+        if (edit.editor) {  // (also when typing went on: else the next save would undo them)
           edit.quiet = true;
-          try { edit.editor.update(data.text); } finally { edit.quiet = false; }
+          try {
+            if (edit.editor.text() === text) edit.editor.update(data.text);
+            else edit.editor.rebase(mark, data.text);
+          } finally { edit.quiet = false; }
         }
       }
       status(edit.dirty ? "Editing…" : "Saved");
