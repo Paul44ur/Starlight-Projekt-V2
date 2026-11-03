@@ -586,6 +586,19 @@ deletes the keys. `notebook.links.deep_link(path, heading)` makes a link; `notes
 gives one to the assistant. `markdown.js` reads `starlight://` links (in `[text](…)` and
 bare) with the same rules and makes them note links on this site (same tab; the Notes page
 opens them in place). The Notes page's 🔗 copies a note's link.
+Block G5 is Mermaid diagrams. `bundles/mermaid` builds `static/vendor/mermaid.js` (Mermaid
+12.2.0 and what it uses, about 3.7 MB, `mermaid.sha256`, `mermaid-LICENSES.txt`) with esbuild,
+like the other bundles; a plugin puts `elk-stub.js` in place of elkjs (1.5 MB, EPL-2.0), and
+the page sets `layout: "dagre"` (also for state diagrams), since Mermaid 12 would use ELK.
+`/vendor/` serves the two files. render.js's `mdHooks.code` turns a ```mermaid block into a
+diagram where `window.starlightDiagrams` is set (only notes.html): the library is imported on
+first use, the blocks are drawn one after another, with `securityLevel: "strict"`,
+`htmlLabels: false`, `suppressErrorRendering`, at most 50,000 characters, and the page's
+colours (dark when the page's background is). Mermaid's SVG is parsed with DOMParser, given
+its size from the viewBox and shown as an `<img>` with a data URI, so nothing in it can run,
+react to clicks or load anything. "Show the code" (a details element) shows the source; an
+error shows Mermaid's reason and opens the code. Chat answers and exported notes keep the
+block as code.
 
 **Safety limits you set (`core/safety.py`).** Settings -> Safety limits chooses a level
 (strict, balanced, relaxed) and any of 29 switches on top, kept in

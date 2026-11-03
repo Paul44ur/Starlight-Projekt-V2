@@ -167,6 +167,9 @@
     "Copy a link to this note (it opens the note from other programs)":
       "Link zu dieser Notiz kopieren (er öffnet die Notiz aus anderen Programmen)",
     "Link copied:": "Link kopiert:", "The link to this note:": "Der Link zu dieser Notiz:",
+    "Drawing the diagram…": "Das Diagramm wird gezeichnet…", "Show the code": "Code zeigen",
+    "Diagram": "Diagramm", "This diagram could not be drawn:": "Dieses Diagramm ließ sich nicht zeichnen:",
+    "it is too long": "es ist zu lang",
     "Live preview": "Live-Vorschau",
     "Live preview: the marks show only on the line you are on (click for all)":
       "Live-Vorschau: Die Zeichen erscheinen nur in der Zeile, in der du bist (Klick zeigt alle)",

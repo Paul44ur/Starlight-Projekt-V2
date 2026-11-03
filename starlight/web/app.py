@@ -63,6 +63,8 @@ VENDOR = {
     "LICENSES.txt": "text/plain; charset=utf-8",
     "graph.js": "text/javascript; charset=utf-8",  # d3-force, for the Notes page's graphs
     "graph-LICENSES.txt": "text/plain; charset=utf-8",
+    "mermaid.js": "text/javascript; charset=utf-8",  # Mermaid, for diagrams (on first use)
+    "mermaid-LICENSES.txt": "text/plain; charset=utf-8",
 }
 LOOPBACK = {"127.0.0.1", "localhost", "::1"}
 LOOPBACK_PEERS = {"127.0.0.1", "::1"}

@@ -1,0 +1,16 @@
+{
+  "name": "starlight-mermaid-bundle",
+  "private": true,
+  "description": "Builds starlight/web/static/vendor/mermaid.js (Mermaid diagrams) for the Notes page.",
+  "license": "MIT",
+  "type": "module",
+  "scripts": {
+    "build": "node build.mjs"
+  },
+  "dependencies": {
+    "mermaid": "12.2.0"
+  },
+  "devDependencies": {
+    "esbuild": "0.28.2"
+  }
+}

@@ -11,6 +11,7 @@
 //                                                     when overdue, amber when today
 //   ```query  where: status is open  ...  ```         a live table of notes (on the Notes
 //                                                     page only: it asks /api/notes/query)
+//   ```mermaid  graph LR; A --> B  ```                a diagram (Notes page only, block G5)
 // As in markdown.js, the text only ever becomes textContent. Links lead only to the Notes
 // page, pictures only come from /api/notes/file/ inside the notebook folder.
 
@@ -294,4 +295,85 @@ function queryTable(text) {
   return box;
 }
 
-mdHooks.code = (lang, text) => (lang === "query" && window.starlightQueryTables ? queryTable(text) : null);
+// -- Mermaid diagrams (block G5) -------------------------------------------------------------
+// ```mermaid
+// graph LR
+//   Idea --> Plan --> Done
+// ```
+// becomes the diagram. The library (/vendor/mermaid.js, built in bundles/mermaid) loads the
+// first time a note has one. Mermaid runs with securityLevel "strict" (no clicks that run
+// code, labels cleaned), and its drawing is shown as a picture (an <img> of the SVG), where
+// nothing can run and nothing loads. "Show the code" under it shows what it is drawn from;
+// text that is not a diagram stays code, with Mermaid's reason. In the page's colours (light
+// or dark, as it is drawn). Only the Notes page sets window.starlightDiagrams: elsewhere (a
+// chat answer, an exported note) the block stays as code.
+
+let mermaidLoading = null;
+let diagramQueue = Promise.resolve();  // (one at a time: Mermaid draws in the page)
+let diagramCount = 0;
+const MAX_DIAGRAM = 50000;  // characters
+
+function pageIsDark() {
+  const m = getComputedStyle(document.body).backgroundColor.match(/\d+(\.\d+)?/g);
+  if (!m) return false;
+  const [r, g, b] = m.map(Number);
+  return 0.2126 * r + 0.7152 * g + 0.0722 * b < 128;
+}
+
+// The SVG Mermaid made, as a picture with its own size (from its viewBox).
+function diagramPicture(svgText) {
+  const svg = new DOMParser().parseFromString(svgText, "image/svg+xml").documentElement;
+  if (svg.nodeName !== "svg") throw new Error("Mermaid made no picture");
+  const box = (svg.getAttribute("viewBox") || "").split(/[\s,]+/).map(Number);
+  const width = Math.ceil(box[2] || 600), height = Math.ceil(box[3] || 300);
+  svg.setAttribute("width", String(width));
+  svg.setAttribute("height", String(height));
+  svg.removeAttribute("style");  // (its max-width: the picture's own CSS sizes it)
+  const img = el("img", "diagram-picture");
+  img.src = "data:image/svg+xml;charset=utf-8," + encodeURIComponent(new XMLSerializer().serializeToString(svg));
+  img.width = width; img.height = height;
+  return img;
+}
+
+async function drawDiagram(box, text) {
+  const shown = box.querySelector(".diagram-wait");
+  try {
+    if (text.length > MAX_DIAGRAM) throw new Error(taskWords("it is too long"));
+    mermaidLoading ||= import("/vendor/mermaid.js").then((module) => module.default);
+    const mermaid = await mermaidLoading;
+    mermaid.initialize({
+      startOnLoad: false, securityLevel: "strict", suppressErrorRendering: true,
+      htmlLabels: false, flowchart: { htmlLabels: false }, maxTextSize: MAX_DIAGRAM,
+      // the dagre layout (Mermaid 11's): the ELK one is left out of the bundle (its size)
+      layout: "dagre", state: { layout: "dagre" },
+      theme: pageIsDark() ? "dark" : "default", fontFamily: getComputedStyle(document.body).fontFamily,
+    });
+    const id = "starlight-diagram-" + (++diagramCount);
+    let svg;
+    try { ({ svg } = await mermaid.render(id, text)); }
+    finally { document.getElementById(id)?.remove(); document.getElementById("d" + id)?.remove(); }
+    const picture = diagramPicture(svg);
+    picture.alt = taskWords("Diagram") + ": " + text.trim().split("\n")[0].slice(0, 80);
+    shown?.replaceWith(picture);
+  } catch (e) {
+    const why = String((e && e.message) || e).split("\n")[0].slice(0, 300);
+    shown?.replaceWith(el("div", "diagram-error", taskWords("This diagram could not be drawn:") + " " + why));
+    box.querySelector("details")?.setAttribute("open", "");
+  }
+}
+
+function diagramBlock(text) {
+  const box = el("div", "diagram");
+  box.appendChild(el("div", "diagram-wait", taskWords("Drawing the diagram…")));
+  const code = box.appendChild(el("details", "diagram-code"));
+  code.appendChild(el("summary", "", taskWords("Show the code")));
+  code.appendChild(mdCodeBlock(text, "mermaid"));
+  diagramQueue = diagramQueue.then(() => drawDiagram(box, text));
+  return box;
+}
+
+mdHooks.code = (lang, text) => {
+  if (lang === "query" && window.starlightQueryTables) return queryTable(text);
+  if (lang === "mermaid" && window.starlightDiagrams) return diagramBlock(text);
+  return null;
+};

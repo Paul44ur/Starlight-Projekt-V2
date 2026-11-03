@@ -133,6 +133,14 @@ button:focus:not(:focus-visible), a:focus:not(:focus-visible) { outline: none; }
 .md .task-chip.today { color: #2b1d00; background: var(--warn); border-color: var(--warn); }
 .md .task-priority { padding: 0 .3em; }
 .md .task-chip.task-stage { color: var(--accent); border-color: var(--accent); }
+/* a ```mermaid block's diagram (render.js, block G5) */
+.md .diagram { margin: .6em 0 1em; }
+.md .diagram-picture { display: block; max-width: 100%; height: auto; margin: 0 auto; }
+.md .diagram-wait { color: var(--dim); font-size: .9em; padding: 10px 0; }
+.md .diagram-error { border: 1px solid var(--warn); border-radius: 8px; padding: 8px 12px; color: var(--text);
+                     background: color-mix(in srgb, var(--warn) 12%, transparent); font-size: .92em; }
+.md .diagram-code summary { cursor: pointer; color: var(--dim); font-size: .85em; margin-top: 4px; width: max-content; }
+.md .diagram-code[open] summary { margin-bottom: 4px; }
 /* a ```query block's live table (render.js) */
 .md .query-box { margin: .6em 0 1em; }
 .md .query-table th { padding: 0; }

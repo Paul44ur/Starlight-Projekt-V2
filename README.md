@@ -572,6 +572,22 @@ tick with a click. Move onto a line to see and change its marks. Code, the prope
 the top and pictures (`![[…]]`) stay as written, and the file keeps every mark. **👁** in
 the toolbar switches it off and on; this browser remembers your choice.
 
+**Diagrams.** A code block marked `mermaid` becomes a diagram in the reading view:
+flowcharts, sequence diagrams, timelines, mind maps, pie charts and more
+([Mermaid](https://mermaid.js.org)). For example:
+
+````
+```mermaid
+graph LR
+  Idea --> Plan --> Done
+```
+````
+
+**Show the code** under a diagram shows what it is drawn from. If the text is not a diagram,
+it stays code, with the reason. The diagrams follow the page's colours, light or dark. The
+diagram part (about 3.7 MB) loads only for notes that have one. A diagram is shown as a
+picture: nothing in it can run or load anything, even in a clipped web page.
+
 **Links to a note from other programs.** **🔗** on a note copies a link like
 `starlight://note/Notes/Plan.md`. Put it in a mail, a document, a calendar entry or another
 program: clicking it opens the note in your browser (Starlight starts first if it is not
@@ -1084,11 +1100,14 @@ If you installed with `Starlight.exe`, uv isn't on your PATH. Either install it 
 
 ### Third-party code
 
-Starlight ships two files built from other people's code:
-`starlight/web/static/vendor/editor.js`, the text editor for the Notes page
-([CodeMirror 6](https://codemirror.net), MIT licence), with its licences in
-`starlight/web/static/vendor/LICENSES.txt`; and `starlight/web/static/vendor/graph.js`, the
-layout of the Notes page's graphs ([d3-force](https://d3js.org/d3-force), ISC licence), with
-its licences in `starlight/web/static/vendor/graph-LICENSES.txt`. `bundles/editor/` and
-`bundles/graph/` hold the exact versions and the builds; their READMEs say how to rebuild
-the files. You do not need Node.js to run Starlight.
+Starlight ships three files built from other people's code, in `starlight/web/static/vendor`:
+
+- `editor.js`, the text editor for the Notes page ([CodeMirror 6](https://codemirror.net),
+  MIT licence), with its licences in `LICENSES.txt`;
+- `graph.js`, the layout of the Notes page's graphs ([d3-force](https://d3js.org/d3-force),
+  ISC licence), with its licences in `graph-LICENSES.txt`;
+- `mermaid.js`, the diagrams in notes ([Mermaid](https://mermaid.js.org), MIT licence, and
+  the packages it uses), with its licences in `mermaid-LICENSES.txt`.
+
+`bundles/editor/`, `bundles/graph/` and `bundles/mermaid/` hold the exact versions and the
+builds; their READMEs say how to rebuild the files. You do not need Node.js to run Starlight.

@@ -40,11 +40,12 @@ Work goes block by block (section 9). One block is one session and one commit; m
 | G2 | Kanban for tasks | M | D4 | **done** 2026-11-02 ("Notes plan G2: …") |
 | G3 | Flashcards (spaced repetition) | M | B2 | **done** 2026-11-02 ("Notes plan G3: …") |
 | G4 | Live preview in the editor | M | B6 | **done** 2026-11-02 ("Notes plan G4: …") |
-| G5 | Mermaid diagrams (a 2–3 MB library: only if wanted) | S–M | B4 | open |
+| G5 | Mermaid diagrams (a 2–3 MB library: only if wanted) | S–M | B4 | **done** 2026-11-03 ("Notes plan G5: …") |
 | G6 | Deep links (`starlight://note/…`) | S | B5 | **done** 2026-11-02 ("Notes plan G6: …") |
 
-Last updated: 2026-11-02 (A1 to G4 and G6 done; G5 waits for the user's yes (a 2–3 MB
-library). G6: links are registered by Starlight.exe only (never by a script run or the
+Last updated: 2026-11-03 (every block done. G5: the user said yes; the bundle is about
+3.7 MB without the ELK layout (EPL-2.0, 1.5 MB), and the page uses the dagre layout; it is
+built in `bundles/mermaid`, as the plan's `tools/editor/` became `bundles/` in B1. G6: links are registered by Starlight.exe only (never by a script run or the
 tests), and a link can only open a page. G4: live
 preview is on by default (👁 in the toolbar switches it off, per browser); the editor bundle
 already had what it needs, so it was not rebuilt. G3: a new
