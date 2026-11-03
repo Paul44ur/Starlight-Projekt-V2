@@ -66,14 +66,21 @@
 
       <fieldset id="if-box" hidden>
         <legend>If (optional)</legend>
-        <div class="row">
-          <select id="if-field" aria-label="Field"><option value="">always</option></select>
-          <select id="if-op" aria-label="Comparison">
-            <option value="==">is</option><option value="!=">is not</option><option value="~">contains</option>
-            <option value="&gt;">is more than</option><option value="&lt;">is less than</option>
-            <option value="&gt;=">is at least</option><option value="&lt;=">is at most</option>
+        <p id="if-none" class="hint">No condition: it runs each time the event happens.</p>
+        <div class="row" id="if-join-row" hidden>
+          <select id="if-join" aria-label="How the conditions go together">
+            <option value="and">All of these</option><option value="or">Any of these</option>
           </select>
-          <input id="if-value" type="text" class="grow" aria-label="Value" placeholder="value, e.g. nas" />
+        </div>
+        <div id="if-rows"></div>
+        <div id="if-written-box" hidden>
+          <input id="if-written" type="text" class="wide" aria-label="The condition, written out"
+                 placeholder="e.g. server is nas or (server is router and status is down)" />
+          <p class="hint">Written out: and, or, not and brackets; is, is not, has, &lt;, &gt;. Words with "and" or "or" in them go in quotes.</p>
+        </div>
+        <div class="row">
+          <button type="button" id="add-if">+ Add a condition</button>
+          <button type="button" id="if-mode">Write it out</button>
         </div>
       </fieldset>
 
@@ -120,13 +127,128 @@ function showEvent() {
   const info = data.events[name];
   document.getElementById("on-hint").textContent = info
     ? info.when + (info.fields.length ? " · fields: " + info.fields.join(", ") : "") : "";
-  const field = document.getElementById("if-field");
-  const keep = field.value;
-  field.replaceChildren(new Option("always", ""));
-  (info ? info.fields : []).forEach(f => field.appendChild(new Option(f, f)));
-  if ([...field.options].some(o => o.value === keep)) field.value = keep;
+  conditionRows().forEach(row => row.fill());
+  showConditions();
 }
 document.getElementById("on").onchange = showEvent;
+
+// -- If: none, one or several conditions on the event's fields, joined by and or or. What
+// the rows cannot show (brackets, not, and with or, a field the event does not have) stays
+// written out, as it is: nothing of a rule's condition is ever lost here.
+const OPS = [["==", "is"], ["!=", "is not"], ["~", "contains"], [">", "is more than"],
+  ["<", "is less than"], [">=", "is at least"], ["<=", "is at most"]];
+let writtenOut = false;
+
+function eventFields() {
+  const info = data.events[document.getElementById("on").value];
+  return info ? info.fields : [];
+}
+function conditionRows() { return [...document.getElementById("if-rows").children]; }
+function quoted(value) {  // (a value with spaces in quotes: "and" or "or" in it stays a word)
+  if (!/\s/.test(value)) return value;
+  if (!value.includes('"')) return `"${value}"`;
+  return value.includes("'") ? value : `'${value}'`;
+}
+
+function addCondition(cond = {}) {
+  const row = el("div", "row if-row");
+  const field = row.appendChild(el("select", "if-field"));
+  field.setAttribute("aria-label", "Field");
+  const op = row.appendChild(el("select", "if-op"));
+  op.setAttribute("aria-label", "Comparison");
+  OPS.forEach(([v, label]) => op.appendChild(new Option(label, v)));
+  const value = row.appendChild(el("input", "grow if-value"));
+  value.type = "text"; value.placeholder = "value, e.g. nas";
+  value.setAttribute("aria-label", "Value");
+  const drop = row.appendChild(el("button", "", "×"));
+  drop.type = "button"; drop.title = "Remove this condition";
+  drop.setAttribute("aria-label", "Remove this condition");
+  drop.onclick = () => { row.remove(); showConditions(); };
+  row.fill = () => {
+    const keep = field.value || cond.field || "";
+    field.replaceChildren(...eventFields().map(f => new Option(f, f)));
+    if (eventFields().includes(keep)) field.value = keep;
+  };
+  row.read = () => {
+    if (!field.value) return "";
+    const typed = value.value.trim();
+    return typed ? `${field.value} ${op.value} ${quoted(typed)}` : field.value;
+  };
+  row.fill();
+  if (cond.op) op.value = cond.op;
+  value.value = cond.value || "";
+  document.getElementById("if-rows").appendChild(row);
+  showConditions();
+}
+
+function showConditions() {
+  const rows = conditionRows();
+  document.getElementById("if-none").hidden = writtenOut || rows.length > 0;
+  document.getElementById("if-join-row").hidden = writtenOut || rows.length < 2;
+  document.getElementById("if-rows").hidden = writtenOut;
+  document.getElementById("add-if").hidden = writtenOut;
+  document.getElementById("add-if").disabled = !eventFields().length;
+  document.getElementById("if-written-box").hidden = !writtenOut;
+  document.getElementById("if-mode").textContent = writtenOut ? "Use the form" : "Write it out";
+}
+
+function conditionText() {
+  if (writtenOut) return document.getElementById("if-written").value.trim();
+  const join = document.getElementById("if-join").value;
+  return conditionRows().map(row => row.read()).filter(Boolean).join(` ${join} `);
+}
+
+// A condition as rows ({join, rows}), or null when the rows cannot show it.
+function asRows(text, fields) {
+  if (!text.trim()) return { join: "and", rows: [] };
+  if (/[()]/.test(text) || /(^|\s)(not|nicht)(\s|$)/i.test(text)) return null;
+  const ands = text.split(/\s+(?:and|und)\s+/i), ors = text.split(/\s+(?:or|oder)\s+/i);
+  if (ands.length > 1 && ors.length > 1) return null;
+  const join = ors.length > 1 ? "or" : "and";
+  const rows = [];
+  const words = { "=": "==", "is not": "!=", "ist nicht": "!=", "is": "==", "ist": "==",
+    "has": "~", "hat": "~", "contains": "~", "enthält": "~" };  // (written out: as words too)
+  for (const part of (join === "or" ? ors : ands)) {
+    const m = /^(\S+)\s+(==|!=|~|>=|<=|>|<|=|is not|ist nicht|is|ist|has|hat|contains|enthält)\s+(.+)$/i
+      .exec(part.trim());
+    const field = m ? m[1] : part.trim();
+    if (!fields.includes(field)) return null;
+    let value = m ? m[3].trim() : "";
+    const inQuotes = /^(["'])(.*)\1$/.exec(value);
+    if (inQuotes) value = inQuotes[2];
+    else if (/["']/.test(value)) return null;
+    rows.push({ field, op: m ? words[m[2].toLowerCase()] || m[2] : "==", value });
+  }
+  return { join, rows };
+}
+
+function setCondition(text) {
+  document.getElementById("if-rows").replaceChildren();
+  const parsed = asRows(text || "", eventFields());
+  writtenOut = parsed === null;
+  document.getElementById("if-written").value = writtenOut ? text : "";
+  if (parsed) {
+    document.getElementById("if-join").value = parsed.join;
+    parsed.rows.forEach(addCondition);
+  }
+  showConditions();
+}
+document.getElementById("add-if").onclick = () => addCondition();
+document.getElementById("if-mode").onclick = () => {
+  const box = document.getElementById("if-written");
+  if (!writtenOut) {
+    box.value = conditionText();
+    writtenOut = true;
+    showConditions();
+    box.focus();
+    return;
+  }
+  if (asRows(box.value, eventFields()) === null) {
+    toast("This condition can only be written out.");
+    return;
+  }
+  setCondition(box.value.trim());
+};
 
 function addStep(step = {}) {
   const row = el("div", "step");
@@ -170,8 +292,8 @@ function readRule() {
   if (triggerKind() === "when") rule.when = document.getElementById("when").value.trim();
   else {
     rule.on = document.getElementById("on").value;
-    const field = document.getElementById("if-field").value, value = document.getElementById("if-value").value.trim();
-    if (field) rule.condition = value ? `${field} ${document.getElementById("if-op").value} ${value}` : field;
+    const condition = conditionText();
+    if (condition) rule.condition = condition;
   }
   rule.actions = [...document.getElementById("steps").children].map(row => row.read());
   return rule;
@@ -184,10 +306,7 @@ function fillForm(rule) {
   document.getElementById("when").value = rule.when || "";
   if (rule.on) document.getElementById("on").value = rule.on;
   showTrigger();
-  const match = /^(\S+)\s+(==|!=|~|>=|<=|>|<)\s+(.+)$/.exec(rule.condition || "");
-  document.getElementById("if-field").value = match ? match[1] : (rule.condition || "");
-  if (match) { document.getElementById("if-op").value = match[2]; document.getElementById("if-value").value = match[3]; }
-  else document.getElementById("if-value").value = "";
+  setCondition(rule.condition || "");
   document.getElementById("steps").replaceChildren();
   (rule.actions || [{}]).forEach(addStep);
   document.getElementById("preview").hidden = true;
