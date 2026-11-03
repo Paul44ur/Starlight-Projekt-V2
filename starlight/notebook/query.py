@@ -6,9 +6,13 @@
     rating >= 4 and modified > today-7
     tags has garden          status is not done          due is empty
 
-Words: ``and``, ``or``, ``not`` and brackets; ``is`` (``=``), ``is not`` (``!=``), ``<``, ``>``,
-``<=``, ``>=``, ``has`` (a list holds it, or a text contains it), ``is empty``, ``is not
-empty``. German works too: und, oder, nicht, ist, ist nicht, hat, enthält, leer.
+Words: ``and``, ``or``, ``not`` and brackets; ``is`` (``=``, ``==``), ``is not`` (``!=``),
+``<``, ``>``, ``<=``, ``>=``, ``has`` (``~``: a list holds it, or a text contains it), ``is
+empty``, ``is not empty``, and a field alone (it is filled in). German works too: und, oder,
+nicht, ist, ist nicht, hat, enthält, leer.
+
+``evaluate`` checks the same conditions on data instead of notes: automations use it for an
+event's fields and a tool's result (``count > 0 and server is nas``).
 
 Fields: any property of a note (``status``, ``due`` ...), and ``tag`` (with the tags below
 it: ``tag is work`` finds #work/projects too), ``folder`` (and the folders in it), ``path``,
@@ -36,7 +40,9 @@ from starlight.core.tools import ToolError
 MAX_TEXT = 2000
 MAX_DEPTH = 30
 SECONDS = 3.0
-TOKEN = re.compile(r"""\s*(?:(\()|(\))|(<=|>=|!=|=|<|>)|"([^"]*)"|'([^']*)'|([^\s()<>=!"']+))""")
+TOKEN = re.compile(
+    r"""\s*(?:(\()|(\))|(<=|>=|!=|==|=|<|>|~)|"([^"]*)"|'([^']*)'|([^\s()<>=!~"']+))"""
+)
 WORDS = {
     "and": "and", "und": "and", "or": "or", "oder": "or", "not": "not", "nicht": "not",
     "is": "is", "ist": "is", "has": "has", "hat": "has", "contains": "has", "enthält": "has",
@@ -202,7 +208,9 @@ class _Parser:
         if kind == "op" and text in ORDERED:
             self.at += 1
             return Cond(field, text, self.value(text))
-        if (kind == "op" and text in ("=", "!=")) or word == "is":
+        if kind in ("end", ")") or word in ("and", "or"):  # a field alone: it is there
+            return Cond(field, "set")
+        if (kind == "op" and text in ("=", "==", "!=")) or word == "is":
             self.at += 1
             negative = text == "!="
             if self.keyword() == "not":
@@ -212,7 +220,7 @@ class _Parser:
                 self.at += 1
                 return Cond(field, "not empty" if negative else "empty")
             return Cond(field, "is not" if negative else "is", self.value("is"))
-        if word == "has":
+        if word == "has" or (kind == "op" and text == "~"):
             self.at += 1
             return Cond(field, "has", self.value("has"))
         raise QueryError(
@@ -358,6 +366,8 @@ def to_sql(node: Node) -> tuple[str, list[Any]]:
     """The tree as an SQL condition on the notebook index's files (``f``) and its parameters.
     Only fixed pieces of SQL are written; every name and value is a parameter."""
     if isinstance(node, Cond):
+        if node.op == "set":  # (a field alone: here, that it is filled in)
+            node = Cond(node.field, "not empty")
         kind = SPECIAL.get(node.field.casefold())
         return _special(kind, node) if kind else _property(node)
     if isinstance(node, Not):
@@ -368,6 +378,117 @@ def to_sql(node: Node) -> tuple[str, list[Any]]:
     return "(" + joiner.join(f"({sql})" for sql, _ in parts) + ")", [
         p for _, params in parts for p in params
     ]
+
+
+# -- the same conditions on data: an automation's event or a tool's result ------------------------
+
+_MISSING = object()
+
+
+def _field(data: Any, name: str) -> Any:
+    """A field of ``data`` by its name, with dots for one inside another (server.name, or
+    items.0 for the first of a list); upper and lower case do not matter. _MISSING: none."""
+    value = data
+    for part in name.split("."):
+        if isinstance(value, dict):
+            if part in value:
+                value = value[part]
+                continue
+            folded = {str(k).casefold(): v for k, v in value.items()}
+            if part.casefold() not in folded:
+                return _MISSING
+            value = folded[part.casefold()]
+        elif isinstance(value, list) and part.isdigit() and int(part) < len(value):
+            value = value[int(part)]
+        else:
+            return _MISSING
+    return value
+
+
+def _number(value: Any) -> float | None:
+    if isinstance(value, bool):
+        return None
+    try:
+        return float(str(value).replace(",", ".")) if str(value).strip() else None
+    except ValueError:
+        return None
+
+
+def _same(value: Any, wanted: Value) -> bool:
+    if wanted.kind == "number":
+        number = _number(value)
+        if number is not None:
+            return number == wanted.number
+    if wanted.kind == "date":
+        return str(value)[:10] == wanted.day
+    if wanted.kind == "bool":
+        if isinstance(value, bool):
+            return value is wanted.yes
+        said = str(value).strip().casefold()
+        if said in YES or said in NO:
+            return (said in YES) is wanted.yes
+    return str(value).strip().casefold() == wanted.text.strip().casefold()
+
+
+def _ordered(value: Any, op: str, wanted: Value) -> bool:
+    a: Any
+    b: Any
+    if wanted.kind == "number" and (number := _number(value)) is not None:
+        a, b = number, wanted.number
+    elif wanted.kind == "date":
+        a, b = str(value)[:10], wanted.day
+    elif wanted.kind == "bool":
+        return False
+    else:
+        a, b = str(value).casefold(), wanted.text.casefold()
+    return bool({"<": a < b, ">": a > b, "<=": a <= b, ">=": a >= b}[op])
+
+
+def _empty(value: Any) -> bool:
+    if value is _MISSING or value is None:
+        return True
+    if isinstance(value, str):
+        return not value.strip()
+    return isinstance(value, (list, dict, tuple)) and not value
+
+
+def _holds(cond: Cond, value: Any) -> bool:
+    if cond.op == "empty":
+        return _empty(value)
+    if cond.op == "not empty":
+        return not _empty(value)
+    if cond.op == "set":  # (there, and not empty, zero or no)
+        return value is not _MISSING and bool(value)
+    if value is _MISSING or value is None:
+        return cond.op == "is not"  # (only "is not" holds for what is not there)
+    wanted = cond.value
+    assert wanted is not None
+    items = value if isinstance(value, (list, tuple, set)) else None
+    if cond.op in ("is", "is not"):
+        same = any(_same(v, wanted) for v in items) if items is not None else _same(value, wanted)
+        return same if cond.op == "is" else not same
+    if cond.op == "has":
+        if items is not None:
+            return any(_same(v, wanted) for v in items)
+        if isinstance(value, dict):
+            return any(str(k).casefold() == wanted.text.casefold() for k in value)
+        return wanted.text.casefold() in str(value).casefold()
+    return _ordered(value, cond.op, wanted)
+
+
+def evaluate(node: Node, data: Any) -> bool:
+    """Whether ``data`` (an event's fields, a tool's result) matches the condition. A field
+    is looked up by its name (dots for nested ones); numbers compare as numbers, dates as
+    dates, the rest as text without case. As on notes: what is not there matches only
+    ``is not`` and ``is empty``. A field alone holds when it is there and not empty, zero or
+    no (``expiring``)."""
+    if isinstance(node, Cond):
+        return _holds(node, _field(data, node.field))
+    if isinstance(node, Not):
+        return not evaluate(node.node, data)
+    if isinstance(node, AllOf):
+        return all(evaluate(child, data) for child in node.nodes)
+    return any(evaluate(child, data) for child in node.nodes)
 
 
 # -- sorting and showing ---------------------------------------------------------------------------

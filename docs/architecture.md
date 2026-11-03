@@ -148,7 +148,14 @@ the kill switch) and are enabled by default. Free or local, no API keys except w
   `only_if`). They run through the dispatcher like any tool call; while a rule runs, an
   `AutomationUI` answers confirmations - yes only for the tools approved for that rule
   (`allow`), so nothing that normally asks first runs unapproved. Rules run only in the
-  primary core; an automation started by another one stops at depth 3.
+  primary core; an automation started by another one stops at depth 3. A condition written
+  the old way (one `field op value` with spaces around `== != < <= > >= ~`, or a field
+  alone) is checked as it always was; one with and, or, not (und, oder, nicht), brackets or
+  the words is, has, is empty goes to the notes' query language: `query.parse`, then
+  `query.evaluate` on the event's fields or the tool's result (dotted names, numbers as
+  numbers, dates as dates, text without case; `==` and `~` are its aliases of is and has).
+  A new rule whose condition or `only_if` cannot be read is refused; one already saved just
+  never holds. Template `weekly-open-notes` runs `notes.query` on Fridays.
 
 - *Your PC and tech:* `apps` (Start-menu programs via `os.startfile`, windows via the Win32
   API through ctypes - no extra packages; with `ask_first_open: true` the first start of

@@ -41,6 +41,7 @@ from starlight.core.jsonfile import load_json, save_json
 from starlight.core.permissions import Permission
 from starlight.core.schedule import ScheduleError, parse_schedule
 from starlight.core.ui import current_ui
+from starlight.notebook import query
 
 NAME = re.compile(r"^[a-z0-9][a-z0-9_-]{0,40}$")
 MAX_DEPTH = 3  # an automation triggering another one, at most this deep
@@ -64,9 +65,12 @@ class Action(BaseModel):
     only_if: str = ""  # skip unless the previous result matches, e.g. "count > 0"
 
     @model_validator(mode="after")
-    def _one_kind(self) -> Action:
+    def _one_kind(self, info: ValidationInfo) -> Action:
         if sum(bool(x) for x in (self.tool, self.ask, self.say)) != 1:
             raise ValueError("an action is exactly one of: tool, ask, say")
+        problem = condition_problem(self.only_if)
+        if problem and (info.context or {}).get(NEW_RULE):
+            raise ValueError(f"only_if cannot be read: {problem}")
         return self
 
     def describe(self) -> str:
@@ -103,6 +107,9 @@ class Rule(BaseModel):
             raise ValueError("a name is lowercase letters, digits, - or _ (max 40)")
         if bool(self.when) == bool(self.on):
             raise ValueError("a rule has either a schedule (when) or an event (on)")
+        problem = condition_problem(self.condition)
+        if problem and (info.context or {}).get(NEW_RULE):
+            raise ValueError(f"the condition cannot be read: {problem}")
         if self.when:
             try:
                 parse_schedule(self.when)
@@ -186,6 +193,20 @@ TEMPLATES: dict[str, dict[str, Any]] = {
                 "say": "{result.total} flashcard(s) are waiting for you today. Say 'quiz me', "
                 "or study them in Notes, Cards.",
                 "only_if": "total > 0",
+            },
+        ],
+    },
+    "weekly-open-notes": {
+        "when": "friday 15:40",
+        "actions": [
+            {
+                "tool": "notes.query",
+                "args": {"where": "status is open or status is doing", "sort": "due", "limit": 20},
+            },
+            {
+                "say": "{result.count} note(s) still say status: open or doing. Say 'show my "
+                "open notes' to go through them.",
+                "only_if": "count > 0",
             },
         ],
     },
@@ -533,7 +554,8 @@ class AutomationsModule(Module):
         """Make an automation. Trigger: `when` is a schedule ("weekdays 7:30", "every 2
         hours", "monday 9am") OR `on` is an event name ("network.server_down",
         "calendar.soon", "sensors.drive_added"; all of them: automations.events) with an
-        optional `condition` on its fields ("server == nas" for network.server_down).
+        optional `condition` on its fields ("server == nas" for network.server_down; several
+        with and, or, not: "server is nas or server is router").
         Actions, run in this order: `tool` (a tool name like "briefing.send", with
         `args`), then `ask` (a question for the assistant), then `say` (a message to you;
         may contain {result} and {event.<field>}). Asks for confirmation before saving."""
@@ -771,10 +793,44 @@ def _lookup(data: Any, path: str) -> Any:
     return value
 
 
+# and, or, not (also in German) or a bracket: several conditions, read by the query language
+_LOGIC = re.compile(r"(?<![\w-])(?:and|or|not|und|oder|nicht)(?![\w-])|[()]", re.IGNORECASE)
+
+
+def _old_style(text: str) -> bool:
+    """One `field op value` with spaces around the op, or a field alone: read as it always
+    was (below), so every rule written before keeps its meaning."""
+    if _LOGIC.search(text):
+        return False
+    return any(f" {op} " in text for op in _OPS) or bool(re.fullmatch(r"[\w.\-]+", text))
+
+
+def condition_problem(condition: str) -> str:
+    """Why a condition cannot be read (plain words), or "" when it can."""
+    text = condition.strip()
+    if not text or _old_style(text):
+        return ""
+    try:
+        query.parse(text)
+    except query.QueryError as exc:
+        return str(exc)
+    return ""
+
+
 def matches(condition: str, data: Any) -> bool:
     """`field op value` (op: == != < <= > >= ~ for "contains"), or just `field` (true when
-    present and not empty/zero). Numbers compare as numbers, everything else as text."""
+    present and not empty/zero). Numbers compare as numbers, everything else as text.
+
+    Several conditions with and, or, not and brackets (und, oder, nicht), and the words is,
+    is not, has, is empty, are read by the notes' query language (starlight.notebook.query):
+    `count > 0 and server is nas`, `not (status is done)`. A condition it cannot read never
+    holds (a new rule with one is refused when it is saved)."""
     text = condition.strip()
+    if not _old_style(text):
+        try:
+            return query.evaluate(query.parse(text), data)
+        except query.QueryError:
+            return False
     # The first operator of _OPS found in the text (with a space on each side) splits it.
     # The spaces keep "<" from matching inside "<=", so the order of _OPS only decides
     # which operator wins when a condition contains two.
