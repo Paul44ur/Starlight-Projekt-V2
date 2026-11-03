@@ -678,7 +678,8 @@ automation template `daily-flashcards` tells you each evening when cards are wai
 
 **Settings** lists the modules, each with an on/off switch; open one to
 choose for each of its tools whether it runs on its own, asks first or is blocked (the search
-finds modules and tools), and pair your phone there. **Memory**
+finds modules and tools), and pair your phone there. At the top, **In plain words** shows in
+colour what runs on its own (green), what asks first (amber) and what never runs (red). **Memory**
 lets you read, correct and delete what Starlight remembers, and approve or undo the skills
 it learned. ◐ switches between light, dark and your system's theme.
 

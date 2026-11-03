@@ -69,11 +69,19 @@ button.icon { padding: 4px 8px; font-size: var(--fs-sm); background: none; borde
 button.icon:hover { color: var(--text); border-color: var(--border); background: none; }
 button.quiet { background: none; border-color: transparent; color: var(--dim); }
 button.quiet:hover { color: var(--text); background: var(--accent-tint); border-color: transparent; }
-input[type=text], input[type=search], input[type=password], textarea, select {
+/* A dangerous action in a list (Remove): a red outline, filled only when pointed at. */
+button.danger-outline { color: var(--bad); background: none; border-color: var(--bad); }
+button.danger-outline:hover { color: #fff; background: var(--danger); border-color: var(--danger); }
+input[type=text], input[type=search], input[type=password], input[type=number], input[type=email],
+input[type=url], input[type=tel], input[type=date], input[type=time], input[type=datetime-local],
+textarea, select {
   background: var(--panel2); border: 1px solid var(--border); border-radius: var(--r-2); padding: 8px 10px;
   transition: border-color var(--dur) var(--ease), box-shadow var(--dur) var(--ease); }
-input[type=text]:focus, input[type=search]:focus, input[type=password]:focus, textarea:focus, select:focus {
-  border-color: var(--accent); }
+input:focus, textarea:focus, select:focus { border-color: var(--accent); }
+/* (a date or time box draws its picker icon dark; light it up in the dark look) */
+:root:not([data-theme="light"]) input::-webkit-calendar-picker-indicator { filter: invert(.8); }
+@media (prefers-color-scheme: light) {
+  :root:not([data-theme="dark"]) input::-webkit-calendar-picker-indicator { filter: none; } }
 .pill { display: inline-block; font-size: var(--fs-xs); padding: 2px 8px; border-radius: var(--r-pill);
         border: 1px solid var(--border); white-space: nowrap; }
 .pill.on { color: #06240f; background: var(--ok); border-color: var(--ok); }

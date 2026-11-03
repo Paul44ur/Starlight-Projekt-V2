@@ -39,7 +39,9 @@
   .tname { font-family: ui-monospace, Consolas, "Cascadia Mono", monospace; font-size: 13px; }
   .tdesc { color: var(--dim); font-size: 12.5px; }
   /* Runs / Asks first / Blocked: one choice, the chosen one lit. */
-  .seg { display: inline-flex; flex: none; border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
+  .seg { display: inline-flex; flex: none; border: 1px solid var(--border); border-radius: var(--r-2); overflow: hidden; }
+  /* (the box clips what sticks out, so the keyboard's focus ring goes inside the button) */
+  .seg button:focus-visible { outline-offset: -3px; }
   .seg button { border: 0; border-radius: 0; padding: 3px 10px; font-size: 12.5px; background: var(--panel2);
                 color: var(--dim); }
   .seg button + button { border-left: 1px solid var(--border); }
@@ -47,8 +49,10 @@
   .seg button.sel.safe { background: var(--ok); color: #06240f; }
   .seg button.sel.confirm { background: var(--warn); color: #2b1d00; }
   .seg button.sel.blocked { background: var(--danger); color: #fff; }
-  .reset { flex: none; width: 46px; font-size: 12px; padding: 0; background: none; border: 0; color: var(--accent); }
-  .reset:hover { text-decoration: underline; }
+  /* wide enough for "Zurücksetzen"; the column stays when there is nothing to reset */
+  .reset { flex: none; width: 7.5em; text-align: right; font-size: 12px; padding: 0; background: none; border: 0;
+           color: var(--accent); }
+  .reset:hover { text-decoration: underline; background: none; }
   /* An on/off switch */
   .switch { position: relative; display: inline-block; width: 38px; height: 22px; flex: none; }
   .switch input { opacity: 0; width: 0; height: 0; position: absolute; }
@@ -62,8 +66,22 @@
   details.advanced { margin-top: 12px; border-top: 1px solid var(--border); padding-top: 10px; }
   details.advanced summary { cursor: pointer; color: var(--dim); font-size: 13px; }
   .plain h3 { font-size: 14px; margin: 12px 0 4px; }
-  .plain .names { display: flex; flex-wrap: wrap; gap: 4px; }
-  .plain .names code { font-size: 12px; }
+  .plain .names { display: flex; flex-wrap: wrap; gap: 6px; }
+  .plain .names code { font-size: 12.5px; padding: 2px 9px; border-radius: var(--r-pill);
+                       border: 1px solid var(--border); background: var(--panel2); }
+  /* each group in its colour, as the Runs / Asks first / Blocked buttons below */
+  .plain h3.safe, .plain h3.confirm, .plain h3.blocked { display: flex; align-items: center; gap: 8px; }
+  .plain h3.safe::before, .plain h3.confirm::before, .plain h3.blocked::before {
+    content: ""; width: 9px; height: 9px; border-radius: 50%; flex: none; }
+  .plain h3.safe::before { background: var(--ok); }
+  .plain h3.confirm::before { background: var(--warn); }
+  .plain h3.blocked::before { background: var(--bad); }
+  .plain .names.safe code { border-color: color-mix(in srgb, var(--ok) 50%, transparent);
+                            background: color-mix(in srgb, var(--ok) 12%, transparent); }
+  .plain .names.confirm code { border-color: color-mix(in srgb, var(--warn) 55%, transparent);
+                               background: color-mix(in srgb, var(--warn) 13%, transparent); }
+  .plain .names.blocked code { border-color: color-mix(in srgb, var(--bad) 50%, transparent);
+                               background: color-mix(in srgb, var(--bad) 11%, transparent); }
   .plain .practice { display: flex; gap: 10px; align-items: center; margin-top: 12px; }
   /* Safety limits: a level, then one row per protection. */
   .seg.levels { margin: 6px 0 4px; }
@@ -107,7 +125,7 @@
   <div class="card local-only" id="devices-card">
     <h2>Your phone and other devices</h2>
     <p class="dim small" id="remote-state">…</p>
-    <div class="row"><button id="pair" class="ok">Show a pairing code</button><span id="code"></span>
+    <div class="row"><button id="pair" class="primary">Show a pairing code</button><span id="code"></span>
       <span class="dim small" id="code-note"></span></div>
     <table id="devices"><thead><tr><th>Device</th><th>Paired</th><th>Last used</th><th></th></tr></thead><tbody></tbody></table>
   </div>
@@ -186,16 +204,16 @@ async function load() {
 function plain(perms) {
   const box = document.getElementById("plain");
   box.replaceChildren();
-  const group = (title, names, empty) => {
-    box.appendChild(el("h3", "", title));
-    const list = el("div", "names");
+  const group = (title, names, empty, kind = "") => {
+    box.appendChild(el("h3", kind, title));
+    const list = el("div", "names " + kind);
     if (!names.length) list.appendChild(el("span", "dim small", empty));
     names.forEach(n => list.appendChild(el("code", "", n)));
     box.appendChild(list);
   };
-  group("Runs without asking", perms.summary.safe, "nothing");
-  group("Asks you first", perms.summary.confirm, "nothing");
-  group("Never runs", perms.summary.blocked, "nothing");
+  group("Runs without asking", perms.summary.safe, "nothing", "safe");
+  group("Asks you first", perms.summary.confirm, "nothing", "confirm");
+  group("Never runs", perms.summary.blocked, "nothing", "blocked");
   const limits = Object.entries(perms.limits || {}).map(([p, l]) => `${p}: ${l}`);
   group("Limits (past them it asks first)", limits, "none — set them under Safety limits below");
   const timed = Object.entries(perms.timed || {}).map(([p, m]) => `${p}: ${m} more min`);
@@ -240,7 +258,8 @@ function moduleRow(m, list, open) {
   title.appendChild(el("span", "mname", m.name));
   if (m.outside) { const tag = el("span", "pill warn", "not from Starlight"); tag.title = m.outside; title.appendChild(tag); }
   const own = toolsOf(m.name);
-  const count = el("span", "mcount", m.status === "loaded" ? `${own.length} tools` : m.status);
+  const count = el("span", "mcount", m.status !== "loaded" ? (m.status === "disabled" ? "off" : m.status)
+    : own.length === 1 ? "1 tool" : `${own.length} tools`);
   const asks = own.filter(t => t.now === "confirm").length, blocked = own.filter(t => t.now === "blocked").length;
   if (asks) { count.append(" · "); count.appendChild(el("b", "", `${asks} ask first`)); }
   if (blocked) { count.append(" · "); count.appendChild(el("b", "blocked", `${blocked} blocked`)); }
@@ -317,7 +336,7 @@ async function loadDevices() {
   data.devices.forEach(d => {
     const row = el("tr");
     row.append(el("td", "", d.name), el("td", "small", d.paired), el("td", "small", d.last_seen || "never"));
-    const act = el("td"); const b = el("button", "danger", "Remove");
+    const act = el("td"); const b = el("button", "danger-outline", "Remove");
     b.onclick = async () => {
       if (!confirm("Remove " + d.name + "? It can no longer use Starlight.")) return;
       try { await api("/api/devices/" + d.id, { method: "DELETE" }); } catch (e) { toast(e.message); }

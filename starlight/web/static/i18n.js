@@ -144,7 +144,7 @@
     "— actions that change something (sending mail, clicking, running code, commands …) are described, not done. Looking things up still works.": "— Aktionen, die etwas ändern (Mail senden, klicken, Code ausführen, Befehle …), werden beschrieben, nicht ausgeführt. Nachschlagen geht weiter.",
     "Modules and what they may do": "Module und was sie dürfen",
     "Turn a module off and its tools are gone. Open one to choose, tool by tool, whether it": "Schalte ein Modul aus, und seine Werkzeuge sind weg. Klapp eines auf, um je Werkzeug zu wählen, ob es",
-    "runs": "läuft", "on its own,": "von selbst,", "asks first": "erst fragt", ", or is": "oder", "blocked": "gesperrt ist",
+    "runs": "läuft", "on its own,": "von selbst,", "asks first": "erst fragt", ", or is": " oder", "blocked": "gesperrt ist",
     ". Changes are saved in config/permissions.chat.yaml.": ". Änderungen landen in config/permissions.chat.yaml.",
     "Advanced: one rule for several tools": "Erweitert: eine Regel für mehrere Werkzeuge", "A pattern such as": "Ein Muster wie",
     '. "Default" removes the rule again.': '. „Standard" entfernt die Regel wieder.',
@@ -355,6 +355,15 @@
     [/^Installed (.+) \((\d+) MB\)$/, "$1 installiert ($2 MB)"],
     [/^(\d+) protections are set differently below\.$/, "$1 Schutzmaßnahmen sind unten anders eingestellt."],
     [/^([a-z0-9_]+) is off$/, "$1 ist aus"],
+    // the modules on the Settings page
+    [/^1 tool$/, "1 Werkzeug"],
+    [/^(\d+) tools$/, "$1 Werkzeuge"],
+    [/^1 ask first$/, "1 fragt erst"],
+    [/^(\d+) ask first$/, "$1 fragen erst"],
+    [/^(\d+) blocked$/, "$1 gesperrt"],
+    [/^(\d+) of (\d+) modules on · (\d+) tools: (\d+) ask first, (\d+) blocked, the rest run on their own$/,
+     "$1 von $2 Modulen an · $3 Werkzeuge: $4 mit Nachfrage, $5 gesperrt, der Rest läuft von selbst"],
+    [/^(\d+) of (\d+) modules match$/, "$1 von $2 Modulen passen"],
     [/^in (\d+) days$/, "in $1 Tagen"],
     [/^in (\d+) months$/, "in $1 Monaten"],
     [/^in (\d+) years$/, "in $1 Jahren"],
@@ -371,15 +380,20 @@
   const KEEP = ".msg .body, pre, code, textarea, [translate=no], .notranslate";
 
   function swap(text) {
-    const key = text.trim();
-    if (!key) return null;
-    let out = Object.prototype.hasOwnProperty.call(DE, key) ? DE[key] : undefined;
+    const raw = text.trim();
+    if (!raw) return null;
+    // A sentence that wraps in the page's source has a line break and spaces inside it:
+    // look it up with single spaces (the exact text first: a few keys keep two spaces).
+    const has = (k) => Object.prototype.hasOwnProperty.call(DE, k);
+    const key = has(raw) ? raw : raw.replace(/\s+/g, " ");
+    let out = has(key) ? DE[key] : undefined;
     if (out === undefined) {
       for (const [pattern, replacement] of PATTERNS) {
         if (pattern.test(key)) { out = key.replace(pattern, replacement); break; }
       }
     }
-    return out === undefined ? null : text.replace(key, out);
+    if (out === undefined) return null;
+    return text.slice(0, text.length - text.trimStart().length) + out + text.slice(text.trimEnd().length);
   }
   window.starlightTranslate = (text) => swap(String(text)) ?? String(text);
 

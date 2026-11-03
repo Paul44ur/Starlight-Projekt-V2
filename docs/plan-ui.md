@@ -57,9 +57,9 @@ first, then the launcher (first impression), then the chat (daily driver).
 |---|---|---|---|---|
 | U1 | Design-system foundation (scales, tokens, shared utilities) | M | – | **done** (3771c6d) |
 | U2 | The launcher window (tkinter polish) | M | U1 (tokens as reference) | **done** (d5bac3c) |
-| U3 | The web chat page (messages, composer, streaming) | L | U1 | **done** |
-| U4 | Settings page (cards, forms, the permission UI) | M | U1 | **next** |
-| U5 | Automations, Memory, Activity, Kill, Pair | M | U1 | open |
+| U3 | The web chat page (messages, composer, streaming) | L | U1 | **done** (f5eb064) |
+| U4 | Settings page (cards, forms, the permission UI) | M | U1 | **done** |
+| U5 | Automations, Memory, Activity, Kill, Pair | M | U1 | **next** |
 | U6 | Notes page: light consistency pass | S | U1 | open |
 | U7 | Responsive / phone pass (chat, settings, memory) | M | U3, U4 | open |
 | U8 | Micro-interactions and feedback (toasts, loading, focus, shortcuts) | M | U1 | open |
@@ -85,6 +85,14 @@ the window shrinks, unless you scrolled up (it used to slide out of view, and a 
 longer than what streamed was not followed); the message box is one rounded field, one line
 at rest, with Send as the main button; a calm start for a new or private conversation (its
 texts had no German); light `--bad` darkened for readable red text. `tests/test_chat_look.py`.
+U4 built: a number box (Safety limits) was white with light text in the dark look: every
+text-like field now shares one style (`style.css`). In plain words shows each group's tools as
+chips in its colour; "1 tool"; a module that is off says "off"; the pairing code is the main
+button and Remove a red outline (`button.danger-outline`); the segmented buttons' focus ring
+sits inside (their box clipped it); the Reset column fits "Zurücksetzen". German: `i18n.js`
+now matches a sentence that wraps in a page's source (ten existing translations on Activity,
+Memory and Settings never applied), and the module counts and summary have German.
+`tests/test_settings_look.py`.
 
 ## Blocks
 
