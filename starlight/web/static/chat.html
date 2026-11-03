@@ -224,6 +224,20 @@
     /* the four buttons stay small, so the message box keeps room for the text */
     #form > .icon { padding: 4px 4px; font-size: 15px; }
     #send { padding: 0 13px; }
+    .drawer-nav a { padding: 8px 2px; }
+  }
+  @media (pointer: coarse) {
+    /* in the message box, 36 px wide (and 44 tall): four of them leave room for the text */
+    #form > .icon { min-width: 36px; }
+    /* small on purpose: the Undo in a changed-file chip, a code block's Copy */
+    .change button, .md .md-code-bar button { min-height: 32px; }
+    .drawer-nav a { padding-block: 12px; }
+  }
+  /* a narrow phone: Send is an arrow (Stop a square); the word stays for screen readers */
+  @media (max-width: 480px) {
+    #send { font-size: 0; width: 46px; padding: 0; }
+    #send::before { content: "➤"; font-size: 18px; }
+    #send.stop::before { content: "■"; }
   }
 </style>
 </head>

@@ -840,6 +840,8 @@ What is different on the phone:
   new device sends you a notice everywhere.
 
 On the phone, once the page is on the home screen:
+- Every button is big enough for a finger, and on a narrow phone **➤** sends (■ stops
+  an answer).
 - **📷** takes a photo and offers *Read the text*, *Translate it* or *Describe it* (with a
   model that understands pictures).
 - **Share to Starlight**: in another app's share menu, a link, some text or a file goes

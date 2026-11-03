@@ -119,6 +119,18 @@ th { color: var(--dim); font-weight: 600; font-size: var(--fs-xs); text-transfor
          border: 1px solid var(--border); border-radius: var(--r-3); padding: 8px 14px; box-shadow: var(--shadow-2);
          z-index: 50; }
 @media (max-width: 760px) { header.top nav { gap: 8px; font-size: 13px; } }
+/* A touch screen (a phone, a tablet): every control at least 44 px, so a finger hits it; the
+   mouse look stays as it is. At no weight (:where), so a page can make a small control, such
+   as a chip's button, a little smaller on purpose. */
+@media (pointer: coarse) {
+  :where(button, select, .button-link, input[type=text], input[type=search], input[type=password],
+         input[type=number], input[type=email], input[type=url], input[type=tel], input[type=date],
+         input[type=time], input[type=datetime-local], input:not([type])) { min-height: 44px; }
+  :where(button.icon) { min-width: 44px; }
+  :where(.button-link) { display: inline-flex; align-items: center; }
+  /* a link in the top bar: a taller place to tap, while the bar keeps its height */
+  header.top nav a { padding-block: 12px; margin-block: -12px; }
+}
 /* Read by screen readers, not shown. */
 .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden;
            clip: rect(0 0 0 0); white-space: nowrap; border: 0; }

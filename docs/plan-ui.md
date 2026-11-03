@@ -60,9 +60,9 @@ first, then the launcher (first impression), then the chat (daily driver).
 | U3 | The web chat page (messages, composer, streaming) | L | U1 | **done** (f5eb064) |
 | U4 | Settings page (cards, forms, the permission UI) | M | U1 | **done** (1af5cf7) |
 | U5 | Automations, Memory, Activity, Kill, Pair | M | U1 | **done** (0f9b0c1) |
-| U6 | Notes page: light consistency pass | S | U1 | **done** |
-| U7 | Responsive / phone pass (chat, settings, memory) | M | U3, U4 | **next** |
-| U8 | Micro-interactions and feedback (toasts, loading, focus, shortcuts) | M | U1 | open |
+| U6 | Notes page: light consistency pass | S | U1 | **done** (72fddd5) |
+| U7 | Responsive / phone pass (chat, settings, memory) | M | U3, U4 | **done** |
+| U8 | Micro-interactions and feedback (toasts, loading, focus, shortcuts) | M | U1 | **next** |
 | U9 | Icons and brand (one icon set, logo, favicons, kill/pair screens) | S–M | U1 | open |
 | U10 | Terminal chat refinement (ANSI theme, Markdown, spinner) | M | – | open |
 
@@ -107,6 +107,15 @@ marks keep 3 or 4 px. A screenshot diff showed no visible change beyond a pixel 
 A ticked task in the editor was blue, green everywhere else; it is green now too. Checked the
 three panes and the editor's toolbar: they hold up. `tests/test_notes_look.py` keeps it so.
 Left for later: "mentioned without a link" cuts its snippet inside the highlighted word.
+U7 built: measured on emulated phones (Galaxy S8, 360 px; Pixel 7, 412 px; touch): no page
+scrolled sideways, but almost every control was too small for a finger (buttons 37 px, icons
+30, the Runs / Asks first / Blocked buttons 25, switches 22, Reset 18). On a touch screen
+(`pointer: coarse`) every control is now at least 44 px, at no weight (`:where`), so a page can
+keep a chip's button smaller on purpose; the mouse look is unchanged. The top bar's links get a
+taller place to tap without the bar growing; Settings' switches are bigger with a 44 px tap
+area; the message box's four buttons are 36 px wide (four at 44 would squeeze the text), and on
+a narrow phone Send is ➤ (Stop ■), its word kept for screen readers. The chat's bar stays one
+row. `tests/test_phone_look.py`.
 
 ## Blocks
 
