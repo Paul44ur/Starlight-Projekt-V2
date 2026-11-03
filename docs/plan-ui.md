@@ -56,9 +56,9 @@ first, then the launcher (first impression), then the chat (daily driver).
 | Block | What | Size | Needs | State |
 |---|---|---|---|---|
 | U1 | Design-system foundation (scales, tokens, shared utilities) | M | – | **done** (3771c6d) |
-| U2 | The launcher window (tkinter polish) | M | U1 (tokens as reference) | **done** |
-| U3 | The web chat page (messages, composer, streaming) | L | U1 | **next** |
-| U4 | Settings page (cards, forms, the permission UI) | M | U1 | open |
+| U2 | The launcher window (tkinter polish) | M | U1 (tokens as reference) | **done** (d5bac3c) |
+| U3 | The web chat page (messages, composer, streaming) | L | U1 | **done** |
+| U4 | Settings page (cards, forms, the permission UI) | M | U1 | **next** |
 | U5 | Automations, Memory, Activity, Kill, Pair | M | U1 | open |
 | U6 | Notes page: light consistency pass | S | U1 | open |
 | U7 | Responsive / phone pass (chat, settings, memory) | M | U3, U4 | open |
@@ -77,6 +77,14 @@ at 2.4:1 and 3.4:1); the status page's main buttons large, its tools under **Too
 outlined; hover shades; a thin scrollbar; a focus ring only after Tab. The status page was
 English after its first update even on a German Windows: its texts now go through `tr()`
 and `trf()`, with German lines. `tests/test_launcher_look.py` guards all of it.
+U3 built: messages in the 900 px column of the message box, softer bubbles, "Starlight" with
+its logo (your name only for screen readers); older answers show Copy and Branch in a small
+bar when pointed at; a caret while an answer streams; a ↓ button back to the newest message
+(a dot when something new came); the page stays at the newest message when the box grows or
+the window shrinks, unless you scrolled up (it used to slide out of view, and a final answer
+longer than what streamed was not followed); the message box is one rounded field, one line
+at rest, with Send as the main button; a calm start for a new or private conversation (its
+texts had no German); light `--bad` darkened for readable red text. `tests/test_chat_look.py`.
 
 ## Blocks
 

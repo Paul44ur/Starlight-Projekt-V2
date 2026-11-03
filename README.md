@@ -482,7 +482,9 @@ is working, and for how long. While it writes, **Send** turns into **Stop** (or 
 your last question. Every answer has **Copy** (the text as written, Markdown
 included), and the latest one **Regenerate** (asks the same
 question again and replaces that answer); under it you see how fast it was written
-(tokens per second) and how long it took.
+(tokens per second) and how long it took. With a mouse, older answers show **Copy** and
+**Branch** when you point at them. Scrolled up to read? A **↓** button above the box brings
+you back to the newest message; a dot on it means something new arrived below.
 
 - **Edit** under your last question puts it back in the box: change it and press Enter,
   and that exchange is asked again (if that fails, the earlier one stays).

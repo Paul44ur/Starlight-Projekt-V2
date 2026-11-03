@@ -53,6 +53,7 @@ def test_the_window_and_the_pages_share_readable_colours() -> None:
         assert contrast(palette.accent, palette.bg) >= 4.5  # links
         assert contrast(palette.text, palette.panel) >= 4.5
         assert contrast(palette.dim, palette.panel) >= 4.5
+        assert contrast(palette.bad, palette.panel) >= 4.5  # red text (the kill switch)
     css = (STATIC / "style.css").read_text(encoding="utf-8")
     dark = css[css.index(":root {") : css.index("}", css.index(":root {"))]
     light = css[css.index(':root[data-theme="light"]') :]
@@ -68,6 +69,8 @@ def test_the_window_and_the_pages_share_readable_colours() -> None:
     assert token(dark, "danger") == gui.DARK.danger == gui.LIGHT.danger
     assert token(light, "accent") == gui.LIGHT.accent
     assert token(light, "on-accent") == gui.LIGHT.on_accent
+    assert token(light, "bad") == gui.LIGHT.bad
+    assert token(dark, "bad") == gui.DARK.bad
     # the light look chosen by the system (no data-theme) gets the same accent
     system = css[css.index("@media (prefers-color-scheme: light)") :]
     assert token(system[: system.index("}")], "accent") == gui.LIGHT.accent

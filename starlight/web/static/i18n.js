@@ -21,6 +21,12 @@
     // the chat
     "Starlight is not answering: the PC may be off or asleep.": "Starlight antwortet nicht: Der PC ist vielleicht aus oder im Ruhezustand.",
     "Wake the PC": "PC aufwecken", "connecting…": "verbinde…", "connected": "verbunden", "offline": "offline",
+    "you": "du", "Jump to the latest message": "Zur neuesten Nachricht springen",
+    "New conversation. Ask anything.": "Neues Gespräch. Frag einfach.",
+    "Private conversation": "Privates Gespräch",
+    "It is never saved and nothing is learned from it. It is gone when Starlight stops.": "Es wird nie gespeichert, und nichts daraus wird gelernt. Es ist weg, sobald Starlight anhält.",
+    "Starlight runs on this PC: nothing you say leaves it.": "Starlight läuft auf diesem PC: Nichts, was du sagst, verlässt ihn.",
+    "Type / for commands. Drop pictures or documents here to add them.": "Tippe / für Befehle. Zieh Bilder oder Dokumente hierher, um sie anzuhängen.",
     "practice mode · Off": "Übungsmodus · Aus", "Practice": "Übung", "private": "privat",
     "model paused · Resume": "Modell pausiert · Fortsetzen", "Paused ▶": "Pausiert ▶",
     "Kill switch": "Not-Aus", "Kill": "Stopp", "Resume": "Fortsetzen", "Send": "Senden", "Stop": "Stopp",
