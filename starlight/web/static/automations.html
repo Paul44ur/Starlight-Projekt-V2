@@ -362,7 +362,7 @@ async function load() {
     if (r.next) head.append(el("span", "dim small", "  next " + r.next));
     const actions = el("div", "actions");
     [["run", "Run now"], [r.enabled ? "disable" : "enable", r.enabled ? "Switch off" : "Switch on"], ["remove", "Delete"]]
-      .forEach(([a, label]) => { const b = el("button", a === "remove" ? "danger" : "", label); b.onclick = () => act(r.name, a); actions.appendChild(b); });
+      .forEach(([a, label]) => { const b = el("button", a === "remove" ? "danger-outline" : "", label); b.onclick = () => act(r.name, a); actions.appendChild(b); });
     row.append(head, actions, el("div", "does", r.does));
     if (r.may_run_without_asking.length) row.appendChild(el("div", "does dim small", "Runs without asking: " + r.may_run_without_asking.join(", ")));
     rules.appendChild(row);

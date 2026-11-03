@@ -74,10 +74,12 @@ button.danger-outline { color: var(--bad); background: none; border-color: var(-
 button.danger-outline:hover { color: #fff; background: var(--danger); border-color: var(--danger); }
 input[type=text], input[type=search], input[type=password], input[type=number], input[type=email],
 input[type=url], input[type=tel], input[type=date], input[type=time], input[type=datetime-local],
-textarea, select {
+textarea, select,
+:where(input:not([type])) {  /* (a box made without a type is a text box too; :where() lets a page's own style win) */
   background: var(--panel2); border: 1px solid var(--border); border-radius: var(--r-2); padding: 8px 10px;
   transition: border-color var(--dur) var(--ease), box-shadow var(--dur) var(--ease); }
 input:focus, textarea:focus, select:focus { border-color: var(--accent); }
+input[type=checkbox], input[type=radio] { accent-color: var(--accent); }
 /* (a date or time box draws its picker icon dark; light it up in the dark look) */
 :root:not([data-theme="light"]) input::-webkit-calendar-picker-indicator { filter: invert(.8); }
 @media (prefers-color-scheme: light) {

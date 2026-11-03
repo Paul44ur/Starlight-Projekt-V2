@@ -58,9 +58,9 @@ first, then the launcher (first impression), then the chat (daily driver).
 | U1 | Design-system foundation (scales, tokens, shared utilities) | M | – | **done** (3771c6d) |
 | U2 | The launcher window (tkinter polish) | M | U1 (tokens as reference) | **done** (d5bac3c) |
 | U3 | The web chat page (messages, composer, streaming) | L | U1 | **done** (f5eb064) |
-| U4 | Settings page (cards, forms, the permission UI) | M | U1 | **done** |
-| U5 | Automations, Memory, Activity, Kill, Pair | M | U1 | **next** |
-| U6 | Notes page: light consistency pass | S | U1 | open |
+| U4 | Settings page (cards, forms, the permission UI) | M | U1 | **done** (1af5cf7) |
+| U5 | Automations, Memory, Activity, Kill, Pair | M | U1 | **done** |
+| U6 | Notes page: light consistency pass | S | U1 | **next** |
 | U7 | Responsive / phone pass (chat, settings, memory) | M | U3, U4 | open |
 | U8 | Micro-interactions and feedback (toasts, loading, focus, shortcuts) | M | U1 | open |
 | U9 | Icons and brand (one icon set, logo, favicons, kill/pair screens) | S–M | U1 | open |
@@ -93,6 +93,14 @@ sits inside (their box clipped it); the Reset column fits "Zurücksetzen". Germa
 now matches a sentence that wraps in a page's source (ten existing translations on Activity,
 Memory and Settings never applied), and the module counts and summary have German.
 `tests/test_settings_look.py`.
+U5 built: a text box made without a type got no style (white, its text unreadable in the dark
+look): the pairing code on Pair, and an automation's condition value; `style.css` now styles
+them too, at no weight (`:where`), so a page's own style still wins (the note title). Check
+boxes and radio buttons in the accent. Delete in lists (memories, skills, automations) is a
+red outline; Import a skill is a real button (the keyboard could not reach the hidden file
+box); Export sizes like the buttons; the approval waiting for you has an amber edge; Pair is
+a card with the code in a monospaced box and Pair as the main button; Kill uses --danger.
+`tests/test_pages_look.py`.
 
 ## Blocks
 

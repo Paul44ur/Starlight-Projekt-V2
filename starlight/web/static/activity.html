@@ -9,6 +9,9 @@
 <script src="/i18n.js"></script>
 <style>
   .filters { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin-bottom: 10px; }
+  /* the one card that waits for you: an amber edge */
+  #approvals { border-color: color-mix(in srgb, var(--warn) 60%, var(--border));
+               box-shadow: inset 4px 0 0 var(--warn), var(--shadow-1); }
   .filters button.on { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
   .entry { display: grid; grid-template-columns: 9.5em 7.5em 1fr; gap: 10px; padding: 7px 0;
            border-bottom: 1px solid var(--border); align-items: baseline; }

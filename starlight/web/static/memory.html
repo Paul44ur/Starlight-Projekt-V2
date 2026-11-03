@@ -17,9 +17,10 @@
   .skill pre { white-space: pre-wrap; background: var(--panel2); padding: 8px; border-radius: 8px;
                font-size: 13px; max-height: 240px; overflow: auto; }
   body.remote .local-only { display: none; }
-  label.button-like { cursor: pointer; }
-  a.button-link { padding: 6px 12px; border: 1px solid var(--border); border-radius: 8px;
-                  background: var(--panel2); color: var(--text); font-size: 14px; }
+  /* Export: a link that looks and sizes like the buttons beside it */
+  a.button-link { display: inline-block; padding: 6px 12px; border: 1px solid var(--border);
+                  border-radius: var(--r-2); background: var(--panel2); color: var(--text); }
+  a.button-link:hover { border-color: var(--accent); text-decoration: none; }
   .views { display: flex; gap: 6px; margin: 8px 0 2px; flex-wrap: wrap; }
   .views button.on { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
   .month { font-size: 12px; text-transform: uppercase; letter-spacing: .05em; color: var(--dim);
@@ -46,8 +47,8 @@
     <h2>Skills it learned</h2>
     <p class="dim small">Drafts are only used after you approve them<span class="local-only"> here</span>.
       Every change is kept, so "Undo" brings back the version before.</p>
-    <div class="row local-only"><label class="button-like"><input type="file" id="importskill" accept=".json" hidden />
-      <span class="pill">⤒ Import a skill</span></label>
+    <div class="row local-only"><input type="file" id="importskill" accept=".json" hidden />
+      <button type="button" id="importbutton">⤒ Import a skill</button>
       <span class="dim small">A file someone exported: it comes in as a draft for you to read and approve.</span></div>
     <div id="skills"></div>
   </div>
@@ -88,7 +89,7 @@ async function loadMemories() {
       save.onclick = async () => { try { await api("/api/memory/" + memoryPath(m.id), { method: "PUT", body: { content: area.value } }); toast("Saved"); loadMemories(); } catch (e) { toast(e.message); } };
       text.replaceWith(area); row.replaceChildren(save);
     };
-    const del = el("button", "danger", "Delete");
+    const del = el("button", "danger-outline", "Delete");
     del.onclick = async () => { if (confirm("Forget this?")) { try { await api("/api/memory/" + memoryPath(m.id), { method: "DELETE" }); } catch (e) { toast(e.message); } loadMemories(); } };
     row.append(edit, del); item.appendChild(row); box.appendChild(item);
   });
@@ -140,7 +141,7 @@ async function loadSkills() {
       share.href = `/api/skills/${encodeURIComponent(s.name)}/export`; share.download = "";
       share.className = "button-link";
       row.appendChild(share);
-      const del = el("button", "danger", "Delete");
+      const del = el("button", "danger-outline", "Delete");
       del.onclick = async () => {
         if (!confirm("Delete the skill " + s.name + "?")) return;
         try { await api("/api/skills/" + encodeURIComponent(s.name), { method: "DELETE" }); } catch (e) { toast(e.message); }
@@ -153,6 +154,8 @@ async function loadSkills() {
   if (!data.skills.length) box.appendChild(el("div", "dim small", "No skills yet. Starlight drafts one when the same kind of task works twice."));
 }
 
+// (a real button, so the keyboard reaches it; the file box itself stays hidden)
+document.getElementById("importbutton").onclick = () => document.getElementById("importskill").click();
 document.getElementById("importskill").onchange = async (e) => {
   const file = e.target.files[0];
   if (!file) return;
