@@ -622,6 +622,15 @@ the name when a title with "/" is no path. On the page, a save's changes (ISO da
 repeating task's next one) reach the editor also when typing went on: the editor records
 the changes since the save started (`mark`) and maps the save's changes over them
 (`rebase`, CodeMirror's `ChangeSet.map`).
+The Notes page is in parts (2026-11-03): `notes.html` holds only the page, `notes.css` its
+look, and six plain scripts its workings, loaded in this order and sharing their top-level
+names: `notes-page.js` (state, helpers, the list, the address, one note), `notes-tasks.js`
+(Tasks and the task board), `notes-info.js` (the right side, lists and the start page),
+`notes-views.js` (boards, flashcards, the whole graph), `notes-find.js` (Ctrl+K, keys, a new
+note) and `notes-edit.js` (writing, the journal strip, Ask Starlight, links, memos,
+versions, the start). Where this file says "notes.html", it means the page with these
+parts. The app serves `/notes.css` and the `/notes-….js` files listed in `NOTES_SCRIPTS`
+(also `notes-editor.js`), nothing else of that name.
 
 **Safety limits you set (`core/safety.py`).** Settings -> Safety limits chooses a level
 (strict, balanced, relaxed) and any of 29 switches on top, kept in

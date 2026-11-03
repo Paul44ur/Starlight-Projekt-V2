@@ -57,6 +57,12 @@ from starlight.web.export import export_html
 from starlight.web.notes_api import add_notes_api
 
 STATIC = Path(__file__).with_name("static")
+# The Notes page's scripts, loaded in this order by notes.html (notes-editor.js: on the first
+# Edit). Only these are served from /notes-....js.
+NOTES_SCRIPTS = (
+    "notes-page.js", "notes-tasks.js", "notes-info.js", "notes-views.js", "notes-find.js",
+    "notes-edit.js", "notes-editor.js",
+)  # fmt: skip
 # The files in static/vendor the pages may load (see bundles/*/README.md).
 VENDOR = {
     "editor.js": "text/javascript; charset=utf-8",  # CodeMirror 6, for the Notes page
@@ -541,9 +547,17 @@ def create_app(paths: Paths | None = None) -> Any:
     def render() -> Response:
         return Response(page("render.js"), media_type="text/javascript")
 
-    @app.get("/notes-editor.js")
-    def notes_editor() -> Response:
-        return Response(page("notes-editor.js"), media_type="text/javascript")
+    @app.get("/notes.css")
+    def notes_style() -> Response:
+        return Response(page("notes.css"), media_type="text/css")
+
+    @app.get("/notes-{part}.js")
+    def notes_script(part: str) -> Response:
+        """The Notes page's parts (and its editor): only the files listed in NOTES_SCRIPTS."""
+        name = f"notes-{part}.js"
+        if name not in NOTES_SCRIPTS:
+            raise HTTPException(status_code=404, detail="no such file")
+        return Response(page(name), media_type="text/javascript")
 
     @app.get("/board.js")
     def board_view() -> Response:
