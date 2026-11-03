@@ -8,6 +8,8 @@
   --text: #e6e8ec; --dim: #9aa3b2; --accent: #6ea8fe; --you: #0b2a4a;
   --ok: #3fb950; --warn: #d29922; --bad: #f85149;
   --accent-tint: color-mix(in srgb, var(--accent) 14%, transparent);  /* soft accent wash for hovers */
+  --on-accent: #0b1220;   /* text on a filled accent: dark on the light blue of the dark look */
+  --danger: #b3231d;      /* filled red behind white text (--bad is too light for that) */
   /* elevation */
   --shadow: 0 8px 24px rgba(0,0,0,.35);               /* kept: the name other code already uses */
   --shadow-1: 0 1px 2px rgba(0,0,0,.28), 0 2px 6px rgba(0,0,0,.22);   /* resting: cards, menus */
@@ -26,6 +28,7 @@
 :root[data-theme="light"] {
   --bg: #f6f7f9; --panel: #ffffff; --panel2: #f0f2f5; --border: #d8dce3; --text: #1f2328;
   --dim: #5a6372; --you: #dbeafe; --shadow: 0 8px 24px rgba(0,0,0,.12);
+  --accent: #2563eb; --on-accent: #ffffff;
   --shadow-1: 0 1px 2px rgba(23,35,56,.08), 0 2px 6px rgba(23,35,56,.08);
   --shadow-2: 0 8px 24px rgba(0,0,0,.12);
   --hl-k: #8250df; --hl-s: #116329; --hl-n: #b35900; --hl-c: #6e7781; --hl-f: #0550ae; --hl-v: #953800;
@@ -34,6 +37,7 @@
   :root:not([data-theme="dark"]) {
     --bg: #f6f7f9; --panel: #ffffff; --panel2: #f0f2f5; --border: #d8dce3; --text: #1f2328;
     --dim: #5a6372; --you: #dbeafe; --shadow: 0 8px 24px rgba(0,0,0,.12);
+    --accent: #2563eb; --on-accent: #ffffff;
     --shadow-1: 0 1px 2px rgba(23,35,56,.08), 0 2px 6px rgba(23,35,56,.08);
     --shadow-2: 0 8px 24px rgba(0,0,0,.12);
     --hl-k: #8250df; --hl-s: #116329; --hl-n: #b35900; --hl-c: #6e7781; --hl-f: #0550ae; --hl-v: #953800;
@@ -55,11 +59,11 @@ button { background: var(--panel2); border: 1px solid var(--border); border-radi
 button:hover { border-color: var(--accent); background: var(--accent-tint); }
 button:active { transform: translateY(1px); }
 button:disabled { opacity: .5; cursor: default; transform: none; }
-button.danger { color: #fff; background: #b3231d; border-color: #b3231d; }
+button.danger { color: #fff; background: var(--danger); border-color: var(--danger); }
 button.danger:hover { background: #c93a33; border-color: #c93a33; }
 button.ok { color: #06240f; background: var(--ok); border-color: var(--ok); }
 button.ok:hover { background: color-mix(in srgb, var(--ok) 88%, #fff); border-color: var(--ok); }
-button.primary { color: #06162b; background: var(--accent); border-color: var(--accent); font-weight: 600; }
+button.primary { color: var(--on-accent); background: var(--accent); border-color: var(--accent); font-weight: 600; }
 button.primary:hover { background: color-mix(in srgb, var(--accent) 88%, #fff); border-color: var(--accent); }
 button.icon { padding: 4px 8px; font-size: var(--fs-sm); background: none; border-color: transparent; color: var(--dim); }
 button.icon:hover { color: var(--text); border-color: var(--border); background: none; }
@@ -118,6 +122,7 @@ button:focus:not(:focus-visible), a:focus:not(:focus-visible) { outline: none; }
 @media (prefers-contrast: more) {
   :root, :root[data-theme] { --dim: var(--text); --border: var(--text); --accent: #4aa3ff; }
   :root[data-theme="light"] { --accent: #0047b3; }
+  @media (prefers-color-scheme: light) { :root:not([data-theme="dark"]) { --accent: #0047b3; } }
   .pill, button, input, select, textarea { border-width: 2px; }
 }
 @media (forced-colors: active) {

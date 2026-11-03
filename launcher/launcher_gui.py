@@ -123,20 +123,30 @@ class Palette:
     on_accent: str
     ok: str
     warn: str
-    bad: str
+    bad: str  # red for text and status dots
+    danger: str  # red behind white text (the stop button): dark enough to read on
 
 
-# The colors of the web pages (see starlight/web/static/style.css).
+# The same colors as the web pages (starlight/web/static/style.css: --accent, --on-accent,
+# button.danger), so the window and the chat look like one program.
 DARK = Palette(
     bg="#0f1115", panel="#171a21", panel2="#1e222b", border="#2a2f3a", text="#e6e8ec",
     dim="#9aa3b2", accent="#6ea8fe", on_accent="#0b1220", ok="#3fb950", warn="#d29922",
-    bad="#f85149",
+    bad="#f85149", danger="#b3231d",
 )  # fmt: skip
 LIGHT = Palette(
     bg="#f6f7f9", panel="#ffffff", panel2="#eef0f4", border="#d8dce3", text="#1f2328",
     dim="#5a6372", accent="#2563eb", on_accent="#ffffff", ok="#1a7f37", warn="#9a6700",
-    bad="#cf222e",
+    bad="#cf222e", danger="#b3231d",
 )  # fmt: skip
+
+
+def mix(colour: str, other: str, amount: float) -> str:
+    """``colour`` moved ``amount`` (0 to 1) of the way towards ``other``: the hover shades,
+    like color-mix() on the web pages."""
+    a = [int(colour[i : i + 2], 16) for i in (1, 3, 5)]
+    b = [int(other[i : i + 2], 16) for i in (1, 3, 5)]
+    return "#" + "".join(f"{round(x + (y - x) * amount):02x}" for x, y in zip(a, b, strict=True))
 
 
 def system_uses_light_theme() -> bool:
@@ -349,6 +359,57 @@ GERMAN = {
     "Pause download": "Download pausieren",
     "Resume download": "Download fortsetzen",
     "Open chat": "Chat öffnen",
+    # the status page (on_status)
+    "Model": "Modell",
+    "Chat": "Chat",
+    "Kill switch": "Not-Aus",
+    "TOOLS": "WERKZEUGE",
+    "kill switch on": "Not-Aus aktiv",
+    "ready": "bereit",
+    "starting": "startet",
+    "Ready: {model}": "Bereit: {model}",
+    "The built-in test model (it only repeats what you say)": (
+        "Das eingebaute Testmodell (es wiederholt nur, was du sagst)"
+    ),
+    "Stopped by itself; starting it again ...": "Von selbst angehalten; startet neu ...",
+    "Stopped: {reason}": "Angehalten: {reason}",
+    "see the logs": "siehe die Logs",
+    "Paused, the graphics card is free ({detail})": (
+        "Pausiert, die Grafikkarte ist frei ({detail})"
+    ),
+    "Loading into video memory ... {elapsed}": "Lädt in den Grafikspeicher ... {elapsed}",
+    "Starting ...": "Startet ...",
+    "Off": "Aus",
+    "Ready once the chat is up": "Bereit, sobald der Chat läuft",
+    "ENGAGED: Starlight will not do anything until you resume": (
+        "AKTIV: Starlight tut nichts, bis du fortsetzt"
+    ),
+    "Off: Starlight can act": "Aus: Starlight kann handeln",
+    "Resume": "Fortsetzen",
+    "Resume now": "Jetzt fortsetzen",
+    "Reload the model": "Modell neu laden",
+    "Something needs attention": "Etwas braucht deine Aufmerksamkeit",
+    "The model server stopped and could not be restarted.": (
+        "Der Modell-Server ist stehen geblieben und ließ sich nicht neu starten."
+    ),
+    "Starlight is stopped": "Starlight ist angehalten",
+    "The kill switch is engaged. Press Resume to let it act again.": (
+        "Der Not-Aus ist aktiv. Drücke auf Fortsetzen, damit Starlight wieder handeln kann."
+    ),
+    "Starlight is paused for a game": "Starlight pausiert für ein Spiel",
+    "The model comes back when the game closes, or press Resume now.": (
+        "Das Modell kommt zurück, sobald das Spiel beendet ist, oder drücke auf Jetzt fortsetzen."
+    ),
+    "Starlight is starting ...": "Starlight startet ...",
+    "The model takes a minute to load; the chat opens by itself when it is ready.": (
+        "Das Modell braucht eine Minute zum Laden; der Chat öffnet sich von selbst, sobald er "
+        "bereit ist."
+    ),
+    "Starlight is running": "Starlight läuft",
+    "Your chat is at {url}. Close this window to stop Starlight.": (
+        "Dein Chat ist unter {url}. Schließe dieses Fenster, um Starlight zu beenden."
+    ),
+    "Folder: {path}": "Ordner: {path}",
     "Statistics": "Statistik",
     "Stop everything": "Alles anhalten",
     "Restart model server": "Modell-Server neu starten",
@@ -390,6 +451,11 @@ def tr(text: str) -> str:
     if text.startswith("What's new in "):
         return "Neu in " + text.removeprefix("What's new in ")
     return GERMAN.get(text, text)
+
+
+def trf(template: str, **values: object) -> str:
+    """A text with blanks ({name}) in the window's language, then filled in."""
+    return tr(template).format(**values)
 
 
 if LANGUAGE == "de":  # (the choice lists show these; they are matched back by value)
@@ -735,7 +801,9 @@ class App:
         style.theme_use("clam")
         style.configure(".", background=c.bg, foreground=c.text, fieldbackground=c.panel2,
                         bordercolor=c.border, lightcolor=c.border, darkcolor=c.border,
-                        troughcolor=c.panel2, focuscolor=c.bg, font=self.f)  # fmt: skip
+                        troughcolor=c.panel2, focuscolor=c.accent, focusthickness=0,
+                        focussolid=1, font=self.f)  # fmt: skip
+        # (the focus ring is 0 thick until the keyboard is used: _show_focus)
         style.configure("TFrame", background=c.bg)
         style.configure("Card.TFrame", background=c.panel)
         style.configure("TLabel", background=c.bg, foreground=c.text)
@@ -746,14 +814,33 @@ class App:
         style.configure("Section.TLabel", foreground=c.dim, font=self.f_small)
         style.configure("TButton", background=c.panel2, foreground=c.text, borderwidth=1,
                         padding=(self.px(14), self.px(7)), relief="flat")  # fmt: skip
-        style.map("TButton", background=[("active", c.panel), ("disabled", c.panel)],
+        # Pointed at: a light accent tint and an accent border (as the web pages' buttons).
+        style.map("TButton", background=[("active", mix(c.panel2, c.accent, 0.14)),
+                                         ("disabled", c.panel)],
                   foreground=[("disabled", c.dim)], bordercolor=[("active", c.accent)])  # fmt: skip
+        accent_hover = mix(c.accent, "#ffffff" if c is DARK else "#000000", 0.14)
         style.configure("Accent.TButton", background=c.accent, foreground=c.on_accent,
-                        bordercolor=c.accent, font=self.f_bold)  # fmt: skip
-        style.map("Accent.TButton", background=[("active", c.accent), ("disabled", c.panel2)],
+                        bordercolor=c.accent, focuscolor=c.on_accent, font=self.f_bold)  # fmt: skip
+        style.map("Accent.TButton", background=[("active", accent_hover), ("disabled", c.panel2)],
+                  bordercolor=[("active", accent_hover)],
                   foreground=[("disabled", c.dim)])  # fmt: skip
-        style.configure("Danger.TButton", background=c.bad, foreground="#ffffff", bordercolor=c.bad)
-        style.map("Danger.TButton", background=[("active", c.bad), ("disabled", c.panel2)],
+        # c.danger, not c.bad: white text on the bright red of the dark look was too faint
+        danger_hover = mix(c.danger, "#ffffff", 0.12)
+        style.configure("Danger.TButton", background=c.danger, foreground="#ffffff",
+                        bordercolor=c.danger, focuscolor="#ffffff")  # fmt: skip
+        style.map("Danger.TButton", background=[("active", danger_hover), ("disabled", c.panel2)],
+                  bordercolor=[("active", danger_hover)],
+                  foreground=[("disabled", c.dim)])  # fmt: skip
+        # The status page: its main buttons large, its tools quieter (outlined, no fill).
+        for name in ("Big.TButton", "Big.Accent.TButton", "Big.Danger.TButton"):
+            style.configure(name, padding=(self.px(16), self.px(11)))
+        # (clam draws no border around a "flat" button; "solid" is one thin line)
+        style.configure("Tool.TButton", background=c.bg, lightcolor=c.bg, darkcolor=c.bg,
+                        bordercolor=c.border, relief="solid",
+                        padding=(self.px(10), self.px(6)))  # fmt: skip
+        style.map("Tool.TButton", background=[("active", mix(c.bg, c.accent, 0.12)),
+                                              ("disabled", c.bg)],
+                  bordercolor=[("active", c.accent)], relief=[("pressed", "solid")],
                   foreground=[("disabled", c.dim)])  # fmt: skip
         style.configure("TCheckbutton", background=c.bg, foreground=c.text, indicatorcolor=c.panel2,
                         indicatorbackground=c.panel2, padding=(0, self.px(3)))  # fmt: skip
@@ -780,6 +867,27 @@ class App:
         style.configure("Horizontal.TProgressbar", background=c.accent, troughcolor=c.panel2,
                         bordercolor=c.panel2, lightcolor=c.accent, darkcolor=c.accent,
                         thickness=self.px(10))  # fmt: skip
+        # A thin scrollbar without arrow buttons, as in the browser.
+        style.layout("Vertical.TScrollbar", [("Vertical.Scrollbar.trough", {
+            "sticky": "ns",
+            "children": [("Vertical.Scrollbar.thumb", {"sticky": "nswe"})],
+        })])  # fmt: skip
+        style.configure("Vertical.TScrollbar", troughcolor=c.bg, background=c.border,
+                        bordercolor=c.bg, lightcolor=c.border, darkcolor=c.border,
+                        arrowsize=self.px(9), gripsize=0)  # fmt: skip
+        pointed = [("pressed", c.dim), ("active", c.dim)]
+        style.map("Vertical.TScrollbar", background=pointed, lightcolor=pointed, darkcolor=pointed)
+        # Show the focus ring after Tab (or Shift+Tab), hide it after a click: keyboard users
+        # see where they are, and a clicked button gets no ring (the web's :focus-visible).
+        self._keyboard_focus = False
+        for sequence in ("<<NextWindow>>", "<<PrevWindow>>"):  # (Tab and Shift+Tab)
+            self.root.bind_all(sequence, lambda _event: self._show_focus(True), add="+")
+        self.root.bind_all("<ButtonPress>", lambda _event: self._show_focus(False), add="+")
+
+    def _show_focus(self, keyboard: bool) -> None:
+        if keyboard != self._keyboard_focus:
+            self._keyboard_focus = keyboard
+            ttk.Style(self.root).configure(".", focusthickness=self.px(2) if keyboard else 0)
 
     def _build_header(self) -> None:
         c = self.c
@@ -1992,7 +2100,7 @@ class App:
                 self.px(12) if index == 3 else self.px(4),
             )
             title = tk.Label(
-                card, text=name, font=self.f_bold, bg=c.panel, fg=c.text, anchor="w", width=11
+                card, text=tr(name), font=self.f_bold, bg=c.panel, fg=c.text, anchor="w", width=11
             )
             title.grid(row=index, column=0, sticky="w", padx=(self.px(16), 0), pady=pad)
             dot = tk.Canvas(
@@ -2006,36 +2114,47 @@ class App:
             self.status_rows[name] = (dot, oval, text)
         self.status_title_width = title.winfo_reqwidth()
 
-        buttons = ttk.Frame(page)
-        buttons.grid(row=3, column=0, sticky="ew", pady=(self.px(18), 0))
-        for column in range(3):
-            buttons.columnconfigure(column, weight=1, uniform="b")
+        # The main actions, large: the chat, the statistics, and the kill switch (always one
+        # click). The tools below are quieter, so the eye finds the main ones first.
         gap = self.px(4)
-        self.btn_chat = self._button(buttons, "Open chat", self.open_chat, "Accent.TButton")
-        self.btn_stats = self._button(buttons, "Statistics", self.open_stats)
-        self.btn_kill = self._button(buttons, "Stop everything", self.toggle_kill, "Danger.TButton")
-        self.btn_restart = self._button(buttons, "Restart model server", self.restart_model)
-        self.btn_check = self._button(buttons, "Check everything", self.run_check)
-        self.btn_logs = self._button(buttons, "Open logs folder", self.open_logs)
-        self.btn_speed = self._button(buttons, "Speed test", self.run_speed_test)
+        main = ttk.Frame(page)
+        main.grid(row=3, column=0, sticky="ew", pady=(self.px(18), 0))
+        tools = ttk.Frame(page)
+        tools.grid(row=5, column=0, sticky="ew")
+        for frame in (main, tools):
+            for column in range(3):
+                frame.columnconfigure(column, weight=1, uniform="b")
+        self.btn_chat = self._button(main, "Open chat", self.open_chat, "Big.Accent.TButton")
+        self.btn_stats = self._button(main, "Statistics", self.open_stats, "Big.TButton")
+        self.btn_kill = self._button(
+            main, "Stop everything", self.toggle_kill, "Big.Danger.TButton"
+        )
+        self._label(page, "TOOLS", "Section.TLabel").grid(
+            row=4, column=0, sticky="w", padx=gap, pady=(self.px(16), self.px(2))
+        )
+        tool = "Tool.TButton"
+        self.btn_restart = self._button(tools, "Restart model server", self.restart_model, tool)
+        self.btn_check = self._button(tools, "Check everything", self.run_check, tool)
+        self.btn_logs = self._button(tools, "Open logs folder", self.open_logs, tool)
+        self.btn_speed = self._button(tools, "Speed test", self.run_speed_test, tool)
         Tooltip(self, self.btn_speed, "How fast the model answers (tokens per second)")
-        self.btn_exam = self._button(buttons, "Tool-use exam", self.run_exam)
+        self.btn_exam = self._button(tools, "Tool-use exam", self.run_exam, tool)
         Tooltip(
             self, self.btn_exam, "Eight small tasks: does this model use Starlight's tools well?"
         )
-        self.btn_disk = self._button(buttons, "Disk space", self.open_disk)
+        self.btn_disk = self._button(tools, "Disk space", self.open_disk, tool)
         Tooltip(self, self.btn_disk, "What takes space: models and folders; remove unused models")
-        grid = [
-            [self.btn_chat, self.btn_stats, self.btn_kill],
-            [self.btn_restart, self.btn_check, self.btn_logs],
+        rows = [
+            [self.btn_chat, self.btn_stats, self.btn_kill],  # in main
+            [self.btn_restart, self.btn_check, self.btn_logs],  # in tools
             [self.btn_speed, self.btn_exam, self.btn_disk],
         ]
-        for row, widgets in enumerate(grid):
+        for row, widgets in enumerate(rows):
             for column, widget in enumerate(widgets):
-                widget.grid(row=row, column=column, sticky="ew", padx=gap, pady=gap)
-        page.rowconfigure(4, weight=1)
+                widget.grid(row=max(row - 1, 0), column=column, sticky="ew", padx=gap, pady=gap)
+        page.rowconfigure(6, weight=1)
         footer = ttk.Frame(page)
-        footer.grid(row=5, column=0, sticky="ew")
+        footer.grid(row=7, column=0, sticky="ew", pady=(self.px(12), 0))
         footer.columnconfigure(0, weight=1)
         # Starlight's folder, a link that opens it
         self.r_footer = tk.Label(footer, text="", font=self.f_small, bg=self.c.bg,
@@ -2071,51 +2190,60 @@ class App:
             else "ready" if status.model in ("ready", "off") and status.chat
             else "starting"
         )  # fmt: skip
-        self.root.title(f"Starlight · {state}")  # (the taskbar shows it too)
+        self.root.title(f"Starlight · {tr(state)}")  # (the taskbar shows it too)
         model_name = self.settings.model_file.stem if self.settings.use_model else ""
         elapsed = L.format_duration(status.seconds)
         if status.model == "ready":
-            self._set_row("Model", c.ok, f"Ready: {status.model_detail or model_name}")
+            self._set_row(
+                "Model", c.ok, trf("Ready: {model}", model=status.model_detail or model_name)
+            )
         elif status.model == "waiting":  # LM Studio: not started, or no model loaded in it
             self._set_row("Model", c.warn, status.model_detail)
         elif status.model == "off":
-            self._set_row("Model", c.dim, "The built-in test model (it only repeats what you say)")
+            self._set_row(
+                "Model", c.dim, tr("The built-in test model (it only repeats what you say)")
+            )
         elif status.model == "restarting":
-            self._set_row("Model", c.warn, "Stopped by itself; starting it again ...")
+            self._set_row("Model", c.warn, tr("Stopped by itself; starting it again ..."))
         elif status.model == "down":
-            self._set_row("Model", c.bad, "Stopped: " + (status.model_detail or "see the logs"))
+            reason = status.model_detail or tr("see the logs")
+            self._set_row("Model", c.bad, trf("Stopped: {reason}", reason=reason))
         elif status.model == "paused":
             self._set_row(
-                "Model", c.warn, f"Paused, the graphics card is free ({status.model_detail})"
+                "Model",
+                c.warn,
+                trf("Paused, the graphics card is free ({detail})", detail=status.model_detail),
             )
         else:
-            self._set_row("Model", c.warn, f"Loading into video memory ... {elapsed}")
+            self._set_row(
+                "Model", c.warn, trf("Loading into video memory ... {elapsed}", elapsed=elapsed)
+            )
         chat_url, viewer_url = L.chat_url(), L.viewer_url()
         self._set_row(
-            "Chat", c.ok if status.chat else c.warn, chat_url if status.chat else "Starting ..."
+            "Chat", c.ok if status.chat else c.warn, chat_url if status.chat else tr("Starting ...")
         )
         if status.viewer is None:
-            self._set_row("Statistics", c.dim, "Off")
+            self._set_row("Statistics", c.dim, tr("Off"))
         else:
             self._set_row(
                 "Statistics",
                 c.ok if status.viewer else c.warn,
-                viewer_url if status.viewer else "Starting ...",
+                viewer_url if status.viewer else tr("Starting ..."),
             )
         if status.kill is None:
-            self._set_row("Kill switch", c.dim, "Ready once the chat is up")
+            self._set_row("Kill switch", c.dim, tr("Ready once the chat is up"))
         elif status.kill:
             self._set_row(
-                "Kill switch", c.bad, "ENGAGED: Starlight will not do anything until you resume"
+                "Kill switch", c.bad, tr("ENGAGED: Starlight will not do anything until you resume")
             )
         else:
-            self._set_row("Kill switch", c.ok, "Off: Starlight can act")
+            self._set_row("Kill switch", c.ok, tr("Off: Starlight can act"))
         self.btn_chat.state(["!disabled"] if status.chat else ["disabled"])
         self.btn_stats.state(["!disabled"] if status.viewer else ["disabled"])
         self.btn_kill.state(["!disabled"] if status.kill is not None else ["disabled"])
         self.btn_kill.configure(
-            text="Resume" if status.kill else "Stop everything",
-            style="TButton" if status.kill else "Danger.TButton",
+            text=tr("Resume") if status.kill else tr("Stop everything"),
+            style="Big.TButton" if status.kill else "Big.Danger.TButton",
         )
         # Our own model server can be restarted; a model in LM Studio can be reloaded there.
         lmstudio = self.settings.uses_lmstudio
@@ -2125,33 +2253,33 @@ class App:
         paused = status.model == "paused"
         self.btn_restart.state(["!disabled"] if can_restart or paused else ["disabled"])
         self.btn_restart.configure(
-            text="Resume now" if paused
-            else "Reload the model" if lmstudio
-            else "Restart model server"
+            text=tr("Resume now") if paused
+            else tr("Reload the model") if lmstudio
+            else tr("Restart model server")
         )  # fmt: skip
 
         if status.model == "down":
             title, sub = (
-                "Something needs attention",
-                "The model server stopped and could not be restarted.",
+                tr("Something needs attention"),
+                tr("The model server stopped and could not be restarted."),
             )
         elif status.kill:
             title, sub = (
-                "Starlight is stopped",
-                "The kill switch is engaged. Press Resume to let it act again.",
+                tr("Starlight is stopped"),
+                tr("The kill switch is engaged. Press Resume to let it act again."),
             )
         elif paused:
-            title = "Starlight is paused for a game"
-            sub = "The model comes back when the game closes, or press Resume now."
+            title = tr("Starlight is paused for a game")
+            sub = tr("The model comes back when the game closes, or press Resume now.")
         elif status.model in ("loading", "restarting") or not status.chat:
-            title = "Starlight is starting ..."
-            sub = "The model takes a minute to load; the chat opens by itself when it is ready."
+            title = tr("Starlight is starting ...")
+            sub = tr("The model takes a minute to load; the chat opens by itself when it is ready.")
         else:
-            title = "Starlight is running"
-            sub = f"Your chat is at {chat_url}. Close this window to stop Starlight."
+            title = tr("Starlight is running")
+            sub = trf("Your chat is at {url}. Close this window to stop Starlight.", url=chat_url)
         self.r_title.configure(text=title)
         self.r_sub.configure(text=sub)
-        self.r_footer.configure(text=f"Folder: {self.settings.root}")
+        self.r_footer.configure(text=trf("Folder: {path}", path=self.settings.root))
         ready = status.chat and status.model in ("ready", "off")
         if ready and not getattr(self, "was_ready", False):
             flash_window(self.root)  # it took a while: the taskbar button says it is ready

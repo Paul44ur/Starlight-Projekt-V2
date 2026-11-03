@@ -9,7 +9,7 @@
 <script src="/i18n.js"></script>
 <style>
   .filters { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin-bottom: 10px; }
-  .filters button.on { background: var(--accent); border-color: var(--accent); color: #fff; }
+  .filters button.on { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
   .entry { display: grid; grid-template-columns: 9.5em 7.5em 1fr; gap: 10px; padding: 7px 0;
            border-bottom: 1px solid var(--border); align-items: baseline; }
   .entry:last-child { border-bottom: none; }
@@ -17,7 +17,7 @@
   .entry .text { overflow-wrap: anywhere; }
   .kind { font-size: 12px; justify-self: start; }
   .kind.denied, .kind.failed { color: var(--bad); border-color: var(--bad); }
-  .kind.kill-switch { color: #fff; background: var(--bad); border-color: var(--bad); }
+  .kind.kill-switch { color: #fff; background: var(--danger); border-color: var(--danger); }
   .kind.practice, .kind.setting { color: var(--warn); border-color: var(--warn); }
   .waiting { border-bottom: 1px solid var(--border); padding: 10px 0; }
   .waiting:last-child { border-bottom: none; }

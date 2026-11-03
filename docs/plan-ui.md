@@ -55,9 +55,9 @@ first, then the launcher (first impression), then the chat (daily driver).
 
 | Block | What | Size | Needs | State |
 |---|---|---|---|---|
-| U1 | Design-system foundation (scales, tokens, shared utilities) | M | – | **done** |
-| U2 | The launcher window (tkinter polish) | M | U1 (tokens as reference) | **next** |
-| U3 | The web chat page (messages, composer, streaming) | L | U1 | open |
+| U1 | Design-system foundation (scales, tokens, shared utilities) | M | – | **done** (3771c6d) |
+| U2 | The launcher window (tkinter polish) | M | U1 (tokens as reference) | **done** |
+| U3 | The web chat page (messages, composer, streaming) | L | U1 | **next** |
 | U4 | Settings page (cards, forms, the permission UI) | M | U1 | open |
 | U5 | Automations, Memory, Activity, Kill, Pair | M | U1 | open |
 | U6 | Notes page: light consistency pass | S | U1 | open |
@@ -71,6 +71,12 @@ Last updated: 2026-11-03. U1 built: `style.css` now carries scales (spacing `--s
 `--accent-tint`; refined button states with `.primary`/`.quiet` variants, input focus, a soft
 card shadow, and `.stack`/`.cluster`/`.muted`/`.truncate` utilities. No class renamed; the
 accessibility block and the guarded strings are unchanged. Verified in both themes.
+U2 built: one palette for the window and the pages (light `--accent` #2563eb, new
+`--on-accent` and `--danger`; white on the old light-blue or light-red fills failed WCAG AA
+at 2.4:1 and 3.4:1); the status page's main buttons large, its tools under **Tools** and
+outlined; hover shades; a thin scrollbar; a focus ring only after Tab. The status page was
+English after its first update even on a German Windows: its texts now go through `tr()`
+and `trf()`, with German lines. `tests/test_launcher_look.py` guards all of it.
 
 ## Blocks
 

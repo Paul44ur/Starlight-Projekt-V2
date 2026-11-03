@@ -205,6 +205,14 @@ capped while streaming and Office files are checked for unpacked size, and
 changing permissions, modules, devices or skills, and releasing the kill switch, are
 local-only.
 
+**One look.** The web pages take their colours, spacing, corners, type sizes, shadows and
+motion from tokens in `style.css` (`--accent`, `--on-accent`, `--danger`, `--s-*`, `--r-*`,
+`--fs-*`, `--shadow-*`); pages use these instead of their own numbers. The launcher window's
+`Palette` (`launcher_gui.py`) holds the same colours. A test (`tests/test_launcher_look.py`)
+keeps the two in step and checks that text on every filled colour is readable (WCAG AA,
+4.5:1). Both show a focus ring only while the keyboard is used. The plan for the rest of this
+work is `docs/plan-ui.md`.
+
 **Home and devices.** `home` talks to Home Assistant's REST API with a long-lived token
 from the vault; `free_domains` (lights, switches, fans, media players, scenes) switch
 without asking, other domains ask, and `call_service` is a CONFIRM tool; watched entities

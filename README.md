@@ -239,9 +239,10 @@ graphics card); *Use this model* makes it your own model. While a model download
 **Pause download** stops it and **Resume download** goes on where it stopped. On Windows,
 *Start Starlight when I log in to Windows* adds it to your account's start list. When the
 model is ready while the window is in the background, its taskbar button blinks. The
-status page also has **Speed test** (tokens per second), **Tool-use exam** (does this model
-use Starlight's tools well?) and **Disk space** (what each model and folder takes; unused
-models can be removed there).
+status page shows its main buttons large (**Open chat**, **Statistics**, **Stop
+everything**); under **Tools** it also has **Speed test** (tokens per second), **Tool-use
+exam** (does this model use Starlight's tools well?) and **Disk space** (what each model and
+folder takes; unused models can be removed there).
 
 #### A different model
 
