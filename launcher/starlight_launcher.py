@@ -3123,6 +3123,78 @@ def _open_browser(url: str) -> None:
         webbrowser.open(url)
 
 
+# -- the Absolution security tools (modules/absolution): report what is installed ------------
+# The launcher never fetches these; it only says which are present, so you can install the
+# rest yourself. Keep this list in step with modules/absolution/tools.py. The offensive
+# cluster is not here on purpose (see that file's BLOCKED).
+SECURITY_TOOLS: dict[str, tuple[str, ...]] = {
+    "Nmap": ("nmap",),
+    "Masscan": ("masscan",),
+    "Netdiscover": ("netdiscover",),
+    "theHarvester": ("theHarvester", "theharvester"),
+    "Amass": ("amass",),
+    "Subfinder": ("subfinder",),
+    "Assetfinder": ("assetfinder",),
+    "httpx": ("httpx",),
+    "WhatWeb": ("whatweb",),
+    "Nikto": ("nikto",),
+    "Nuclei": ("nuclei",),
+    "Gobuster": ("gobuster",),
+    "Dirsearch": ("dirsearch",),
+    "Ffuf": ("ffuf",),
+    "Feroxbuster": ("feroxbuster",),
+    "SQLmap": ("sqlmap",),
+    "SearchSploit": ("searchsploit",),
+    "Trivy": ("trivy",),
+    "Checkov": ("checkov",),
+    "kube-bench": ("kube-bench",),
+    "Prowler": ("prowler",),
+    "ScoutSuite": ("scout", "scoutsuite"),
+    "Semgrep": ("semgrep",),
+    "Bandit": ("bandit",),
+    "OWASP Dependency-Check": ("dependency-check", "dependency-check.sh"),
+    "tshark": ("tshark",),
+    "Zeek": ("zeek",),
+    "Suricata": ("suricata",),
+    "Volatility": ("vol", "vol.py", "volatility3", "volatility"),
+    "osquery": ("osqueryi",),
+    "YARA": ("yara",),
+    "Sigma": ("sigma",),
+    "Burp Suite": ("burpsuite", "BurpSuiteCommunity"),
+    "OWASP ZAP": ("zaproxy", "zap.sh", "ZAP"),
+    "Wireshark": ("wireshark",),
+    "Ghidra": ("ghidraRun", "ghidra"),
+    "IDA": ("ida64", "ida"),
+    "x64dbg": ("x64dbg", "x32dbg"),
+}
+
+
+def security_tools_report() -> list[tuple[str, str | None]]:
+    """Each Absolution tool and the path it was found at (None when it is not installed),
+    in name order."""
+    found: list[tuple[str, str | None]] = []
+    for name, exes in SECURITY_TOOLS.items():
+        where = next((p for exe in exes if (p := shutil.which(exe))), None)
+        found.append((name, where))
+    return sorted(found, key=lambda row: row[0].lower())
+
+
+def print_security_tools(ui: Ui) -> None:
+    report = security_tools_report()
+    have = [name for name, where in report if where]
+    missing = [name for name, where in report if not where]
+    ui.say("Absolution security tools (Starlight runs these only when you ask; it never")
+    ui.say("installs them). Found on this PC:")
+    ui.say("  " + (", ".join(have) if have else "none yet"))
+    if missing:
+        ui.say("\nNot found (install the ones you need yourself):")
+        ui.say("  " + ", ".join(missing))
+    ui.say(
+        "\nOffensive tooling (credential theft, lateral movement, C2, evasion) is not part "
+        "of Absolution and Starlight will not drive it."
+    )
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="Starlight", description="Set up and start Starlight, the local AI assistant."
@@ -3215,6 +3287,11 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--gui-selftest", action="store_true", help=argparse.SUPPRESS)
     parser.add_argument(
+        "--security-tools",
+        action="store_true",
+        help="list which Absolution security tools are installed, then exit",
+    )
+    parser.add_argument(
         "--open",
         metavar="LINK",
         help="open a starlight:// link (starlight://note/Plan): in the running Starlight, "
@@ -3299,6 +3376,9 @@ def run_window(args: argparse.Namespace) -> int | None:
 
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
+    if args.security_tools:  # list the Absolution tools and exit (installs nothing)
+        print_security_tools(make_ui(assume_yes=True))
+        return 0
     if args.open is not None:  # a starlight:// link (block G6)
         target = link_target(args.open)
         if target is None:

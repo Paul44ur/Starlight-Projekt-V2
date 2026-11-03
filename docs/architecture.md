@@ -131,6 +131,17 @@ the kill switch) and are enabled by default. Free or local, no API keys except w
 - *Security (read-only, pair with `recon`):* `cve` (NVD vulnerability lookup), `certs` (TLS
   certificate expiry, reads `config/servers.yaml`), `breach` (Have I Been Pwned range API —
   only a hash prefix is sent, the password never leaves the PC).
+- *Security tools (`absolution`, off by default):* a cockpit over security programs the user
+  already has (`modules/absolution/tools.py` is a data catalogue: scanners, recon, cloud and
+  code checks, capture and memory analysis, reverse-engineering and web-proxy GUIs). Three
+  invariants: `absolution.run` always calls `ctx.ui.confirm` with the exact argv (no
+  auto-approve path); a network target must be in the module's own scope
+  (`absolution.authorize`, warns on public targets, stored in `data/modules/absolution/
+  scope.json`, separate from `servers.yaml`); nothing is installed (`shutil.which` only).
+  Argv is built as a list (never a shell); the target is validated by kind (host/URL/path/
+  image/query) and extra flags must each be one safe token. The offensive credential-theft /
+  lateral-movement / C2 / evasion cluster is refused by name (`tools.BLOCKED`), not merely
+  omitted. The launcher's `--security-tools` reports which are installed; it fetches none.
 - *Productivity:* `reminders` (one-off and recurring: daily, weekdays, chosen days, every
   N minutes/hours, monthly; delivered to every open channel, saved to disk), `mail` (IMAP/SMTP with an app-password in
   the vault; reading is free, sending asks first unless `mail.send` is in

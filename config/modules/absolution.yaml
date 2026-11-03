@@ -1,0 +1,8 @@
+# The Absolution module (modules/absolution): a cockpit for security tools you already have,
+# for your own systems or systems you are authorized to test. It asks before every run and
+# shows the exact command; network targets must be authorized first (absolution.authorize).
+# It never installs anything, and it does not drive offensive tooling.
+run_timeout: 600       # seconds a single tool may run
+max_output: 20000      # characters kept from a tool's output
+max_extra: 40          # extra flags at most
+wordlist: ""           # a wordlist file the web fuzzers use (gobuster, ffuf); empty: they ask you to set it

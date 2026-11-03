@@ -36,6 +36,7 @@ and answer you on WhatsApp. It will ask you before it does anything risky. And o
 | **Use the web** | Searches, reads pages and logs in to your accounts. It makes at most 10 requests per second, with a short pause between pages of the same site. A page you ask for is read like a browser would; crawling several pages (research, page watches) respects robots.txt. |
 | **Check your servers** | Pings and checks any server, runs commands over SSH, and alerts you when one of yours goes down. |
 | **Scan your network** | On hosts you own or are authorized to test: open ports, services, TLS certs, HTTP headers, DNS. Asks first; recon only, never attacks. |
+| **Security tools (Absolution)** | A cockpit for security programs you already have — scanners, recon, cloud and code checks, capture and memory analysis, reverse engineering (Nmap, Nikto, Nuclei, Trivy, Semgrep, tshark, Volatility, Ghidra and more). It asks before every run and shows the exact command; network targets must be authorized first; it never installs anything, and it does not drive offensive tooling. Off by default. |
 | **Look up vulnerabilities** | Checks a service or product against the public CVE database (NVD). Pairs with a scan. Free, no key. |
 | **Check certificates** | Reads your servers' TLS certificates and warns when one is about to expire. |
 | **Check passwords** | Tells you if a password is in known breaches — the password never leaves your PC (only a short hash prefix is sent). |
@@ -932,6 +933,18 @@ off with `starlight remote disable`.
   are capped in size and time and connections are limited, so a hostile server can't
   turn a request into a flood against you. Scanning is reconnaissance only — it never
   attacks, and it does one host at a time.
+- **Absolution: your own security tools, on a leash.** The `absolution` module (off until you
+  turn it on) runs security programs you already have — scanners and recon (Nmap, Nikto,
+  Nuclei, httpx, WhatWeb, Amass), cloud and code checks (Trivy, Checkov, Semgrep, Bandit),
+  capture and memory analysis (tshark, Zeek, Suricata, Volatility, osquery, YARA), and it
+  opens reverse-engineering tools (Ghidra, IDA, x64dbg) and web proxies (Burp, ZAP,
+  Wireshark) for you. Three rules hold: it asks before every run and shows you the exact
+  command (there is no "run without asking" here); a host, range or URL must be in your
+  Absolution scope first (`absolution.authorize`, which warns you when a target is not on
+  your own network); and it never installs anything — a missing tool is reported, not
+  fetched. Credential-theft, lateral-movement, command-and-control and evasion tooling is
+  deliberately not included: Starlight refuses those by name. `Starlight.exe --security-tools`
+  lists which tools are on this PC.
 - **Files stay where you expect.** Starlight saves new files where you say, in its folder
   in your Documents by default. Replacing or adding to an existing file outside that
   folder, and reading one, asks first. Its own install folder, which holds its settings

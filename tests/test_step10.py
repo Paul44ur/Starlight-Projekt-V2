@@ -228,9 +228,13 @@ def test_viewer_without_any_data(tmp_path: Path) -> None:
 async def test_kill_switch_stops_every_module(
     paths: Paths, use_module: Callable[[str], Path]
 ) -> None:
+    names = []
     for folder in sorted((REPO / "modules").iterdir()):
         if folder.is_dir() and not folder.name.startswith("_"):
             use_module(folder.name)
+            names.append(folder.name)
+    # enable the ones that ship off by default too (absolution), so every module is tested
+    paths.module_state_file.write_text("enabled: [" + ", ".join(names) + "]\n")
     async with Kernel(paths, vault_backend=MemoryBackend()) as kernel:
         records = kernel.modules.records
         assert all(r.instance is not None for r in records.values()), {

@@ -1,0 +1,8 @@
+name: absolution
+version: 0.1.0
+description: Security tools you already have - scanners, recon, cloud/code checks, captures and reverse engineering. Asks before every run; your systems or authorized targets only.
+keywords: ["security", "pentest", "scan", "nmap", "nikto", "nuclei", "trivy", "semgrep", "wireshark", "forensics", "recon", "vulnerability", "Sicherheit", "scannen", "Absolution"]
+entrypoint: module:AbsolutionModule
+permissions: [safe]
+dependencies: []
+enabled_by_default: false
