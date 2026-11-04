@@ -216,6 +216,14 @@ keeps the two in step and checks that text on every filled colour is readable (W
 4.5:1). Both show a focus ring only while the keyboard is used. The plan for the rest of this
 work is `docs/plan-ui.md`.
 
+**The launcher window's error page.** `error_hints()` (starlight_launcher.py) matches the
+words of a problem's message and details against `ERROR_HINTS` (video memory, disk space,
+network, a busy port, blocked files, launcher.json, a slow model server, damaged downloads,
+LM Studio) and returns at most three things to try; the page shows them in a card, folds the
+technical details away (open at once when there is no advice), and has a Settings button.
+`model_label()` gives the model's name from `MODEL_INFO`. Enter presses the page's main
+button (`_main_button`), or the focused one; Esc cancels Settings.
+
 **Starlight's own window.** `starlight app` (`app_window.py`) shows the web chat in a
 pywebview window: WebView2 on Windows (the `app` extra, part of `all`; Windows only).
 `why_unavailable()` checks for pywebview, .NET and WebView2 first (pywebview would otherwise

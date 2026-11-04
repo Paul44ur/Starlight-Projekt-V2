@@ -182,8 +182,13 @@ statistics page and the kill switch are up, and has buttons for **Open chat**,
 **Restart model server** (**Resume now** while game mode has paused the model),
 **Check everything** (the same as `starlight doctor`),
 **Open logs folder** and **Settings** (change the model or options; it restarts
-Starlight). If something fails, the window says what and offers **Try again**, **Open
-logs folder** and **Copy details**. There is a light and a dark look, following Windows.
+Starlight). If something fails, the window says what and, for the common problems (a model
+too big for the graphics card, a full drive, no internet, a busy port, a blocked file), what
+to try; the technical details are one click away. It offers **Try again**, **Settings**
+(for example a smaller model), **Open logs folder** and **Copy details**. The model shows by
+its name; while the kill switch is on, **Resume** is the highlighted button. **Enter**
+presses the highlighted button and **Esc** leaves Settings. There is a light and a dark look,
+following Windows.
 
 **The chat opens in Starlight's own window**, not in your browser: a window with Starlight's
 name and star in the taskbar, with every page of the chat in it (Chat, Notes, Memory,

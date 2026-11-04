@@ -2557,6 +2557,58 @@ def viewer_url() -> str:
     return f"http://127.0.0.1:{VIEWER_PORT}"
 
 
+# What the error page suggests for problems it knows: (words in the message or the details,
+# what to try). The window shows at most three; tr() has them in German.
+ERROR_HINTS: tuple[tuple[tuple[str, ...], str], ...] = (
+    (("out of memory", "out of video memory", "outofdevicememory", "failed to allocate",
+      "unable to allocate", "cudamalloc", "insufficient memory", "not enough video memory"),
+     "The model does not fit into the graphics card's memory. In Settings, choose a smaller "
+     "model or less context."),
+    (("not enough free disk space", "no space left", "disk full", "errno 28", "winerror 112"),
+     "The drive is full. Free some space (Disk space shows what Starlight keeps), or choose "
+     "a smaller model."),
+    (("network problem", "urlopen error", "getaddrinfo", "name or service not known",
+      "temporary failure in name resolution", "timed out", "connection reset",
+      "winerror 10060", "winerror 11001"),
+     "Check the internet connection, then press Try again: finished downloads are kept."),
+    (("address already in use", "only one usage of each socket address", "winerror 10048",
+      "errno 98"),
+     "Another program uses Starlight's port: close a Starlight that may still run, or "
+     "restart the PC."),
+    (("permission denied", "access is denied", "winerror 5]", "winerror 32",
+      "being used by another process"),
+     "Windows blocked a file: close programs that use Starlight's folder, and keep Starlight "
+     "out of Program Files and OneDrive."),
+    (("launcher.json is not valid",),
+     "config/launcher.json has a mistake: fix it, or delete it to start with the defaults."),
+    (("did not become ready",),
+     "The model took too long to start. Press Try again; if it happens again, choose a "
+     "smaller model in Settings."),
+    (("checksum", "hash mismatch", "badzipfile", "bad zip", "is not a zip file"),
+     "A download was damaged. Press Try again: that file is downloaded again."),
+    (("lm studio",),
+     "Start LM Studio and load a model there, or choose another model in Settings."),
+)  # fmt: skip
+
+
+def error_hints(text: str, limit: int = 3) -> list[str]:
+    """What to try for a problem, from the words of its message and details (the error
+    page shows them above the technical details)."""
+    low = text.lower()
+    return [hint for words, hint in ERROR_HINTS if any(w in low for w in words)][:limit]
+
+
+def model_label(settings: Settings) -> str:
+    """The model's name as the setup window shows it (\"Qwen2.5 14B, uncensored\"); its
+    file's name for a model of your own."""
+    if not settings.use_model:
+        return ""
+    for key, url in MODEL_PRESETS.items():
+        if url == settings.model_url and key in MODEL_INFO:
+            return MODEL_INFO[key][0]
+    return settings.model_file.stem
+
+
 @dataclass
 class Status:
     """What the status window shows."""

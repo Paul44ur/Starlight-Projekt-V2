@@ -146,9 +146,9 @@ def test_the_main_buttons_stand_out_and_the_tools_are_quieter(
         tools = (app.btn_restart, app.btn_check, app.btn_logs, app.btn_speed, app.btn_exam,
                  app.btn_disk)  # fmt: skip
         assert all(b.master is not main and b.cget("style") == "Tool.TButton" for b in tools)
-        # the kill switch keeps its size when it turns into "Resume" and back
+        # the kill switch keeps its size when it turns into "Resume" (now the main button)
         app.on_status(L.Status("ready", "", True, True, True, 5.0))
-        assert app.btn_kill.cget("style") == "Big.TButton"
+        assert app.btn_kill.cget("style") == "Big.Accent.TButton"
         app.on_status(L.Status("ready", "", True, True, False, 5.0))
         assert app.btn_kill.cget("style") == "Big.Danger.TButton"
     finally:
@@ -181,5 +181,135 @@ def test_the_focus_ring_shows_only_while_the_keyboard_is_used(
         app.btn_stats.event_generate("<ButtonRelease-1>", x=-50, y=-50)  # (released outside)
         app.root.update()
         assert ring() == 0
+    finally:
+        app.root.destroy()
+
+
+def test_the_error_page_says_what_to_try() -> None:
+    hints = L.error_hints
+    assert "smaller model" in hints("The model server did not start: CUDA out of memory")[0]
+    assert "drive is full" in hints("not enough free disk space for the download")[0]
+    assert "internet" in hints("A network problem stopped the download (timed out)")[0]
+    assert "port" in hints("[WinError 10048] Only one usage of each socket address")[0]
+    assert "OneDrive" in hints("[WinError 5] Access is denied: 'C:\\\\x'")[0]
+    assert "launcher.json" in hints("C:\\\\S\\\\config\\\\launcher.json is not valid JSON")[0]
+    assert "Try again" in hints("the model server did not become ready within 600 s")[0]
+    assert hints("something nobody planned for") == []
+    many = "out of memory; no space left; timed out; address already in use; access is denied"
+    assert len(hints(many)) == 3  # (the first three)
+
+
+def test_the_model_has_its_own_name(tmp_path: Any) -> None:
+    settings = L.Settings(root=tmp_path)
+    assert L.model_label(settings) == "Qwen2.5 14B, uncensored"  # the default, as setup shows it
+    settings.model_url = L.MODEL_PRESETS["qwen3-14b"]
+    assert L.model_label(settings) == L.MODEL_INFO["qwen3-14b"][0]
+    settings.model_url = "https://example.org/models/My-Own-Model-Q5_K_M.gguf"
+    assert L.model_label(settings) == "My-Own-Model-Q5_K_M"  # one of your own: its file
+    settings.use_model = False
+    assert L.model_label(settings) == ""
+
+
+@needs_display
+def test_the_error_page_shows_advice_first_and_the_details_on_request(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    app = make_app(monkeypatch)
+    try:
+        app.on_error("The model server did not start: out of video memory", "CUDA out of memory")
+        app.root.update()
+        hints = [label.cget("text") for label in app.err_hint_labels]
+        assert len(hints) == 1 and "choose a smaller model" in hints[0]
+        assert app.err_hints.winfo_manager() == "grid"
+        assert app.err_text.winfo_manager() == ""  # the traceback is folded away
+        assert app.err_toggle.cget("text") == "Show details"
+        app._show_error_details(None)  # "Show details"
+        assert app.err_text.winfo_manager() == "grid"
+        assert "CUDA out of memory" in app.err_text.get("1.0", "end")
+        assert app.err_settings.winfo_manager() == "grid"
+        app.err_settings.invoke()  # a smaller model, without starting over
+        assert app.page == "setup" and app.in_settings
+
+        app.on_error("Something nobody planned for", "details")
+        assert app.err_hints.winfo_manager() == ""  # no advice: the details are shown at once
+        assert app.err_text.winfo_manager() == "grid"
+        app.fatal = "launcher.json is not valid JSON"
+        app.on_error(app.fatal)
+        assert app.err_settings.winfo_manager() == ""  # (the settings cannot be read)
+    finally:
+        app.root.destroy()
+    app = make_app(monkeypatch, "de")
+    try:
+        app.on_error("The model server did not start: out of video memory")
+        assert app.err_hint_labels[0].cget("text").startswith("•  Das Modell passt nicht")
+        assert app.details_toggle.cget("text") == "Details zeigen"  # (the progress page's too)
+    finally:
+        app.root.destroy()
+
+
+@needs_display
+def test_while_stopped_resume_is_the_main_button(monkeypatch: pytest.MonkeyPatch) -> None:
+    app = make_app(monkeypatch)
+    try:
+        app.on_status(L.Status("ready", "", True, True, False, 50.0))
+        assert str(app.btn_chat.cget("style")) == "Big.Accent.TButton"
+        assert str(app.btn_kill.cget("style")) == "Big.Danger.TButton"
+        rows = {name: label.cget("text") for name, (_dot, _oval, label) in app.status_rows.items()}
+        assert rows["Model"] == "Ready: Qwen2.5 14B, uncensored"  # its name, not its file's
+        app.on_status(L.Status("ready", "", True, True, True, 60.0))
+        assert str(app.btn_kill.cget("style")) == "Big.Accent.TButton"  # Resume, highlighted
+        assert str(app.btn_chat.cget("style")) == "Big.TButton"
+    finally:
+        app.root.destroy()
+
+
+@needs_display
+def test_the_chat_row_says_where_the_chat_is(monkeypatch: pytest.MonkeyPatch) -> None:
+    import types
+
+    app = make_app(monkeypatch)
+    try:
+        app.chat_window = types.SimpleNamespace(wanted=True, reason="", running=lambda: True)
+        app.on_status(L.Status("ready", "", True, True, False, 50.0))
+        assert app.status_rows["Chat"][2].cget("text").endswith(" · in Starlight's own window")
+        app.chat_window = types.SimpleNamespace(
+            wanted=True, reason="no WebView2", running=lambda: False
+        )
+        app.on_status(L.Status("ready", "", True, True, False, 50.0))
+        assert app.status_rows["Chat"][2].cget("text").endswith(" · in the browser")
+    finally:
+        app.root.destroy()
+
+
+@needs_display
+def test_enter_presses_the_main_button_and_esc_leaves_settings(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    app = make_app(monkeypatch)
+    pressed: list[str] = []
+    try:
+        for name in ("btn_chat", "btn_kill", "btn_stats", "err_try", "setup_go", "setup_cancel"):
+            getattr(app, name).configure(command=lambda name=name: pressed.append(name))
+        app.root.deiconify()  # (shown, so a button can have the keyboard focus)
+        app.on_status(L.Status("ready", "", True, True, False, 5.0))
+        app.root.focus_force()
+        app.root.update()
+        app._on_return()
+        app.on_status(L.Status("ready", "", True, True, True, 5.0))  # stopped: Resume
+        app._on_return()
+        app.btn_stats.focus_set()  # the button with the keyboard focus wins
+        app.root.update()
+        app._on_return()
+        app.root.focus_set()
+        app.on_error("Something nobody planned for")
+        app.root.update()
+        app._on_return()
+        assert pressed == ["btn_chat", "btn_kill", "btn_stats", "err_try"]
+        assert app._on_escape() is None  # (nothing to leave on the error page)
+        app.open_setup(settings_mode=True)
+        app.root.update()
+        app._on_return()
+        app._on_escape()
+        assert pressed[-2:] == ["setup_go", "setup_cancel"]
     finally:
         app.root.destroy()

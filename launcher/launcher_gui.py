@@ -446,6 +446,50 @@ GERMAN = {
     "Open": "Öffnen",
     "Starlight could not start": "Starlight konnte nicht starten",
     "Copy details": "Details kopieren",
+    "What you can try": "Was du tun kannst",
+    "Hide details": "Details ausblenden",
+    "in Starlight's own window": "in Starlights eigenem Fenster",
+    "in the browser": "im Browser",
+    "The model does not fit into the graphics card's memory. In Settings, choose a smaller "
+    "model or less context.": (
+        "Das Modell passt nicht in den Speicher der Grafikkarte. Wähle in den Einstellungen "
+        "ein kleineres Modell oder weniger Kontext."
+    ),
+    "The drive is full. Free some space (Disk space shows what Starlight keeps), or choose "
+    "a smaller model.": (
+        "Das Laufwerk ist voll. Mach Platz frei („Speicherplatz“ zeigt, was Starlight "
+        "aufbewahrt), oder wähle ein kleineres Modell."
+    ),
+    "Check the internet connection, then press Try again: finished downloads are kept.": (
+        "Prüfe die Internetverbindung und drücke dann „Nochmal versuchen“: fertige Downloads "
+        "bleiben erhalten."
+    ),
+    "Another program uses Starlight's port: close a Starlight that may still run, or "
+    "restart the PC.": (
+        "Ein anderes Programm nutzt den Port von Starlight: Schließe ein Starlight, das "
+        "vielleicht noch läuft, oder starte den PC neu."
+    ),
+    "Windows blocked a file: close programs that use Starlight's folder, and keep Starlight "
+    "out of Program Files and OneDrive.": (
+        "Windows hat eine Datei gesperrt: Schließe Programme, die den Starlight-Ordner nutzen, "
+        "und lege Starlight nicht unter „Programme“ oder in OneDrive ab."
+    ),
+    "config/launcher.json has a mistake: fix it, or delete it to start with the defaults.": (
+        "config/launcher.json enthält einen Fehler: Korrigiere ihn, oder lösche die Datei, um "
+        "mit den Standardwerten zu starten."
+    ),
+    "The model took too long to start. Press Try again; if it happens again, choose a "
+    "smaller model in Settings.": (
+        "Das Modell brauchte zu lange zum Starten. Drücke „Nochmal versuchen“; passiert es "
+        "wieder, wähle in den Einstellungen ein kleineres Modell."
+    ),
+    "A download was damaged. Press Try again: that file is downloaded again.": (
+        "Ein Download war beschädigt. Drücke „Nochmal versuchen“: Die Datei wird neu geladen."
+    ),
+    "Start LM Studio and load a model there, or choose another model in Settings.": (
+        "Starte LM Studio und lade dort ein Modell, oder wähle in den Einstellungen ein "
+        "anderes Modell."
+    ),
     "Try again": "Nochmal versuchen",
     "Stopping ...": "Halte an ...",
     "setup": "Einrichtung",
@@ -685,6 +729,11 @@ class App:
         self._build_setup()
         self.root.bind("<Up>", lambda _event: self._move_selection(-1))
         self.root.bind("<Down>", lambda _event: self._move_selection(1))
+        # As in any Windows dialog: Enter presses the page's main button (or the button that
+        # has the keyboard focus), Esc leaves Settings.
+        for key in ("<Return>", "<KP_Enter>"):
+            self.root.bind(key, self._on_return)
+        self.root.bind("<Escape>", self._on_escape)
         self._build_progress()
         self._build_running()
         self._build_error()
@@ -826,6 +875,9 @@ class App:
         style.configure("Big.TLabel", font=self.f_big)
         style.configure("Head.TLabel", font=self.f_head)
         style.configure("Section.TLabel", foreground=c.dim, font=self.f_small)
+        style.configure("Card.TLabel", background=c.panel, foreground=c.text)  # (on a card)
+        style.configure("CardTitle.TLabel", background=c.panel, foreground=c.text,
+                        font=self.f_bold)  # fmt: skip
         style.configure("TButton", background=c.panel2, foreground=c.text, borderwidth=1,
                         padding=(self.px(14), self.px(7)), relief="flat")  # fmt: skip
         # Pointed at: a light accent tint and an accent border (as the web pages' buttons).
@@ -1915,7 +1967,7 @@ class App:
         details.columnconfigure(0, weight=1)
         details.rowconfigure(1, weight=1)
         self.details_open = tk.BooleanVar(value=False)
-        self.details_toggle = tk.Label(details, text="Show details", font=self.f_small,
+        self.details_toggle = tk.Label(details, text=tr("Show details"), font=self.f_small,
                                        bg=c.bg, fg=c.accent, cursor="hand2")  # fmt: skip
         self.details_toggle.grid(row=0, column=0, sticky="w")
         self.details_toggle.bind("<Button-1>", lambda _event: self._flip_details())
@@ -1958,7 +2010,7 @@ class App:
 
     def _toggle_details(self) -> None:
         self.details_toggle.configure(
-            text="Hide details" if self.details_open.get() else "Show details"
+            text=tr("Hide details") if self.details_open.get() else tr("Show details")
         )
         if self.details_open.get():
             self.log_frame.grid(row=1, column=0, sticky="nsew", pady=(self.px(6), 0))
@@ -2218,7 +2270,7 @@ class App:
             else "starting"
         )  # fmt: skip
         self.root.title(f"Starlight · {tr(state)}")  # (the taskbar shows it too)
-        model_name = self.settings.model_file.stem if self.settings.use_model else ""
+        model_name = L.model_label(self.settings)
         elapsed = L.format_duration(status.seconds)
         if status.model == "ready":
             self._set_row(
@@ -2246,8 +2298,16 @@ class App:
                 "Model", c.warn, trf("Loading into video memory ... {elapsed}", elapsed=elapsed)
             )
         chat_url, viewer_url = L.chat_url(), L.viewer_url()
+        where = ""
+        window = self.chat_window
+        if window is not None and window.reason:
+            where = " · " + tr("in the browser")
+        elif window is not None and window.running():
+            where = " · " + tr("in Starlight's own window")
         self._set_row(
-            "Chat", c.ok if status.chat else c.warn, chat_url if status.chat else tr("Starting ...")
+            "Chat",
+            c.ok if status.chat else c.warn,
+            chat_url + where if status.chat else tr("Starting ..."),
         )
         if status.viewer is None:
             self._set_row("Statistics", c.dim, tr("Off"))
@@ -2268,10 +2328,12 @@ class App:
         self.btn_chat.state(["!disabled"] if status.chat else ["disabled"])
         self.btn_stats.state(["!disabled"] if status.viewer else ["disabled"])
         self.btn_kill.state(["!disabled"] if status.kill is not None else ["disabled"])
+        # Stopped: Resume is what to press now; the chat waits.
         self.btn_kill.configure(
             text=tr("Resume") if status.kill else tr("Stop everything"),
-            style="Big.TButton" if status.kill else "Big.Danger.TButton",
+            style="Big.Accent.TButton" if status.kill else "Big.Danger.TButton",
         )
+        self.btn_chat.configure(style="Big.TButton" if status.kill else "Big.Accent.TButton")
         # Our own model server can be restarted; a model in LM Studio can be reloaded there.
         lmstudio = self.settings.uses_lmstudio
         can_restart = self.services is not None and (
@@ -2521,18 +2583,32 @@ class App:
     def _build_error(self) -> None:
         c = self.c
         page = self._new_page("error")
-        page.rowconfigure(2, weight=1)
+        page.rowconfigure(4, weight=1)
         title = self._label(page, "Starlight could not start", "Big.TLabel")
         title.grid(row=0, column=0, sticky="w")
         self.err_message = self._label(page, "", "TLabel", wrap=True)
         self.err_message.grid(row=1, column=0, sticky="w", pady=(self.px(8), self.px(10)))
+        # What to try, for the problems the launcher knows (L.error_hints); plain words first,
+        # the technical details below, folded away when there is advice.
+        self.err_hints = tk.Frame(page, bg=c.panel, highlightthickness=1,
+                                  highlightbackground=c.border)  # fmt: skip
+        self.err_hints.grid(row=2, column=0, sticky="ew", pady=(0, self.px(12)))
+        self.err_hints.columnconfigure(0, weight=1)
+        self._label(self.err_hints, "What you can try", "CardTitle.TLabel").grid(
+            row=0, column=0, sticky="w", padx=self.px(16), pady=(self.px(12), self.px(4))
+        )
+        self.err_hint_labels: list[ttk.Label] = []
+        self.err_details_open = tk.BooleanVar(value=False)
+        self.err_toggle = tk.Label(page, text=tr("Show details"), font=self.f_small, bg=c.bg,
+                                   fg=c.accent, cursor="hand2")  # fmt: skip
+        self.err_toggle.grid(row=3, column=0, sticky="w")
+        self.err_toggle.bind("<Button-1>", lambda _event: self._show_error_details(None))
         self.err_text = tk.Text(
             page, height=12, wrap="word", bg=c.panel, fg=c.dim, font=self.f_mono, relief="flat",
             highlightthickness=1, highlightbackground=c.border, padx=self.px(8), pady=self.px(6),
         )  # fmt: skip
-        self.err_text.grid(row=2, column=0, sticky="nsew")
         buttons = ttk.Frame(page)
-        buttons.grid(row=3, column=0, sticky="ew", pady=(self.px(12), 0))
+        buttons.grid(row=5, column=0, sticky="ew", pady=(self.px(12), 0))
         buttons.columnconfigure(0, weight=1)
         self._button(buttons, "Open logs folder", self.open_logs).grid(
             row=0, column=1, padx=self.px(6)
@@ -2541,8 +2617,49 @@ class App:
         self._button(buttons, "Copy details", lambda: self._copy(self.err_report)).grid(
             row=0, column=2, padx=self.px(6)
         )
-        self._button(buttons, "Quit", self.quit_app).grid(row=0, column=3, padx=self.px(6))
-        self._button(buttons, "Try again", self.try_again, "Accent.TButton").grid(row=0, column=4)
+        # (a smaller model after "out of video memory", without starting over)
+        self.err_settings = self._button(buttons, "Settings ...", self.open_settings)
+        self.err_settings.grid(row=0, column=3, padx=self.px(6))
+        self._button(buttons, "Quit", self.quit_app).grid(row=0, column=4, padx=self.px(6))
+        self.err_try = self._button(buttons, "Try again", self.try_again, "Accent.TButton")
+        self.err_try.grid(row=0, column=5)
+
+    def _main_button(self) -> ttk.Button | None:
+        """The button Enter presses on the page that shows: the accent one."""
+        if self.page == "setup":
+            return self.setup_go
+        if self.page == "error":
+            return self.err_try
+        if self.page == "running":
+            status = getattr(self, "last_status", None)
+            return self.btn_kill if status is not None and status.kill else self.btn_chat
+        return None
+
+    def _on_return(self, _event: Any = None) -> str | None:
+        focus = self.root.focus_get()
+        if isinstance(focus, (tk.Entry, ttk.Entry, tk.Text, tk.Listbox)):
+            return None  # (a box has its own Enter, e.g. the model search)
+        button = focus if isinstance(focus, ttk.Button) else self._main_button()
+        if button is None or button.instate(["disabled"]):
+            return None
+        button.invoke()
+        return "break"
+
+    def _on_escape(self, _event: Any = None) -> str | None:
+        if self.page == "setup" and self.in_settings:
+            self.setup_cancel.invoke()
+            return "break"
+        return None
+
+    def _show_error_details(self, show: bool | None) -> None:
+        """Show or hide the error's technical details (None: the other way round)."""
+        self.err_details_open.set(not self.err_details_open.get() if show is None else show)
+        opened = self.err_details_open.get()
+        self.err_toggle.configure(text=tr("Hide details") if opened else tr("Show details"))
+        if opened:
+            self.err_text.grid(row=4, column=0, sticky="nsew", pady=(self.px(6), 0))
+        else:
+            self.err_text.grid_remove()
 
     def on_error(self, message: str, details: str = "") -> None:
         self.polling = False
@@ -2560,6 +2677,27 @@ class App:
         self.err_text.configure(state="normal")
         self.err_text.delete("1.0", "end")
         self.err_text.insert("1.0", extra or "No more details.")
+        for label in self.err_hint_labels:
+            label.destroy()
+        hints = self.L.error_hints(f"{message}\n{details}")
+        self.err_hint_labels = [
+            self._label(self.err_hints, "•  " + tr(hint), "Card.TLabel", wrap=True)
+            for hint in hints
+        ]
+        for row, label in enumerate(self.err_hint_labels, start=1):
+            last = row == len(self.err_hint_labels)
+            label.configure(wraplength=self._page_width() - self.px(40))
+            label.grid(row=row, column=0, sticky="w", padx=self.px(16),
+                       pady=(self.px(1), self.px(12) if last else self.px(1)))  # fmt: skip
+        if hints:
+            self.err_hints.grid()
+        else:
+            self.err_hints.grid_remove()
+        self._show_error_details(not hints)  # (no advice: the details are all there is)
+        if self.fatal:  # (the settings themselves could not be read)
+            self.err_settings.grid_remove()
+        else:
+            self.err_settings.grid()
         self.bar.stop()
         self.show("error")
 
