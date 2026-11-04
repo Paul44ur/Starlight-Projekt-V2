@@ -79,7 +79,7 @@ switchInput.addEventListener("keydown", (event) => {
 switcher.addEventListener("click", (event) => { if (event.target === switcher) closeSwitcher(); });
 document.getElementById("find").onclick = openSwitcher;
 document.addEventListener("keydown", (event) => {
-  const key = event.key.toLowerCase(), mod = event.ctrlKey || event.metaKey;
+  const key = event.key.toLowerCase(), mod = event.ctrlKey || event.metaKey;  // (the ? window: common.js)
   if (mod && key === "k") { event.preventDefault(); openSwitcher(); }
   else if (mod && key === "e" && state.current) { event.preventDefault(); toggleEdit(); }
   else if (mod && key === "s") { event.preventDefault(); if (edit.editor) save(); }
@@ -113,3 +113,11 @@ document.getElementById("new-note").onclick = async (event) => {
   menu.addEventListener("keydown", (e) => { if (e.key === "Escape") menu.remove(); });
 };
 
+
+// The keys of this page, for the ? window (common.js).
+window.SHORTCUTS = [
+  ["Ctrl+K", "Find a note"], ["Ctrl+N", "A new note"], ["Ctrl+E", "Edit or read the note"],
+  ["Ctrl+S", "Save"], ["Esc", "Close the side panel or the finder"],
+  ["Space", "Flashcards: show the answer"], ["1–4", "Flashcards: how well you knew it"],
+  ["?", "These shortcuts (Ctrl+/ while typing in a box)"],
+];

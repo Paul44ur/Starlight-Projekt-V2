@@ -48,12 +48,64 @@ async function api(path, options = {}) {
   return data;
 }
 
+// One message at a time (a new one replaces the last, instead of covering it), and a longer
+// one stays longer, so it can be read.
+let toastShown = null;
 function toast(text) {
-  const t = el("div", "toast", text);
+  if (toastShown) { clearTimeout(toastShown.timer); toastShown.remove(); }
+  const t = toastShown = el("div", "toast", text);
   t.setAttribute("role", "status");  // read out by screen readers too
   document.body.appendChild(t);
-  setTimeout(() => t.remove(), 2600);
+  const ms = Math.min(8000, 2600 + Math.max(0, String(text).length - 40) * 45);
+  t.timer = setTimeout(() => {
+    t.classList.add("leaving");
+    setTimeout(() => { t.remove(); if (toastShown === t) toastShown = null; }, 200);
+  }, ms);
 }
+
+// A list that never arrived (no access, an error): its placeholder bars go after a while.
+setTimeout(() => document.querySelectorAll(".skeleton").forEach(s => s.remove()), 10000);
+
+// The keyboard shortcuts of this page (window.SHORTCUTS: pairs of keys, as "Shift+Enter",
+// and what they do), in a small window that Esc closes. Ctrl+/ opens it, also while typing in
+// a box (where ? is just a question mark); ? alone opens it when no box has the focus. (Not in
+// a note's editor: Ctrl+/ is its own key there.)
+function showShortcuts() {
+  if (!window.SHORTCUTS) return;
+  let box = document.getElementById("shortcuts");
+  if (!box) {
+    box = el("dialog");
+    box.id = "shortcuts";
+    box.setAttribute("aria-labelledby", "shortcuts-title");
+    const title = el("h2", "", "Keyboard shortcuts");
+    title.id = "shortcuts-title";
+    const list = el("dl");
+    window.SHORTCUTS.forEach(([keys, what]) => {
+      const dt = el("dt");
+      keys.split("+").forEach((key, i) => {
+        if (i) dt.appendChild(el("span", "plus", "+"));
+        dt.appendChild(el("kbd", "", key));
+      });
+      list.append(dt, el("dd", "", what));
+    });
+    const close = el("button", "", "Close");
+    close.type = "button";
+    close.onclick = () => box.close();
+    box.append(title, list, close);
+    document.body.appendChild(box);
+  }
+  if (!box.open) box.showModal();
+}
+document.addEventListener("keydown", (e) => {
+  const at = e.target.closest ? e.target : document.body;
+  if (at.closest(".cm-editor")) return;
+  const typing = at.closest("input, textarea, select, [contenteditable]");
+  const ctrlSlash = e.key === "/" && (e.ctrlKey || e.metaKey) && !e.altKey;
+  const question = e.key === "?" && !e.ctrlKey && !e.metaKey && !e.altKey && !typing;
+  if (!ctrlSlash && !question) return;
+  e.preventDefault();
+  showShortcuts();
+});
 
 // The Notes page is on the PC only: a paired phone does not show the link to it.
 if (document.querySelector('a[href="/notes"]')) {

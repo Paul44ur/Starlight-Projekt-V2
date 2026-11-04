@@ -115,9 +115,38 @@ th { color: var(--dim); font-weight: 600; font-size: var(--fs-xs); text-transfor
 .cluster { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s-2); }
 .muted { color: var(--dim); }
 .truncate { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
-.toast { position: fixed; bottom: 18px; left: 50%; transform: translateX(-50%); background: var(--panel);
+/* A short message: one at a time, above the message box on the chat (--toast-bottom), fading
+   in and out (common.js toast()). */
+.toast { position: fixed; bottom: calc(var(--toast-bottom, 18px) + env(safe-area-inset-bottom)); left: 50%;
+         transform: translateX(-50%); background: var(--panel); max-width: min(560px, calc(100vw - 32px));
          border: 1px solid var(--border); border-radius: var(--r-3); padding: 8px 14px; box-shadow: var(--shadow-2);
-         z-index: 50; }
+         z-index: 50; text-align: center; animation: toast-in var(--dur) var(--ease); }
+.toast.leaving { opacity: 0; transform: translate(-50%, 6px);
+                 transition: opacity var(--dur) var(--ease), transform var(--dur) var(--ease); }
+@keyframes toast-in { from { opacity: 0; transform: translate(-50%, 8px); } }
+/* While a list loads: a few faint bars instead of an empty card. The list replaces them; if it
+   never comes, common.js takes them away after a while, so nothing shimmers for ever. */
+.skeleton { display: grid; gap: 10px; padding: 6px 0; }
+.skeleton i { display: block; height: 14px; border-radius: var(--r-1); background-color: var(--panel2);
+              background-image: linear-gradient(90deg, transparent, color-mix(in srgb, var(--text) 7%, transparent), transparent);
+              background-size: 200% 100%; animation: shimmer 1.4s linear 6; }
+.skeleton i:nth-child(2) { width: 82%; }
+.skeleton i:nth-child(3) { width: 64%; }
+@keyframes shimmer { from { background-position: 100% 0; } to { background-position: -100% 0; } }
+/* The keyboard shortcuts of a page (press ?): a small window (common.js). */
+dialog#shortcuts { border: 1px solid var(--border); border-radius: var(--r-3); background: var(--panel);
+                   color: var(--text); box-shadow: var(--shadow-2); padding: var(--s-5);
+                   width: min(480px, calc(100vw - 32px)); animation: toast-in var(--dur) var(--ease); }
+dialog#shortcuts::backdrop { background: rgb(0 0 0 / .45); }
+#shortcuts h2 { margin: 0 0 var(--s-4); font-size: var(--fs-lg); }
+#shortcuts dl { display: grid; grid-template-columns: auto 1fr; gap: 10px 16px; margin: 0 0 var(--s-4);
+                align-items: baseline; }
+#shortcuts dt { white-space: nowrap; }
+#shortcuts dd { margin: 0; color: var(--dim); }
+#shortcuts kbd { font: 12px ui-monospace, Consolas, "Cascadia Mono", monospace; padding: 2px 6px;
+                 border: 1px solid var(--border); border-bottom-width: 2px; border-radius: var(--r-1);
+                 background: var(--panel2); color: var(--text); }
+#shortcuts .plus { color: var(--dim); margin: 0 2px; }
 @media (max-width: 760px) { header.top nav { gap: 8px; font-size: 13px; } }
 /* A touch screen (a phone, a tablet): every control at least 44 px, so a finger hits it; the
    mouse look stays as it is. At no weight (:where), so a page can make a small control, such

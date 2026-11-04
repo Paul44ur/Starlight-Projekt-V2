@@ -20,6 +20,9 @@
   .conv { display: flex; align-items: center; gap: 4px; padding: 7px 8px; border-radius: 8px;
           cursor: pointer; font-size: 14px; }
   .conv:hover { background: var(--panel2); }
+  /* (a row is reached by Tab too: its ⋯ shows while it has the focus) */
+  .conv:focus-visible { outline-offset: -2px; }
+  .conv:focus-within .acts, .conv:has(.acts [aria-expanded="true"]) .acts { display: flex; }
   .conv.active { background: var(--accent-tint); box-shadow: inset 3px 0 0 var(--accent); }
   .conv .t { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .conv .acts { display: none; }
@@ -121,6 +124,8 @@
   .empty-logo { width: 48px; height: 48px; border-radius: 12px; margin-bottom: 8px; }
   .empty-title { color: var(--text); font-size: var(--fs-xl); font-weight: 600; }
   .empty-hint { font-size: var(--fs-sm); margin-top: 8px; }
+  .empty-keys { font-size: var(--fs-sm); }
+  @media (pointer: coarse) { .empty-keys { display: none; } }  /* (no keyboard to press ? on) */
   /* Scrolled up: a button back to the newest message, with a dot when something new came. */
   /* (centred over the conversation, clear of the bubbles on either side; not by transform,
      which a pressed button already uses) */
@@ -243,13 +248,13 @@
 </head>
 <body>
   <a class="skip" href="#input">Skip to the message box</a>
-  <aside id="convs">
+  <aside id="convs" tabindex="-1">
     <div class="head">
       <input id="search" type="search" placeholder="Search chats" aria-label="Search chats" />
       <button id="new" title="New conversation" aria-label="New conversation">＋</button>
       <button id="newprivate" aria-label="New private conversation" title="New private conversation: never saved, nothing learned from it, gone when Starlight stops">🔒</button>
     </div>
-    <div id="list"></div>
+    <div id="list"><div class="skeleton" aria-hidden="true"><i></i><i></i><i></i></div></div>
     <nav class="drawer-nav"><a href="/notes">Notes</a><a href="/memory">Memory</a><a href="/activity">Activity</a><a href="/automations">Automations</a><a href="/settings">Settings</a>
       <button class="icon" onclick="cycleTheme()" id="theme2" title="Theme">◐ Theme</button></nav>
   </aside>
@@ -257,7 +262,7 @@
     <div id="offline" role="alert" hidden><span>Starlight is not answering: the PC may be off or asleep.</span>
       <button id="wake" type="button" hidden>Wake the PC</button></div>
     <header class="top">
-      <button id="menu" class="icon" title="Conversations" aria-label="Conversations">☰</button>
+      <button id="menu" class="icon" title="Conversations" aria-label="Conversations" aria-controls="convs" aria-expanded="false">☰</button>
       <h1><img class="logo" src="/icon.svg" alt="" width="22" height="22" />Starlight</h1>
       <span id="conn" class="pill off">connecting…</span>
       <span id="where" class="pill off" hidden></span>
@@ -343,8 +348,17 @@ toLatest.onclick = () => log.scrollTo({ top: log.scrollHeight,
   behavior: matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth" });
 // (the button floats just above the message box, however tall that has grown)
 const footer = document.querySelector("footer");
-new ResizeObserver(() => document.getElementById("main").style.setProperty("--footer-h", footer.offsetHeight + "px"))
-  .observe(footer);
+new ResizeObserver(() => {
+  document.getElementById("main").style.setProperty("--footer-h", footer.offsetHeight + "px");
+  document.documentElement.style.setProperty("--toast-bottom", footer.offsetHeight + 12 + "px");  // (above it)
+}).observe(footer);
+// The keys of this page, for the ? window (common.js).
+window.SHORTCUTS = [
+  ["Enter", "Send"], ["Shift+Enter", "A new line"], ["Esc", "Stop the answer, or close a menu"],
+  ["↑", "In the empty box: your last question again"], ["/", "Commands"],
+  ["Ctrl+Alt+J", "Kill switch: stop everything Starlight does (anywhere on the PC)"],
+  ["Ctrl+/", "These shortcuts (? when not typing)"],
+];
 
 // Your messages show as you wrote them; answers are drawn from their Markdown (plain: a
 // notice that is not the model's).
@@ -839,7 +853,8 @@ function syncSend() {
 // Esc stops the answer that is being written (as the Stop button does).
 document.addEventListener("keydown", (e) => {
   if (e.key !== "Escape") return;
-  if (openMenu) { closeMenu(); return; }
+  if (openMenu) { closeMenu(true); return; }
+  if (document.body.classList.contains("drawer")) { setDrawer(false); document.getElementById("menu").focus(); return; }
   if ((current || answering) && !e.target.closest(".confirm")) {
     e.preventDefault(); stopAnswer(); toast("Stopping …");
   } else if (editing) { cancelEdit(); input.value = ""; input.oninput(); }
@@ -1056,6 +1071,9 @@ async function loadList() {
   let data;
   try { data = await api("/api/conversations?search=" + encodeURIComponent(search) + (showArchived ? "&archived=true" : "")); } catch (e) { return; }
   if (!conversation) conversation = data.current;
+  // The list is drawn anew: the keyboard's place in it (a row, or its ⋯) comes back after.
+  const had = document.activeElement && document.activeElement.closest && document.activeElement.closest(".conv");
+  const keep = had ? { id: had.dataset.id, more: document.activeElement !== had } : null;
   const list = document.getElementById("list"); list.innerHTML = "";
   if (showArchived) list.appendChild(el("div", "folder", "🗄 Archive"));
   // pinned ones stay on top; the rest are grouped by folder (no folder first)
@@ -1076,12 +1094,19 @@ async function loadList() {
     more.onclick = (e) => { e.stopPropagation(); conversationMenu(c, more); };
     acts.append(more); row.append(t, acts);
     row.onclick = () => open(c.id);
+    row.tabIndex = 0;
+    row.dataset.id = c.id;
+    row.onkeydown = (e) => {
+      if ((e.key === "Enter" || e.key === " ") && e.target === row) { e.preventDefault(); open(c.id); }
+    };
     list.appendChild(row);
   });
   const toggle = el("button", "icon", showArchived ? "← Back to your conversations" : "🗄 Archive");
   toggle.id = "archived";
   toggle.onclick = () => { showArchived = !showArchived; loadList(); };
   list.appendChild(toggle);
+  const again = keep && [...list.querySelectorAll(".conv")].find(r => r.dataset.id === keep.id);
+  if (again) (keep.more ? again.querySelector(".acts button") : again).focus();
 }
 
 // Conversations: pinned first, then by folder; the archive is a list of its own.
@@ -1127,12 +1152,21 @@ function conversationMenu(c, anchor) {
 
 // A small menu at an element: items are [icon, label, action, hint?].
 let openMenu = null;
-function closeMenu() { if (openMenu) { openMenu.remove(); openMenu = null; } }
+// refocus (Esc): back to the button that opened it, first, while that button is still shown
+function closeMenu(refocus) {
+  if (!openMenu) return;
+  const back = openMenu.returnTo;
+  if (refocus && back && back.isConnected) back.focus();
+  openMenu.remove(); openMenu = null;
+  if (back) back.setAttribute("aria-expanded", "false");
+}
 function popMenu(anchor, items, place) {
   closeMenu();
   const menu = el("div", "popmenu");
+  menu.setAttribute("role", "menu");
   items.forEach(([icon, label, action, hint]) => {
     const b = el("button");
+    b.setAttribute("role", "menuitem");
     b.append(el("span", "", icon), el("span", "", label));
     if (hint) b.appendChild(el("span", "hint", hint));
     b.onclick = (e) => { e.stopPropagation(); closeMenu(); action(); };
@@ -1145,11 +1179,25 @@ function popMenu(anchor, items, place) {
   menu.style.left = left + "px";
   menu.style.top = (place === "above" || below + menu.offsetHeight > innerHeight ? Math.max(8, above) : below) + "px";
   openMenu = menu;
+  // Opened from a button (a conversation's ⋯): the focus moves into the menu, ↑ and ↓ go
+  // through it, and Esc goes back to the button. (The / menu stays with the message box.)
+  if (anchor.tagName === "BUTTON") {
+    menu.returnTo = anchor;
+    anchor.setAttribute("aria-haspopup", "menu");
+    anchor.setAttribute("aria-expanded", "true");  // (and its ⋯ stays shown: CSS)
+    menu.querySelector("button").focus();
+    menu.addEventListener("keydown", (e) => {
+      if (e.key !== "ArrowDown" && e.key !== "ArrowUp") return;
+      e.preventDefault();
+      const all = [...menu.querySelectorAll("button")], at = all.indexOf(document.activeElement);
+      all[(at + (e.key === "ArrowDown" ? 1 : -1) + all.length) % all.length].focus();
+    });
+  }
   return menu;
 }
 document.addEventListener("click", (e) => { if (openMenu && !openMenu.contains(e.target)) closeMenu(); });
 async function open(id) {
-  document.body.classList.remove("drawer");
+  setDrawer(false);
   let data;
   try { data = await api("/api/conversations/" + id); } catch (e) { toast(e.message); return; }
   conversation = id; log.innerHTML = ""; current = null;
@@ -1165,8 +1213,13 @@ async function open(id) {
 document.getElementById("new").onclick = async () => { const d = await api("/api/conversations", { method: "POST" }); await open(d.id); input.focus(); };
 document.getElementById("newprivate").onclick = async () => { const d = await api("/api/conversations", { method: "POST", body: { private: true } }); await open(d.id); input.focus(); };
 document.getElementById("search").oninput = () => loadList();
-document.getElementById("menu").onclick = () => document.body.classList.toggle("drawer");
-log.addEventListener("click", () => document.body.classList.remove("drawer"));
+function setDrawer(open) {
+  document.body.classList.toggle("drawer", open);
+  document.getElementById("menu").setAttribute("aria-expanded", open ? "true" : "false");
+  if (open) document.getElementById("convs").focus();
+}
+document.getElementById("menu").onclick = () => setDrawer(!document.body.classList.contains("drawer"));
+log.addEventListener("click", () => setDrawer(false));
 
 // -- status ----------------------------------------------------------------------------------
 // A new conversation: a calm start instead of an empty page. It goes with the first message.
@@ -1179,7 +1232,8 @@ function showEmpty(isPrivate) {
     el("div", "empty-text", isPrivate
       ? "It is never saved and nothing is learned from it. It is gone when Starlight stops."
       : "Starlight runs on this PC: nothing you say leaves it."),
-    el("div", "empty-hint", "Type / for commands. Drop pictures or documents here to add them."));
+    el("div", "empty-hint", "Type / for commands. Drop pictures or documents here to add them."),
+    el("div", "empty-keys", "Press Ctrl+/ for the keyboard shortcuts."));
   log.appendChild(box);
 }
 async function refresh() {

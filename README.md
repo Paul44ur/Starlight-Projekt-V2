@@ -485,6 +485,9 @@ question again and replaces that answer); under it you see how fast it was writt
 (tokens per second) and how long it took. With a mouse, older answers show **Copy** and
 **Branch** when you point at them. Scrolled up to read? A **↓** button above the box brings
 you back to the newest message; a dot on it means something new arrived below.
+**Ctrl+/** (or **?** when you are not typing) shows the keyboard shortcuts, here and on the
+Notes page; the conversation list, its ⋯ menus and the phone's ☰ drawer work with the keyboard
+too (Tab, Enter, the arrow keys, Esc).
 
 - **Edit** under your last question puts it back in the box: change it and press Enter,
   and that exchange is asked again (if that fails, the earlier one stays).

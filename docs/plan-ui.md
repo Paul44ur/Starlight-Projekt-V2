@@ -61,9 +61,9 @@ first, then the launcher (first impression), then the chat (daily driver).
 | U4 | Settings page (cards, forms, the permission UI) | M | U1 | **done** (1af5cf7) |
 | U5 | Automations, Memory, Activity, Kill, Pair | M | U1 | **done** (0f9b0c1) |
 | U6 | Notes page: light consistency pass | S | U1 | **done** (72fddd5) |
-| U7 | Responsive / phone pass (chat, settings, memory) | M | U3, U4 | **done** |
-| U8 | Micro-interactions and feedback (toasts, loading, focus, shortcuts) | M | U1 | **next** |
-| U9 | Icons and brand (one icon set, logo, favicons, kill/pair screens) | S–M | U1 | open |
+| U7 | Responsive / phone pass (chat, settings, memory) | M | U3, U4 | **done** (52bd5c4) |
+| U8 | Micro-interactions and feedback (toasts, loading, focus, shortcuts) | M | U1 | **done** |
+| U9 | Icons and brand (one icon set, logo, favicons, kill/pair screens) | S–M | U1 | **next** |
 | U10 | Terminal chat refinement (ANSI theme, Markdown, spinner) | M | – | open |
 
 Last updated: 2026-11-03. U1 built: `style.css` now carries scales (spacing `--s-*`, radius
@@ -116,6 +116,15 @@ taller place to tap without the bar growing; Settings' switches are bigger with 
 area; the message box's four buttons are 36 px wide (four at 44 would squeeze the text), and on
 a narrow phone Send is ➤ (Stop ■), its word kept for screen readers. The chat's bar stays one
 row. `tests/test_phone_look.py`.
+U8 built: one toast at a time (a new one used to cover the last), a longer one staying longer,
+above the chat's message box (it covered it), fading in and out; faint bars while a list loads
+(taken away after 10 s if it never comes); the keyboard shortcuts in a window, Ctrl+/ (also
+while typing) or ? (not typing), on the chat and the Notes page, in German too. Keyboard focus:
+a conversation's row was a div only the mouse could open, and its ⋯ only showed on hover: rows
+take Tab and Enter, ⋯ shows with the focus, its menu takes the focus (↑ ↓, Esc back to ⋯, which
+stays shown while its menu is open), the list keeps your place when it is drawn anew, and the
+phone's drawer says whether it is open, takes the focus and closes with Esc.
+`tests/test_feedback_look.py`.
 
 ## Blocks
 

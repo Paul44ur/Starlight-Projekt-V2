@@ -41,7 +41,7 @@
       anything that is wrong or that you don't want kept.</p>
     <div class="row"><input id="search" type="search" class="grow" placeholder="Search memories" aria-label="Search memories" /><span id="count" class="dim small"></span></div>
     <div class="views" id="views"></div>
-    <div id="memories"></div>
+    <div id="memories"><div class="skeleton" aria-hidden="true"><i></i><i></i><i></i></div></div>
   </div>
   <div class="card">
     <h2>Skills it learned</h2>
@@ -50,7 +50,7 @@
     <div class="row local-only"><input type="file" id="importskill" accept=".json" hidden />
       <button type="button" id="importbutton">⤒ Import a skill</button>
       <span class="dim small">A file someone exported: it comes in as a draft for you to read and approve.</span></div>
-    <div id="skills"></div>
+    <div id="skills"><div class="skeleton" aria-hidden="true"><i></i><i></i><i></i></div></div>
   </div>
 </div>
 <script src="/common.js"></script>
