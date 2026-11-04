@@ -133,7 +133,8 @@ async def test_diagrams_on_the_notes_page(
         light = "#ECECFF" in sources[0]  # (Mermaid's light colours; the dark theme has others)
         assert light == (scheme == "light")
         assert await page.evaluate("() => window.hacked") is None  # nothing ran
-        assert await page.locator("#column svg, #column script").count() == 0  # (pictures)
+        # (pictures; the svg.ico are the note's toolbar icons)
+        assert await page.locator("#column svg:not(.ico), #column script").count() == 0
         errors = await page.locator(".diagram-error").all_text_contents()
         cannot = (
             "Dieses Diagramm ließ sich nicht zeichnen:"

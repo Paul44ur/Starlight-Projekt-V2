@@ -74,7 +74,7 @@
     "More for this conversation": "Mehr zu diesem Gespräch",
     "Read the text": "Text lesen", "Translate it": "Übersetzen", "Describe it": "Beschreiben",
     "Shared: say what to do with it, then Send": "Geteilt: Sag, was damit passieren soll, dann Senden",
-    "Press 🗣 to start talking": "Drücke 🗣, um zu sprechen",
+    "Press the talk button, next to the microphone, to start": "Drücke den Gesprächsknopf neben dem Mikrofon, um zu beginnen",
     "Could not speak": "Konnte nicht sprechen", "Could not understand that": "Das habe ich nicht verstanden",
     "Starlight is still answering: Esc or Stop ends it": "Starlight antwortet noch: Esc oder Stopp beendet das",
     "Stopping …": "Halte an …", "The microphone needs https:// or this PC": "Das Mikrofon braucht https:// oder diesen PC",
@@ -308,7 +308,7 @@
     "Write today's page": "Heutige Seite schreiben", "Journal days": "Tagebuchtage", "no page yet": "noch keine Seite",
     // voice memos on the Notes page
     "Voice memo: speak, it is kept as text": "Sprachnotiz: sprechen, sie wird als Text aufgehoben",
-    "Recording… press ⏹ to stop": "Nimmt auf… ⏹ beendet", "Nothing was understood": "Nichts verstanden",
+    "Recording… press the button again to stop": "Nimmt auf… zum Beenden nochmal drücken", "Nothing was understood": "Nichts verstanden",
     "Memo kept in the inbox": "Notiz im Eingang aufgehoben", "Memo kept in the journal": "Notiz im Tagebuch aufgehoben",
     // the chat: a file the assistant changed
     "Changed:": "Geändert:", "New:": "Neu:", "Undone:": "Rückgängig gemacht:",

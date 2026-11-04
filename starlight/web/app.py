@@ -72,6 +72,12 @@ VENDOR = {
     "mermaid.js": "text/javascript; charset=utf-8",  # Mermaid, for diagrams (on first use)
     "mermaid-LICENSES.txt": "text/plain; charset=utf-8",
 }
+# The app icons in static/icons (drawn by bundles/icons/make_icons.py) and their size.
+APP_ICONS = {
+    f"{logo}-{kind}.png": size
+    for logo in ("icon", "kill-icon")
+    for kind, size in (("180", 180), ("192", 192), ("512", 512), ("maskable-512", 512))
+}
 LOOPBACK = {"127.0.0.1", "localhost", "::1"}
 LOOPBACK_PEERS = {"127.0.0.1", "::1"}
 MB = 1024**2
@@ -575,6 +581,13 @@ def create_app(paths: Paths | None = None) -> Any:
     @app.get("/icon.svg")
     def icon() -> Response:
         return Response(page("icon.svg"), media_type="image/svg+xml")
+
+    @app.get("/icons/{name}")
+    def app_icon(name: str) -> Response:
+        """The app icons a phone puts on its home screen: only the files in APP_ICONS."""
+        if name not in APP_ICONS:
+            raise HTTPException(status_code=404, detail="no such file")
+        return FileResponse(STATIC / "icons" / name, media_type="image/png")
 
     @app.get("/kill-icon.svg")
     def kill_icon() -> Response:

@@ -411,9 +411,9 @@ function drawWhole(stage, legend, zoom, data) {
     const box = stage.getBoundingClientRect();
     zoomBy(Math.exp(-event.deltaY * 0.0015), event.clientX - box.left, event.clientY - box.top);
   };
-  for (const [label, tip, act] of [["+", "Zoom in", () => zoomBy(1.4)], ["−", "Zoom out", () => zoomBy(1 / 1.4)],
-                                   ["⤢", "Fit", () => { fit(); redraw(); }]]) {
-    const button = zoom.appendChild(el("button", "icon", label));
+  for (const [name, tip, act] of [["plus", "Zoom in", () => zoomBy(1.4)], ["minus", "Zoom out", () => zoomBy(1 / 1.4)],
+                                  ["fit", "Fit", () => { fit(); redraw(); }]]) {
+    const button = zoom.appendChild(el("button", "icon")); setIcon(button, name);
     button.type = "button"; button.title = t(tip); button.setAttribute("aria-label", t(tip));
     button.onclick = act;
   }

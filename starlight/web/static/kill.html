@@ -5,8 +5,9 @@
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>Starlight kill switch</title>
 <link rel="icon" href="/kill-icon.svg" type="image/svg+xml" />
+<link rel="apple-touch-icon" href="/icons/kill-icon-180.png" />
 <link rel="manifest" href="/kill.webmanifest" />
-<meta name="theme-color" content="#b3231d" />
+<meta name="theme-color" content="#b3231d" data-fixed />
 <link rel="stylesheet" href="/style.css" />
 <script src="/i18n.js"></script>
 <style>
@@ -18,10 +19,13 @@
   #stop:focus-visible { outline: 4px solid var(--accent); outline-offset: 6px; }
   #stop.done { background: var(--panel2); color: var(--text); border-color: var(--border); }
   #state { font-size: 17px; min-height: 2.6em; }
+  /* the logo and the name, small above the button: whose switch this is */
+  .lockup { display: flex; align-items: center; gap: 8px; margin: 0; font-size: var(--fs-md); font-weight: 700; }
+  .lockup .dim { font-weight: 400; }
 </style>
 </head>
 <body>
-<h1 class="sr-only">Kill switch</h1>
+<h1 class="lockup"><img class="logo" src="/icon.svg" alt="" width="22" height="22" /><span>Starlight</span><span class="dim">Kill switch</span></h1>
 <button id="stop" type="button">STOP<br />everything</button>
 <p id="state" role="status" aria-live="assertive">One press stops everything Starlight is doing on the PC, until you resume there.</p>
 <p class="small dim">Add this page to your home screen for a one-tap kill switch. <a href="/">Back to the chat</a></p>

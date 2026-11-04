@@ -275,7 +275,8 @@ function queryTable(text) {
     box.appendChild(scroller);
     const foot = box.appendChild(el("div", "query-foot"));
     foot.appendChild(el("span", "", data.count === 1 ? taskWords("1 note") : data.count + " " + taskWords("notes")));
-    const again = foot.appendChild(el("button", "query-again", "↻"));
+    const again = foot.appendChild(el("button", "query-again"));
+    if (typeof setIcon === "function") setIcon(again, "refresh"); else again.textContent = "↻";  // (an exported note has no common.js)
     again.type = "button";
     again.title = taskWords("Look again");
     again.setAttribute("aria-label", taskWords("Look again"));

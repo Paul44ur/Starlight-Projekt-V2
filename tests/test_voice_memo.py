@@ -105,11 +105,12 @@ async def test_the_memo_button_records_and_keeps_the_text(
         await opened(page, f"{static_site}/notes.html?view=inbox")
         await page.locator("#memo").click()
         await page.wait_for_selector("#memo.on")
+        assert await page.locator("#memo").get_attribute("data-icon") == "stop"
         await page.wait_for_timeout(600)  # a little sound
         await page.locator("#memo").click()
         await page.wait_for_selector("text=Memo kept in the inbox")
         assert uploads and uploads[0][:4] == b"RIFF" and uploads[0][8:12] == b"WAVE"
-        assert await page.locator("#memo").text_content() == "🎤"
+        assert await page.locator("#memo").get_attribute("data-icon") == "mic"
         assert "🎤 Remember the dentist" in (notebook / "Inbox" / "Inbox.md").read_text("utf-8")
         await page.wait_for_selector(".card-note")  # the inbox view shows it now
         assert page.errors == []  # type: ignore[attr-defined]

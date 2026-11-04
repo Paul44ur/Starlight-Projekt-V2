@@ -26,7 +26,7 @@ function previewOn(set) {
 }
 
 function previewButton() {
-  const button = el("button", "tool live-preview", "👁");
+  const button = el("button", "tool live-preview"); setIcon(button, "eye");
   button.type = "button";
   button.dataset.tool = "preview";
   const show = () => {
@@ -544,12 +544,12 @@ document.getElementById("memo").onclick = async () => {
     if (!navigator.mediaDevices) { toast(t("The microphone needs https:// or this PC")); return; }
     try {
       memoRecorder = await startRecording();
-      button.classList.add("on"); button.textContent = "⏹";
-      toast(t("Recording… press ⏹ to stop"));
+      button.classList.add("on"); setIcon(button, "stop");
+      toast(t("Recording… press the button again to stop"));
     } catch (e) { toast(t("No microphone access: ") + e.message); }
     return;
   }
-  button.classList.remove("on"); button.textContent = "🎤";
+  button.classList.remove("on"); setIcon(button, "mic");
   const audio = await memoRecorder.stop();
   memoRecorder = null;
   try {

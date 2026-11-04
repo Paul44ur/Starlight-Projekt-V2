@@ -82,7 +82,7 @@ and answer you on WhatsApp. It will ask you before it does anything risky. And o
 | **Boards** | Cards and arrows on an endless surface: "what's on my project board?", "add the article https://… to my reading board", "put 'call the bank' under the card about money". Boards are `.canvas` files in `Documents\Starlight\Boards` (the open JSON Canvas format, so Obsidian opens them too); every change keeps the earlier version. |
 | **Flashcards** | "Quiz me on Spanish": write `Question::Answer` lines in a note tagged `#flashcards` (`#lernkarten` works too), and Starlight asks you one card at a time. A card you know comes back later and later; one you don't comes back the same day. "Make a card: capital of Peru, Lima" adds one. Study them on the Notes page too. |
 | **YouTube summaries** | Summarizes a video or answers a question about it from its captions, with the times it was said. |
-| **Talk to it** | Speak instead of typing and hear the answers — 🎤 and 🔊 in the web chat (on your phone too), `/talk` in the terminal. **🗣 Conversation** in the web chat: just talk; when you pause, it is sent, the answer is read out, and it listens again — speaking while an answer is read out stops it. **"Hey Starlight"**: with it switched on (Settings → Voice, or "listen for Hey Starlight"), say the phrase near the PC and then what you want; the answer comes out of the PC's speakers. Only short bits of speech are written down, on the PC, to look for the phrase. **Settings → Voice** chooses the voice for each language and installs more (nine German and seven English voices, from Piper). Speech recognition (whisper.cpp) and the voices (Piper) run on your PC. Install with `Starlight.exe --voice`. |
+| **Talk to it** | Speak instead of typing and hear the answers — 🎤 and 🔊 in the web chat (on your phone too), `/talk` in the terminal. **Conversation** (the speech bubble next to the microphone) in the web chat: just talk; when you pause, it is sent, the answer is read out, and it listens again — speaking while an answer is read out stops it. **"Hey Starlight"**: with it switched on (Settings → Voice, or "listen for Hey Starlight"), say the phrase near the PC and then what you want; the answer comes out of the PC's speakers. Only short bits of speech are written down, on the PC, to look for the phrase. **Settings → Voice** chooses the voice for each language and installs more (nine German and seven English voices, from Piper). Speech recognition (whisper.cpp) and the voices (Piper) run on your PC. Install with `Starlight.exe --voice`. |
 | **Summarize recordings** | "Summarize meeting.m4a" — transcribes a meeting, voice memo or lecture on your PC and writes the main points, decisions and to-dos; both are saved in `Documents\Starlight\Recordings`. Any length (it works in five-minute pieces). .wav works as it is; mp3, m4a, ogg or a video need ffmpeg (`winget install ffmpeg`). |
 | **Smart home** | "Turn off the living room lights", "is the front door locked?" — through your Home Assistant. Lights, plugs and scenes switch at once; locks, alarms, doors and heating ask first. |
 | **Your home network** | Which devices are on your WiFi (with names you give them), and a warning when an unknown one joins. Only ever looks at your own network. With `watch: true` in `config\modules\lan.yaml`, automations can react when a device you know comes home or leaves (`lan.device_joined`, `lan.device_left`). |
@@ -684,7 +684,8 @@ choose for each of its tools whether it runs on its own, asks first or is blocke
 finds modules and tools), and pair your phone there. At the top, **In plain words** shows in
 colour what runs on its own (green), what asks first (amber) and what never runs (red). **Memory**
 lets you read, correct and delete what Starlight remembers, and approve or undo the skills
-it learned. ◐ switches between light, dark and your system's theme.
+it learned. The round button at the top right switches between light, dark and your
+system's theme; on a phone, the browser's bar takes the same colour.
 
 **On your phone.** See [Use Starlight from your phone](#use-starlight-from-your-phone).
 
@@ -825,7 +826,7 @@ once with a code shown on your PC.
    `https://my-pc.tail1234.ts.net/`. Restart Starlight.
 3. On the PC, open **Settings → Show a pairing code** (or run `starlight remote pair`).
 4. On the phone, open that address and enter the code. Add the page to your home screen
-   to use it like an app.
+   to use it like an app (with Starlight's star as its icon).
 
 What is different on the phone:
 - Actions ask on the phone exactly when they would ask at the PC. To make some always ask
@@ -843,8 +844,8 @@ What is different on the phone:
   new device sends you a notice everywhere.
 
 On the phone, once the page is on the home screen:
-- Every button is big enough for a finger, and on a narrow phone **➤** sends (■ stops
-  an answer).
+- Every button is big enough for a finger, and on a narrow phone an **arrow** sends (a
+  square stops an answer).
 - **📷** takes a photo and offers *Read the text*, *Translate it* or *Describe it* (with a
   model that understands pictures).
 - **Share to Starlight**: in another app's share menu, a link, some text or a file goes

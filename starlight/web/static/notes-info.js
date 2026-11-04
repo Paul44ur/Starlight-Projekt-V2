@@ -147,7 +147,7 @@ function drawProps(note) {
     const input = dd.appendChild(propInput(type, value));
     input.setAttribute("aria-label", key);
     input.addEventListener("change", () => setProp(note, key, fromInput(type, input)));
-    const remove = dd.appendChild(el("button", "icon prop-x", "×"));
+    const remove = dd.appendChild(el("button", "icon prop-x")); setIcon(remove, "close");
     remove.type = "button";
     remove.title = t("Remove this property"); remove.setAttribute("aria-label", t("Remove this property") + ": " + key);
     remove.onclick = () => setProp(note, key, null);

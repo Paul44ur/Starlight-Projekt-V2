@@ -67,6 +67,12 @@ button.primary { color: var(--on-accent); background: var(--accent); border-colo
 button.primary:hover { background: color-mix(in srgb, var(--accent) 88%, #fff); border-color: var(--accent); }
 button.icon { padding: 4px 8px; font-size: var(--fs-sm); background: none; border-color: transparent; color: var(--dim); }
 button.icon:hover { color: var(--text); border-color: var(--border); background: none; }
+/* The line icons (common.js, ICONS): drawn in the text colour, as big as the text. A button
+   with only an icon shows it a little larger, so it reads at a glance. */
+svg.ico { width: 1.25em; height: 1.25em; flex: none; vertical-align: -.25em; fill: none;
+          stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+svg.ico:not(:only-child) { margin-right: .4em; }
+button > svg.ico:only-child { width: 18px; height: 18px; margin: 0; }
 button.quiet { background: none; border-color: transparent; color: var(--dim); }
 button.quiet:hover { color: var(--text); background: var(--accent-tint); border-color: transparent; }
 /* A dangerous action in a list (Remove): a red outline, filled only when pointed at. */

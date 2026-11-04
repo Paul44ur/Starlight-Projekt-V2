@@ -103,12 +103,14 @@ async def test_on_a_narrow_phone_the_bar_is_one_row_and_send_is_an_arrow(
             )
             assert one_row
             send = page.locator("#send")
-            arrow = await send.evaluate("b => getComputedStyle(b, '::before').content")
-            assert arrow == '"➤"'
+            assert await send.get_attribute("data-icon") == "send"
+            assert await send.locator("svg.ico").is_visible()  # an arrow
             assert await send.text_content() == "Send"  # (for a screen reader, and tests)
+            hidden = "l => l.getBoundingClientRect().width <= 1"
+            assert await send.locator(".label").evaluate(hidden)
             await page.evaluate(SEND, {"type": "start", "conversation": "c1"})
-            stop = await send.evaluate("b => getComputedStyle(b, '::before').content")
-            assert stop == '"■"'
+            assert await send.get_attribute("data-icon") == "stop"  # a square
+            assert await send.locator("svg.ico").is_visible()
             # the message box keeps room for its hint on one line
             box = page.locator("#input")
             assert await box.evaluate("i => i.offsetHeight") == 44

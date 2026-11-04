@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>Starlight automations</title>
 <link rel="icon" href="/icon.svg" type="image/svg+xml" />
+<link rel="apple-touch-icon" href="/icons/icon-180.png" />
 <link rel="stylesheet" href="/style.css" />
 <script src="/i18n.js"></script>
 <style>
@@ -36,7 +37,7 @@
 <header class="top">
   <h1><img class="logo" src="/icon.svg" alt="" width="22" height="22" />Automations</h1><span class="spacer"></span>
   <nav><a href="/">Chat</a><a href="/notes">Notes</a><a href="/memory">Memory</a><a href="/activity">Activity</a><a href="/settings">Settings</a></nav>
-  <button id="theme" class="icon" onclick="cycleTheme()" aria-label="Change the theme">◐</button>
+  <button id="theme" class="icon" onclick="cycleTheme()" aria-label="Theme" data-icon="system"></button>
 </header>
 <div class="page">
   <div class="card">
@@ -160,7 +161,7 @@ function addCondition(cond = {}) {
   const value = row.appendChild(el("input", "grow if-value"));
   value.type = "text"; value.placeholder = "value, e.g. nas";
   value.setAttribute("aria-label", "Value");
-  const drop = row.appendChild(el("button", "", "×"));
+  const drop = row.appendChild(el("button", "icon")); setIcon(drop, "close");
   drop.type = "button"; drop.title = "Remove this condition";
   drop.setAttribute("aria-label", "Remove this condition");
   drop.onclick = () => { row.remove(); showConditions(); };
@@ -266,7 +267,7 @@ function addStep(step = {}) {
   const onlyIf = el("input"); onlyIf.type = "text"; onlyIf.placeholder = "only if the step before gave, e.g. count > 0 (optional)";
   onlyIf.value = step.only_if || ""; onlyIf.setAttribute("aria-label", "Only if");
   what.append(tool, args, text, onlyIf);
-  const remove = el("button", "icon", "✕"); remove.type = "button"; remove.title = "Remove this step";
+  const remove = el("button", "icon"); setIcon(remove, "close"); remove.type = "button"; remove.title = "Remove this step"; remove.setAttribute("aria-label", "Remove this step");
   remove.setAttribute("aria-label", "Remove this step");
   remove.onclick = () => row.remove();
   const show = () => { const t = kind.value === "tool"; tool.hidden = !t; args.hidden = !t; text.hidden = t; };

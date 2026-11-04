@@ -7,7 +7,7 @@
 <title>Starlight</title>
 <link rel="manifest" href="/manifest.webmanifest" />
 <link rel="icon" href="/icon.svg" type="image/svg+xml" />
-<link rel="apple-touch-icon" href="/icon.svg" />
+<link rel="apple-touch-icon" href="/icons/icon-180.png" />
 <link rel="stylesheet" href="/style.css" />
 <script src="/i18n.js"></script>
 <style>
@@ -239,10 +239,12 @@
     .drawer-nav a { padding-block: 12px; }
   }
   /* a narrow phone: Send is an arrow (Stop a square); the word stays for screen readers */
+  #send > svg.ico { display: none; }
   @media (max-width: 480px) {
-    #send { font-size: 0; width: 46px; padding: 0; }
-    #send::before { content: "➤"; font-size: 18px; }
-    #send.stop::before { content: "■"; }
+    #send { width: 46px; padding: 0; }
+    #send > svg.ico { display: inline-block; width: 20px; height: 20px; margin: 0; }
+    #send > .label { position: absolute; width: 1px; height: 1px; overflow: hidden;
+                     clip-path: inset(50%); white-space: nowrap; }
   }
 </style>
 </head>
@@ -251,18 +253,18 @@
   <aside id="convs" tabindex="-1">
     <div class="head">
       <input id="search" type="search" placeholder="Search chats" aria-label="Search chats" />
-      <button id="new" title="New conversation" aria-label="New conversation">＋</button>
-      <button id="newprivate" aria-label="New private conversation" title="New private conversation: never saved, nothing learned from it, gone when Starlight stops">🔒</button>
+      <button id="new" title="New conversation" aria-label="New conversation" data-icon="plus"></button>
+      <button id="newprivate" aria-label="New private conversation" title="New private conversation: never saved, nothing learned from it, gone when Starlight stops" data-icon="lock"></button>
     </div>
     <div id="list"><div class="skeleton" aria-hidden="true"><i></i><i></i><i></i></div></div>
     <nav class="drawer-nav"><a href="/notes">Notes</a><a href="/memory">Memory</a><a href="/activity">Activity</a><a href="/automations">Automations</a><a href="/settings">Settings</a>
-      <button class="icon" onclick="cycleTheme()" id="theme2" title="Theme">◐ Theme</button></nav>
+      <button class="icon" onclick="cycleTheme()" id="theme2" title="Theme" data-icon="system"><span>Theme</span></button></nav>
   </aside>
   <div id="main">
     <div id="offline" role="alert" hidden><span>Starlight is not answering: the PC may be off or asleep.</span>
       <button id="wake" type="button" hidden>Wake the PC</button></div>
     <header class="top">
-      <button id="menu" class="icon" title="Conversations" aria-label="Conversations" aria-controls="convs" aria-expanded="false">☰</button>
+      <button id="menu" class="icon" title="Conversations" aria-label="Conversations" aria-controls="convs" aria-expanded="false" data-icon="menu"></button>
       <h1><img class="logo" src="/icon.svg" alt="" width="22" height="22" />Starlight</h1>
       <span id="conn" class="pill off">connecting…</span>
       <span id="where" class="pill off" hidden></span>
@@ -272,24 +274,24 @@
       <span class="spacer"></span>
       <a id="waiting" class="pill warn" href="/activity#approvals" hidden title="Things Starlight prepared wait for your OK"><span class="wide"></span><span class="narrow"></span></a>
       <nav class="wide"><a href="/notes">Notes</a><a href="/memory">Memory</a><a href="/activity">Activity</a><a href="/automations">Automations</a><a href="/settings">Settings</a></nav>
-      <button id="speaker" class="icon" title="Read answers aloud" aria-label="Read answers aloud" aria-pressed="false">🔇</button>
-      <button id="theme" class="icon wide" title="Theme" onclick="cycleTheme()">◐</button>
+      <button id="speaker" class="icon" title="Read answers aloud" aria-label="Read answers aloud" aria-pressed="false" data-icon="mute"></button>
+      <button id="theme" class="icon wide" title="Theme" onclick="cycleTheme()" data-icon="system"></button>
       <button id="kill" class="kill" title="Kill switch: stop everything Starlight does on this PC, until you resume (also Ctrl+Alt+J)"><span class="wide">Kill switch</span><span class="narrow">Kill</span></button>
     </header>
     <div id="log" role="log" aria-live="polite" aria-label="The conversation"></div>
-    <button id="tolatest" type="button" hidden title="Jump to the latest message" aria-label="Jump to the latest message">↓</button>
+    <button id="tolatest" type="button" hidden title="Jump to the latest message" aria-label="Jump to the latest message" data-icon="down"></button>
     <footer>
       <div id="photo-actions" hidden></div>
       <div id="files"></div>
       <form id="form">
-        <button id="attach" type="button" class="icon" title="Add a picture or document" aria-label="Add a picture or document">📎</button>
+        <button id="attach" type="button" class="icon" title="Add a picture or document" aria-label="Add a picture or document" data-icon="clip"></button>
         <input id="picker" type="file" multiple hidden />
-        <button id="camera" type="button" class="icon" title="Take a photo: read the text in it, translate it or describe it" aria-label="Take a photo">📷</button>
+        <button id="camera" type="button" class="icon" title="Take a photo: read the text in it, translate it or describe it" aria-label="Take a photo" data-icon="camera"></button>
         <input id="shot" type="file" accept="image/*" capture="environment" hidden />
-        <button id="mic" type="button" class="icon" title="Speak (press again to stop)" aria-label="Speak">🎤</button>
-        <button id="talk" type="button" class="icon" title="Conversation: just talk, and hear the answers; speaking interrupts an answer" aria-label="Conversation mode" aria-pressed="false">🗣</button>
+        <button id="mic" type="button" class="icon" title="Speak (press again to stop)" aria-label="Speak" data-icon="mic"></button>
+        <button id="talk" type="button" class="icon" title="Conversation: just talk, and hear the answers; speaking interrupts an answer" aria-label="Conversation mode" aria-pressed="false" data-icon="talk"></button>
         <textarea id="input" rows="1" aria-label="Your message" placeholder="Ask Starlight…  (Enter to send, Shift+Enter for a new line)"></textarea>
-        <button id="send" class="primary" type="submit">Send</button>
+        <button id="send" class="primary" type="submit" data-icon="send"><span class="label">Send</span></button>
       </form>
     </footer>
   </div>
@@ -846,7 +848,8 @@ let asking = false;  // a question was sent and its answer has not begun yet
 function busy() { return Boolean(asking || current || answering); }
 function syncSend() {
   const b = document.getElementById("send");
-  b.textContent = busy() ? "Stop" : "Send";
+  b.replaceChildren(el("span", "label", busy() ? "Stop" : "Send"));
+  setIcon(b, busy() ? "stop" : "send");  // (the icon shows on a narrow phone)
   b.className = busy() ? "stop" : "primary";
   b.title = busy() ? "Stop this answer (Esc)" : "Send (Enter)";
 }
@@ -910,7 +913,7 @@ let speakAnswers = false, recorder = null;
 try { speakAnswers = localStorage.getItem("starlight-speak") === "1"; } catch (e) { /* */ }
 function showSpeaker() {
   const b = document.getElementById("speaker");
-  b.textContent = speakAnswers ? "🔊" : "🔇"; b.setAttribute("aria-pressed", String(speakAnswers));
+  setIcon(b, speakAnswers ? "speaker" : "mute"); b.setAttribute("aria-pressed", String(speakAnswers));
 }
 document.getElementById("speaker").onclick = () => {
   speakAnswers = !speakAnswers; showSpeaker();
@@ -1090,7 +1093,7 @@ async function loadList() {
     const mark = (c.pinned ? "📌 " : "") + (c.private ? "🔒 " : "");
     const t = el("span", "t", mark + c.title); t.title = c.title + " — " + c.updated.replace("T", " ").slice(0, 16);
     const acts = el("span", "acts");
-    const more = el("button", "icon", "⋯"); more.title = "Rename, pin, folder, archive, download, delete"; more.setAttribute("aria-label", "More for this conversation");
+    const more = el("button", "icon"); setIcon(more, "more"); more.title = "Rename, pin, folder, archive, download, delete"; more.setAttribute("aria-label", "More for this conversation");
     more.onclick = (e) => { e.stopPropagation(); conversationMenu(c, more); };
     acts.append(more); row.append(t, acts);
     row.onclick = () => open(c.id);
@@ -1306,7 +1309,7 @@ function takeShared() {
   try { JSON.parse(params.get("files") || "[]").forEach(f => attached.push({ id: f.id, name: f.name })); } catch (e) { /* */ }
   showFiles();
   if (params.has("share") || params.has("files")) { input.focus(); toast("Shared: say what to do with it, then Send"); }
-  if (params.has("talk")) { document.getElementById("talk").focus(); toast("Press 🗣 to start talking"); }
+  if (params.has("talk")) { document.getElementById("talk").focus(); toast("Press the talk button, next to the microphone, to start"); }
   history.replaceState(null, "", "/");
   return false;
 }

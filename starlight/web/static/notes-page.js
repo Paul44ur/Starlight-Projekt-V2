@@ -201,7 +201,7 @@ async function openNote(path, heading, editing = false) {
     pin.textContent = t(note.pinned ? "★ Pinned" : "☆ Pin");
     drawSide();
   };
-  const toggle = el("button", "icon", "ⓘ");
+  const toggle = el("button", "icon"); setIcon(toggle, "info");
   toggle.id = "info-toggle"; toggle.type = "button";
   toggle.title = t("About this note"); toggle.setAttribute("aria-label", t("About this note"));
   toggle.onclick = () => document.body.classList.toggle("show-info");
@@ -209,22 +209,22 @@ async function openNote(path, heading, editing = false) {
   editButton.id = "edit-toggle"; editButton.type = "button";
   editButton.title = t("Edit or read this note (Ctrl+E)");
   editButton.onclick = () => toggleEdit();
-  const past = el("button", "icon", "🕘");
+  const past = el("button", "icon"); setIcon(past, "history");
   past.type = "button"; past.title = t("Earlier versions"); past.setAttribute("aria-label", t("Earlier versions"));
   past.onclick = () => showHistory();
   const ask = el("button", "icon", "✨ Ask");
   ask.type = "button"; ask.title = t("Ask Starlight about this note"); ask.setAttribute("aria-haspopup", "menu");
   ask.onclick = (event) => { event.stopPropagation(); askMenu(ask); };
-  const out = el("button", "icon", "⤓");
+  const out = el("button", "icon"); setIcon(out, "download");
   out.type = "button"; out.title = t("Export: HTML, PDF or print"); out.setAttribute("aria-label", t("Export: HTML, PDF or print"));
   out.setAttribute("aria-haspopup", "menu"); out.id = "export-toggle";
   out.onclick = (event) => { event.stopPropagation(); exportMenu(out); };
-  const share = el("button", "icon", "🔗");  // a link that opens it from other programs (G6)
+  const share = el("button", "icon"); setIcon(share, "link");  // a link that opens it from other programs (G6)
   share.type = "button"; share.id = "link-copy";
   share.title = t("Copy a link to this note (it opens the note from other programs)");
   share.setAttribute("aria-label", t("Copy a link to this note (it opens the note from other programs)"));
   share.onclick = () => copyLink(note.path);
-  const bin = el("button", "icon", "🗑");
+  const bin = el("button", "icon"); setIcon(bin, "trash");
   bin.type = "button"; bin.title = t("Move to the trash"); bin.setAttribute("aria-label", t("Move to the trash"));
   bin.onclick = () => deleteNote();
   actions.append(editButton, ask, pin, past, out, share, bin, toggle);

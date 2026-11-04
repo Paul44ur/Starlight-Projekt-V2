@@ -380,8 +380,8 @@ export function openBoard(parent, board, options) {
     addCard("link", { url, height: 100 });
   });
   button("＋ " + t("Group"), "Add a group", () => addCard("group", { label: t("Group") }));
-  button("−", "Zoom out", () => { view.k = Math.max(view.k / 1.25, 0.1); applyView(); });
-  button("+", "Zoom in", () => { view.k = Math.min(view.k * 1.25, 4); applyView(); });
+  setIcon(button("", "Zoom out", () => { view.k = Math.max(view.k / 1.25, 0.1); applyView(); }), "minus");
+  setIcon(button("", "Zoom in", () => { view.k = Math.min(view.k * 1.25, 4); applyView(); }), "plus");
   bar.appendChild(status);
   say("Saved");
 

@@ -63,8 +63,8 @@ first, then the launcher (first impression), then the chat (daily driver).
 | U6 | Notes page: light consistency pass | S | U1 | **done** (72fddd5) |
 | U7 | Responsive / phone pass (chat, settings, memory) | M | U3, U4 | **done** (52bd5c4) |
 | U8 | Micro-interactions and feedback (toasts, loading, focus, shortcuts) | M | U1 | **done** |
-| U9 | Icons and brand (one icon set, logo, favicons, kill/pair screens) | S–M | U1 | **next** |
-| U10 | Terminal chat refinement (ANSI theme, Markdown, spinner) | M | – | open |
+| U9 | Icons and brand (one icon set, logo, favicons, kill/pair screens) | S–M | U1 | **done** |
+| U10 | Terminal chat refinement (ANSI theme, Markdown, spinner) | M | – | **next** |
 
 Last updated: 2026-11-03. U1 built: `style.css` now carries scales (spacing `--s-*`, radius
 `--r-*`, type `--fs-*`), elevation (`--shadow-1/2`), motion (`--ease`, `--dur*`) and an
@@ -125,6 +125,18 @@ take Tab and Enter, ⋯ shows with the focus, its menu takes the focus (↑ ↓,
 stays shown while its menu is open), the list keeps your place when it is drawn anew, and the
 phone's drawer says whether it is open, takes the focus and closes with Esc.
 `tests/test_feedback_look.py`.
+
+U9 built: the icon decision is one small set of line icons, drawn for Starlight (inline SVG
+in `common.js`, no icon font), for every button that has no words: the bars, the message
+box, a conversation's ⋯, the Notes page's side bar and toolbar, zoom and close buttons. They
+take the text colour and look the same on Windows and phones; emoji looked different on
+each system and mixed colour pictures with plain signs (the theme's ◐ showed as a speck).
+Emoji stay where words follow them (menus, "✨ Ask"). App icons for the home screen: PNGs
+drawn from the two logos (an iPhone's 180 px, Android's 192/512 px and a maskable one), in
+both manifests and every page (`bundles/icons/make_icons.py` draws them again). The
+browser's bar takes the page's colour, light or dark (Kill keeps its red). The Kill page
+shows the logo and the name above its button; Memory's bar names Activity like the others.
+`tests/test_brand.py`.
 
 ## Blocks
 

@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>Starlight notes</title>
 <link rel="icon" href="/icon.svg" type="image/svg+xml" />
+<link rel="apple-touch-icon" href="/icons/icon-180.png" />
 <link rel="stylesheet" href="/style.css" />
 <script src="/i18n.js"></script>
 <link rel="stylesheet" href="/notes.css" />
@@ -14,24 +15,24 @@
 <header class="top">
   <h1><img class="logo" src="/icon.svg" alt="" width="22" height="22" />Notes</h1><span class="spacer"></span>
   <nav><a href="/">Chat</a><a href="/memory">Memory</a><a href="/activity">Activity</a><a href="/automations">Automations</a><a href="/settings">Settings</a></nav>
-  <button class="icon" id="find" title="Find a note (Ctrl+K)" aria-label="Find a note (Ctrl+K)">⌕ <kbd>Ctrl K</kbd></button>
-  <button class="icon" id="memo" title="Voice memo: speak, it is kept as text" aria-label="Voice memo: speak, it is kept as text">🎤</button>
-  <button id="theme" class="icon" onclick="cycleTheme()" aria-label="Theme">◐</button>
+  <button class="icon" id="find" title="Find a note (Ctrl+K)" aria-label="Find a note (Ctrl+K)" data-icon="search"><kbd>Ctrl K</kbd></button>
+  <button class="icon" id="memo" title="Voice memo: speak, it is kept as text" aria-label="Voice memo: speak, it is kept as text" data-icon="mic"></button>
+  <button id="theme" class="icon" onclick="cycleTheme()" aria-label="Theme" data-icon="system"></button>
 </header>
 <div class="notes">
   <aside class="side" aria-label="Your notes">
     <div class="top-row">
       <input id="search" type="search" placeholder="Search notes" aria-label="Search notes" />
-      <button type="button" id="new-note" title="New note (Ctrl+N)" aria-label="New note (Ctrl+N)">＋</button>
+      <button type="button" id="new-note" title="New note (Ctrl+N)" aria-label="New note (Ctrl+N)" data-icon="plus"></button>
     </div>
     <div class="quick" role="group" aria-label="Views">
-      <button data-view="today"><span class="ico">📅</span>Today</button>
-      <button data-view="inbox"><span class="ico">📥</span>Inbox</button>
-      <button data-view="tasks"><span class="ico">☑</span>Tasks</button>
-      <button data-view="graph"><span class="ico">✳</span>Graph</button>
-      <button data-view="boards"><span class="ico">🗂</span>Boards</button>
-      <button data-view="cards"><span class="ico">🃏</span>Flashcards</button>
-      <button data-view="trash"><span class="ico">🗑</span>Trash</button>
+      <button data-view="today" data-icon="today">Today</button>
+      <button data-view="inbox" data-icon="inbox">Inbox</button>
+      <button data-view="tasks" data-icon="tasks">Tasks</button>
+      <button data-view="graph" data-icon="graph">Graph</button>
+      <button data-view="boards" data-icon="boards">Boards</button>
+      <button data-view="cards" data-icon="cards">Flashcards</button>
+      <button data-view="trash" data-icon="trash">Trash</button>
     </div>
     <div id="pinned-box" hidden><h3>Pinned</h3><ul class="plain" id="pinned" translate="no"></ul></div>
     <h3>Folders</h3>

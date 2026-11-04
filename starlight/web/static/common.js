@@ -4,18 +4,31 @@
   if (saved === "light" || saved === "dark") document.documentElement.dataset.theme = saved;
 })();
 
-const THEMES = { system: ["◐", "like your system"], light: ["☀", "light"], dark: ["☾", "dark"] };
-// The theme button(s) show the theme in use; the tooltip says it in words.
+const THEMES = { system: ["system", "like your system"], light: ["sun", "light"], dark: ["moon", "dark"] };
+// The theme button(s) show the theme in use (an icon); the tooltip says it in words.
 function showTheme() {
   const now = document.documentElement.dataset.theme || "system";
   ["theme", "theme2"].forEach(id => {
     const b = document.getElementById(id);
     if (!b) return;
-    b.textContent = THEMES[now][0] + (id === "theme2" ? " Theme" : "");
+    setIcon(b, THEMES[now][0]);
     b.title = "Theme: " + THEMES[now][1] + " (click to change)";
     b.setAttribute("aria-label", b.title);
   });
+  paintBar();
 }
+// The browser's bar (on a phone, or an installed app's title bar) takes the colour of the
+// page's bar, light or dark. A page that keeps its own colour marks its meta data-fixed.
+function paintBar() {
+  let meta = document.querySelector('meta[name="theme-color"]');
+  if (meta && meta.hasAttribute("data-fixed")) return;
+  if (!meta) {
+    meta = document.createElement("meta"); meta.name = "theme-color"; document.head.append(meta);
+  }
+  const panel = getComputedStyle(document.documentElement).getPropertyValue("--panel").trim();
+  if (panel) meta.content = panel;
+}
+try { matchMedia("(prefers-color-scheme: light)").addEventListener("change", paintBar); } catch (e) { /* an old browser */ }
 document.addEventListener("DOMContentLoaded", showTheme);
 
 function cycleTheme() {
@@ -27,6 +40,60 @@ function cycleTheme() {
   try { localStorage.setItem("starlight-theme", next); } catch (e) { /* private window */ }
   showTheme();
 }
+
+// One small set of line icons (drawn for Starlight, 24 x 24, in the text colour), for the
+// buttons that carry no words: they look the same on every system, unlike emoji.
+const ICONS = {
+  menu: '<path d="M4 6h16M4 12h16M4 18h16"/>',
+  plus: '<path d="M12 5v14M5 12h14"/>',
+  lock: '<rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V7.5a4 4 0 0 1 8 0V11"/>',
+  system: '<circle cx="12" cy="12" r="8.5"/><path d="M12 3.5a8.5 8.5 0 0 1 0 17z" fill="currentColor"/>',
+  sun: '<circle cx="12" cy="12" r="4"/><path d="M12 2.5v2M12 19.5v2M2.5 12h2M19.5 12h2M5.3 5.3l1.4 1.4M17.3 17.3l1.4 1.4M5.3 18.7l1.4-1.4M17.3 6.7l1.4-1.4"/>',
+  moon: '<path d="M19.5 14.5A8 8 0 0 1 9.5 4.5a8 8 0 1 0 10 10z"/>',
+  speaker: '<path d="M4 9.5h3l5-4v13l-5-4H4z"/><path d="M15.5 9a4 4 0 0 1 0 6M18 6.5a7.5 7.5 0 0 1 0 11"/>',
+  mute: '<path d="M4 9.5h3l5-4v13l-5-4H4z"/><path d="M16 9.5l5 5M21 9.5l-5 5"/>',
+  clip: '<path d="M20 11.5l-7.8 7.8a4.6 4.6 0 0 1-6.5-6.5l8-8a3.1 3.1 0 0 1 4.4 4.4l-8 8a1.5 1.5 0 0 1-2.2-2.2l7.4-7.4"/>',
+  camera: '<path d="M4 8h3l1.8-2.5h6.4L17 8h3a1 1 0 0 1 1 1v9.5a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V9a1 1 0 0 1 1-1z"/><circle cx="12" cy="13.5" r="3.5"/>',
+  mic: '<rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5.5 11a6.5 6.5 0 0 0 13 0M12 17.5V21"/>',
+  stop: '<rect x="6.5" y="6.5" width="11" height="11" rx="2" fill="currentColor"/>',
+  send: '<path d="M4.5 12h14M13 6l6 6-6 6"/>',
+  down: '<path d="M12 5v13M6 12l6 6 6-6"/>',
+  more: '<circle cx="5.5" cy="12" r="1.4" fill="currentColor"/><circle cx="12" cy="12" r="1.4" fill="currentColor"/><circle cx="18.5" cy="12" r="1.4" fill="currentColor"/>',
+  search: '<circle cx="10.5" cy="10.5" r="6.5"/><path d="M15.5 15.5l5 5"/>',
+  info: '<circle cx="12" cy="12" r="8.5"/><path d="M12 11v5.5M12 7.6v.1"/>',
+  history: '<path d="M3.5 12a8.5 8.5 0 1 0 2.5-6"/><path d="M3.5 4v4.5H8M12 7.5V12l3 2"/>',
+  download: '<path d="M12 4v11M7 10.5l5 5 5-5M5 19.5h14"/>',
+  link: '<path d="M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1"/>',
+  trash: '<path d="M4.5 7h15M9.5 7V4.5h5V7M6.5 7l1 13h9l1-13M10 11v5.5M14 11v5.5"/>',
+  eye: '<path d="M2.5 12S6 5.5 12 5.5 21.5 12 21.5 12 18 18.5 12 18.5 2.5 12 2.5 12z"/><circle cx="12" cy="12" r="3"/>',
+  close: '<path d="M6.5 6.5l11 11M17.5 6.5l-11 11"/>',
+  today: '<rect x="4" y="5.5" width="16" height="15" rx="2"/><path d="M4 10h16M8.5 3.5v4M15.5 3.5v4"/><rect x="8" y="13" width="3" height="3" fill="currentColor" stroke="none"/>',
+  inbox: '<path d="M4 13.5l2.5-8h11l2.5 8v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1z"/><path d="M4 13.5h4.5l1 2h5l1-2H20"/>',
+  tasks: '<rect x="4" y="4" width="16" height="16" rx="2.5"/><path d="M8.5 12l2.5 2.5 4.5-5"/>',
+  graph: '<circle cx="6" cy="7" r="2.2"/><circle cx="18" cy="6" r="2.2"/><circle cx="12" cy="17.5" r="2.2"/><path d="M8 8l3 7.5M16.3 7.5l-3.3 8M8.2 6.8l7.6-.6"/>',
+  cards: '<rect x="3.5" y="8" width="12.5" height="12.5" rx="2"/><path d="M8 4.5h10.5a2 2 0 0 1 2 2V17"/>',
+  minus: '<path d="M5 12h14"/>',
+  fit: '<path d="M4 9V4h5M15 4h5v5M20 15v5h-5M9 20H4v-5"/>',
+  talk: '<path d="M4 6.5a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2h-7l-4 3.5v-3.5H6a2 2 0 0 1-2-2z"/><path d="M9 9.5v2M12 8v5M15 9.5v2"/>',
+  refresh: '<path d="M19.5 12a7.5 7.5 0 1 1-2.2-5.3"/><path d="M19.5 4v4.5H15"/>',
+  boards: '<rect x="3.5" y="4.5" width="7" height="7" rx="1.5"/><rect x="13.5" y="4.5" width="7" height="4.5" rx="1.5"/><rect x="3.5" y="14.5" width="7" height="5" rx="1.5"/><rect x="13.5" y="12" width="7" height="7.5" rx="1.5"/>',
+};
+function icon(name) {
+  return '<svg class="ico" viewBox="0 0 24 24" aria-hidden="true" focusable="false">' + (ICONS[name] || "") + "</svg>";
+}
+// Puts the icon at the start of a node, before any words it keeps (e.g. "Theme").
+function setIcon(node, name) {
+  node.dataset.icon = name;
+  const old = node.querySelector(":scope > svg.ico");
+  if (old) old.remove();
+  node.insertAdjacentHTML("afterbegin", icon(name));
+}
+// The pages mark icon buttons with data-icon="…"; this draws them.
+function drawIcons(root = document) {
+  root.querySelectorAll("[data-icon]").forEach(n => { if (!n.querySelector(":scope > svg.ico")) setIcon(n, n.dataset.icon); });
+}
+drawIcons();  // (the page above this script is there already)
+document.addEventListener("DOMContentLoaded", () => drawIcons());
 
 function el(tag, cls, text) {
   const node = document.createElement(tag);

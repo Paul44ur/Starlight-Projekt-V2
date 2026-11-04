@@ -33,6 +33,8 @@ starlight/web/      the local web chat (FastAPI + a WebSocket chat page); client
                     terminal that joins the same backend, so --both shares one brain
 launcher/           the source of Starlight.exe (standard library only; the window is launcher_gui.py)
 assets/logo/        the logo (SVG, PNG); launcher/starlight.ico and web/static/icon.svg are made from it
+bundles/            builds of the web pages' third-party code (editor, graph, mermaid) and
+                    the app icons (icons/: PNGs drawn from web/static/icon.svg)
 starlight/browser.py, text.py   headless browser and HTML-to-text helpers for modules
 starlight/tui.py    the colored terminal chat (rich), with a plain fallback
 starlight/cli.py    the `starlight` command
@@ -212,6 +214,15 @@ motion from tokens in `style.css` (`--accent`, `--on-accent`, `--danger`, `--s-*
 keeps the two in step and checks that text on every filled colour is readable (WCAG AA,
 4.5:1). Both show a focus ring only while the keyboard is used. The plan for the rest of this
 work is `docs/plan-ui.md`.
+
+**Icons.** Buttons without words show line icons from `ICONS` in `common.js` (24 px SVG
+paths in the text colour): markup says `data-icon="mic"` and `drawIcons()` fills it in;
+code calls `setIcon(button, name)`. `paintBar()` copies `--panel` into the
+`theme-color` meta whenever the theme changes (a meta marked `data-fixed`, on the Kill
+page, keeps its colour). The app icons a phone puts on its home screen are PNGs in
+`static/icons`, drawn from `icon.svg` and `kill-icon.svg` by `bundles/icons/make_icons.py`
+and served from `/icons/{name}` (only the names in `APP_ICONS`); `icons.sha256` records
+the logos they came from, and a test fails when a logo changes without them.
 
 **Home and devices.** `home` talks to Home Assistant's REST API with a long-lived token
 from the vault; `free_domains` (lights, switches, fans, media players, scenes) switch
