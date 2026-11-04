@@ -152,6 +152,11 @@ _MARKS = re.compile(r"[ \t]*[#>*+\-_`~0-9.)|]*")  # a line start that may still 
 _FENCE = re.compile(r"[ \t]*(`{3,}|~{3,})[ \t]*([\w+#.-]*)")
 _HEADING = re.compile(r"[ \t]{0,3}(#{1,6})[ \t]+")
 _RULE = re.compile(r"[ \t]*([-*_])([ \t]*\1){2,}[ \t]*")
+_RULE_SO_FAR = re.compile(r"[ \t]*([-*_])([ \t]*\1)*[ \t]*")  # "- -", "* *": maybe a rule
+# [text](address): shown as "text (address)", the address dimmed (between these two marks)
+_LINK = re.compile(r"\[([^\]\n]{1,300})\]\(([^)\s]{1,800})\)")
+_LINK_SO_FAR = re.compile(r"\[[^\]\n]{0,300}(\](\([^)\s]{0,800})?)?")  # (a link not ended yet)
+DIM_ON, DIM_OFF = "\ue000", "\ue001"
 _BULLET = re.compile(r"([ \t]*)[-*+][ \t]+")
 _NUMBER = re.compile(r"([ \t]*)(\d{1,3})[.)][ \t]+")
 _QUOTE = re.compile(r"[ \t]{0,3}>[ \t]?")
@@ -178,7 +183,7 @@ class MarkdownStream:
         self._line_style = ""  # a heading's or a quote's look, for its whole line
         self._lead = ""  # what a wrapped line starts with (spaces, a quote's bar)
         self._lead_width = indent
-        self._bold = self._italic = self._code = False
+        self._bold = self._italic = self._code = self._dim = False
         self._word: list[str] = []  # the word being collected (text and style codes)
         self._word_width = 0
         self._word_style = ""  # the look the word begins in (to start a wrapped line in)
@@ -256,6 +261,8 @@ class MarkdownStream:
             return True
         if not whole and _MARKS.fullmatch(line) and len(line) < 16:
             return False  # "-", "1.", "##", "```": wait for the character that decides
+        if not whole and _RULE_SO_FAR.fullmatch(line):
+            return False  # "* *" may still be a rule (or "* **Bold**" a list item)
         fence = _FENCE.match(line)
         if fence and not line[fence.end() :].strip():
             if not whole:
@@ -290,7 +297,7 @@ class MarkdownStream:
             self._buf = self._buf[heading.end() :]
             self._begin(self.indent)
             self._line_style = self.p.bold + self.p.accent
-        elif bullet and not line[bullet.end() :].startswith(("*", "-")):
+        elif bullet:
             nested = len(bullet.group(1).expandtabs(4))
             self._buf = self._buf[bullet.end() :]
             self._begin(self.indent + nested)
@@ -344,14 +351,15 @@ class MarkdownStream:
         self._end_word()
         if self._styled():
             self._out.append(self.p.reset)
-        self._bold = self._italic = self._code = self._code_line = False
+        self._bold = self._italic = self._code = self._dim = self._code_line = False
         self._line_style = ""
         self._space = False
         self._prev = " "
         self._newline()
 
     def _styled(self) -> bool:
-        return bool(self._line_style or self._bold or self._italic or self._code or self._code_line)
+        looks = (self._bold, self._italic, self._code, self._dim, self._code_line)
+        return bool(self._line_style or any(looks))
 
     def _style(self) -> str:
         """The codes for the look in force now (after a reset)."""
@@ -362,6 +370,8 @@ class MarkdownStream:
             codes += self.p.italic
         if self._code:
             codes += self.p.code
+        if self._dim:
+            codes += self.p.dim
         return self.p.reset + codes
 
     def _inline(self, final: bool) -> bool:
@@ -375,6 +385,19 @@ class MarkdownStream:
                 self._add(buf[1])
                 self._buf = buf[2:]
                 return True
+        elif char in (DIM_ON, DIM_OFF):
+            self._toggle("_dim")
+            self._buf = buf[1:]
+            return True
+        elif char == "[" and not self._code:
+            link = _LINK.match(buf)
+            if link:  # "text (address)": the address as it is, its marks no Markdown
+                address = re.sub(r"([\\`*\[\]_])", r"\\\1", link.group(2))
+                shown = f"{link.group(1)} {DIM_ON}({address}){DIM_OFF}"
+                self._buf = shown + buf[link.end() :]
+                return True
+            if not final and _LINK_SO_FAR.fullmatch(buf):
+                return False  # wait: it may still become a link
         elif char == "`":
             self._toggle("_code")
             self._buf = buf[1:]

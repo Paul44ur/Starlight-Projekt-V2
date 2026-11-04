@@ -225,11 +225,16 @@ the launcher answers by opening the browser. The window keeps its data in `data/
 sends other sites to the browser, and starts in debug mode for the right-click menu, Ctrl+F
 and F5 (the developer tools stay closed). A page of the same Starlight that would open in a new
 tab goes through `window.pywebview.api.open_window` (common.js; the `Bridge` checks the
-origin) to a new Starlight window. The launcher's `ChatWindow` starts it in the process group,
-brings an open one to the front (its pid is in `data/app-window/window.pid`), and opens the
-browser if it ends within 15 seconds with an error. (The chat page's own `open()` was renamed
+origin) to a new Starlight window; `file://` addresses are off. The launcher's `ChatWindow`
+starts it in the process group once the chat answers (else it would start a chat of its own on
+the same port), brings an open one to the front (its pid is in `data/app-window/window.pid`;
+a window removes only its own), and opens the browser if it ends within 15 seconds with an
+error (the reason is the last line it wrote to `logs/app.log`). After that, Open chat goes
+straight to the browser. "Save and restart" ends the window with the rest; it opens again when
+the chat is ready. (The chat page's own `open()` was renamed
 `openConversation()`: a global function named `open` replaced `window.open`, so printing a
-conversation opened nothing.)
+conversation opened nothing. A test checks that no page script declares a top-level function
+or `var` with a name the window already has; `scroll`, `status` and `when` were renamed too.)
 
 **The terminal chat's look.** `starlight/termstyle.py` holds the web's colours as ANSI codes,
 at the depth the terminal has (rich's `color_system`: 24-bit, 256 or the basic 16), dark or

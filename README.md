@@ -761,7 +761,8 @@ stops, and you can ask the next thing. Very long answers stop by themselves afte
 before Starlight asks "Allow?" never counts as the answer.
 
 **How the terminal chat looks.** Answers show their formatting as they arrive: headings,
-bold, lists, quotes, tables and code, wrapped between words to the width of the window.
+bold, lists, quotes, tables, code and links (the text, then the address), wrapped between
+words to the width of the window.
 Until the first word, a spinner shows that Starlight is working, for how long, and which
 tool it uses. The colours are the web chat's. In a light terminal, set
 `STARLIGHT_TERMINAL_THEME=light` (some terminals say so themselves); `NO_COLOR=1` turns the

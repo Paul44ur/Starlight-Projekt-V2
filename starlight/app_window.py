@@ -200,6 +200,7 @@ def run(paths: Paths, url: str, base: str) -> int:
     webview.settings["ALLOW_DOWNLOADS"] = True
     webview.settings["OPEN_EXTERNAL_LINKS_IN_BROWSER"] = True
     webview.settings["OPEN_DEVTOOLS_IN_DEBUG"] = False
+    webview.settings["ALLOW_FILE_URLS"] = False  # (only Starlight's pages: no file:// reading)
 
     def open_window(address: str) -> Any:
         window = webview.create_window(
@@ -235,12 +236,13 @@ def run(paths: Paths, url: str, base: str) -> int:
         if server is None:
             return
         end = time.monotonic() + STARTING_TIMEOUT
-        while time.monotonic() < end and server.poll() is None:
-            if answers(base):
-                first.load_url(url)
-                return
-            time.sleep(0.5)
-        first.load_html(page(NOT_STARTED))
+        with contextlib.suppress(Exception):  # (the window may have been closed meanwhile)
+            while time.monotonic() < end and server.poll() is None:
+                if answers(base):
+                    first.load_url(url)
+                    return
+                time.sleep(0.5)
+            first.load_html(page(NOT_STARTED))
 
     try:
         # debug: the right-click menu (copy, paste, spelling), Ctrl+F and F5 work as in a
@@ -251,7 +253,8 @@ def run(paths: Paths, url: str, base: str) -> int:
         )  # fmt: skip
     finally:
         with contextlib.suppress(OSError):
-            pid_file.unlink()
+            if pid_file.read_text(encoding="utf-8").strip() == str(os.getpid()):
+                pid_file.unlink()  # (only its own: another window may have written its id)
         if server is not None:
             server.terminate()
             with contextlib.suppress(subprocess.TimeoutExpired):

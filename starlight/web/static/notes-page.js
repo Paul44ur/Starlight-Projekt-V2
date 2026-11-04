@@ -16,7 +16,7 @@ const t = (text) => (window.starlightTranslate ? window.starlightTranslate(text)
 function titleOf(note) { return note.title || note.name; }
 function folderOf(path) { return path.includes("/") ? path.slice(0, path.lastIndexOf("/")) : ""; }
 function nameOf(path) { return path.slice(path.lastIndexOf("/") + 1).replace(/\.md$/i, ""); }
-function when(seconds) {
+function whenText(seconds) {
   const date = new Date(seconds * 1000);
   return date.toLocaleDateString(window.starlightLanguage === "de" ? "de-DE" : undefined,
     { day: "numeric", month: "long", year: "numeric" });
@@ -189,7 +189,7 @@ async function openNote(path, heading, editing = false) {
   crumbs.appendChild(el("span", "", folderOf(note.path) || t("Starlight folder")))
     .setAttribute("translate", folderOf(note.path) ? "no" : "yes");
   const info = (state.notes.find(n => n.path === note.path) || {});
-  if (info.modified) crumbs.appendChild(el("span", "", "· " + t("changed") + " " + when(info.modified)));
+  if (info.modified) crumbs.appendChild(el("span", "", "· " + t("changed") + " " + whenText(info.modified)));
   const actions = crumbs.appendChild(el("span", "actions"));
   const pin = el("button", "icon", note.pinned ? "★ Pinned" : "☆ Pin");
   pin.type = "button";

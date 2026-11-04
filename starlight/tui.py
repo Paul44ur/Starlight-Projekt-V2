@@ -34,6 +34,25 @@ def _rich_available() -> bool:
     return console.interactive()
 
 
+def colour_codes_work() -> bool:
+    """Turn on the Windows console's understanding of colour codes (\x1b[...), as the
+    launcher does for its own window; started from PowerShell or cmd it is often off. True
+    when the console understands them now (always, elsewhere)."""
+    if sys.platform != "win32":
+        return True
+    import ctypes
+
+    try:
+        kernel32 = ctypes.windll.kernel32
+        handle = kernel32.GetStdHandle(-11)  # STD_OUTPUT_HANDLE
+        mode = ctypes.c_uint32()
+        if not kernel32.GetConsoleMode(handle, ctypes.byref(mode)):
+            return False
+        return bool(kernel32.SetConsoleMode(handle, mode.value | 0x0004))  # VT processing
+    except (AttributeError, OSError):
+        return False
+
+
 STAR = "✦"  # the logo's four-pointed star, in its gold
 SPINNER = "⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏"
 SPIN_AFTER = 0.2  # seconds: a quick answer needs no spinner
@@ -63,13 +82,15 @@ class ChatView:
         if self.rich:
             from rich.console import Console
 
+            codes = colour_codes_work()  # (first: rich looks at the console when it starts)
             light = termstyle.wants_light()
             colours = termstyle.COLOURS["light" if light else "dark"]
             self._colours = _styles(colours)
             self._console = Console(highlight=False, soft_wrap=False, theme=_theme(colours))
-            self.palette = termstyle.palette(
-                self._console.color_system, self._console.no_color, light
-            )
+            if codes:  # (else rich draws through the old Windows console calls; no raw codes)
+                self.palette = termstyle.palette(
+                    self._console.color_system, self._console.no_color, light
+                )
 
     # -- the UserIO protocol (confirmations, 2FA codes, notices) --------------------------
 
@@ -327,8 +348,8 @@ class ChatView:
         self._spin()
 
     def _spin(self) -> None:
-        if not self.rich or self._spinner is not None:
-            return
+        if not self.rich or not self.palette.reset or self._spinner is not None:
+            return  # (no codes: \r\x1b[K could not take it away again)
         try:
             self._spinner = asyncio.get_running_loop().create_task(self._spinning())
         except RuntimeError:  # (no event loop: nothing to animate with)

@@ -3121,7 +3121,7 @@ def start(settings: Settings, ui: Ui, installed: Installed, ask: str | None) -> 
             url = chat_url() + settings.first_page
             ui.say(f"\nOpening the chat in {chat_where(settings)}: {url}")
             ui.say("Close this window (or press Ctrl+C) to stop everything.\n")
-            threading.Timer(2.5, window.open, args=(url,)).start()  # (it waits for the chat)
+            window.open_when_ready(url)  # (`starlight web` starts just below)
             return subprocess.run(starlight(uv, "web"), cwd=settings.root, check=False).returncode
         ui.say("Kill switch: Ctrl+Alt+J, a screen corner, or /kill. Leave with /quit.\n")
         return subprocess.run(starlight(uv, "run"), cwd=settings.root, check=False).returncode
@@ -3151,6 +3151,7 @@ class ChatWindow:
         self.process: subprocess.Popen[bytes] | None = None
         self.note = ""  # why the browser opened instead (what the console says)
         self.reason = ""  # the window's own words for it (the launcher window shows them)
+        self._log_from = 0  # where this start's lines begin in logs/app.log
 
     @property
     def wanted(self) -> bool:
@@ -3162,13 +3163,14 @@ class ChatWindow:
     def open(self, url: str, wait: bool = False) -> None:
         """Show ``url``; ``wait``: only return once the window is surely open (or the
         browser opened instead), for a launcher that ends right after."""
-        if not self.wanted:
+        if not self.wanted or self.reason:  # (it could not open before: not again and again)
             _open_browser(url)
             return
         if self.running() and focus_app_window(self.settings.root):
             return
         command = starlight(self.uv, "app", "--url", url)
         log = self.settings.root / "logs" / "app.log"
+        self._log_from = log.stat().st_size if log.is_file() else 0  # (this start's lines)
         if self.group is not None:
             process = self.group.start(command, log, self.settings.root)
         else:  # (a link opened while Starlight runs: this launcher ends, the window stays)
@@ -3185,6 +3187,18 @@ class ChatWindow:
         else:
             threading.Thread(target=self._watch, args=(process, url), daemon=True).start()
 
+    def open_when_ready(self, url: str, timeout: float = 180) -> None:
+        """Open it once the web chat answers (in the background): started before the chat
+        is up, the window would start a chat of its own on the same port."""
+
+        def wait() -> None:
+            end = time.monotonic() + timeout
+            while time.monotonic() < end and fetch_json(f"{chat_url()}/api/status") is None:
+                time.sleep(0.5)
+            self.open(url)
+
+        threading.Thread(target=wait, name="chat-window", daemon=True).start()
+
     def _watch(self, process: subprocess.Popen[bytes], url: str) -> None:
         try:
             code = process.wait(timeout=APP_START)
@@ -3192,7 +3206,8 @@ class ChatWindow:
             return  # it is open
         if code == 0:
             return  # closed again, by hand
-        self.reason = last_line(self.settings.root / "logs" / "app.log") or "see logs/app.log"
+        log = self.settings.root / "logs" / "app.log"
+        self.reason = last_line(log, self._log_from) or "see logs/app.log"
         self.note = f"Starlight's own window could not open ({self.reason}): "
         self.note += "the chat opens in the browser."
         if self.ui is not None:
@@ -3200,10 +3215,13 @@ class ChatWindow:
         _open_browser(url)
 
 
-def last_line(path: Path) -> str:
-    """The last line of a log that says something (for a short reason)."""
+def last_line(path: Path, start: int = 0) -> str:
+    """The last line of a log that says something (for a short reason), from byte
+    ``start`` on (what one run wrote)."""
     try:
-        lines = path.read_text(encoding="utf-8", errors="replace").splitlines()
+        with path.open("rb") as log:
+            log.seek(start)
+            lines = log.read().decode("utf-8", errors="replace").splitlines()
     except OSError:
         return ""
     said = [line.strip() for line in lines if line.strip()]
@@ -3222,7 +3240,15 @@ def focus_app_window(root: Path) -> bool:
     import ctypes
     from ctypes import wintypes
 
-    user32 = ctypes.windll.user32
+    user32 = ctypes.WinDLL("user32")  # (its own handle: the argument types below stay here)
+    user32.GetWindowThreadProcessId.argtypes = [wintypes.HWND, ctypes.POINTER(wintypes.DWORD)]
+    user32.GetWindow.argtypes, user32.GetWindow.restype = (
+        [wintypes.HWND, wintypes.UINT],
+        wintypes.HWND,
+    )
+    for name in ("IsWindowVisible", "IsIconic", "SetForegroundWindow"):
+        getattr(user32, name).argtypes = [wintypes.HWND]
+    user32.ShowWindow.argtypes = [wintypes.HWND, ctypes.c_int]
     found: list[int] = []
 
     def each(handle: int, _param: int) -> bool:

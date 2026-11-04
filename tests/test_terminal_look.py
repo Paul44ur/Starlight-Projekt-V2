@@ -158,3 +158,53 @@ def test_the_prompt_and_the_status_line_show_the_modes(monkeypatch: pytest.Monke
     plain = ChatView()  # not a terminal: as before
     plain.modes = {"practice": True}
     assert plain.prompt() == "you> "
+
+
+def test_bold_list_items_rules_and_links() -> None:
+    text = (
+        "- **Monday:** rain, see [the forecast](https://example.org/a_b*c) for more.\n"
+        "* * *\n"
+        "Read [1] and [notes], `[not](a link)` and [x](y).\n"
+    )
+    look = palette("truecolor")
+    stream = MarkdownStream(look, 80, indent=2, column=2)
+    out = stream.feed(text) + stream.close()
+    lines = shown(out)
+    assert lines[0] == "• Monday: rain, see the forecast (https://example.org/a_b*c) for more."
+    assert f"{look.bold}Monday:" in out  # a list item that starts in bold is still one
+    assert set(lines[1].strip()) == {"─"}  # "* * *" is a rule
+    assert lines[2] == "  Read [1] and [notes], [not](a link) and x (y)."  # (not links: as written)
+    assert f"{look.dim}(https://example.org/a_b*c)" in out  # the address, dimmed and whole
+
+
+def test_without_colour_codes_the_chat_stays_plain(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A Windows console that cannot take colour codes: no codes, and no spinner (it could not
+    take itself away again)."""
+    from starlight import tui
+
+    assert tui.colour_codes_work()  # (not Windows: always)
+    monkeypatch.setattr(tui, "_rich_available", lambda: True)
+    monkeypatch.setattr(tui, "colour_codes_work", lambda: False)
+    view = tui.ChatView()
+    assert view.rich and view.palette == PLAIN
+    view.on_token()
+    assert view._spinner is None
+    assert CODES.sub("", view.prompt()) == view.prompt() == "you › "  # noqa: RUF001
+
+
+async def test_kill_and_resume_in_starlight_connect_show_in_the_prompt(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import httpx
+
+    from starlight.web import client
+
+    real = httpx.AsyncClient
+    answer = httpx.MockTransport(lambda request: httpx.Response(200, json={}))
+    monkeypatch.setattr(httpx, "AsyncClient", lambda **kw: real(transport=answer, **kw))
+    view, out = terminal(monkeypatch)
+    view._console = __import__("rich.console").console.Console(file=out, width=60)
+    await client._post("http://127.0.0.1:8700", "/api/kill", view)
+    assert "stopped" in CODES.sub("", view.prompt())
+    await client._post("http://127.0.0.1:8700", "/api/resume", view)
+    assert "stopped" not in CODES.sub("", view.prompt())

@@ -71,7 +71,7 @@ KINDS.forEach(([value, label]) => {
   b.onclick = () => { kind = value; filters.querySelectorAll("button").forEach(x => x.classList.remove("on")); b.classList.add("on"); load(); };
   filters.appendChild(b);
 });
-function when(stamp) {
+function whenText(stamp) {
   const d = new Date(stamp);
   return isNaN(d) ? stamp : d.toLocaleString([], { dateStyle: "short", timeStyle: "medium" });
 }
@@ -85,7 +85,7 @@ async function load() {
   data.entries.forEach(e => {
     const row = el("div", "entry");
     const label = e.kind === "denied" ? "refused" : e.kind;
-    row.append(el("span", "when", when(e.time)), el("span", "pill kind " + e.kind.replace(" ", "-"), label), el("span", "text", e.text));
+    row.append(el("span", "when", whenText(e.time)), el("span", "pill kind " + e.kind.replace(" ", "-"), label), el("span", "text", e.text));
     box.appendChild(row);
   });
   if (!data.entries.length) box.appendChild(el("p", "dim", "Nothing yet."));
@@ -101,7 +101,7 @@ async function loadQueue() {
   data.items.forEach(item => {
     const row = el("div", "waiting");
     const title = el("div", "", "");
-    title.append(el("b", "", item.title), el("span", "dim small", "  " + when(item.created)));
+    title.append(el("b", "", item.title), el("span", "dim small", "  " + whenText(item.created)));
     row.appendChild(title);
     if (item.detail) row.appendChild(el("pre", "", item.detail));
     row.appendChild(el("div", "runs dim", "Approving runs " + item.runs));

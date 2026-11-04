@@ -169,5 +169,8 @@ async def _post(base: str, path: str, view: Any) -> None:
             view.error(f"the backend refused it (HTTP {response.status_code}) {detail}".strip())
             return
         view.info("Kill switch engaged." if path.endswith("kill") else "Kill switch released.")
+        modes = getattr(view, "modes", None)
+        if isinstance(modes, dict):  # (the prompt says "stopped" while it is engaged)
+            modes["stopped"] = path.endswith("kill")
     except httpx.HTTPError as exc:
         view.error(f"could not reach the backend: {exc}")

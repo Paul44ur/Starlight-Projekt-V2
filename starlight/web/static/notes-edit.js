@@ -42,7 +42,7 @@ function previewButton() {
   return button;
 }
 
-function status(text, bad = false) {
+function showSaveState(text, bad = false) {
   const shown = document.getElementById("save-state");
   if (!shown) return;
   shown.textContent = t(text);
@@ -107,14 +107,14 @@ async function startEditing() {
   });
   document.getElementById("edit-toggle").textContent = t("✓ Done");
   document.body.classList.add("editing");
-  status("Saved");
+  showSaveState("Saved");
   edit.editor.focus();
 }
 
 function changed() {
   if (edit.quiet) return;
   edit.dirty = true;
-  status("Editing…");
+  showSaveState("Editing…");
   clearTimeout(edit.timer);
   edit.timer = setTimeout(save, 1000);
 }
@@ -126,7 +126,7 @@ async function save() {
   if (!edit.dirty || !edit.editor) return !edit.dirty;
   const note = state.current, text = edit.editor.text(), mark = edit.editor.mark();
   edit.dirty = false;
-  status("Saving…");
+  showSaveState("Saving…");
   edit.saving = (async () => {
     try {
       const response = await fetch("/api/note?" + new URLSearchParams({ path: note.path }), {
@@ -137,7 +137,7 @@ async function save() {
       const data = await response.json().catch(() => ({}));
       if (response.status === 409 && data.detail && typeof data.detail === "object") {
         edit.dirty = true;
-        status("Not saved: changed elsewhere", true);
+        showSaveState("Not saved: changed elsewhere", true);
         conflict(data.detail);
         return false;
       }
@@ -153,11 +153,11 @@ async function save() {
           } finally { edit.quiet = false; }
         }
       }
-      status(edit.dirty ? "Editing…" : "Saved");
+      showSaveState(edit.dirty ? "Editing…" : "Saved");
       return true;
     } catch (e) {
       edit.dirty = true;
-      status(t("Not saved:") + " " + e.message, true);
+      showSaveState(t("Not saved:") + " " + e.message, true);
       return false;
     }
   })();
@@ -204,7 +204,7 @@ function conflict(detail) {
   };
   document.getElementById("take-theirs").onclick = () => {
     state.current.stamp = detail.stamp; state.current.text = detail.theirs;
-    replace(detail.theirs); edit.dirty = false; close(); status("Saved");
+    replace(detail.theirs); edit.dirty = false; close(); showSaveState("Saved");
   };
   document.getElementById("keep-both").onclick = () => {
     state.current.stamp = detail.stamp;

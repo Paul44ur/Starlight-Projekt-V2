@@ -6,6 +6,8 @@ from __future__ import annotations
 
 import http.server
 import json
+import os
+import re
 import subprocess
 import sys
 import threading
@@ -20,7 +22,7 @@ import pytest
 from starlight import app_window, cli
 from starlight.core import Paths
 from tests.conftest import REPO
-from tests.test_chat_page import static_site  # noqa: F401  (a fixture)
+from tests.test_chat_page import CHROMIUM, static_site  # noqa: F401  (a fixture)
 from tests.test_feedback_look import CHAT, browser_page
 from tests.test_launcher import L
 
@@ -68,7 +70,7 @@ def webview(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> types.ModuleType
     module = types.ModuleType("webview")
     module.settings = {  # type: ignore[attr-defined]
         "ALLOW_DOWNLOADS": False, "OPEN_EXTERNAL_LINKS_IN_BROWSER": False,
-        "OPEN_DEVTOOLS_IN_DEBUG": True,
+        "OPEN_DEVTOOLS_IN_DEBUG": True, "ALLOW_FILE_URLS": True,
     }  # fmt: skip
     windows: list[FakeWindow] = []
     module.windows = windows  # type: ignore[attr-defined]
@@ -137,6 +139,7 @@ def test_the_window_shows_the_chat_and_keeps_what_the_pages_keep(
         "ALLOW_DOWNLOADS": True,  # a download asks where to save
         "OPEN_EXTERNAL_LINKS_IN_BROWSER": True,  # another site opens in the browser
         "OPEN_DEVTOOLS_IN_DEBUG": False,
+        "ALLOW_FILE_URLS": False,  # only Starlight's pages: no file:// reading
     }
     started = webview.started
     assert started["private_mode"] is False  # the theme, the language ... stay
@@ -384,10 +387,10 @@ def test_the_launcher_window_steps_aside_for_the_chat_and_comes_back(
         sys.path.pop(0)
     shown: list[str] = []
     opened: list[str] = []
-    chat = types.SimpleNamespace(wanted=True, open=opened.append, running=lambda: True)
+    chat = types.SimpleNamespace(wanted=True, reason="", open=opened.append, running=lambda: True)
     window = types.SimpleNamespace(
         L=types.SimpleNamespace(chat_url=lambda: "http://127.0.0.1:8700"),
-        chat_window=chat, closing=False, window_was_open=False,
+        chat_window=chat, closing=False, window_was_open=False, told_why=False,
         root=types.SimpleNamespace(
             iconify=lambda: shown.append("taskbar"), deiconify=lambda: shown.append("back")
         ),
@@ -399,6 +402,10 @@ def test_the_launcher_window_steps_aside_for_the_chat_and_comes_back(
     chat.running = lambda: False  # the chat's window was closed
     gui.App._follow_chat_window(window)  # type: ignore[arg-type]
     assert shown == ["taskbar", "back"]  # this window says Starlight still runs
+    chat.reason = "needs WebView2"  # it could not open (the browser has the chat)
+    gui.App._follow_chat_window(window)  # type: ignore[arg-type]
+    gui.App._follow_chat_window(window)  # type: ignore[arg-type]
+    assert shown == ["taskbar", "back", "back"]  # it comes back once, to say why
     for text in (
         "Open the chat in Starlight's own window, not in the browser",
         "The chat is in its own window (Open chat brings it back). Close this window to stop "
@@ -406,3 +413,113 @@ def test_the_launcher_window_steps_aside_for_the_chat_and_comes_back(
         "Starlight's own window could not open ({reason}); the chat is in the browser.",
     ):
         assert text in gui.GERMAN, text
+
+
+def test_a_second_window_keeps_its_own_id_file(
+    webview: Any, chat: str, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    paths = home(tmp_path)
+    started = webview.start
+
+    def another_window_opens_meanwhile(func: Any = None, **options: Any) -> None:
+        started(func, **options)
+        (paths.data / "app-window" / "window.pid").write_text("424242")
+
+    webview.start = another_window_opens_meanwhile
+    app_window.run(paths, chat + "/", chat)
+    assert (paths.data / "app-window" / "window.pid").read_text() == "424242"
+
+
+def test_after_the_window_failed_once_the_browser_opens_at_once(window_process: Any) -> None:
+    window = window_process("import sys; print('needs WebView2'); sys.exit(3)")
+    window.open("http://127.0.0.1:8700/", wait=True)
+    assert window.reason == "needs WebView2"
+    window.commands.clear()
+    window.open("http://127.0.0.1:8700/notes", wait=True)  # Open chat again
+    assert window.commands == []  # no second try (and no 15 s wait)
+    assert window.browser[-1] == "http://127.0.0.1:8700/notes"
+
+
+def test_the_reason_is_this_starts_own(window_process: Any, tmp_path: Path) -> None:
+    (tmp_path / "logs" / "app.log").write_text("an old run said this\n")
+    window = window_process("import sys; sys.exit(1)")  # says nothing itself
+    window.open("http://127.0.0.1:8700/", wait=True)
+    assert window.reason == "see logs/app.log"  # not the old run's words
+
+
+def test_the_window_waits_until_the_chat_answers(
+    window_process: Any, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    answers = iter([None, None, {"local": True}])
+    monkeypatch.setattr(L, "fetch_json", lambda url, **kw: next(answers))
+    window = window_process("import time; time.sleep(5)")
+    window.open_when_ready("http://127.0.0.1:8700/")
+    end = time.monotonic() + 10
+    while not window.commands and time.monotonic() < end:
+        time.sleep(0.05)
+    assert window.commands == [["app", "--url", "http://127.0.0.1:8700/"]]
+    with pytest.raises(StopIteration):  # it asked until the chat answered, then opened
+        next(answers)
+
+
+def test_a_restart_brings_the_chat_window_back(monkeypatch: pytest.MonkeyPatch) -> None:
+    pytest.importorskip("tkinter")
+    sys.path.insert(0, str(REPO / "launcher"))
+    try:
+        import launcher_gui as gui
+    finally:
+        sys.path.pop(0)
+    events: list[Any] = []
+    window = types.SimpleNamespace(
+        chat_window=types.SimpleNamespace(wanted=True, reason="", running=lambda: True),
+        opened_browser=True, _stop_services=lambda: None,
+        events=types.SimpleNamespace(put=events.append),
+    )  # fmt: skip
+    gui.App._stop_then_begin(window)  # type: ignore[arg-type]
+    assert window.opened_browser is False and events == [("begin",)]  # opens again when ready
+    # a window that could not open: the browser has the chat; this window stays in view
+    shown: list[str] = []
+    window.chat_window = types.SimpleNamespace(wanted=True, reason="no WebView2", open=print)
+    window.L = types.SimpleNamespace(chat_url=lambda: "http://127.0.0.1:8700")
+    window.root = types.SimpleNamespace(iconify=lambda: shown.append("taskbar"))
+    gui.App.open_chat(window)  # type: ignore[arg-type]
+    assert shown == []
+
+
+async def test_no_page_script_replaces_what_the_browser_has() -> None:
+    """A page's top-level function becomes a property of the window, replacing the browser's
+    own of that name: the chat's open() replaced window.open, and printing a conversation
+    opened nothing. Here no page script declares a name the window already has."""
+    async_api = pytest.importorskip("playwright.async_api")
+    executable = os.environ.get("STARLIGHT_CHROMIUM") or (
+        CHROMIUM if Path(CHROMIUM).exists() else None
+    )
+    if executable is None and not os.environ.get("CI"):
+        pytest.skip("no Chromium for Playwright")
+    async with async_api.async_playwright() as playwright:
+        browser = await playwright.chromium.launch(executable_path=executable)
+        try:
+            page = await browser.new_page()
+            await page.goto("about:blank")
+            names = set(
+                await page.evaluate(
+                    "() => { const all = new Set(); let o = window;"
+                    " while (o) { Object.getOwnPropertyNames(o).forEach(n => all.add(n));"
+                    " o = Object.getPrototypeOf(o); } return [...all]; }"
+                )
+            )
+        finally:
+            await browser.close()
+    assert {"open", "close", "print", "scroll", "status", "fetch"} <= names
+    static = REPO / "starlight" / "web" / "static"
+    clashes = []
+    for path in sorted([*static.glob("*.html"), *static.glob("*.js")]):
+        text = path.read_text(encoding="utf-8")
+        declared = re.finditer(
+            r"^(?:async\s+)?function\s+([\w$]+)\s*\(|^var\s+([\w$]+)", text, re.M
+        )
+        for match in declared:
+            name = match.group(1) or match.group(2)
+            if name in names:
+                clashes.append(f"{path.name}: {name}")
+    assert clashes == []

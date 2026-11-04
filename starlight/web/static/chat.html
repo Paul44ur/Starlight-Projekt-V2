@@ -332,7 +332,7 @@ const INPUT_HEIGHT = 44, INPUT_MAX_HEIGHT = 180;  // px: #input's min- and max-h
 let pinned = true, lastTop = 0;
 function nearBottom() { return log.scrollHeight - log.scrollTop - log.clientHeight < 80; }
 function atBottom() { return pinned || nearBottom(); }
-function scroll() { log.scrollTop = log.scrollHeight; }
+function scrollToEnd() { log.scrollTop = log.scrollHeight; }
 // Scrolled up to read: a button back down, with a dot when something new arrived below.
 const toLatest = document.getElementById("tolatest");
 function syncLatest() {
@@ -345,7 +345,7 @@ log.addEventListener("scroll", () => {
   lastTop = log.scrollTop;
   syncLatest();
 }, { passive: true });
-new ResizeObserver(() => { if (pinned) scroll(); syncLatest(); }).observe(log);
+new ResizeObserver(() => { if (pinned) scrollToEnd(); syncLatest(); }).observe(log);
 new MutationObserver(() => { if (!atBottom()) toLatest.classList.add("new"); syncLatest(); })
   .observe(log, { childList: true, subtree: true, characterData: true });
 toLatest.onclick = () => log.scrollTo({ top: log.scrollHeight,
@@ -395,7 +395,7 @@ function addMsg(who, text, files, plain) {
   m.appendChild(tools);
   log.appendChild(m);
   markLatest();
-  if (stick) scroll();
+  if (stick) scrollToEnd();
   return body;
 }
 function markLatest() {
@@ -541,7 +541,7 @@ function addToAnswer(body, text) {
     body.drawing = false;
     const stick = atBottom();
     renderMarkdown(body, body.raw);
-    if (stick) scroll();
+    if (stick) scrollToEnd();
   });
 }
 function addStats(body, stats) {
@@ -551,7 +551,7 @@ function addStats(body, stats) {
   parts.push(stats.seconds + " s");
   body.parentElement.appendChild(el("div", "att", parts.join(" · ")));
 }
-function addSys(text) { const stick = atBottom(); log.appendChild(el("div", "msg sys", text)); if (stick) scroll(); }
+function addSys(text) { const stick = atBottom(); log.appendChild(el("div", "msg sys", text)); if (stick) scrollToEnd(); }
 
 function connect() {
   ws = new WebSocket((location.protocol === "https:" ? "wss://" : "ws://") + location.host + "/ws");
@@ -607,7 +607,7 @@ function addThought(body, text) {
   const stick = atBottom();
   box.text.textContent += text;
   if (box.open) box.text.scrollTop = box.text.scrollHeight;
-  if (stick) scroll();
+  if (stick) scrollToEnd();
 }
 function thoughtsDone(body) {
   const box = body.thoughts;
@@ -660,7 +660,7 @@ function handle(m) {
     if (m.text || !current) setAnswer(current || (current = addMsg("bot", "")), m.text);
     doneWaiting(current); toolsDone(current);
     addStats(current, m.stats);
-    if (stick) scroll();
+    if (stick) scrollToEnd();
     if (!m.stopped && !m.failed) current.parentElement.dataset.kept = "1";
     else if (editPending) { toast("Not changed: the earlier question and answer stay"); setTimeout(() => openConversation(conversation), 1500); }
     else if (regenPending) current.parentElement.dataset.regen = "1";  // the old answer stays
@@ -711,7 +711,7 @@ function showConfirm(m) {
   yes.onclick = () => { ws.send(JSON.stringify({ type: "reply", id: m.id, value: "yes" })); card.remove(); };
   no.onclick = () => { ws.send(JSON.stringify({ type: "reply", id: m.id, value: "no" })); card.remove(); };
   row.append(yes, no); card.appendChild(row);
-  log.appendChild(card); if (stick) scroll();
+  log.appendChild(card); if (stick) scrollToEnd();
 }
 function showPrompt(m) {
   const stick = atBottom();
@@ -722,7 +722,7 @@ function showPrompt(m) {
   const send = el("button", "ok", "Send");
   const go = () => { ws.send(JSON.stringify({ type: "reply", id: m.id, value: box.value })); card.remove(); };
   send.onclick = go; box.onkeydown = (e) => { if (e.key === "Enter") go(); };
-  card.append(box, send); log.appendChild(card); if (stick) scroll(); box.focus();
+  card.append(box, send); log.appendChild(card); if (stick) scrollToEnd(); box.focus();
 }
 
 function ask(text, files) {
@@ -1218,7 +1218,7 @@ async function openConversation(id) {
     (m.tools || []).forEach(t => toolStep(body, t.tool, t.ok ? "done" : "failed"));
   });
   if (!data.messages.length) showEmpty(data.private);
-  loadList(); scroll();
+  loadList(); scrollToEnd();
 }
 document.getElementById("new").onclick = async () => { const d = await api("/api/conversations", { method: "POST" }); await openConversation(d.id); input.focus(); };
 document.getElementById("newprivate").onclick = async () => { const d = await api("/api/conversations", { method: "POST", body: { private: true } }); await openConversation(d.id); input.focus(); };

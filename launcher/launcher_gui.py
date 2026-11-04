@@ -656,6 +656,7 @@ class App:
         self.opened_browser = False
         self.chat_window: Any = None  # the chat in Starlight's own window (or the browser)
         self.window_was_open = False
+        self.told_why = False  # the launcher window came back to say why the window failed
         self.polling = False
         self._poll_job: str | None = None  # the timer of the status polling
         self.closing = False
@@ -1886,7 +1887,11 @@ class App:
             self.begin()
 
     def _stop_then_begin(self) -> None:
+        window = self.chat_window  # (it ends with the rest: once ready again, it comes back)
+        reopen = window is not None and window.wanted and window.running()
         self._stop_services()
+        if reopen:
+            self.opened_browser = False
         self.events.put(("begin",))
 
     # -- progress page --------------------------------------------------------------------------
@@ -2329,8 +2334,11 @@ class App:
         """The chat's own window was closed: Starlight still runs, and this window comes
         back to say so (with Open chat and Stop everything)."""
         open_now = self.chat_window is not None and self.chat_window.running()
-        if self.window_was_open and not open_now and not self.closing:
-            self.root.deiconify()
+        failed = self.chat_window is not None and bool(self.chat_window.reason)
+        closed = self.window_was_open and not open_now
+        if (closed or (failed and not self.told_why)) and not self.closing:
+            self.root.deiconify()  # (or it could not open: this window says why)
+        self.told_why = self.told_why or failed
         self.window_was_open = open_now
 
     def open_chat(self, page: str = "") -> None:
@@ -2339,7 +2347,7 @@ class App:
             webbrowser.open(url)
             return
         self.chat_window.open(url)
-        if self.chat_window.wanted:
+        if self.chat_window.wanted and not self.chat_window.reason:
             self.root.iconify()  # the chat is the window now; this one waits in the taskbar
 
     def open_stats(self) -> None:
