@@ -4,6 +4,7 @@ unchanged plain fallback for pipes and scripts."""
 from __future__ import annotations
 
 import os
+import re
 import select
 import subprocess
 import sys
@@ -48,14 +49,22 @@ def _minimal_home(root: Path) -> Path:
     return root
 
 
+# A colour code (SGR 30-38, 40-48, 90-97, 100-107), as opposed to bold or italic.
+COLOUR = re.compile(r"\x1b\[(?:[0-9;]*;)?(?:3[0-8]|4[0-8]|9[0-7]|10[0-7])(?:;[0-9;]*)?m")
+
+
 @pytest.mark.skipif(sys.platform == "win32", reason="pseudo-terminals are POSIX")
-def test_rich_chat_session_over_a_real_terminal(tmp_path: Path) -> None:
+@pytest.mark.parametrize("no_color", [False, True])
+def test_rich_chat_session_over_a_real_terminal(tmp_path: Path, no_color: bool) -> None:
     import pty
 
     home = _minimal_home(tmp_path / "home")
     master, slave = pty.openpty()
     env = dict(os.environ, TERM="xterm-256color", COLUMNS="100", LINES="40")
     env.pop("STARLIGHT_HOME", None)
+    env.pop("NO_COLOR", None)
+    if no_color:
+        env["NO_COLOR"] = "1"
     process = subprocess.Popen(
         [sys.executable, "-m", "starlight", "--home", str(home), "run"],
         stdin=slave,
@@ -94,3 +103,7 @@ def test_rich_chat_session_over_a_real_terminal(tmp_path: Path) -> None:
         os.close(master)
     # the banner showed the model, and the confirm box and prompt rendered with rich
     assert "echo" in output
+    seen = re.sub(r"\x1b\[[0-9;]*m", "", output)  # (as it looks)
+    assert "kill switch off" in seen and "practice off" in seen  # the status line
+    assert "✦ " in seen  # the answer, after the star
+    assert bool(COLOUR.search(output)) is not no_color  # NO_COLOR: the layout, no colours

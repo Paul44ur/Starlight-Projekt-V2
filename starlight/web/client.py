@@ -102,6 +102,8 @@ async def run_client(host: str, port: int, assume_yes: bool = False) -> int:
     view = ChatView(assume_yes=assume_yes)
     base = f"http://{host}:{port}"
     info = await _status(base)
+    view.model = info.pop("model", "")  # (the status line under the banner shows it)
+    view.modes = {"stopped": "note" in info}
     view.banner(__version__, info, hotkey=None)
     view.info(f"Connected to the Starlight backend at {base} - shared with the browser chat.\n")
 

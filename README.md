@@ -748,6 +748,14 @@ stops, and you can ask the next thing. Very long answers stop by themselves afte
 **Pasting.** Paste several lines at once and they count as one request. Text you typed
 before Starlight asks "Allow?" never counts as the answer.
 
+**How the terminal chat looks.** Answers show their formatting as they arrive: headings,
+bold, lists, quotes, tables and code, wrapped between words to the width of the window.
+Until the first word, a spinner shows that Starlight is working, for how long, and which
+tool it uses. The colours are the web chat's. In a light terminal, set
+`STARLIGHT_TERMINAL_THEME=light` (some terminals say so themselves); `NO_COLOR=1` turns the
+colours off and keeps the rest. When the output goes to a file or another program, it is
+plain text as before.
+
 **Chat commands.** `/help` lists them all. The main ones:
 
 | Command | What it does |
@@ -755,6 +763,7 @@ before Starlight asks "Allow?" never counts as the answer.
 | `/new` (or `/clear`) | Start a new conversation (the old one stays saved). |
 | `/private` | A private conversation: never saved, nothing learned from it. `/new` ends it. |
 | `/practice` | Practice mode on or off: actions are described, not done. |
+| `/status` | The model, and whether the kill switch and practice mode are on. The prompt shows the modes too (`you · practice ›`). |
 | `/talk [seconds]` | Say your request into the microphone, for that many seconds: 6 when left out (`record_seconds` in `voice.yaml`), 120 at most. Needs voice, see `--voice`. |
 | `/tools` | Show what Starlight can use. |
 | `/modules` | Show which modules are on or off. |

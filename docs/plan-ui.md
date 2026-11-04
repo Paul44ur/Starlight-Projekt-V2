@@ -64,7 +64,7 @@ first, then the launcher (first impression), then the chat (daily driver).
 | U7 | Responsive / phone pass (chat, settings, memory) | M | U3, U4 | **done** (52bd5c4) |
 | U8 | Micro-interactions and feedback (toasts, loading, focus, shortcuts) | M | U1 | **done** |
 | U9 | Icons and brand (one icon set, logo, favicons, kill/pair screens) | S–M | U1 | **done** |
-| U10 | Terminal chat refinement (ANSI theme, Markdown, spinner) | M | – | **next** |
+| U10 | Terminal chat refinement (ANSI theme, Markdown, spinner) | M | – | **done** |
 
 Last updated: 2026-11-03. U1 built: `style.css` now carries scales (spacing `--s-*`, radius
 `--r-*`, type `--fs-*`), elevation (`--shadow-1/2`), motion (`--ease`, `--dur*`) and an
@@ -137,6 +137,19 @@ both manifests and every page (`bundles/icons/make_icons.py` draws them again). 
 browser's bar takes the page's colour, light or dark (Kill keeps its red). The Kill page
 shows the logo and the name above its button; Memory's bar names Activity like the others.
 `tests/test_brand.py`.
+
+U10 built: the terminal chat in the web's colours (`termstyle.py`: 24-bit, 256 or 16
+colours, dark or light; NO_COLOR drops the colours and keeps bold, which the prompt's own
+codes ignored before). Answers used to stream as raw Markdown in green, broken mid-word:
+now light Markdown as they stream (headings, bold, italic, code, lists, quotes, rules, code
+blocks, tables), wrapped between words. A spinner until the first word (with the time and
+the running tool), a status line under the banner and on `/status` (model, kill switch,
+practice, private), and the modes in the prompt (`you · practice ›`). The banner's ⭐ is
+the logo's ✦ in its gold. (The survey above said "no rich": `tui.py` already used rich for
+the banner and boxes; the answers were raw.) `tests/test_terminal_look.py`, and the real
+terminal test in `tests/test_tui.py` with and without NO_COLOR.
+
+All ten blocks are done.
 
 ## Blocks
 

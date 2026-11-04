@@ -12,7 +12,7 @@ import shutil
 import signal
 import subprocess
 import sys
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from pathlib import Path
 from types import FrameType
 from typing import Any
@@ -135,6 +135,7 @@ async def _ask(
     on_token: TokenCallback,
     conversation: str | None = None,
     changes: list[dict[str, Any]] | None = None,
+    on_tool_report: Callable[[dict[str, Any]], None] | None = None,
 ) -> AgentResult | None:
     """Run one request. Ctrl+C while Starlight answers stops that answer, not Starlight
     (it returns None then). A note or file a tool changes is added to ``changes``, so the
@@ -144,6 +145,8 @@ async def _ask(
     def on_tool(report: dict[str, Any]) -> None:
         if changes is not None and isinstance(report.get("changed"), dict):
             changes.append(report["changed"])
+        if on_tool_report is not None:  # (the chat's spinner names the tool that runs)
+            on_tool_report(report)
 
     async def run() -> AgentResult:
         sink = tool_sink.set(on_tool)  # (inside the task: its own copy of the context)
@@ -185,6 +188,7 @@ HELP = """\
 - `/new` (or `/clear`) - start a new conversation (the old one stays saved)
 - `/private` - a private conversation: never saved, nothing learned from it
 - `/practice` - practice mode on or off: actions are described, not done
+- `/status` - the model, the kill switch, practice mode (the prompt shows the modes too)
 - `/undo` - undo the last change Starlight made to a note or file (again: the one before)
 - `/talk [SECONDS]` - say your request into the microphone (voice module; 120 s at most)
 - `/quit` - leave
@@ -193,6 +197,16 @@ HELP = """\
 
 
 MAX_UNDO = 50  # changes /undo remembers, newest last
+
+
+def _show_modes(kernel: Kernel, view: ChatView) -> None:
+    """What the status line and the prompt show: is the kill switch on, practice mode, a
+    private conversation."""
+    view.modes = {
+        "stopped": kernel.kill_switch.engaged,
+        "practice": kernel.policy.practice,
+        "private": view.conversation is not None,
+    }
 
 
 def _show_changes(view: ChatView, changes: list[dict[str, Any]], since: int) -> None:
@@ -231,15 +245,19 @@ async def cmd_run(paths: Paths, args: argparse.Namespace) -> int:
         hotkey = kernel.config.kill_switch.hotkey
         info = {
             "home": str(paths.root),
-            "model": kernel.config.model.provider,
             "saves files": describe_output_folder(kernel.config.output.folder, paths.root),
         }
         if kernel.kill_switch.engaged:
             info["kill switch"] = f"ON - {kernel.kill_switch.reason} (type /resume)"
         elif not kernel.hotkey_active and hotkey:
             info["hotkey"] = "inactive (needs the 'hotkey' extra and a desktop)"
+        model = kernel.config.model
+        named = model.options.get("model")
+        view.model = model.provider + (f" · {named}" if named else "")
+        _show_modes(kernel, view)
         view.banner(__version__, info, hotkey)
         while True:
+            _show_modes(kernel, view)  # (the prompt shows them)
             try:
                 line = await view.aread()
             except (EOFError, KeyboardInterrupt, asyncio.CancelledError):
@@ -269,7 +287,7 @@ async def cmd_run(paths: Paths, args: argparse.Namespace) -> int:
                 emit(token)
 
             since = len(changes)
-            result = await _ask(kernel, line, on_token, view.conversation, changes)
+            result = await _ask(kernel, line, on_token, view.conversation, changes, view.on_tool)
             dropped = max(0, len(changes) - MAX_UNDO)  # the oldest are forgotten
             del changes[:dropped]
             since = max(0, since - dropped)
@@ -325,6 +343,9 @@ async def _repl_command(kernel: Kernel, line: str, view: ChatView) -> bool:
         return True
     if command == "help":
         view.help(HELP)
+    elif command == "status":
+        _show_modes(kernel, view)
+        view.status()
     elif command == "tools":
         view.tools(kernel.dispatcher.tools())
     elif command == "modules":

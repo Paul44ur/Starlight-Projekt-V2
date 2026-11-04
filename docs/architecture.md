@@ -215,6 +215,16 @@ keeps the two in step and checks that text on every filled colour is readable (W
 4.5:1). Both show a focus ring only while the keyboard is used. The plan for the rest of this
 work is `docs/plan-ui.md`.
 
+**The terminal chat's look.** `starlight/termstyle.py` holds the web's colours as ANSI codes,
+at the depth the terminal has (rich's `color_system`: 24-bit, 256 or the basic 16), dark or
+light (`STARLIGHT_TERMINAL_THEME`, `COLORFGBG`); NO_COLOR keeps bold and drops colour.
+`MarkdownStream` renders an answer a piece at a time: line starts are held until their kind
+is clear (a heading, a list item, a fence, a rule), words until their end (to wrap between
+words), tables until their last row; the result is the same however the text is split.
+`ChatView` (`tui.py`) uses it for answers, shows a spinner until the first word (it steps
+aside for questions and notices, and names the running tool from the dispatcher's report),
+and a status line and prompt with the modes. Pipes keep the plain output.
+
 **Icons.** Buttons without words show line icons from `ICONS` in `common.js` (24 px SVG
 paths in the text colour): markup says `data-icon="mic"` and `drawIcons()` fills it in;
 code calls `setIcon(button, name)`, which marks an icon `.alone` (drawn a little larger)
