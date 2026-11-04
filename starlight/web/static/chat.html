@@ -302,7 +302,7 @@
     </div>
     <nav class="drawer-nav side-nav" aria-label="Pages"><a href="/notes" data-icon="notes"><span>Notes</span></a><a href="/memory" data-icon="memory"><span>Memory</span></a><a href="/activity" data-icon="activity"><span>Activity</span></a><a href="/automations" data-icon="automations"><span>Automations</span></a><a href="/settings" data-icon="settings"><span>Settings</span></a></nav>
     <div id="list"><div class="skeleton" aria-hidden="true"><i></i><i></i><i></i></div></div>
-    <div class="side-foot"><i class="dot" id="model-dot"></i><span id="model-name" title="The model that answers">…</span>
+    <div class="side-foot"><i class="dot" id="model-dot"></i><span id="model-name" translate="no" title="The model that answers">…</span>
       <button class="icon" onclick="cycleTheme()" id="theme2" title="Theme" data-icon="system"><span>Theme</span></button></div>
   </aside>
   <div id="main">
@@ -311,8 +311,8 @@
     <header class="top">
       <button id="menu" class="icon" title="Conversations" aria-label="Conversations" aria-controls="convs" aria-expanded="false" data-icon="menu"></button>
       <h1><img class="logo" src="/icon.svg" alt="" width="22" height="22" />Starlight</h1>
-      <span class="bar-sep" aria-hidden="true">/</span>
-      <button id="title" class="title-btn" type="button" hidden aria-haspopup="menu" title="This conversation: rename, pin, folder, archive, download, delete" data-icon="chevron"><span id="title-text"></span></button>
+      <span class="bar-sep" aria-hidden="true" hidden>/</span>
+      <button id="title" class="title-btn" type="button" hidden aria-haspopup="menu" title="This conversation: rename, pin, folder, archive, download, delete" data-icon="chevron"><span id="title-text" translate="no"></span></button>
       <span id="conn" class="pill off">connecting…</span>
       <span id="where" class="pill off" hidden></span>
       <button id="practice" class="pill warn" hidden title="Practice mode: actions that change something are described, not done. Press to turn it off"><span class="wide">practice mode · Off</span><span class="narrow">Practice</span></button>
@@ -344,7 +344,7 @@
   </div>
   <aside id="side">
     <h2>This PC</h2>
-    <div class="kv"><span>Model</span><span id="model">…</span></div>
+    <div class="kv"><span>Model</span><span id="model" translate="no">…</span></div>
     <h2>Context</h2>
     <div class="context-top"><span id="context-used">–</span><span id="context-of" class="dim"></span></div>
     <div class="context-bar" id="context-bar"><i></i></div>
@@ -1151,7 +1151,7 @@ async function loadList() {
     }
     const row = el("div", "conv" + (c.id === conversation ? " active" : ""));
     const mark = c.private ? "🔒 " : "";
-    const t = el("span", "t", mark + c.title); t.title = c.title + " — " + c.updated.replace("T", " ").slice(0, 16);
+    const t = el("span", "t", mark + c.title); t.translate = false; t.title = c.title + " — " + c.updated.replace("T", " ").slice(0, 16);
     const acts = el("span", "acts");
     const more = el("button", "icon"); setIcon(more, "more"); more.title = "Rename, pin, folder, archive, download, delete"; more.setAttribute("aria-label", "More for this conversation");
     more.onclick = (e) => { e.stopPropagation(); conversationMenu(c, more); };
@@ -1170,12 +1170,17 @@ async function loadList() {
   list.appendChild(toggle);
   const again = keep && [...list.querySelectorAll(".conv")].find(r => r.dataset.id === keep.id);
   if (again) (keep.more ? again.querySelector(".acts button") : again).focus();
-  showTitle(data.conversations.find(c => c.id === conversation));
+  // A search or the archive can leave the open conversation out of the list: its name stays.
+  const open = data.conversations.find(c => c.id === conversation);
+  showTitle(open || (titled && titled.id === conversation ? titled : null));
 }
 // The open conversation's name in the bar; a click opens its menu (as its ⋯ in the list).
+let titled = null;
 function showTitle(c) {
   const button = document.getElementById("title");
+  titled = c || null;
   button.hidden = !c;
+  document.querySelector(".bar-sep").hidden = !c;
   if (!c) return;
   document.getElementById("title-text").textContent = (c.private ? "🔒 " : "") + c.title;
   button.onclick = (e) => { e.stopPropagation(); conversationMenu(c, button); };
@@ -1189,8 +1194,12 @@ function download(href) {
   document.body.appendChild(a); a.click(); a.remove();
 }
 async function changeConversation(id, change) {
-  try { await api("/api/conversations/" + id, { method: "PATCH", body: change }); }
-  catch (e) { toast(e.message); }
+  try {
+    const changed = await api("/api/conversations/" + id, { method: "PATCH", body: change });
+    if (titled && titled.id === id) {  // (the bar's name, also when the list leaves it out)
+      for (const key of ["title", "pinned", "archived", "folder"]) if (key in changed) titled[key] = changed[key];
+    }
+  } catch (e) { toast(e.message); }
   loadList();
 }
 function conversationMenu(c, anchor) {
@@ -1274,6 +1283,7 @@ async function openConversation(id) {
   let data;
   try { data = await api("/api/conversations/" + id); } catch (e) { toast(e.message); return; }
   conversation = id; log.innerHTML = ""; current = null;
+  if (data.title) { const { messages, ...about } = data; showTitle(about); }  // (also outside a search)
   document.getElementById("privacy").hidden = !data.private;
   data.messages.forEach(m => {
     const body = addMsg(m.role === "user" ? "you" : "bot", m.content);

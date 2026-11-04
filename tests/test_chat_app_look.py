@@ -182,3 +182,66 @@ async def test_the_bar_stays_one_row_in_a_narrower_window(
                 assert await page.locator("#kill").is_visible()
             finally:
                 await browser.close()
+
+
+# A list that answers a search and the archive, and keeps what is changed (as the server does).
+NARROWED = """([list, status]) => { window.served = {list, status};
+  const real = window.fetch; window.fetch = async (url, init) => {
+  const u = new URL(String(url), location.href), json = (body) => new Response(
+    JSON.stringify(body), {headers: {'content-type': 'application/json'}});
+  if (u.pathname === '/api/conversations' && (!init || init.method === 'GET')) {
+    const search = (u.searchParams.get('search') || '').toLowerCase();
+    const archived = !!u.searchParams.get('archived');
+    return json({current: 'c1', conversations: list.conversations.filter(c =>
+      c.title.toLowerCase().includes(search) && !!c.archived === archived)});
+  }
+  if (init && init.method === 'PATCH') {
+    const change = JSON.parse(init.body), id = u.pathname.split('/').pop();
+    Object.assign(list.conversations.find(c => c.id === id), change);
+    return json({id, ...change});
+  }
+  if (u.pathname === '/api/status') return json(status);
+  return real(url, init); }; }"""
+
+
+async def test_the_name_in_the_bar_stays_and_names_are_never_translated(
+    static_site: str,  # noqa: F811
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    async_api = pytest.importorskip("playwright.async_api")
+    monkeypatch.setenv("NO_PROXY", "127.0.0.1")
+    async with async_api.async_playwright() as playwright:
+        browser, page = await open_app(
+            playwright, static_site, "localStorage.setItem('starlight-lang', 'de');\n"
+        )
+        try:
+            await page.evaluate(NARROWED, [LIST, STATUS])
+            title, slash = page.locator("#title"), page.locator(".bar-sep")
+            await page.locator("#search").fill("recipe")  # the open one is not in the list
+            await page.wait_for_function("() => document.querySelectorAll('.conv').length === 1")
+            assert await title.is_visible() and await slash.is_visible()
+            assert await title.inner_text() == "Plan the week"
+            # renamed from the bar while the list leaves it out; a name is never translated
+            page.once("dialog", lambda dialog: dialog.accept("Memory"))
+            await title.click()
+            await page.locator(".popmenu button").first.click()
+            await page.wait_for_function(
+                "() => document.getElementById('title-text').textContent === 'Memory'"
+            )
+            await page.locator("#search").fill("")
+            await page.wait_for_function("() => document.querySelectorAll('.conv').length === 3")
+            assert "Memory" in await page.locator("#list .conv .t").all_inner_texts()
+            assert await title.inner_text() == "Memory"
+            await page.locator("#archived").click()  # the archive: it is not in there either
+            await page.wait_for_function("() => !document.querySelector('.conv')")
+            assert await title.inner_text() == "Memory"
+            await page.evaluate("() => { served.status.model_name = 'Memory'; refresh(); }")
+            await page.wait_for_function(
+                "() => document.getElementById('model-name').textContent === 'Memory'"
+            )
+            assert await page.locator("#model").text_content() == "Memory"
+            # no conversation open: no name, and no lone slash
+            await page.evaluate("() => showTitle(null)")
+            assert not await title.is_visible() and not await slash.is_visible()
+        finally:
+            await browser.close()
