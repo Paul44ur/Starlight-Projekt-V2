@@ -157,7 +157,28 @@ async def test_the_context_meter(
                 "() => document.getElementById('meta-context').textContent === 'Kontext 92 %'"
             )
             words = await page.evaluate(text)
-            assert words[:2] == ["92 % belegt", "30k von 32.8k"]
+            assert words[:2] == ["92 % belegt", "30k von 32,8k"]  # (a German comma)
             assert await page.locator("#side h2").first.inner_text() == "Dieser PC"
+            assert await page.locator(".side-nav").get_attribute("aria-label") == "Seiten"
         finally:
             await browser.close()
+
+
+async def test_the_bar_stays_one_row_in_a_narrower_window(
+    static_site: str,  # noqa: F811
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    async_api = pytest.importorskip("playwright.async_api")
+    monkeypatch.setenv("NO_PROXY", "127.0.0.1")
+    async with async_api.async_playwright() as playwright:
+        for width in (820, 1000, 1400):
+            browser, page = await open_app(
+                playwright, static_site, viewport={"width": width, "height": 700}
+            )
+            try:
+                await page.wait_for_function("() => !document.getElementById('title').hidden")
+                bar = await page.locator("#main header.top").bounding_box()
+                assert bar is not None and bar["height"] < 60, width  # (the sidebar beside it)
+                assert await page.locator("#kill").is_visible()
+            finally:
+                await browser.close()

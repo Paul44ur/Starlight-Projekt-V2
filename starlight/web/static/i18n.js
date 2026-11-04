@@ -40,7 +40,7 @@
     "Type / for commands. Drop pictures or documents here to add them.": "Tippe / für Befehle. Zieh Bilder oder Dokumente hierher, um sie anzuhängen.",
     "practice mode · Off": "Übungsmodus · Aus", "Practice": "Übung", "private": "privat",
     "model paused · Resume": "Modell pausiert · Fortsetzen", "Paused ▶": "Pausiert ▶",
-    "This PC": "Dieser PC", "Model": "Modell", "Context": "Kontext", "Recent": "Zuletzt",
+    "This PC": "Dieser PC", "Pages": "Seiten", "Model": "Modell", "Context": "Kontext", "Recent": "Zuletzt",
     "Shows after the next answer.": "Erscheint nach der nächsten Antwort.",
     "Older turns are summarized when it is full.": "Ältere Beiträge werden zusammengefasst, wenn er voll ist.",
     "Nearly full: older turns get summarized. /new starts afresh.": "Fast voll: Ältere Beiträge werden zusammengefasst. /new fängt neu an.",
@@ -354,7 +354,7 @@
   const PATTERNS = [
     [/^(\d+) waiting for your OK$/, "$1 warten auf dein OK"],
     [/^(\d+)% used$/, "$1 % belegt"],
-    [/^([\d.]+k?) of ([\d.]+k?)$/, "$1 von $2"],
+    [/^([\d.,]+k?) of ([\d.,]+k?)$/, "$1 von $2"],
     [/^Context (\d+)%$/, "Kontext $1 %"],
     [/^(\d+) shown$/, "$1 angezeigt"],
     [/^works once, for (\d+) minutes$/, "gilt einmal, $1 Minuten lang"],

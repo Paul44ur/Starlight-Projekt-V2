@@ -313,3 +313,22 @@ def test_enter_presses_the_main_button_and_esc_leaves_settings(
         assert pressed[-2:] == ["setup_go", "setup_cancel"]
     finally:
         app.root.destroy()
+
+
+@needs_display
+def test_cancel_in_settings_goes_back_where_settings_was_opened(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    app = make_app(monkeypatch)
+    try:
+        app.on_error("The model server did not start: out of video memory")
+        app.err_settings.invoke()  # Settings from the error page ...
+        assert app.page == "setup"
+        app._on_escape()  # ... and back: to the error, not to a "running" page
+        assert app.page == "error"
+        app.show("running")
+        app.open_settings()
+        app.on_setup_cancel()
+        assert app.page == "running"
+    finally:
+        app.root.destroy()

@@ -247,7 +247,14 @@
   #offline { background: var(--warn); color: #2b1d00; padding: 8px 14px; display: flex; gap: 10px;
              align-items: center; flex-wrap: wrap; font-size: 14px; }
   #offline button { background: #2b1d00; color: #fff; border-color: #2b1d00; }
-  @media (max-width: 1100px) { #side { display: none; } }
+  @media (max-width: 1100px) {
+    #side { display: none; }
+    /* a narrower window: the bar stays one row (the short Kill, a shorter name) */
+    #kill .wide { display: none; }
+    #kill .narrow { display: inline; }
+    .title-btn { max-width: 24vw; }
+    #conn { width: 10px; height: 10px; padding: 0; font-size: 0; flex: none; }  /* (a dot) */
+  }
   @media (max-width: 760px) {
     #menu { display: inline-block; }
     #convs { position: fixed; z-index: 30; top: 0; bottom: 0; left: 0; transform: translateX(-100%);
@@ -1327,7 +1334,8 @@ function showContext(tokens) {
     return;
   }
   const percent = Math.min(100, Math.round(tokens / contextWindow * 100));
-  const k = (n) => n >= 1000 ? (n / 1000).toFixed(1).replace(/\.0$/, "") + "k" : String(n);
+  const point = document.documentElement.lang === "de" ? "," : ".";  // (21,4k in German)
+  const k = (n) => n >= 1000 ? (n / 1000).toFixed(1).replace(/\.0$/, "").replace(".", point) + "k" : String(n);
   used.textContent = percent + "% used";
   of.textContent = k(tokens) + " of " + k(contextWindow);
   bar.className = "context-bar" + (percent >= 85 ? " full" : percent >= 60 ? " warn" : "");

@@ -701,6 +701,7 @@ class App:
         self.chat_window: Any = None  # the chat in Starlight's own window (or the browser)
         self.window_was_open = False
         self.told_why = False  # the launcher window came back to say why the window failed
+        self.settings_from = "running"  # the page Cancel in Settings goes back to
         self.polling = False
         self._poll_job: str | None = None  # the timer of the status polling
         self.closing = False
@@ -1884,7 +1885,7 @@ class App:
         self.show("setup")
 
     def on_setup_cancel(self) -> None:
-        self.show("running")
+        self.show(self.settings_from)  # (back where Settings was opened: running, or the error)
 
     def on_setup_go(self) -> None:
         L, settings = self.L, self.settings
@@ -2459,6 +2460,7 @@ class App:
         messagebox.showinfo("Starlight", text)
 
     def open_settings(self) -> None:
+        self.settings_from = self.page if self.page in ("running", "error") else "running"
         self.open_setup(settings_mode=True)
 
     def run_check(self) -> None:
