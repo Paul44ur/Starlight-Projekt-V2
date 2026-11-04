@@ -15,11 +15,8 @@ set STARLIGHT_CHROMIUM to a Chrome or Chromium program.
 from __future__ import annotations
 
 import hashlib
-import io
 import os
 from pathlib import Path
-
-from PIL import Image
 
 ROOT = Path(__file__).resolve().parents[2]
 STATIC = ROOT / "starlight" / "web" / "static"
@@ -27,6 +24,11 @@ OUT = STATIC / "icons"
 BACKGROUND = '<rect width="512" height="512" rx="112" '  # each logo starts with this
 # A maskable icon keeps its picture inside the middle 80 % (the shape may cut the rest).
 SAFE = '<g transform="translate(256 256) scale(.8) translate(-256 -256)">'
+
+
+def digest(logo: bytes) -> str:
+    """The logo's SHA-256, whatever line endings the checkout gave it (Windows: CRLF)."""
+    return hashlib.sha256(logo.replace(b"\r\n", b"\n")).hexdigest()
 
 
 def square(svg: str) -> str:
@@ -60,7 +62,7 @@ def main() -> None:
     wanted: dict[str, tuple[str, int]] = {}
     for logo in ("icon", "kill-icon"):
         source = (STATIC / f"{logo}.svg").read_bytes()
-        sums.append(f"{hashlib.sha256(source).hexdigest()}  {logo}.svg")
+        sums.append(f"{digest(source)}  {logo}.svg")
         wanted |= variants(logo, source.decode("utf-8"))
     chromium = os.environ.get("STARLIGHT_CHROMIUM") or None
     with sync_playwright() as playwright:
@@ -69,10 +71,8 @@ def main() -> None:
             page = browser.new_page(viewport={"width": size, "height": size})
             sized = svg.replace("<svg ", f'<svg width="{size}" height="{size}" ', 1)
             page.set_content(f'<body style="margin:0">{sized}</body>')
-            shot = page.screenshot(omit_background=True)
+            (OUT / file).write_bytes(page.screenshot(omit_background=True))  # (a PNG)
             page.close()
-            picture = Image.open(io.BytesIO(shot)).convert("RGBA")
-            picture.save(OUT / file, optimize=True)
             print(f"{file}: {size} x {size}, {(OUT / file).stat().st_size // 1024} KB")
         browser.close()
     # The logos these were drawn from (tests/test_brand.py compares them).

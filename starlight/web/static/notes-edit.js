@@ -12,12 +12,12 @@ let kit = null;
 const edit = { editor: null, dirty: false, timer: null, saving: null, first: true, quiet: false };
 const TOOLS = [
   ["bold", "B", "Bold (Ctrl+B)", "b"], ["italic", "I", "Italic (Ctrl+I)", "i"], ["heading", "H", "Heading", ""],
-  ["list", "•", "Bullet list", ""], ["task", "☑", "Task (Ctrl+Enter ticks it)", ""],
-  ["link", "[[ ]]", "Link to a note", ""], ["picture", "🖼", "Picture", ""],
+  ["list", "•", "Bullet list", ""], ["task", "", "Task (Ctrl+Enter ticks it)", "", "tasks"],
+  ["link", "[[ ]]", "Link to a note", ""], ["picture", "", "Picture", "", "picture"],
 ];
 
 // Live preview (block G4): the Markdown marks hide on the lines the cursor is not on. On
-// unless switched off with the toolbar's 👁 (remembered in this browser).
+// unless switched off with the toolbar's eye button (remembered in this browser).
 function previewOn(set) {
   try {
     if (set !== undefined) localStorage.setItem("starlight.editor.preview", set ? "on" : "off");
@@ -68,8 +68,9 @@ async function startEditing() {
   const bar = el("div", "toolbar");
   bar.setAttribute("role", "toolbar");
   bar.setAttribute("aria-label", t("Formatting"));
-  for (const [name, label, tip, cls] of TOOLS) {
+  for (const [name, label, tip, cls, picture] of TOOLS) {
     const button = el("button", "tool " + cls, label);
+    if (picture) setIcon(button, picture);  // (a line icon where a letter would not do)
     button.type = "button"; button.title = t(tip); button.setAttribute("aria-label", t(tip));
     button.dataset.tool = name;
     button.onmousedown = (event) => event.preventDefault();  // (the text keeps its selection)

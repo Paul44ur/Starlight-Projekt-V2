@@ -26,5 +26,6 @@ After changing `icon.svg` or `kill-icon.svg`:
 1. Install the browser once: `uv run --extra browser playwright install chromium` (or set
    `STARLIGHT_CHROMIUM` to a Chrome or Chromium program).
 2. Run `uv run --extra browser python bundles/icons/make_icons.py`.
-3. Run the tests: `tests/test_brand.py` checks the pictures and `icons.sha256`.
+3. Run the tests: `tests/test_brand.py` checks the pictures and `icons.sha256` (it counts
+   the logos' line endings as the same on Windows and Linux).
 4. Commit the PNG files and `icons.sha256` together with the logo.

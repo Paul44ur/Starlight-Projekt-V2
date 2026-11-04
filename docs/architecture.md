@@ -217,9 +217,11 @@ work is `docs/plan-ui.md`.
 
 **Icons.** Buttons without words show line icons from `ICONS` in `common.js` (24 px SVG
 paths in the text colour): markup says `data-icon="mic"` and `drawIcons()` fills it in;
-code calls `setIcon(button, name)`. `paintBar()` copies `--panel` into the
-`theme-color` meta whenever the theme changes (a meta marked `data-fixed`, on the Kill
-page, keeps its colour). The app icons a phone puts on its home screen are PNGs in
+code calls `setIcon(button, name)`, which marks an icon `.alone` (drawn a little larger)
+when its button has no words. Icons never take a click themselves: it is the button's. Each
+page's head has a light and a dark `theme-color` meta, right for the system's theme from
+the first paint; `paintBar()` copies `--panel` into them whenever the theme changes (a
+meta marked `data-fixed`, on the Kill page, keeps its colour). The app icons a phone puts on its home screen are PNGs in
 `static/icons`, drawn from `icon.svg` and `kill-icon.svg` by `bundles/icons/make_icons.py`
 and served from `/icons/{name}` (only the names in `APP_ICONS`); `icons.sha256` records
 the logos they came from, and a test fails when a logo changes without them.
@@ -442,7 +444,7 @@ inbox (versions kept). The Inbox view has a "Sort my inbox" button (it opens the
 the request).
 Block D2 is voice memos. `voice.memo(seconds, to)` records at the PC's microphone (two
 minutes at most), transcribes, and keeps only the text through `notes.note` (the inbox) or
-`journal.write`; the page's 🎤 records in the browser (`startRecording` and `wav`, moved from
+`journal.write`; the page's microphone button records in the browser (`startRecording` and `wav`, moved from
 chat.html to `common.js`), sends the WAV to `/api/transcribe`, then the text to
 `POST /api/notes/memo` (the inbox, or the open journal day when not editing it).
 Block D3 makes tasks in notes count as to-dos. `notebook/markdown.py` keeps where each task
@@ -513,7 +515,7 @@ without a key belong to the condition; `#` lines are comments). `POST /api/notes
 `queryTable` answers it for ```` ```query ```` only where `window.starlightQueryTables` is set
 (the Notes page; the chat keeps the block as code, as phones cannot reach the notes API):
 names link to the notes, a click on a header sorts in the page (empty cells last either
-way), ↻ asks again, and mistakes show in a `.query-error` box.
+way), the round-arrow button asks again, and mistakes show in a `.query-error` box.
 Block F1 draws the links. `notebook/graph.py`: `graph(index, around, depth, limit)` makes
 points (notes) and lines (a link once between two notes, either way; not to pictures,
 missing notes or itself) from `Index.link_pairs` and the resolver; `around` keeps the notes
@@ -566,7 +568,7 @@ reportlab: headings, paragraphs (`inline` turns bold, italic, code and struck te
 reportlab's markup, everything else escaped), lists and tasks, quotes and callouts, tables,
 code blocks, rules and pictures; the font is Segoe UI or Arial on Windows, DejaVu or
 reportlab's own Vera elsewhere, so umlauts show. `GET /api/note/export?path=&format=html|pdf
-&show=` (show: opened inline, printing itself); the Notes page's ⤓ menu; the tool
+&show=` (show: opened inline, printing itself); the Notes page's export menu; the tool
 `notes.export(title, format)` saves into `Exports/` (never over an earlier file).
 Block G2 is the task board. A task's `status:` field (`doing`, or `läuft`, `aktiv`, `in
 Arbeit`, `in progress` ...; `open`) is `Task.stage`; the index's tasks table got a `stage`
@@ -609,7 +611,7 @@ becomes a checkbox widget, whose mousedown ticks that line with `toggleTask(view
 address comes from the page (`options.pictureSrc`, render.js's `notePictureSrc`: only from
 inside the Starlight folder); nothing changes it once drawn (the editor would read a change
 as typing). Fenced code, the properties block, Markdown images and other `![[embeds]]` are
-left alone. The document never changes. The toolbar's 👁 keeps the choice in `localStorage`
+left alone. The document never changes. The toolbar's eye button keeps the choice in `localStorage`
 (`starlight.editor.preview`); the bundle needed nothing new.
 Block G6 is deep links. `starlight://note/<path>` (or `/<name>`, `#heading`),
 `starlight://notes` and `starlight://chat` only ever open a page of the web chat.
@@ -625,7 +627,7 @@ when frozen, so script runs and tests never touch the registry) calls `register_
 deletes the keys. `notebook.links.deep_link(path, heading)` makes a link; `notes.link(title)`
 gives one to the assistant. `markdown.js` reads `starlight://` links (in `[text](…)` and
 bare) with the same rules and makes them note links on this site (same tab; the Notes page
-opens them in place). The Notes page's 🔗 copies a note's link.
+opens them in place). The Notes page's link button copies a note's link.
 Block G5 is Mermaid diagrams. `bundles/mermaid` builds `static/vendor/mermaid.js` (Mermaid
 12.2.0 and what it uses, about 3.7 MB, `mermaid.sha256`, `mermaid-LICENSES.txt`) with esbuild,
 like the other bundles; a plugin puts `elk-stub.js` in place of elkjs (1.5 MB, EPL-2.0), and

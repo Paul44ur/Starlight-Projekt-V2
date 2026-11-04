@@ -3,6 +3,8 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
+<meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)" />
+<meta name="theme-color" content="#171a21" media="(prefers-color-scheme: dark)" />
 <title>Starlight automations</title>
 <link rel="icon" href="/icon.svg" type="image/svg+xml" />
 <link rel="apple-touch-icon" href="/icons/icon-180.png" />
@@ -268,7 +270,6 @@ function addStep(step = {}) {
   onlyIf.value = step.only_if || ""; onlyIf.setAttribute("aria-label", "Only if");
   what.append(tool, args, text, onlyIf);
   const remove = el("button", "icon"); setIcon(remove, "close"); remove.type = "button"; remove.title = "Remove this step"; remove.setAttribute("aria-label", "Remove this step");
-  remove.setAttribute("aria-label", "Remove this step");
   remove.onclick = () => row.remove();
   const show = () => { const t = kind.value === "tool"; tool.hidden = !t; args.hidden = !t; text.hidden = t; };
   kind.onchange = show; show();

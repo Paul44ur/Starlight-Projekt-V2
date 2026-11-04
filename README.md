@@ -82,7 +82,7 @@ and answer you on WhatsApp. It will ask you before it does anything risky. And o
 | **Boards** | Cards and arrows on an endless surface: "what's on my project board?", "add the article https://… to my reading board", "put 'call the bank' under the card about money". Boards are `.canvas` files in `Documents\Starlight\Boards` (the open JSON Canvas format, so Obsidian opens them too); every change keeps the earlier version. |
 | **Flashcards** | "Quiz me on Spanish": write `Question::Answer` lines in a note tagged `#flashcards` (`#lernkarten` works too), and Starlight asks you one card at a time. A card you know comes back later and later; one you don't comes back the same day. "Make a card: capital of Peru, Lima" adds one. Study them on the Notes page too. |
 | **YouTube summaries** | Summarizes a video or answers a question about it from its captions, with the times it was said. |
-| **Talk to it** | Speak instead of typing and hear the answers — 🎤 and 🔊 in the web chat (on your phone too), `/talk` in the terminal. **Conversation** (the speech bubble next to the microphone) in the web chat: just talk; when you pause, it is sent, the answer is read out, and it listens again — speaking while an answer is read out stops it. **"Hey Starlight"**: with it switched on (Settings → Voice, or "listen for Hey Starlight"), say the phrase near the PC and then what you want; the answer comes out of the PC's speakers. Only short bits of speech are written down, on the PC, to look for the phrase. **Settings → Voice** chooses the voice for each language and installs more (nine German and seven English voices, from Piper). Speech recognition (whisper.cpp) and the voices (Piper) run on your PC. Install with `Starlight.exe --voice`. |
+| **Talk to it** | Speak instead of typing and hear the answers — the microphone and the speaker in the web chat (on your phone too), `/talk` in the terminal. **Conversation** (the speech bubble next to the microphone) in the web chat: just talk; when you pause, it is sent, the answer is read out, and it listens again — speaking while an answer is read out stops it. **"Hey Starlight"**: with it switched on (Settings → Voice, or "listen for Hey Starlight"), say the phrase near the PC and then what you want; the answer comes out of the PC's speakers. Only short bits of speech are written down, on the PC, to look for the phrase. **Settings → Voice** chooses the voice for each language and installs more (nine German and seven English voices, from Piper). Speech recognition (whisper.cpp) and the voices (Piper) run on your PC. Install with `Starlight.exe --voice`. |
 | **Summarize recordings** | "Summarize meeting.m4a" — transcribes a meeting, voice memo or lecture on your PC and writes the main points, decisions and to-dos; both are saved in `Documents\Starlight\Recordings`. Any length (it works in five-minute pieces). .wav works as it is; mp3, m4a, ogg or a video need ffmpeg (`winget install ffmpeg`). |
 | **Smart home** | "Turn off the living room lights", "is the front door locked?" — through your Home Assistant. Lights, plugs and scenes switch at once; locks, alarms, doors and heating ask first. |
 | **Your home network** | Which devices are on your WiFi (with names you give them), and a warning when an unknown one joins. Only ever looks at your own network. With `watch: true` in `config\modules\lan.yaml`, automations can react when a device you know comes home or leaves (`lan.device_joined`, `lan.device_left`). |
@@ -472,22 +472,20 @@ you need to approve appear with **Approve / Deny** buttons, and a sidebar shows 
 allowed. Prefer the keyboard? Start it with `--terminal` (or run `starlight run`) for a
 colored terminal chat. Both use the same assistant, settings and safeguards.
 
-**The web chat.** Your conversations are saved: the list on the left reopens, renames,
-searches and deletes them (the terminal continues the most recent one). Drop pictures or
-documents (PDF, Word, Excel, text) onto the chat, or press 📎, to send them with your
-message. Answers show their formatting: headings, lists, tables, links and code blocks
-(each with its own **Copy**). Until the first word arrives, the answer shows that Starlight
-is working, and for how long. While it writes, **Send** turns into **Stop** (or press **Esc**);
-**Up** in the empty box brings back
-your last question. Every answer has **Copy** (the text as written, Markdown
-included), and the latest one **Regenerate** (asks the same
-question again and replaces that answer); under it you see how fast it was written
-(tokens per second) and how long it took. With a mouse, older answers show **Copy** and
-**Branch** when you point at them. Scrolled up to read? A **↓** button above the box brings
-you back to the newest message; a dot on it means something new arrived below.
-**Ctrl+/** (or **?** when you are not typing) shows the keyboard shortcuts, here and on the
-Notes page; the conversation list, its ⋯ menus and the phone's ☰ drawer work with the keyboard
-too (Tab, Enter, the arrow keys, Esc).
+**The web chat.** Your conversations are saved: the list on the left reopens, renames, searches
+and deletes them (the terminal continues the most recent one). Drop pictures or documents (PDF,
+Word, Excel, text) onto the chat, or press the paperclip, to send them with your message.
+Answers show their formatting: headings, lists, tables, links and code blocks (each with its own
+**Copy**). Until the first word arrives, the answer shows that Starlight is working, and for how
+long. While it writes, **Send** turns into **Stop** (or press **Esc**); **Up** in the empty box
+brings back your last question. Every answer has **Copy** (the text as written, Markdown
+included), and the latest one **Regenerate** (asks the same question again and replaces that
+answer); under it you see how fast it was written (tokens per second) and how long it took. With
+a mouse, older answers show **Copy** and **Branch** when you point at them. Scrolled up to read?
+A **↓** button above the box brings you back to the newest message; a dot on it means something
+new arrived below. **Ctrl+/** (or **?** when you are not typing) shows the keyboard shortcuts,
+here and on the Notes page; the conversation list, its ⋯ menus and the phone's drawer (the menu
+button) work with the keyboard too (Tab, Enter, the arrow keys, Esc).
 
 - **Edit** under your last question puts it back in the box: change it and press Enter,
   and that exchange is asked again (if that fails, the earlier one stays).
@@ -558,8 +556,8 @@ open work notes in my Board note"):
     ```
 
 On the Notes page it shows as a table that is looked up again each time you open the note
-(or press ↻). Click a column to sort by it; click again to turn the order round. A mistake
-in the block is shown in a yellow box that says what is wrong.
+(or press the round arrow). Click a column to sort by it; click again to turn the order
+round. A mistake in the block is shown in a yellow box that says what is wrong.
 
 **Writing notes.** Press **✎ Edit** (or **Ctrl+E**) on a note. Headings show big and bold
 shows bold while you type, so you need no special knowledge: the toolbar makes text bold,
@@ -569,15 +567,15 @@ a picture to add it. **Ctrl+Enter** ticks a task (with the day). Your text is sa
 after you stop typing ("Saved" shows it). If the note was changed elsewhere in the
 meantime (in another program or tab), nothing is overwritten: you choose to keep yours,
 take the other one, or keep both. **＋** (Ctrl+N) starts a new note; type over its title to
-rename it. 🗑 moves a note to the **Trash**, where **Bring back** returns it. 🕘 shows the
-earlier versions with what changed, and puts one back.
+rename it. The bin moves a note to the **Trash**, where **Bring back** returns it. The clock
+shows the earlier versions with what changed, and puts one back.
 
 **Live preview.** While you write, the Markdown marks (`#`, `**`, `*`, `~~`, backticks, a
 link's address, `[[ ]]`) hide on every line except the one you are on, so the note reads
 as it will look, like in a word processor. A bullet shows as •, a task as a box you can
 tick with a click, and a picture (`![[photo.png]]`) as the picture. Move onto a line to see
 and change its marks. Code, the properties at the top and embedded notes stay as written,
-and the file keeps every mark. **👁** in
+and the file keeps every mark. **The eye** in
 the toolbar switches it off and on; this browser remembers your choice.
 
 **Diagrams.** A code block marked `mermaid` becomes a diagram in the reading view:
@@ -596,7 +594,7 @@ it stays code, with the reason. The diagrams follow the page's colours, light or
 diagram part (about 3.7 MB) loads only for notes that have one. A diagram is shown as a
 picture: nothing in it can run or load anything, even in a clipped web page.
 
-**Links to a note from other programs.** **🔗** on a note copies a link like
+**Links to a note from other programs.** **The chain link** on a note copies a link like
 `starlight://note/Notes/Plan.md`. Put it in a mail, a document, a calendar entry or another
 program: clicking it opens the note in your browser (Starlight starts first if it is not
 running; your browser may ask once whether to open Starlight). `starlight://note/Plan` finds
@@ -606,9 +604,9 @@ to my Plan note" makes one. Starlight.exe sets the links up for your own Windows
 each time it starts; `"links": false` in `config\launcher.json` takes them away again. A
 link only ever opens a page: it cannot ask Starlight anything or make it do something.
 
-**Exporting a note.** **⤓** on a note saves it as one HTML file (it opens on any computer,
-its pictures inside it) or as a PDF, or prints it. In the chat: "save my Project X note as
-a PDF" puts it in the `Exports` folder of your Starlight folder.
+**Exporting a note.** **The download arrow** on a note saves it as one HTML file (it opens
+on any computer, its pictures inside it) or as a PDF, or prints it. In the chat: "save my
+Project X note as a PDF" puts it in the `Exports` folder of your Starlight folder.
 
 **Linking notes.** Type `[[` while writing and Starlight suggests your notes. A link to a
 note that does not exist yet looks paler; click it and **Write it** starts that note.
@@ -652,9 +650,10 @@ them unnoticed. "Keep this quote in my Quotes note" adds it as a quote box. "Not
 the plumber" without a title goes to the **Inbox**; "sort my inbox" (or the button in the
 Inbox view) proposes where each item belongs and asks before moving anything.
 
-**Voice memos.** Press 🎤 at the top of the Notes page, speak, and press ⏹: Starlight
-writes down what you said and keeps it as text in the Inbox (or in the journal day you have
-open). The recording itself is not kept. At the PC's microphone: "take a voice memo".
+**Voice memos.** Press the microphone at the top of the Notes page, speak, and press it
+again: Starlight writes down what you said and keeps it as text in the Inbox (or in the
+journal day you have open). The recording itself is not kept. At the PC's microphone: "take
+a voice memo".
 
 **Tasks.** A line like `- [ ] Call Tom due: friday priority: high` in any note is a task.
 Its box ticks it right in the reading view, and **Ctrl+Enter** ticks it while writing; both
@@ -846,7 +845,7 @@ What is different on the phone:
 On the phone, once the page is on the home screen:
 - Every button is big enough for a finger, and on a narrow phone an **arrow** sends (a
   square stops an answer).
-- **📷** takes a photo and offers *Read the text*, *Translate it* or *Describe it* (with a
+- **The camera** takes a photo and offers *Read the text*, *Translate it* or *Describe it* (with a
   model that understands pictures).
 - **Share to Starlight**: in another app's share menu, a link, some text or a file goes
   straight into the chat box; say what to do with it and send.
@@ -922,7 +921,7 @@ off with `starlight remote disable`.
   something (sending mail, clicking, running code, commands …) are only described, not
   done; looking things up still works. Turn it on in Settings, with `/practice` in the
   terminal, or by asking. Turning it off asks first, and only works at the PC.
-- **Private conversations.** 🔒 in the web chat (or `/private` in the terminal) starts a
+- **Private conversations.** The lock in the web chat (or `/private` in the terminal) starts a
   conversation that is never saved and that nothing is learned from (no memories, no
   skills). It is gone when Starlight stops. The audit log still records the actions taken.
 - **See what it did.** The **Activity** page lists every action Starlight took or was

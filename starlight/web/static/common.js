@@ -19,14 +19,12 @@ function showTheme() {
 }
 // The browser's bar (on a phone, or an installed app's title bar) takes the colour of the
 // page's bar, light or dark. A page that keeps its own colour marks its meta data-fixed.
+// (The pages' heads hold a light and a dark one, right from the first paint.)
 function paintBar() {
-  let meta = document.querySelector('meta[name="theme-color"]');
-  if (meta && meta.hasAttribute("data-fixed")) return;
-  if (!meta) {
-    meta = document.createElement("meta"); meta.name = "theme-color"; document.head.append(meta);
-  }
+  const metas = [...document.querySelectorAll('meta[name="theme-color"]')];
+  if (metas.some(m => m.hasAttribute("data-fixed"))) return;
   const panel = getComputedStyle(document.documentElement).getPropertyValue("--panel").trim();
-  if (panel) meta.content = panel;
+  if (panel) metas.forEach(m => { m.content = panel; });
 }
 try { matchMedia("(prefers-color-scheme: light)").addEventListener("change", paintBar); } catch (e) { /* an old browser */ }
 document.addEventListener("DOMContentLoaded", showTheme);
@@ -76,24 +74,25 @@ const ICONS = {
   fit: '<path d="M4 9V4h5M15 4h5v5M20 15v5h-5M9 20H4v-5"/>',
   talk: '<path d="M4 6.5a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2h-7l-4 3.5v-3.5H6a2 2 0 0 1-2-2z"/><path d="M9 9.5v2M12 8v5M15 9.5v2"/>',
   refresh: '<path d="M19.5 12a7.5 7.5 0 1 1-2.2-5.3"/><path d="M19.5 4v4.5H15"/>',
+  picture: '<rect x="3.5" y="4.5" width="17" height="15" rx="2"/><circle cx="9" cy="9.5" r="1.7"/><path d="M3.5 17l5-5 4 4 2.5-2.5 5.5 5"/>',
   boards: '<rect x="3.5" y="4.5" width="7" height="7" rx="1.5"/><rect x="13.5" y="4.5" width="7" height="4.5" rx="1.5"/><rect x="3.5" y="14.5" width="7" height="5" rx="1.5"/><rect x="13.5" y="12" width="7" height="7.5" rx="1.5"/>',
 };
-function icon(name) {
-  return '<svg class="ico" viewBox="0 0 24 24" aria-hidden="true" focusable="false">' + (ICONS[name] || "") + "</svg>";
+function icon(name, alone) {
+  return '<svg class="ico' + (alone ? " alone" : "") + '" viewBox="0 0 24 24" aria-hidden="true" focusable="false">'
+    + (ICONS[name] || "") + "</svg>";
 }
 // Puts the icon at the start of a node, before any words it keeps (e.g. "Theme").
 function setIcon(node, name) {
   node.dataset.icon = name;
   const old = node.querySelector(":scope > svg.ico");
   if (old) old.remove();
-  node.insertAdjacentHTML("afterbegin", icon(name));
+  node.insertAdjacentHTML("afterbegin", icon(name, !node.textContent.trim()));
 }
 // The pages mark icon buttons with data-icon="…"; this draws them.
 function drawIcons(root = document) {
   root.querySelectorAll("[data-icon]").forEach(n => { if (!n.querySelector(":scope > svg.ico")) setIcon(n, n.dataset.icon); });
 }
-drawIcons();  // (the page above this script is there already)
-document.addEventListener("DOMContentLoaded", () => drawIcons());
+drawIcons();  // (once: every page loads this script after its markup)
 
 function el(tag, cls, text) {
   const node = document.createElement(tag);

@@ -16,7 +16,7 @@
   const DE = {
     // the pages and their links
     "Chat": "Chat", "Memory": "Gedächtnis", "Activity": "Aktivität", "Automations": "Automationen",
-    "Settings": "Einstellungen", "Theme": "Farben", "◐ Theme": "◐ Farben", "Change the theme": "Farben wechseln",
+    "Settings": "Einstellungen", "Theme": "Farben",
     "Skip to the message box": "Zum Eingabefeld springen",
     // the chat
     "Starlight is not answering: the PC may be off or asleep.": "Starlight antwortet nicht: Der PC ist vielleicht aus oder im Ruhezustand.",

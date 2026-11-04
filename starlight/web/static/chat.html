@@ -3,7 +3,8 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-<meta name="theme-color" content="#171a21" />
+<meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)" />
+<meta name="theme-color" content="#171a21" media="(prefers-color-scheme: dark)" />
 <title>Starlight</title>
 <link rel="manifest" href="/manifest.webmanifest" />
 <link rel="icon" href="/icon.svg" type="image/svg+xml" />
@@ -219,7 +220,7 @@
              transition: transform .2s; box-shadow: var(--shadow); }
     body.drawer #convs { transform: none; }
     #log { padding: 12px; }
-    /* one row on a phone: the links and the theme are in the drawer (☰) */
+    /* one row on a phone: the links and the theme are in the drawer (the menu button) */
     header.top { flex-wrap: nowrap; gap: 8px; }
     header.top .wide { display: none; }
     .narrow { display: inline; }
@@ -240,6 +241,7 @@
   }
   /* a narrow phone: Send is an arrow (Stop a square); the word stays for screen readers */
   #send > svg.ico { display: none; }
+  #send > * { pointer-events: none; }  /* (the click is the button's) */
   @media (max-width: 480px) {
     #send { width: 46px; padding: 0; }
     #send > svg.ico { display: inline-block; width: 20px; height: 20px; margin: 0; }
@@ -846,7 +848,12 @@ function stopAnswer() { if (ws && ws.readyState === WebSocket.OPEN) ws.send(JSON
 // While an answer is being written, the Send button stops it.
 let asking = false;  // a question was sent and its answer has not begun yet
 function busy() { return Boolean(asking || current || answering); }
+// Every message from the PC calls this: the button is only rebuilt when Send becomes Stop or
+// back (a click on it while an answer streams must reach it, and the work stays small).
+let sendShows = null;
 function syncSend() {
+  if (busy() === sendShows) return;
+  sendShows = busy();
   const b = document.getElementById("send");
   b.replaceChildren(el("span", "label", busy() ? "Stop" : "Send"));
   setIcon(b, busy() ? "stop" : "send");  // (the icon shows on a narrow phone)

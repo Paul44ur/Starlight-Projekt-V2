@@ -70,9 +70,11 @@ button.icon:hover { color: var(--text); border-color: var(--border); background:
 /* The line icons (common.js, ICONS): drawn in the text colour, as big as the text. A button
    with only an icon shows it a little larger, so it reads at a glance. */
 svg.ico { width: 1.25em; height: 1.25em; flex: none; vertical-align: -.25em; fill: none;
-          stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
-svg.ico:not(:only-child) { margin-right: .4em; }
-button > svg.ico:only-child { width: 18px; height: 18px; margin: 0; }
+          stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round;
+          pointer-events: none; }
+/* setIcon marks an icon .alone when its button has no words */
+svg.ico:not(.alone) { margin-right: .4em; }
+button > svg.ico.alone { width: 18px; height: 18px; }
 button.quiet { background: none; border-color: transparent; color: var(--dim); }
 button.quiet:hover { color: var(--text); background: var(--accent-tint); border-color: transparent; }
 /* A dangerous action in a list (Remove): a red outline, filled only when pointed at. */

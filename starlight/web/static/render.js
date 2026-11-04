@@ -216,7 +216,7 @@ mdHooks.item = (li, text) => {
 // fields: status, due
 // ```
 // becomes a table of the notes it finds, fetched again each time the note is shown (and by
-// its ↻ button). A click on a column sorts by it; a second click turns the order round. Only
+// its look-again button). A click on a column sorts by it; a second click turns the order round. Only
 // the Notes page sets window.starlightQueryTables: elsewhere the block stays as code.
 
 function queryCell(value) {
@@ -276,7 +276,7 @@ function queryTable(text) {
     const foot = box.appendChild(el("div", "query-foot"));
     foot.appendChild(el("span", "", data.count === 1 ? taskWords("1 note") : data.count + " " + taskWords("notes")));
     const again = foot.appendChild(el("button", "query-again"));
-    if (typeof setIcon === "function") setIcon(again, "refresh"); else again.textContent = "↻";  // (an exported note has no common.js)
+    setIcon(again, "refresh");
     again.type = "button";
     again.title = taskWords("Look again");
     again.setAttribute("aria-label", taskWords("Look again"));
