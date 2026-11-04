@@ -504,6 +504,15 @@ new arrived below. **Ctrl+/** (or **?** when you are not typing) shows the keybo
 here and on the Notes page; the conversation list, its ⋯ menus and the phone's drawer (the menu
 button) work with the keyboard too (Tab, Enter, the arrow keys, Esc).
 
+**How it is laid out.** On the left: **New conversation**, **Private conversation**, the
+search, the pages (Notes, Memory, Activity, Automations, Settings), your conversations
+(**Pinned** first, then **Recent**) and, at the bottom, the model. The menu button at the top
+left hides this sidebar on a wide screen and shows it again (it is remembered); on a phone it
+opens the drawer. The bar at the top shows the open conversation's name: click it to rename,
+pin, file, archive, download or delete it. On the right, **Context** shows after each answer
+how full the model's memory is for this conversation (older turns are summarized when it is
+full; `/new` starts afresh); the line under the message box says it too.
+
 - **Edit** under your last question puts it back in the box: change it and press Enter,
   and that exchange is asked again (if that fails, the earlier one stays).
 - **Branch** under an answer starts a new conversation up to that point, to try another

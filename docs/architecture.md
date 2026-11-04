@@ -216,6 +216,13 @@ keeps the two in step and checks that text on every filled colour is readable (W
 4.5:1). Both show a focus ring only while the keyboard is used. The plan for the rest of this
 work is `docs/plan-ui.md`.
 
+**The chat page's layout** (after the Claude app's, in Starlight's look): the sidebar holds
+the actions, the pages (`.side-nav`, the same links the phone's drawer shows) and the
+conversations; the bar shows the open one's name (`showTitle`, its menu is the list's
+`conversationMenu`); on a wide screen the menu button hides the sidebar (`body.no-sidebar`,
+kept in localStorage). The context meter comes from `answer_stats`: `context_tokens` is what
+the model read plus wrote in the answer's last step, out of `/api/status`'s `context_window`.
+
 **The launcher window's error page.** `error_hints()` (starlight_launcher.py) matches the
 words of a problem's message and details against `ERROR_HINTS` (video memory, disk space,
 network, a busy port, blocked files, launcher.json, a slow model server, damaged downloads,

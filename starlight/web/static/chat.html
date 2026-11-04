@@ -15,7 +15,30 @@
   body { display: flex; height: 100vh; height: 100dvh; overflow: hidden; }
   #convs { width: 260px; border-right: 1px solid var(--border); background: var(--panel);
            display: flex; flex-direction: column; }
-  #convs .head { padding: 10px; display: flex; gap: 6px; }
+  #convs .head { padding: 4px 10px 6px; display: flex; gap: 6px; }
+  /* The sidebar, as in a desktop app: start something, the pages, the conversations, and at
+     its foot the model. On a phone it is the drawer (the menu button). */
+  .side-actions, .side-nav { display: flex; flex-direction: column; gap: 1px; padding: 8px 8px 4px; }
+  .side-row, .side-nav a { display: flex; align-items: center; gap: 10px; width: 100%; padding: 7px 10px;
+                           border: 0; border-radius: var(--r-2); background: none; color: var(--text);
+                           font-size: 14px; text-align: left; text-decoration: none; }
+  .side-row:hover, .side-nav a:hover { background: var(--panel2); text-decoration: none; }
+  .side-row svg.ico, .side-nav svg.ico { width: 18px; height: 18px; margin: 0; color: var(--dim); }
+  .side-foot { display: flex; align-items: center; gap: 8px; padding: 10px 14px;
+               border-top: 1px solid var(--border); font-size: 13px; color: var(--dim); }
+  .side-foot .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--dim); flex: none; }
+  .side-foot .dot.on { background: var(--ok); }
+  #model-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  #theme2 { display: none; }
+  @media (min-width: 761px) { body.no-sidebar #convs { display: none; } }
+  /* the open conversation's name in the bar; its menu (rename, pin, export ...) on a click */
+  .title-btn { display: inline-flex; align-items: center; min-width: 0; max-width: 32vw; gap: 2px;
+               background: none; border-color: transparent; color: var(--text); font-size: var(--fs-md);
+               padding: 4px 8px; }
+  .title-btn span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .title-btn svg.ico { order: 2; margin: 0 0 0 4px; color: var(--dim); }
+  .title-btn:hover { border-color: var(--border); background: none; }
+  .bar-sep { color: var(--border); }
   #convs input { flex: 1; min-width: 0; padding: 6px 8px; }
   #list { flex: 1; overflow-y: auto; padding: 0 6px 10px; }
   .conv { display: flex; align-items: center; gap: 4px; padding: 7px 8px; border-radius: 8px;
@@ -162,17 +185,29 @@
   #input:focus, #input:focus-visible { outline: none; }
   @media (forced-colors: active) { #form:focus-within { outline: 2px solid Highlight; } }
   #send { height: 44px; padding: 0 18px; border-radius: 12px; }
-  #side { width: 260px; border-left: 1px solid var(--border); background: var(--panel); padding: 14px;
+  #side { width: 260px; border-left: 1px solid var(--border); background: var(--panel); padding: 6px 16px 14px;
           overflow-y: auto; }
-  #side h2 { font-size: 12px; text-transform: uppercase; letter-spacing: .05em; color: var(--dim);
-             margin: 16px 0 6px; }
+  #side h2 { font-size: 13px; font-weight: 600; color: var(--text); margin: 16px 0 8px; }
+  #side .kv { display: flex; justify-content: space-between; gap: 10px; font-size: 13px; padding: 2px 0; }
+  #side .kv > :first-child { color: var(--dim); }
+  #side .kv > :last-child { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  /* how full the model's context is for this conversation (it summarizes older turns beyond) */
+  .context-top { display: flex; justify-content: space-between; font-size: 13px; }
+  .context-bar { height: 6px; border-radius: var(--r-pill); background: var(--panel2); overflow: hidden;
+                 margin: 6px 0; }
+  .context-bar i { display: block; height: 100%; width: 0; background: var(--accent);
+                   transition: width var(--dur) var(--ease); }
+  .context-bar.warn i { background: var(--warn); }
+  .context-bar.full i { background: var(--bad); }
+  /* under the message box: the model, and how full its context is */
+  .meta { display: flex; justify-content: flex-end; gap: 12px; max-width: 900px; margin: 6px auto 0;
+          font-size: var(--fs-xs); color: var(--dim); }
   #side .item { font-size: 13px; padding: 2px 0; word-break: break-all; }
   #drop { display: none; position: fixed; inset: 0; background: rgba(110,168,254,.15);
           border: 3px dashed var(--accent); z-index: 40; align-items: center; justify-content: center;
           font-size: 20px; }
   body.dragging #drop { display: flex; }
-  #menu { display: none; }
-  .narrow, .drawer-nav { display: none; }
+  .narrow { display: none; }
   #kill.kill { color: var(--bad); border-color: var(--bad); background: none; }
   #kill.kill:hover { background: var(--danger); color: #fff; }
   #send.stop { color: #fff; background: var(--danger); border-color: var(--danger); }
@@ -201,8 +236,7 @@
                     padding: 6px 10px; border-radius: 6px; font-size: 14px; }
   .popmenu button:hover, .popmenu button.sel { background: var(--panel2); }
   .popmenu .hint { color: var(--dim); font-size: 12px; margin-left: auto; }
-  .folder { font-size: 11px; text-transform: uppercase; letter-spacing: .05em; color: var(--dim);
-            padding: 10px 8px 2px; }
+  .folder { font-size: 12px; color: var(--dim); padding: 10px 8px 4px; }
   #archived { margin: 4px 8px 10px; font-size: 12px; }
   .msg.bot:has(.body:empty) .tools { visibility: hidden; }
   #mic.on, #talk.on { color: var(--bad); border-color: var(--bad); }
@@ -224,13 +258,12 @@
     header.top { flex-wrap: nowrap; gap: 8px; }
     header.top .wide { display: none; }
     .narrow { display: inline; }
-    .drawer-nav { display: flex; flex-wrap: wrap; gap: 8px 14px; align-items: center; padding: 12px 14px;
-                  border-top: 1px solid var(--border); font-size: 14px; }
+    #theme2 { display: inline-flex; }
+    .title-btn, .bar-sep { display: none; }
     #conn { width: 10px; height: 10px; padding: 0; font-size: 0; flex: none; }
     /* the four buttons stay small, so the message box keeps room for the text */
     #form > .icon { padding: 4px 4px; font-size: 15px; }
     #send { padding: 0 13px; }
-    .drawer-nav a { padding: 8px 2px; }
   }
   @media (pointer: coarse) {
     /* in the message box, 36 px wide (and 44 tall): four of them leave room for the text */
@@ -253,14 +286,17 @@
 <body>
   <a class="skip" href="#input">Skip to the message box</a>
   <aside id="convs" tabindex="-1">
+    <div class="side-actions">
+      <button id="new" class="side-row" type="button" title="New conversation" data-icon="plus"><span>New conversation</span></button>
+      <button id="newprivate" class="side-row" type="button" title="New private conversation: never saved, nothing learned from it, gone when Starlight stops" data-icon="lock"><span>Private conversation</span></button>
+    </div>
     <div class="head">
       <input id="search" type="search" placeholder="Search chats" aria-label="Search chats" />
-      <button id="new" title="New conversation" aria-label="New conversation" data-icon="plus"></button>
-      <button id="newprivate" aria-label="New private conversation" title="New private conversation: never saved, nothing learned from it, gone when Starlight stops" data-icon="lock"></button>
     </div>
+    <nav class="drawer-nav side-nav" aria-label="Pages"><a href="/notes" data-icon="notes"><span>Notes</span></a><a href="/memory" data-icon="memory"><span>Memory</span></a><a href="/activity" data-icon="activity"><span>Activity</span></a><a href="/automations" data-icon="automations"><span>Automations</span></a><a href="/settings" data-icon="settings"><span>Settings</span></a></nav>
     <div id="list"><div class="skeleton" aria-hidden="true"><i></i><i></i><i></i></div></div>
-    <nav class="drawer-nav"><a href="/notes">Notes</a><a href="/memory">Memory</a><a href="/activity">Activity</a><a href="/automations">Automations</a><a href="/settings">Settings</a>
-      <button class="icon" onclick="cycleTheme()" id="theme2" title="Theme" data-icon="system"><span>Theme</span></button></nav>
+    <div class="side-foot"><i class="dot" id="model-dot"></i><span id="model-name" title="The model that answers">…</span>
+      <button class="icon" onclick="cycleTheme()" id="theme2" title="Theme" data-icon="system"><span>Theme</span></button></div>
   </aside>
   <div id="main">
     <div id="offline" role="alert" hidden><span>Starlight is not answering: the PC may be off or asleep.</span>
@@ -268,6 +304,8 @@
     <header class="top">
       <button id="menu" class="icon" title="Conversations" aria-label="Conversations" aria-controls="convs" aria-expanded="false" data-icon="menu"></button>
       <h1><img class="logo" src="/icon.svg" alt="" width="22" height="22" />Starlight</h1>
+      <span class="bar-sep" aria-hidden="true">/</span>
+      <button id="title" class="title-btn" type="button" hidden aria-haspopup="menu" title="This conversation: rename, pin, folder, archive, download, delete" data-icon="chevron"><span id="title-text"></span></button>
       <span id="conn" class="pill off">connecting…</span>
       <span id="where" class="pill off" hidden></span>
       <button id="practice" class="pill warn" hidden title="Practice mode: actions that change something are described, not done. Press to turn it off"><span class="wide">practice mode · Off</span><span class="narrow">Practice</span></button>
@@ -275,7 +313,6 @@
       <button id="paused" class="pill warn" hidden title="Game mode: the model is off the graphics card. Press to bring it back now"><span class="wide">model paused · Resume</span><span class="narrow">Paused ▶</span></button>
       <span class="spacer"></span>
       <a id="waiting" class="pill warn" href="/activity#approvals" hidden title="Things Starlight prepared wait for your OK"><span class="wide"></span><span class="narrow"></span></a>
-      <nav class="wide"><a href="/notes">Notes</a><a href="/memory">Memory</a><a href="/activity">Activity</a><a href="/automations">Automations</a><a href="/settings">Settings</a></nav>
       <button id="speaker" class="icon" title="Read answers aloud" aria-label="Read answers aloud" aria-pressed="false" data-icon="mute"></button>
       <button id="theme" class="icon wide" title="Theme" onclick="cycleTheme()" data-icon="system"></button>
       <button id="kill" class="kill" title="Kill switch: stop everything Starlight does on this PC, until you resume (also Ctrl+Alt+J)"><span class="wide">Kill switch</span><span class="narrow">Kill</span></button>
@@ -295,10 +332,16 @@
         <textarea id="input" rows="1" aria-label="Your message" placeholder="Ask Starlight…  (Enter to send, Shift+Enter for a new line)"></textarea>
         <button id="send" class="primary" type="submit" data-icon="send"><span class="label">Send</span></button>
       </form>
+      <div class="meta" aria-live="off"><span id="meta-context"></span></div>
     </footer>
   </div>
   <aside id="side">
-    <div><span class="pill" id="model">model: …</span></div>
+    <h2>This PC</h2>
+    <div class="kv"><span>Model</span><span id="model">…</span></div>
+    <h2>Context</h2>
+    <div class="context-top"><span id="context-used">–</span><span id="context-of" class="dim"></span></div>
+    <div class="context-bar" id="context-bar"><i></i></div>
+    <div id="context-note" class="dim small">Shows after the next answer.</div>
     <h2>Allowed servers</h2><div id="servers" class="dim small">none</div>
     <h2>Logins</h2><div id="logins" class="dim small">none</div>
     <h2>Secrets</h2><div id="secrets" class="dim small">none</div>
@@ -660,6 +703,7 @@ function handle(m) {
     if (m.text || !current) setAnswer(current || (current = addMsg("bot", "")), m.text);
     doneWaiting(current); toolsDone(current);
     addStats(current, m.stats);
+    if (m.stats && m.stats.context_tokens) showContext(m.stats.context_tokens);
     if (stick) scrollToEnd();
     if (!m.stopped && !m.failed) current.parentElement.dataset.kept = "1";
     else if (editPending) { toast("Not changed: the earlier question and answer stay"); setTimeout(() => openConversation(conversation), 1500); }
@@ -1090,14 +1134,16 @@ async function loadList() {
   const pinned = data.conversations.filter(c => c.pinned);
   const rest = data.conversations.filter(c => !c.pinned)
     .sort((a, b) => (a.folder || "").localeCompare(b.folder || ""));
-  let folder = "";
+  let folder = null;
+  if (pinned.length && !showArchived) list.appendChild(el("div", "folder", "Pinned"));
   [...pinned, ...rest].forEach(c => {
     if (!c.pinned && (c.folder || "") !== folder) {
       folder = c.folder || "";
       if (folder) list.appendChild(el("div", "folder", "📁 " + folder));
+      else if (pinned.length && !showArchived) list.appendChild(el("div", "folder", "Recent"));
     }
     const row = el("div", "conv" + (c.id === conversation ? " active" : ""));
-    const mark = (c.pinned ? "📌 " : "") + (c.private ? "🔒 " : "");
+    const mark = c.private ? "🔒 " : "";
     const t = el("span", "t", mark + c.title); t.title = c.title + " — " + c.updated.replace("T", " ").slice(0, 16);
     const acts = el("span", "acts");
     const more = el("button", "icon"); setIcon(more, "more"); more.title = "Rename, pin, folder, archive, download, delete"; more.setAttribute("aria-label", "More for this conversation");
@@ -1117,6 +1163,15 @@ async function loadList() {
   list.appendChild(toggle);
   const again = keep && [...list.querySelectorAll(".conv")].find(r => r.dataset.id === keep.id);
   if (again) (keep.more ? again.querySelector(".acts button") : again).focus();
+  showTitle(data.conversations.find(c => c.id === conversation));
+}
+// The open conversation's name in the bar; a click opens its menu (as its ⋯ in the list).
+function showTitle(c) {
+  const button = document.getElementById("title");
+  button.hidden = !c;
+  if (!c) return;
+  document.getElementById("title-text").textContent = (c.private ? "🔒 " : "") + c.title;
+  button.onclick = (e) => { e.stopPropagation(); conversationMenu(c, button); };
 }
 
 // Conversations: pinned first, then by folder; the archive is a list of its own.
@@ -1208,6 +1263,7 @@ function popMenu(anchor, items, place) {
 document.addEventListener("click", (e) => { if (openMenu && !openMenu.contains(e.target)) closeMenu(); });
 async function openConversation(id) {
   setDrawer(false);
+  showContext(null);  // (another conversation: known again after its next answer)
   let data;
   try { data = await api("/api/conversations/" + id); } catch (e) { toast(e.message); return; }
   conversation = id; log.innerHTML = ""; current = null;
@@ -1223,12 +1279,23 @@ async function openConversation(id) {
 document.getElementById("new").onclick = async () => { const d = await api("/api/conversations", { method: "POST" }); await openConversation(d.id); input.focus(); };
 document.getElementById("newprivate").onclick = async () => { const d = await api("/api/conversations", { method: "POST", body: { private: true } }); await openConversation(d.id); input.focus(); };
 document.getElementById("search").oninput = () => loadList();
+const phone = matchMedia("(max-width: 760px)");  // (the drawer; wider: the sidebar)
 function setDrawer(open) {
   document.body.classList.toggle("drawer", open);
-  document.getElementById("menu").setAttribute("aria-expanded", open ? "true" : "false");
+  if (phone.matches) document.getElementById("menu").setAttribute("aria-expanded", open ? "true" : "false");
   if (open) document.getElementById("convs").focus();
 }
-document.getElementById("menu").onclick = () => setDrawer(!document.body.classList.contains("drawer"));
+// On a wide screen the same button hides the sidebar or shows it again (remembered here).
+function showSidebar(on) {
+  document.body.classList.toggle("no-sidebar", !on);
+  if (!phone.matches) document.getElementById("menu").setAttribute("aria-expanded", on ? "true" : "false");
+  try { localStorage.setItem("starlight-sidebar", on ? "on" : "off"); } catch (e) { /* */ }
+}
+document.getElementById("menu").onclick = () => phone.matches
+  ? setDrawer(!document.body.classList.contains("drawer"))
+  : showSidebar(document.body.classList.contains("no-sidebar"));
+try { if (localStorage.getItem("starlight-sidebar") === "off") document.body.classList.add("no-sidebar"); } catch (e) { /* */ }
+if (!phone.matches) document.getElementById("menu").setAttribute("aria-expanded", String(!document.body.classList.contains("no-sidebar")));
 log.addEventListener("click", () => setDrawer(false));
 
 // -- status ----------------------------------------------------------------------------------
@@ -1246,10 +1313,37 @@ function showEmpty(isPrivate) {
     el("div", "empty-keys", "Press Ctrl+/ for the keyboard shortcuts."));
   log.appendChild(box);
 }
+// How full the model's context is for this conversation: what it read and wrote for the last
+// answer, of what it can take (older turns are summarized beyond it).
+let contextWindow = 0;
+function showContext(tokens) {
+  const used = document.getElementById("context-used"), of = document.getElementById("context-of");
+  const bar = document.getElementById("context-bar"), note = document.getElementById("context-note");
+  const line = document.getElementById("meta-context");
+  if (!tokens || !contextWindow) {
+    used.textContent = "–"; of.textContent = ""; bar.className = "context-bar";
+    bar.firstElementChild.style.width = "0";
+    note.textContent = "Shows after the next answer."; line.textContent = "";
+    return;
+  }
+  const percent = Math.min(100, Math.round(tokens / contextWindow * 100));
+  const k = (n) => n >= 1000 ? (n / 1000).toFixed(1).replace(/\.0$/, "") + "k" : String(n);
+  used.textContent = percent + "% used";
+  of.textContent = k(tokens) + " of " + k(contextWindow);
+  bar.className = "context-bar" + (percent >= 85 ? " full" : percent >= 60 ? " warn" : "");
+  bar.firstElementChild.style.width = percent + "%";
+  note.textContent = percent >= 85 ? "Nearly full: older turns get summarized. /new starts afresh."
+    : "Older turns are summarized when it is full.";
+  line.textContent = "Context " + percent + "%";
+}
 async function refresh() {
   try {
     const s = await api("/api/status");
-    document.getElementById("model").textContent = "model: " + s.model;
+    const name = s.model_name || s.model;
+    document.getElementById("model").textContent = name;
+    document.getElementById("model-name").textContent = name;
+    document.getElementById("model-dot").classList.add("on");
+    contextWindow = s.context_window || 0;
     const where = document.getElementById("where");
     if (!s.local) { where.hidden = false; where.textContent = s.device || "remote"; }
     const k = document.getElementById("kill");

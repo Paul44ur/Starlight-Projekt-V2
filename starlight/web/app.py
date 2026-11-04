@@ -685,6 +685,9 @@ def create_app(paths: Paths | None = None) -> Any:
                 waiting = len(waiting_list.items())
         return {
             "model": k.config.model.provider,
+            # its name as the chat shows it, and how much it reads at once (the context meter)
+            "model_name": str(k.config.model.options.get("model") or k.config.model.provider),
+            "context_window": k.config.model.context_window,
             "home": str(paths.root) if who.local else None,
             "saves_files": describe_output_folder(k.config.output.folder, paths.root),
             "kill": {"engaged": k.kill_switch.engaged, "reason": k.kill_switch.reason},
@@ -1506,6 +1509,14 @@ def answer_stats(usage: list[dict[str, Any]]) -> dict[str, Any]:
     stats: dict[str, Any] = {"seconds": round(seconds, 1), "tokens": tokens}
     if speeds:
         stats["tokens_per_second"] = round(speeds[-1], 1)
+    # How full the model's context was after the last step (what it read plus what it wrote):
+    # the chat's context meter.
+    read = [u for u in usage if u.get("prompt_tokens")]
+    if read:
+        last = read[-1]
+        stats["context_tokens"] = int(last["prompt_tokens"]) + int(
+            last.get("completion_tokens") or 0
+        )
     return stats
 
 

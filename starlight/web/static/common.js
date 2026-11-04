@@ -75,6 +75,12 @@ const ICONS = {
   talk: '<path d="M4 6.5a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2h-7l-4 3.5v-3.5H6a2 2 0 0 1-2-2z"/><path d="M9 9.5v2M12 8v5M15 9.5v2"/>',
   refresh: '<path d="M19.5 12a7.5 7.5 0 1 1-2.2-5.3"/><path d="M19.5 4v4.5H15"/>',
   picture: '<rect x="3.5" y="4.5" width="17" height="15" rx="2"/><circle cx="9" cy="9.5" r="1.7"/><path d="M3.5 17l5-5 4 4 2.5-2.5 5.5 5"/>',
+  notes: '<path d="M7 3.5h7l4 4V20a.5.5 0 0 1-.5.5h-10.5a.5.5 0 0 1-.5-.5V4a.5.5 0 0 1 .5-.5z"/><path d="M14 3.5V8h4M9 12.5h6M9 16h6"/>',
+  memory: '<path d="M9 18h6M10 21h4M12 3.5a6 6 0 0 0-3.6 10.8c.6.5 1.1 1.2 1.1 2V17h5v-.7c0-.8.5-1.5 1.1-2A6 6 0 0 0 12 3.5z"/>',
+  activity: '<path d="M3.5 12h4l2.5-6.5 4 13 2.5-6.5h4"/>',
+  automations: '<path d="M13 3.5 5.5 13.5H12l-1 7 7.5-10H12z"/>',
+  settings: '<path d="M4 7h10M18 7h2M4 17h4M12 17h8"/><circle cx="16" cy="7" r="2"/><circle cx="10" cy="17" r="2"/>',
+  chevron: '<path d="M7 10l5 5 5-5"/>',
   boards: '<rect x="3.5" y="4.5" width="7" height="7" rx="1.5"/><rect x="13.5" y="4.5" width="7" height="4.5" rx="1.5"/><rect x="3.5" y="14.5" width="7" height="5" rx="1.5"/><rect x="13.5" y="12" width="7" height="7.5" rx="1.5"/>',
 };
 function icon(name, alone) {

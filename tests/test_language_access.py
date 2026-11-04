@@ -44,7 +44,7 @@ async def test_the_chat_page_in_german(static_site: str, monkeypatch: pytest.Mon
             assert await page.evaluate("() => document.documentElement.lang") == "de"
             assert (await page.locator("#send").text_content()).strip() == "Senden"
             assert await page.locator("#input").get_attribute("aria-label") == "Deine Nachricht"
-            assert "Einstellungen" in await page.locator("nav.wide").text_content()
+            assert "Einstellungen" in await page.locator(".side-nav").text_content()
             # an answer that happens to be an interface word stays as the model wrote it
             await page.evaluate(SEND, {"type": "start", "conversation": "c1"})
             await page.evaluate(SEND, {"type": "answer", "text": "Send", "conversation": "c1"})
