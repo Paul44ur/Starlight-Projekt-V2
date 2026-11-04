@@ -497,7 +497,7 @@ async function branchFrom(msg) {
   if (!msg.dataset.kept) { toast("Only a saved answer can be a branch point"); return; }
   try {
     const d = await api(`/api/conversations/${conversation}/branch`, { method: "POST", body: { turns: keptTurns(msg) } });
-    await open(d.id);
+    await openConversation(d.id);
     toast("A new branch from there; the original stays as it was");
   } catch (e) { toast(e.message); }
 }
@@ -557,7 +557,7 @@ function connect() {
   ws = new WebSocket((location.protocol === "https:" ? "wss://" : "ws://") + location.host + "/ws");
   ws.onopen = () => {
     connPill.textContent = "connected"; connPill.className = "pill on";
-    if (resync && conversation) open(conversation);  // an answer that was replaced is shown again
+    if (resync && conversation) openConversation(conversation);  // an answer that was replaced is shown again
     resync = false;
   };
   ws.onclose = () => {
@@ -662,7 +662,7 @@ function handle(m) {
     addStats(current, m.stats);
     if (stick) scroll();
     if (!m.stopped && !m.failed) current.parentElement.dataset.kept = "1";
-    else if (editPending) { toast("Not changed: the earlier question and answer stay"); setTimeout(() => open(conversation), 1500); }
+    else if (editPending) { toast("Not changed: the earlier question and answer stay"); setTimeout(() => openConversation(conversation), 1500); }
     else if (regenPending) current.parentElement.dataset.regen = "1";  // the old answer stays
     editPending = false;
     if (m.stopped) addSys("Kill switch engaged. Press Resume on the PC to continue.");
@@ -674,18 +674,18 @@ function handle(m) {
     // Asking again did not even start: the earlier answer stays, so show it again.
     regenPending = false; answering = null;
     toast(m.type === "stopped" ? "Stopped; the earlier answer stays" : m.text);
-    if (conversation) open(conversation);
+    if (conversation) openConversation(conversation);
   }
   else if (m.type === "stopped") {
     doneWaiting(current); toolsDone(current);
-    if (editPending) { editPending = false; setTimeout(() => open(conversation), 300); }
+    if (editPending) { editPending = false; setTimeout(() => openConversation(conversation), 300); }
     if (!answerIsElsewhere()) addSys("[stopped]");
     current = null; answering = null; regenPending = false;
   }
   else if (m.type === "error") {
     if (talk) talk.waiting = false;
     doneWaiting(current); toolsDone(current);
-    if (editPending) { editPending = false; setTimeout(() => open(conversation), 1500); }
+    if (editPending) { editPending = false; setTimeout(() => openConversation(conversation), 1500); }
     if (!answerIsElsewhere()) {
       const b = addMsg("bot", "⚠ " + m.text, null, true); b.style.color = "var(--bad)";
       if (regenPending) b.parentElement.dataset.regen = "1";
@@ -695,7 +695,7 @@ function handle(m) {
   else if (m.type === "notify") { addSys("ℹ " + m.text); }
   else if (m.type === "busy") {
     addSys("Starlight is still working on the last message.");
-    if (regenPending) { regenPending = false; if (conversation) open(conversation); }  // show the old answer again
+    if (regenPending) { regenPending = false; if (conversation) openConversation(conversation); }  // show the old answer again
   }
   else if (m.type === "confirm") { showConfirm(m); }
   else if (m.type === "prompt") { showPrompt(m); }
@@ -1103,11 +1103,11 @@ async function loadList() {
     const more = el("button", "icon"); setIcon(more, "more"); more.title = "Rename, pin, folder, archive, download, delete"; more.setAttribute("aria-label", "More for this conversation");
     more.onclick = (e) => { e.stopPropagation(); conversationMenu(c, more); };
     acts.append(more); row.append(t, acts);
-    row.onclick = () => open(c.id);
+    row.onclick = () => openConversation(c.id);
     row.tabIndex = 0;
     row.dataset.id = c.id;
     row.onkeydown = (e) => {
-      if ((e.key === "Enter" || e.key === " ") && e.target === row) { e.preventDefault(); open(c.id); }
+      if ((e.key === "Enter" || e.key === " ") && e.target === row) { e.preventDefault(); openConversation(c.id); }
     };
     list.appendChild(row);
   });
@@ -1155,7 +1155,7 @@ function conversationMenu(c, anchor) {
     ["🗑", "Delete", async () => {
       if (!confirm("Delete \"" + c.title + "\"?")) return;
       await api(base, { method: "DELETE" });
-      if (c.id === conversation) { const d = await api("/api/conversations", { method: "POST" }); await open(d.id); } else loadList();
+      if (c.id === conversation) { const d = await api("/api/conversations", { method: "POST" }); await openConversation(d.id); } else loadList();
     }],
   ]);
 }
@@ -1206,7 +1206,7 @@ function popMenu(anchor, items, place) {
   return menu;
 }
 document.addEventListener("click", (e) => { if (openMenu && !openMenu.contains(e.target)) closeMenu(); });
-async function open(id) {
+async function openConversation(id) {
   setDrawer(false);
   let data;
   try { data = await api("/api/conversations/" + id); } catch (e) { toast(e.message); return; }
@@ -1220,8 +1220,8 @@ async function open(id) {
   if (!data.messages.length) showEmpty(data.private);
   loadList(); scroll();
 }
-document.getElementById("new").onclick = async () => { const d = await api("/api/conversations", { method: "POST" }); await open(d.id); input.focus(); };
-document.getElementById("newprivate").onclick = async () => { const d = await api("/api/conversations", { method: "POST", body: { private: true } }); await open(d.id); input.focus(); };
+document.getElementById("new").onclick = async () => { const d = await api("/api/conversations", { method: "POST" }); await openConversation(d.id); input.focus(); };
+document.getElementById("newprivate").onclick = async () => { const d = await api("/api/conversations", { method: "POST", body: { private: true } }); await openConversation(d.id); input.focus(); };
 document.getElementById("search").oninput = () => loadList();
 function setDrawer(open) {
   document.body.classList.toggle("drawer", open);
@@ -1327,7 +1327,7 @@ function takeShared() {
   if (fresh) {  // a question about a note: in a conversation of its own
     try { conversation = (await api("/api/conversations", { method: "POST" })).id; } catch (e) { /* the current one */ }
   }
-  if (conversation) await open(conversation);
+  if (conversation) await openConversation(conversation);
   connect(); refresh(); setInterval(refresh, 4000);
   if ("serviceWorker" in navigator) navigator.serviceWorker.register("/sw.js").catch(() => { /* http on a phone: no offline page */ });
 })();

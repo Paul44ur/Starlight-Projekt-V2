@@ -30,7 +30,7 @@ and answer you on WhatsApp. It will ask you before it does anything risky. And o
 
 | Feature | What it does |
 | --- | --- |
-| **Chat in a browser or the terminal** | A clean web chat (the default) or a colored terminal chat. Both stream answers and ask before risky actions. |
+| **Chat in its own window or the terminal** | A clean chat in Starlight's own window (the default on Windows; or in the browser) or a colored terminal chat. Both stream answers and ask before risky actions. |
 | **Chat with a local model** | Runs a model such as Qwen2.5-14B on your GPU. Long conversations are summarized, not cut off. |
 | **Remember** | Keeps what it learns as plain text files in the `memory` folder. You can read, edit or delete them. Knows your name, language and home town from your profile, tells you what it knows about you, and tidies up memories that say the same thing (asks first). Something that only holds for a while ("my sister visits until Friday") is forgotten after that date. The **Memory** page has a **Timeline** (by month) and **People & places**; ⋯ → *Forget what it learned here* on a conversation removes what was learned only there. |
 | **Use the web** | Searches, reads pages and logs in to your accounts. It makes at most 10 requests per second, with a short pause between pages of the same site. A page you ask for is read like a browser would; crawling several pages (research, page watches) respects robots.txt. |
@@ -185,6 +185,17 @@ statistics page and the kill switch are up, and has buttons for **Open chat**,
 Starlight). If something fails, the window says what and offers **Try again**, **Open
 logs folder** and **Copy details**. There is a light and a dark look, following Windows.
 
+**The chat opens in Starlight's own window**, not in your browser: a window with Starlight's
+name and star in the taskbar, with every page of the chat in it (Chat, Notes, Memory,
+Activity, Automations, Settings). It uses WebView2, the part of Microsoft Edge that Windows 11
+already has. Links to other websites open in your browser; printing or exporting a
+conversation opens a second Starlight window; a download asks where to save. The window
+remembers its size, your theme and your language. Closing it leaves Starlight running:
+**Open chat** brings it back, and closing the Starlight window stops everything. Prefer the
+browser? Untick **Open the chat in Starlight's own window** in Settings, or start
+`Starlight.exe --browser`. If the window cannot open (no WebView2), the browser opens the chat
+and the Starlight window says why.
+
 Prefer the keyboard? Start `Starlight.exe --terminal` for a colored terminal chat in the
 window instead.
 
@@ -215,6 +226,7 @@ Run `Starlight.exe --help` in a terminal to see every option. The most useful on
 | `--remote-url http://192.168.1.20:8080/v1` | Use a model server on another PC in your network (llama-server, LM Studio, vLLM … anything OpenAI-compatible); `"remote_model"` names its model if it needs one. |
 | `--variant cpu` | Run without a graphics card (slow). |
 | `--terminal` | Chat in the terminal instead of opening the browser. |
+| `--browser` | Open the chat in the browser, not in Starlight's own window (`"app_window": false` in `launcher.json` keeps it). |
 | `--no-gui` | Don't open the Starlight window; use the text version. (`--gui` forces the window.) |
 | `--both` | Open the browser chat **and** a terminal chat together — both talk to the same Starlight (one conversation, one kill switch). |
 | `--voice` | Also install speech: talk to Starlight and hear its answers (about 0.6 GB, Windows; `"voice": true` in `launcher.json` keeps it). |
@@ -596,8 +608,8 @@ picture: nothing in it can run or load anything, even in a clipped web page.
 
 **Links to a note from other programs.** **The chain link** on a note copies a link like
 `starlight://note/Notes/Plan.md`. Put it in a mail, a document, a calendar entry or another
-program: clicking it opens the note in your browser (Starlight starts first if it is not
-running; your browser may ask once whether to open Starlight). `starlight://note/Plan` finds
+program: clicking it opens the note in Starlight's window (or your browser; Starlight starts
+first if it is not running; a browser may ask once whether to open Starlight). `starlight://note/Plan` finds
 the note by its name, `#Heading` opens it at a heading, `starlight://notes` opens the Notes
 page. In the chat and in notes such a link opens the note right there, and "give me a link
 to my Plan note" makes one. Starlight.exe sets the links up for your own Windows account
@@ -1089,7 +1101,8 @@ If you installed with `Starlight.exe`, uv isn't on your PATH. Either install it 
 
 | Command | What it does |
 | --- | --- |
-| `starlight web` | The browser chat (what `Starlight.exe` opens by default). |
+| `starlight web` | The web chat behind Starlight's window and the browser (what `Starlight.exe` starts). |
+| `starlight app` | The chat in its own window, not in the browser (Windows, WebView2); starts `starlight web` too if it is not running. |
 | `starlight run` | The terminal chat (`Starlight.exe --terminal`). |
 | `starlight connect` | A terminal chat that joins a running `starlight web` backend — the same brain as the browser (`Starlight.exe --both` opens both together). |
 | `starlight ask "..."` | One request: prints the answer and exits (`-y` approves everything). |

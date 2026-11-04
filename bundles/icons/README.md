@@ -17,7 +17,8 @@ Each logo gives four pictures:
 | `…-192.png`, `…-512.png` | 192 and 512 px, round corners like the logo | Android and installed apps |
 | `…-maskable-512.png` | 512 px, square, the picture in the middle 80 % | Android's shaped icons (a circle, a drop) |
 
-The browser tab keeps the SVG.
+The browser tab keeps the SVG. `starlight.ico` is a copy of `launcher/starlight.ico` (the
+icon of Starlight.exe), for Starlight's own chat window; a test keeps the two the same.
 
 ## Draw them again
 

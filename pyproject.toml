@@ -44,7 +44,10 @@ office = ["python-docx>=1.1", "openpyxl>=3.1"]
 transcripts = ["youtube-transcript-api>=1.0"]
 # Recording from the microphone (the voice module's `listen` and the terminal's /talk).
 voice = ["sounddevice>=0.4"]
-all = ["starlight[hotkey,browser,network,desktop,system,pdf,office,transcripts,voice]"]
+# Starlight in its own window (`starlight app`, WebView2), not in the browser. Windows only:
+# elsewhere the browser opens the chat.
+app = ["pywebview>=6.2; sys_platform == 'win32'"]
+all = ["starlight[hotkey,browser,network,desktop,system,pdf,office,transcripts,voice,app]"]
 
 [project.scripts]
 starlight = "starlight.cli:main"
@@ -79,7 +82,7 @@ strict = true
 packages = ["starlight"]
 
 [[tool.mypy.overrides]]
-module = ["pynput", "pynput.*", "mss", "mss.*", "pytesseract", "uiautomation", "keyring", "keyring.*", "psutil", "pypdf", "pypdf.*", "reportlab", "reportlab.*", "docx", "docx.*", "openpyxl", "openpyxl.*", "youtube_transcript_api", "youtube_transcript_api.*", "sounddevice"]
+module = ["pynput", "pynput.*", "mss", "mss.*", "pytesseract", "uiautomation", "keyring", "keyring.*", "psutil", "pypdf", "pypdf.*", "reportlab", "reportlab.*", "docx", "docx.*", "openpyxl", "openpyxl.*", "youtube_transcript_api", "youtube_transcript_api.*", "sounddevice", "webview", "webview.*"]
 ignore_missing_imports = true
 
 [tool.pytest.ini_options]

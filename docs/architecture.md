@@ -29,6 +29,7 @@ starlight/notebook/ notes as a notebook (docs/plan-notes-app.md): history and sa
 starlight/skills/   skill drafting, approval, git history
 starlight/sandbox/  Docker and process sandboxes for generated code
 starlight/viewer/   the statistics viewer (separate, read-only app)
+starlight/app_window.py  `starlight app`: the web pages in Starlight's own window (WebView2)
 starlight/web/      the local web chat (FastAPI + a WebSocket chat page); client.py is a
                     terminal that joins the same backend, so --both shares one brain
 launcher/           the source of Starlight.exe (standard library only; the window is launcher_gui.py)
@@ -214,6 +215,21 @@ motion from tokens in `style.css` (`--accent`, `--on-accent`, `--danger`, `--s-*
 keeps the two in step and checks that text on every filled colour is readable (WCAG AA,
 4.5:1). Both show a focus ring only while the keyboard is used. The plan for the rest of this
 work is `docs/plan-ui.md`.
+
+**Starlight's own window.** `starlight app` (`app_window.py`) shows the web chat in a
+pywebview window: WebView2 on Windows (the `app` extra, part of `all`; Windows only).
+`why_unavailable()` checks for pywebview, .NET and WebView2 first (pywebview would otherwise
+fall back to the old Internet Explorer engine), and the command ends with exit code 3, which
+the launcher answers by opening the browser. The window keeps its data in `data/app-window`
+(`private_mode=False`, so the pages' localStorage stays), allows downloads (a save dialog),
+sends other sites to the browser, and starts in debug mode for the right-click menu, Ctrl+F
+and F5 (the developer tools stay closed). A page of the same Starlight that would open in a new
+tab goes through `window.pywebview.api.open_window` (common.js; the `Bridge` checks the
+origin) to a new Starlight window. The launcher's `ChatWindow` starts it in the process group,
+brings an open one to the front (its pid is in `data/app-window/window.pid`), and opens the
+browser if it ends within 15 seconds with an error. (The chat page's own `open()` was renamed
+`openConversation()`: a global function named `open` replaced `window.open`, so printing a
+conversation opened nothing.)
 
 **The terminal chat's look.** `starlight/termstyle.py` holds the web's colours as ANSI codes,
 at the depth the terminal has (rich's `color_system`: 24-bit, 256 or the basic 16), dark or

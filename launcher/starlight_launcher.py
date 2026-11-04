@@ -481,6 +481,8 @@ class Settings:
     models_dir: str = ""  # where models are kept; "" = the models folder in Starlight's
     viewer: bool = True
     web: bool = True  # open the browser chat; False: the terminal chat
+    # Windows: the chat in Starlight's own window (`starlight app`), not in a browser tab
+    app_window: bool = True
     both: bool = False  # open the browser chat AND a terminal connected to the same backend
     use_model: bool = True  # False: Starlight's built-in test model, nothing downloaded
     assume_yes: bool = False
@@ -579,6 +581,7 @@ def load_settings(args: argparse.Namespace) -> Settings:
                     "lmstudio_model",
                     "viewer",
                     "web",
+                    "app_window",
                     "both",
                     "tesseract",
                     "voice",
@@ -611,6 +614,8 @@ def load_settings(args: argparse.Namespace) -> Settings:
         settings.web = False
     if args.both:
         settings.both = True
+    if getattr(args, "browser", False):
+        settings.app_window = False
     settings.use_model = not args.no_model
     if getattr(args, "lmstudio", False):
         settings.model_server = "lmstudio"
@@ -2413,15 +2418,26 @@ def ensure_links(settings: Settings, ui: Ui) -> None:
         ui.say(f"   starlight:// links could not be set up: {exc}")
 
 
-def open_link_if_running(target: str, wait: float = 20) -> bool:
-    """Starlight's web chat is running already: open ``target`` in the browser (once the
-    chat answers, at most ``wait`` seconds) and say True. False: it is not running."""
+def open_link_if_running(
+    target: str, wait: float = 20, args: argparse.Namespace | None = None
+) -> bool:
+    """Starlight's web chat is running already: open ``target`` (once the chat answers, at
+    most ``wait`` seconds) in Starlight's own window or the browser, and say True. False: it
+    is not running."""
     if not port_in_use(WEB_PORT):
         return False
     end = time.monotonic() + wait
     while time.monotonic() < end and fetch_json(f"{chat_url()}/api/status") is None:
         time.sleep(0.5)
-    _open_browser(chat_url() + target)
+    settings: Settings | None = None
+    if args is not None:
+        with contextlib.suppress(LauncherError):
+            settings = load_settings(args)
+    uv = settings.tools / "uv" / exe("uv") if settings is not None else None
+    if settings is not None and uv is not None and uv.is_file():
+        ChatWindow(settings, uv).open(chat_url() + target, wait=True)
+    else:
+        _open_browser(chat_url() + target)
     return True
 
 
@@ -3089,22 +3105,23 @@ def start(settings: Settings, ui: Ui, installed: Installed, ask: str | None) -> 
             # -y: approve every confirmation (nobody is there to answer in a one-shot run)
             result = subprocess.run(starlight(uv, "ask", "-y", ask), cwd=settings.root, check=False)
             return result.returncode
+        window = ChatWindow(settings, uv, group, ui)
         if settings.both:
             url = chat_url() + settings.first_page
-            ui.say(f"\nOpening the chat in your browser: {url}")
+            ui.say(f"\nOpening the chat in {chat_where(settings)}: {url}")
             ui.say("A terminal chat opens here too - both talk to the same Starlight.")
             ui.say("Type /quit to leave the terminal; close this window to stop everything.\n")
             group.start(starlight(uv, "web"), logs / "web.log", settings.root)
             wait_for_web(WEB_PORT, ui)
-            threading.Timer(1.0, _open_browser, args=(url,)).start()
+            threading.Timer(1.0, window.open, args=(url,)).start()
             return subprocess.run(
                 starlight(uv, "connect"), cwd=settings.root, check=False
             ).returncode
         if settings.web:
             url = chat_url() + settings.first_page
-            ui.say(f"\nOpening the chat in your browser: {url}")
+            ui.say(f"\nOpening the chat in {chat_where(settings)}: {url}")
             ui.say("Close this window (or press Ctrl+C) to stop everything.\n")
-            threading.Timer(2.5, _open_browser, args=(url,)).start()
+            threading.Timer(2.5, window.open, args=(url,)).start()  # (it waits for the chat)
             return subprocess.run(starlight(uv, "web"), cwd=settings.root, check=False).returncode
         ui.say("Kill switch: Ctrl+Alt+J, a screen corner, or /kill. Leave with /quit.\n")
         return subprocess.run(starlight(uv, "run"), cwd=settings.root, check=False).returncode
@@ -3114,6 +3131,125 @@ def start(settings: Settings, ui: Ui, installed: Installed, ask: str | None) -> 
         if lms_pause is not None:
             lms_pause.stop()
         group.stop()
+
+
+APP_UNAVAILABLE = 3  # `starlight app` can show no window here (starlight/app_window.py)
+APP_START = 15.0  # seconds: a window that ends this soon, not by hand, did not open
+
+
+class ChatWindow:
+    """The chat in Starlight's own window (`starlight app`: WebView2, no browser), when
+    ``settings.app_window`` is on (Windows). Opening it again brings it to the front. When
+    the window cannot open (no WebView2, an install without its package), the browser opens
+    the chat instead, and ``note`` says why."""
+
+    def __init__(
+        self, settings: Settings, uv: Path, group: ProcessGroup | None = None,
+        ui: Ui | None = None,
+    ) -> None:  # fmt: skip
+        self.settings, self.uv, self.group, self.ui = settings, uv, group, ui
+        self.process: subprocess.Popen[bytes] | None = None
+        self.note = ""  # why the browser opened instead (what the console says)
+        self.reason = ""  # the window's own words for it (the launcher window shows them)
+
+    @property
+    def wanted(self) -> bool:
+        return self.settings.app_window and sys.platform == "win32"
+
+    def running(self) -> bool:
+        return self.process is not None and self.process.poll() is None
+
+    def open(self, url: str, wait: bool = False) -> None:
+        """Show ``url``; ``wait``: only return once the window is surely open (or the
+        browser opened instead), for a launcher that ends right after."""
+        if not self.wanted:
+            _open_browser(url)
+            return
+        if self.running() and focus_app_window(self.settings.root):
+            return
+        command = starlight(self.uv, "app", "--url", url)
+        log = self.settings.root / "logs" / "app.log"
+        if self.group is not None:
+            process = self.group.start(command, log, self.settings.root)
+        else:  # (a link opened while Starlight runs: this launcher ends, the window stays)
+            log.parent.mkdir(parents=True, exist_ok=True)
+            with log.open("ab") as output:
+                process = subprocess.Popen(
+                    command, cwd=self.settings.root, stdin=subprocess.DEVNULL, stdout=output,
+                    stderr=subprocess.STDOUT,
+                    creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+                )  # fmt: skip
+        self.process = process
+        if wait:
+            self._watch(process, url)
+        else:
+            threading.Thread(target=self._watch, args=(process, url), daemon=True).start()
+
+    def _watch(self, process: subprocess.Popen[bytes], url: str) -> None:
+        try:
+            code = process.wait(timeout=APP_START)
+        except subprocess.TimeoutExpired:
+            return  # it is open
+        if code == 0:
+            return  # closed again, by hand
+        self.reason = last_line(self.settings.root / "logs" / "app.log") or "see logs/app.log"
+        self.note = f"Starlight's own window could not open ({self.reason}): "
+        self.note += "the chat opens in the browser."
+        if self.ui is not None:
+            self.ui.say(self.note)
+        _open_browser(url)
+
+
+def last_line(path: Path) -> str:
+    """The last line of a log that says something (for a short reason)."""
+    try:
+        lines = path.read_text(encoding="utf-8", errors="replace").splitlines()
+    except OSError:
+        return ""
+    said = [line.strip() for line in lines if line.strip()]
+    return said[-1][:200] if said else ""
+
+
+def focus_app_window(root: Path) -> bool:
+    """Bring Starlight's own window to the front (Windows; its process wrote its id to
+    data/app-window/window.pid). False: none is open."""
+    if sys.platform != "win32":
+        return False
+    try:
+        pid = int((root / "data" / "app-window" / "window.pid").read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return False
+    import ctypes
+    from ctypes import wintypes
+
+    user32 = ctypes.windll.user32
+    found: list[int] = []
+
+    def each(handle: int, _param: int) -> bool:
+        owner = wintypes.DWORD()
+        user32.GetWindowThreadProcessId(handle, ctypes.byref(owner))
+        shown = user32.IsWindowVisible(handle) and not user32.GetWindow(handle, 4)  # GW_OWNER
+        if owner.value == pid and shown:  # (a visible top-level window of that process)
+            found.append(handle)
+        return True
+
+    callback = ctypes.WINFUNCTYPE(wintypes.BOOL, wintypes.HWND, wintypes.LPARAM)(each)
+    user32.EnumWindows(callback, 0)
+    for handle in found:
+        if user32.IsIconic(handle):
+            user32.ShowWindow(handle, 9)  # SW_RESTORE
+        user32.SetForegroundWindow(handle)
+        return True
+    return False
+
+
+def chat_where(settings: Settings) -> str:
+    """Where the chat opens, for what the launcher says."""
+    return (
+        "Starlight's own window"
+        if settings.app_window and sys.platform == "win32"
+        else "your browser"
+    )
 
 
 def _open_browser(url: str) -> None:
@@ -3256,6 +3392,10 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--both", action="store_true", help="open the browser chat and a terminal chat together"
     )
+    parser.add_argument(
+        "--browser", action="store_true",
+        help="open the chat in the browser, not in Starlight's own window",
+    )  # fmt: skip
     parser.add_argument("--tesseract", action="store_true", help="install Tesseract OCR")
     parser.add_argument(
         "--voice", action="store_true", help="install speech input and output (about 0.6 GB)"
@@ -3384,7 +3524,7 @@ def main(argv: list[str] | None = None) -> int:
         if target is None:
             print(f"Not a Starlight link: {args.open[:200]}", file=sys.stderr)
             return 2
-        if open_link_if_running(target):
+        if open_link_if_running(target, args=args):
             return 0
         args.page = target  # not running: start it, with that page first
     if gui_wanted(args):

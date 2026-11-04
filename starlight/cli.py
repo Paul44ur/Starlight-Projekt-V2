@@ -12,6 +12,7 @@ import shutil
 import signal
 import subprocess
 import sys
+import urllib.parse
 from collections.abc import Callable, Sequence
 from pathlib import Path
 from types import FrameType
@@ -674,6 +675,22 @@ def cmd_web(paths: Paths, args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_app(paths: Paths, args: argparse.Namespace) -> int:
+    """The chat in Starlight's own window, not in the browser (Windows: WebView2). Starts the
+    web chat if it is not running. Ends with app_window.UNAVAILABLE where there can be no
+    window (the launcher then opens the browser)."""
+    from starlight import app_window
+
+    config = load_config(paths)
+    base = (args.url or f"http://{config.web.host}:{config.web.port}").rstrip("/")
+    split = urllib.parse.urlsplit(base)
+    base = f"{split.scheme}://{split.netloc}"  # (an address with a page: its site)
+    page = args.page or split.path or "/"
+    if split.query:
+        page += "?" + split.query
+    return app_window.run(paths, base + (page if page.startswith("/") else "/" + page), base)
+
+
 async def cmd_connect(paths: Paths, args: argparse.Namespace) -> int:
     """A terminal chat that drives a running web backend, so the terminal and the browser
     share one assistant (one conversation, one kill switch)."""
@@ -1010,6 +1027,9 @@ def build_parser() -> argparse.ArgumentParser:
     sub.add_parser("serve", help="run the core in the background (WhatsApp, watchers)")
     sub.add_parser("viewer", help="the statistics viewer (a separate web app)")
     sub.add_parser("web", help="a browser chat page for Starlight (local only)")
+    app = sub.add_parser("app", help="the chat in its own window, not in the browser (Windows)")
+    app.add_argument("--url", help="the chat's address (default: this Starlight's web chat)")
+    app.add_argument("--page", default="", help="a page to show first, e.g. /notes")
     connect = sub.add_parser(
         "connect", help="a terminal chat connected to a running web backend (shares its brain)"
     )
@@ -1074,7 +1094,7 @@ def _main(argv: Sequence[str] | None) -> int:
         parser.error(f"vault {args.action} needs a key name")
     paths = Paths.discover(args.home)
     _ensure_console(paths)
-    if args.command in ("run", "web", "serve", "connect", "viewer"):  # the ones that keep running
+    if args.command in ("run", "web", "serve", "connect", "viewer", "app"):  # they keep running
         crashes.watch(paths.logs)
     try:
         match args.command:
@@ -1104,6 +1124,8 @@ def _main(argv: Sequence[str] | None) -> int:
                 return cmd_viewer(paths, args)
             case "web":
                 return cmd_web(paths, args)
+            case "app":
+                return cmd_app(paths, args)
             case "connect":
                 return asyncio.run(cmd_connect(paths, args))
             case "logs":

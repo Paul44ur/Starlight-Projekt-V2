@@ -180,6 +180,32 @@ if (document.querySelector('a[href="/notes"]')) {
   }).catch(() => { /* the page says itself when Starlight cannot be reached */ });
 }
 
+// -- Starlight's own window (`starlight app`) ----------------------------------------------------
+// There, window.pywebview.api.open_window opens a page of this Starlight in a new Starlight
+// window. A page that would open in a new tab (print, export, a link to a Starlight page) goes
+// there; any other address opens in the browser, as the window does by itself.
+function inAppWindow(address) {
+  const api = window.pywebview && window.pywebview.api;
+  if (!api || typeof api.open_window !== "function") return null;
+  try { return new URL(String(address), location.href).origin === location.origin ? api : null; }
+  catch (e) { return null; }
+}
+const browserOpen = window.open.bind(window);
+window.open = (address, ...rest) => {
+  const api = inAppWindow(address);
+  if (!api) return browserOpen(address, ...rest);
+  api.open_window(new URL(String(address), location.href).href);
+  return null;
+};
+document.addEventListener("click", (e) => {
+  const link = e.target instanceof Element ? e.target.closest("a[target=_blank]") : null;
+  if (!link || e.defaultPrevented || link.hasAttribute("download")) return;
+  const api = inAppWindow(link.href);
+  if (!api) return;
+  e.preventDefault();
+  api.open_window(link.href);
+});
+
 // -- recording: the chat's microphone and the Notes page's voice memos ------------------------
 // Record 16 kHz mono 16-bit WAV in the browser, which the speech server reads directly.
 async function startRecording() {

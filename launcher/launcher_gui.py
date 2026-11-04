@@ -313,6 +313,9 @@ GERMAN = {
     "Start Starlight when I log in to Windows": (
         "Starlight starten, wenn ich mich bei Windows anmelde"
     ),
+    "Open the chat in Starlight's own window, not in the browser": (
+        "Den Chat in Starlights eigenem Fenster öffnen, nicht im Browser"
+    ),
     "Answers:": "Antworten:",
     "Context:": "Kontext:",
     (
@@ -408,6 +411,14 @@ GERMAN = {
     "Starlight is running": "Starlight läuft",
     "Your chat is at {url}. Close this window to stop Starlight.": (
         "Dein Chat ist unter {url}. Schließe dieses Fenster, um Starlight zu beenden."
+    ),
+    "The chat is in its own window (Open chat brings it back). Close this window to stop "
+    "Starlight.": (
+        "Der Chat ist in einem eigenen Fenster („Chat öffnen“ holt es zurück). Schließe dieses "
+        "Fenster, um Starlight zu beenden."
+    ),
+    "Starlight's own window could not open ({reason}); the chat is in the browser.": (
+        "Starlights eigenes Fenster ließ sich nicht öffnen ({reason}); der Chat ist im Browser."
     ),
     "Folder: {path}": "Ordner: {path}",
     "Statistics": "Statistik",
@@ -643,6 +654,8 @@ class App:
         self.pages: dict[str, ttk.Frame] = {}
         self._poll_busy = False
         self.opened_browser = False
+        self.chat_window: Any = None  # the chat in Starlight's own window (or the browser)
+        self.window_was_open = False
         self.polling = False
         self._poll_job: str | None = None  # the timer of the status polling
         self.closing = False
@@ -1139,12 +1152,18 @@ class App:
             if variable is self.think_var:
                 self.think_check = check  # only for the models that think first
         self.autostart_var = tk.BooleanVar(value=False)
+        self.app_var = tk.BooleanVar(value=bool(self.settings.app_window))
         next_row = len(rows) + 1
         if sys.platform == "win32":
             self.autostart_var.set(self.L.autostart_enabled())
             CheckRow(
                 self, options, "Start Starlight when I log in to Windows", self.autostart_var,
                 self._refresh_summary,
+            ).grid(row=next_row, column=0, sticky="w")  # fmt: skip
+            next_row += 1
+            CheckRow(
+                self, options, "Open the chat in Starlight's own window, not in the browser",
+                self.app_var, self._refresh_summary,
             ).grid(row=next_row, column=0, sticky="w")  # fmt: skip
             next_row += 1
         # Two choices that are more than on or off: how the model words its answers, and how
@@ -1856,6 +1875,8 @@ class App:
         if self.has_ocr_option:
             settings.tesseract = self.ocr_var.get()
             choices["tesseract"] = settings.tesseract
+        if sys.platform == "win32":
+            settings.app_window = choices["app_window"] = self.app_var.get()
         with contextlib.suppress(OSError):
             L.save_choices(settings.root, choices, drop)
         if self.in_settings:
@@ -2016,6 +2037,7 @@ class App:
             installed = L.setup(self.settings, self.ui)
             services = L.Services(self.settings, self.ui, installed, group=self.group)
             services.start()
+            self.chat_window = L.ChatWindow(self.settings, installed.uv, self.group)
             self.services = services  # before "running": on_running polls it
             self.events.put(("running",))
             L.tell_whats_new(self.settings.root, self.ui)  # once, after an update
@@ -2276,7 +2298,21 @@ class App:
             sub = tr("The model takes a minute to load; the chat opens by itself when it is ready.")
         else:
             title = tr("Starlight is running")
-            sub = trf("Your chat is at {url}. Close this window to stop Starlight.", url=chat_url)
+            window = self.chat_window
+            if window is not None and window.wanted and not window.reason:
+                sub = tr(
+                    "The chat is in its own window (Open chat brings it back). Close this "
+                    "window to stop Starlight."
+                )
+            else:
+                sub = trf(
+                    "Your chat is at {url}. Close this window to stop Starlight.", url=chat_url
+                )
+            if window is not None and window.reason:
+                sub += "\n" + trf(
+                    "Starlight's own window could not open ({reason}); the chat is in the browser.",
+                    reason=window.reason,
+                )
         self.r_title.configure(text=title)
         self.r_sub.configure(text=sub)
         self.r_footer.configure(text=trf("Folder: {path}", path=self.settings.root))
@@ -2286,10 +2322,25 @@ class App:
         self.was_ready = ready
         if ready and not self.opened_browser and self.settings.web:
             self.opened_browser = True
-            webbrowser.open(self.L.chat_url() + self.settings.first_page)  # (--open: that page)
+            self.open_chat(self.settings.first_page)  # (--open: that page)
+        self._follow_chat_window()
 
-    def open_chat(self) -> None:
-        webbrowser.open(self.L.chat_url())
+    def _follow_chat_window(self) -> None:
+        """The chat's own window was closed: Starlight still runs, and this window comes
+        back to say so (with Open chat and Stop everything)."""
+        open_now = self.chat_window is not None and self.chat_window.running()
+        if self.window_was_open and not open_now and not self.closing:
+            self.root.deiconify()
+        self.window_was_open = open_now
+
+    def open_chat(self, page: str = "") -> None:
+        url = self.L.chat_url() + page
+        if self.chat_window is None:
+            webbrowser.open(url)
+            return
+        self.chat_window.open(url)
+        if self.chat_window.wanted:
+            self.root.iconify()  # the chat is the window now; this one waits in the taskbar
 
     def open_stats(self) -> None:
         webbrowser.open(self.L.viewer_url())

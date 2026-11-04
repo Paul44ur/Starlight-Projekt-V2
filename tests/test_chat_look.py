@@ -40,7 +40,7 @@ async def test_a_new_conversation_starts_calm_and_the_first_answer_clears_it(
         browser, page = await chat(playwright, static_site)
         try:
             await page.evaluate(CONVERSATIONS)
-            await page.evaluate("() => open('c1')")
+            await page.evaluate("() => openConversation('c1')")
             empty = page.locator("#log .empty")
             await empty.wait_for()
             assert await empty.locator(".empty-title").text_content() == (
@@ -50,7 +50,7 @@ async def test_a_new_conversation_starts_calm_and_the_first_answer_clears_it(
             assert "Type / for commands" in (await empty.text_content() or "")
             await page.evaluate(SEND, {"type": "start", "conversation": "c1"})
             assert await page.locator("#log .empty").count() == 0  # gone with the first answer
-            await page.evaluate("() => open('secret')")
+            await page.evaluate("() => openConversation('secret')")
             await page.locator("#log .empty").wait_for()
             assert await page.locator(".empty-title").text_content() == "Private conversation"
             assert "never saved" in (await page.locator(".empty").text_content() or "")
@@ -188,7 +188,7 @@ async def test_the_new_chat_texts_are_in_german(
             await page.evaluate("() => { if (!window.sockets.length) connect(); }")
             await page.wait_for_function("() => window.sockets.length > 0")
             await page.evaluate(CONVERSATIONS)
-            await page.evaluate("() => open('c1')")
+            await page.evaluate("() => openConversation('c1')")
             await page.locator("#log .empty").wait_for()
             await page.wait_for_function(
                 "() => document.querySelector('.empty-title').textContent.startsWith('Neues')"
