@@ -36,3 +36,6 @@ config/launcher.json
 
 # The editor bundle's build folder (bundles/editor/README.md)
 bundles/*/node_modules/
+
+# Working copies of helper sessions (Claude Code)
+.claude/worktrees/
