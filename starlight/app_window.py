@@ -41,6 +41,7 @@ APP_ID = "Starlight.Chat"  # Windows groups the taskbar button by this (not with
 ICON = Path(__file__).parent / "web" / "static" / "icons" / "starlight.ico"
 SIZE = {"width": 1200, "height": 820}  # the first time; then the size it had
 ATTENTION_TEXT = 200  # letters of what a page may say when it asks for your attention
+ATTENTION_FILE = "attention.json"  # in data/app-window; the launcher's tray icon reads it
 FLASH_UNTIL_FRONT = 0x2 | 0xC  # FLASHW_TRAY | FLASHW_TIMERNOFG: the button, until in front
 MIN_SIZE = (420, 560)
 BACKGROUND = {"dark": "#0f1115", "light": "#f6f7f9"}  # style.css --bg, until the page paints
@@ -223,6 +224,28 @@ def flash_taskbar(pid: int | None = None) -> bool:
     return lit
 
 
+def clean_text(text: object, limit: int = ATTENTION_TEXT) -> str:
+    """Plain text for a notification: control characters out, white space squeezed, cut.
+    (The launcher does the same again when it reads it: same lines as in its module.)"""
+    plain = " ".join("".join(c if c.isprintable() else " " for c in str(text)).split())
+    return plain[:limit].rstrip()
+
+
+def write_attention(folder: Path, text: str) -> bool:
+    """Tell the launcher's tray icon that something is ready, in data/app-window/attention.json
+    ({"id", "text"}; a new id is a new message). Atomic: a reader never sees half a file."""
+    path = folder / ATTENTION_FILE
+    part = path.with_name(path.name + ".part")
+    try:
+        part.write_text(
+            json.dumps({"id": time.time_ns(), "text": clean_text(text)}), encoding="utf-8"
+        )
+        os.replace(part, path)
+    except OSError:
+        return False
+    return True
+
+
 def _own_taskbar_button() -> None:
     """On Windows, the window gets Starlight's own taskbar button and icon, not Python's."""
     if sys.platform == "win32":
@@ -268,11 +291,16 @@ def run(paths: Paths, url: str, base: str) -> int:
     webview.settings["OPEN_DEVTOOLS_IN_DEBUG"] = False
     webview.settings["ALLOW_FILE_URLS"] = False  # (only Starlight's pages: no file:// reading)
 
+    def attend(text: str) -> bool:
+        """The taskbar button lights up, and the launcher's tray icon may show a notification."""
+        lit = flash_taskbar()
+        return write_attention(folder, text) or lit
+
     def open_window(address: str) -> Any:
         window = webview.create_window(
             "Starlight", url=address, width=remembered.width, height=remembered.height,
             min_size=MIN_SIZE, background_color=background, text_select=True, zoomable=True,
-            js_api=Bridge(base, open_window),
+            js_api=Bridge(base, open_window, attend),
         )  # fmt: skip
         window.events.loaded += lambda: _retitle(window)
         return window
@@ -282,7 +310,7 @@ def run(paths: Paths, url: str, base: str) -> int:
         html=page(STARTING) if server is not None else None,
         width=remembered.width, height=remembered.height, min_size=MIN_SIZE,
         maximized=remembered.maximized, background_color=background, text_select=True,
-        zoomable=True, js_api=Bridge(base, open_window),
+        zoomable=True, js_api=Bridge(base, open_window, attend),
     )  # fmt: skip
     first.events.loaded += lambda: _retitle(first)
     first.events.maximized += lambda: setattr(remembered, "maximized", True)

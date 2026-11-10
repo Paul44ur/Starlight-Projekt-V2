@@ -133,6 +133,38 @@ def test_the_status_page_speaks_german(monkeypatch: pytest.MonkeyPatch) -> None:
         app.root.destroy()
 
 
+def test_the_tray_icons_words_are_all_in_german() -> None:
+    """The icon's menu, its tooltips, its notifications and the new choice (launcher_tray.py
+    gives English keys; the window translates them)."""
+    import sys
+
+    gui = load_gui()
+    T = gui.launcher_tray
+    assert sys.modules["launcher_tray"] is T
+    states = [
+        T.TrayState(chat=c, model=m, kill=k, window_hidden=h, own_window=o)
+        for c in (True, False)
+        for m in ("ready", "off", "loading", "paused", "down")
+        for k in (True, False, None)
+        for h in (True, False)
+        for o in (True, False)
+    ]
+    keys = {item.label for state in states for item in T.tray_menu(state) if item.label}
+    keys |= {T.tray_status(state) for state in states}
+    assert {"Open Starlight", "Open chat", "Show launcher window", "Kill switch", "Resume"} <= keys
+    assert {"Quit Starlight", "kill switch on", "paused for a game", "model stopped"} <= keys
+    keys |= {
+        "Keep Starlight next to the clock when its window is closed",
+        "Starlight is still running here. Right-click the icon to open or quit.",
+        "Your answer is ready.",
+        "The chat is in its own window (Open chat brings it back).",
+        "Your chat is at {url}.",
+        "Closing this window leaves Starlight running next to the clock; Quit Starlight stops it.",
+    }
+    missing = sorted(key for key in keys if key not in gui.GERMAN)
+    assert missing == []
+
+
 @needs_display
 def test_the_main_buttons_stand_out_and_the_tools_are_quieter(
     monkeypatch: pytest.MonkeyPatch,

@@ -242,6 +242,42 @@ def test_a_page_may_ask_for_attention_with_a_few_words() -> None:
     assert off.attention("x") is False
 
 
+def test_the_attention_file_is_plain_short_and_written_whole(tmp_path: Path) -> None:
+    folder = tmp_path / "app-window"
+    folder.mkdir()
+    assert app_window.write_attention(folder, "Done\x1b[31m!\x00\n\n  really\t" + "x" * 500)
+    data = json.loads((folder / "attention.json").read_text(encoding="utf-8"))
+    assert isinstance(data["id"], int) and data["id"] > 0
+    assert len(data["text"]) <= app_window.ATTENTION_TEXT
+    assert data["text"].startswith("Done [31m! really xxx")  # (no control characters)
+    assert not any(c in data["text"] for c in "\x1b\x00\n\t")
+    assert list(folder.iterdir()) == [folder / "attention.json"]  # (no .part left behind)
+    first = data["id"]
+    assert app_window.write_attention(folder, "Again")
+    assert json.loads((folder / "attention.json").read_text())["id"] != first  # a new message
+
+
+def test_the_window_asks_for_attention_through_the_file_too(
+    webview: Any, chat: str, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    paths = home(tmp_path)
+    flashed: list[bool] = []
+    monkeypatch.setattr(app_window, "flash_taskbar", lambda pid=None: flashed.append(True) or True)
+    app_window.run(paths, chat + "/", chat)
+    bridge = webview.windows[0].options["js_api"]
+    assert bridge.attention("Your answer is ready") is True
+    assert flashed == [True]  # the taskbar button lights up as before
+    file = paths.data / "app-window" / "attention.json"
+    assert json.loads(file.read_text(encoding="utf-8"))["text"] == "Your answer is ready"
+    # a second window of the same Starlight does the same
+    other = webview.windows[0].options["js_api"]
+    assert other.attention("Second") is True
+    assert json.loads(file.read_text(encoding="utf-8"))["text"] == "Second"
+    # a folder that cannot be written to does not break the page's call
+    monkeypatch.setattr(app_window.os, "replace", lambda *a: (_ for _ in ()).throw(OSError("x")))
+    assert bridge.attention("Third") is True  # (the taskbar still lit up)
+
+
 def test_without_windows_there_is_nothing_to_light_up() -> None:
     assert sys.platform != "win32"  # (the real one is for Windows, see the launcher notes)
     assert app_window.flash_taskbar() is False

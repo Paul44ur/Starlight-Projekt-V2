@@ -199,17 +199,31 @@ remembers its size, your theme and your language. When an answer is ready (or St
 waits for your OK) and the window is in the background, its title gets a dot and its taskbar
 button lights up; in a browser, a notification shows if you allowed it. Switch this off in
 Settings, under **When an answer is ready**. Closing it leaves Starlight running: **Open
-chat** brings it back, and closing the Starlight window stops everything. Prefer the
+chat** brings it back. Prefer the
 browser? Untick **Open the chat in Starlight's own window** in Settings, or start
 `Starlight.exe --browser`. If the window cannot open (no WebView2), the browser opens the
 chat and the Starlight window says why.
+
+**A tray icon keeps Starlight next to the clock.** While Starlight runs, its star sits by the
+clock (maybe under the little arrow). Closing the Starlight launcher window then only hides it;
+Starlight keeps running, and the first time a note says so. Click the icon to open the chat.
+Right-click it for the menu: **Open Starlight**, **Show launcher window** (while it is
+hidden), **Kill switch** (it says **Resume** while the kill switch is on) and **Quit
+Starlight**. **Quit Starlight** is the way to really stop everything (it asks first, as the
+**Stop everything** button does). When an answer is ready while Starlight's chat window is in
+the background, a Windows notification shows next to the clock; click it to open the chat. Windows
+may hide it while Focus assist is on. Don't want the icon? Untick **Keep Starlight next to the
+clock when its window is closed** in Settings (`"tray": false` in `launcher.json`): closing the
+launcher window then stops Starlight, as before. The setup and error pages always stop
+Starlight when you close them.
 
 Prefer the keyboard? Start `Starlight.exe --terminal` for a colored terminal chat in the
 window instead.
 
 That's it. **Next time, just double-click `Starlight.exe` again.** It skips the
-downloads and goes straight to starting. Closing the Starlight window stops everything
-(the model server, the chat and the viewer). The emergency stop is
+downloads and goes straight to starting. **Quit Starlight** (in the tray icon's menu, or
+the button in the window) stops everything (the model server, the chat and the viewer); without
+the tray icon, closing the Starlight window does. The emergency stop is
 **Ctrl+Alt+J** or moving the mouse into a screen corner.
 
 The window is only the default when you start `Starlight.exe` plainly. Any option that

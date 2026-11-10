@@ -32,7 +32,8 @@ starlight/viewer/   the statistics viewer (separate, read-only app)
 starlight/app_window.py  `starlight app`: the web pages in Starlight's own window (WebView2)
 starlight/web/      the local web chat (FastAPI + a WebSocket chat page); client.py is a
                     terminal that joins the same backend, so --both shares one brain
-launcher/           the source of Starlight.exe (standard library only; the window is launcher_gui.py)
+launcher/           the source of Starlight.exe (standard library only; the window is launcher_gui.py,
+                    the tray icon launcher_tray.py)
 assets/logo/        the logo (SVG, PNG); launcher/starlight.ico and web/static/icon.svg are made from it
 bundles/            builds of the web pages' third-party code (editor, graph, mermaid) and
                     the app icons (icons/: PNGs drawn from web/static/icon.svg)
@@ -273,6 +274,28 @@ the Notification API, if the person allowed it (Settings has the button). The do
 notification go when the window gets focus again. The switch is `starlight-ready-sign` in
 `localStorage` (`"off"` turns it off; on by default; `readySignOn()` in `common.js`). The sign
 never carries the words of the answer.
+
+**The tray icon.** `launcher/launcher_tray.py` (standard library only) puts Starlight next to
+the clock on Windows. The launcher window (`launcher_gui.py`) owns it: it makes the icon when
+Starlight is running (`on_running`), updates it from each status poll, and removes it when
+Starlight stops. Closing the window then hides it instead of stopping (`on_close_window`, only on
+the running page). The first part of the file is plain: `tray_menu` and `tray_tooltip` say what
+the menu and the tooltip show for a `TrayState`, and `Tray` turns the icon's events into actions
+(`open`, `show`, `kill`, `quit`) for any backend, so tests use a stand-in. `WinBackend` is the real
+icon: `Shell_NotifyIconW` and a hidden window with its own window procedure and message loop, on
+a thread of its own (a window belongs to the thread that made it). That thread never touches
+tkinter. It only calls `on_action`, which puts `("tray", action)` on the window's event queue; the
+Tk thread handles it in `on_tray`. The menu is read from `Tray.state`, an immutable snapshot that
+the Tk thread swaps in as a whole. Kill switch and Quit call the same functions as the window's
+buttons. The icon is added again when Explorer broadcasts `TaskbarCreated`, and deleted when
+the window closes. If the icon cannot be made (not Windows, an error), `tray` stays `None` and the
+window behaves as without it; the setting `tray` in `launcher.json` turns it off. The notification
+comes through a file: `Bridge.attention` (`app_window.py`) also writes
+`data/app-window/attention.json` (`{"id", "text"}`, atomically; the text is cut and stripped of
+control characters). The launcher's status poll reads it, and a new id shows a balloon titled
+"Starlight" (a click on it opens the chat). Both sides keep the path and a few lines of their
+own, as `modelpause.py` and the launcher do for the pause file; `app_window.py` does not import
+the launcher. The text comes from a web page, so it is only ever shown as plain text.
 
 **Questions.** A page never uses the browser's own boxes (`confirm`, `prompt`, `alert`):
 they look different on every system and name the address ("127.0.0.1:8700 says"). It asks

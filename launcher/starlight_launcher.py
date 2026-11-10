@@ -483,6 +483,10 @@ class Settings:
     web: bool = True  # open the browser chat; False: the terminal chat
     # Windows: the chat in Starlight's own window (`starlight app`), not in a browser tab
     app_window: bool = True
+    # Windows: closing the launcher window leaves Starlight running next to the clock (the
+    # tray icon, launcher_tray.py); tray_hint_shown: the first-time balloon was shown.
+    tray: bool = True
+    tray_hint_shown: bool = False
     both: bool = False  # open the browser chat AND a terminal connected to the same backend
     use_model: bool = True  # False: Starlight's built-in test model, nothing downloaded
     assume_yes: bool = False
@@ -582,6 +586,8 @@ def load_settings(args: argparse.Namespace) -> Settings:
                     "viewer",
                     "web",
                     "app_window",
+                    "tray",
+                    "tray_hint_shown",
                     "both",
                     "tesseract",
                     "voice",
@@ -1782,6 +1788,47 @@ def end_pause(root: Path) -> bool:
     except OSError:  # not there, or held open for a moment
         return False
     return True
+
+
+# Starlight's own window writes this file when an answer is ready while it is in the
+# background (starlight/app_window.py: the same path and the same few lines). The launcher
+# window's tray icon shows it as a notification. Anything in it may come from a web page, so
+# it is only ever shown as plain, short text.
+ATTENTION_FILE = Path("data") / "app-window" / "attention.json"
+ATTENTION_LETTERS = 200
+
+
+def plain_text(text: object, limit: int = ATTENTION_LETTERS) -> str:
+    """Text without control characters and with white space squeezed, cut to ``limit``."""
+    plain = " ".join("".join(c if c.isprintable() else " " for c in str(text)).split())
+    return plain[:limit].rstrip()
+
+
+def write_attention(root: Path, text: str) -> int:
+    """Say that something is ready (atomically: a reader never sees half a file). Returns
+    the id of this message."""
+    path = root / ATTENTION_FILE
+    message_id = time.time_ns()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    part = path.with_name(path.name + ".part")
+    part.write_text(json.dumps({"id": message_id, "text": plain_text(text)}), encoding="utf-8")
+    replace_file(part, path)
+    return message_id
+
+
+def read_attention(root: Path, seen: int | None = None) -> tuple[int, str] | None:
+    """(id, text) of the message in the file, unless it is the one with the id ``seen``
+    already (or there is none, or the file is not a message)."""
+    try:
+        data = json.loads((root / ATTENTION_FILE).read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+    if not isinstance(data, dict):
+        return None
+    message_id = data.get("id")
+    if not isinstance(message_id, int) or isinstance(message_id, bool) or message_id == seen:
+        return None
+    return message_id, plain_text(data.get("text", ""))
 
 
 class ModelServerWatchdog:

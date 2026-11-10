@@ -22,6 +22,10 @@ The default model needs 16 GB of video memory; smaller models are offered during
 ### The chat window
 - Starlight's own window has its own name and icon in the taskbar, with no address bar and no
   tabs. It uses WebView2, which comes with Windows 11, and it remembers its size.
+- A tray icon is new: closing the launcher window keeps Starlight running next to the clock. Its
+  menu has Open, Kill switch and Quit, and a notification shows there when an answer is ready.
+  So far it has been tested with stand-ins only, not on many real PCs. You can turn it off in
+  the launcher's settings.
 - The chat is laid out like a desktop app. The sidebar on the left has **New conversation**, the
   pages (Notes, Memory, Activity, Automations, Settings) and your conversations (Pinned, Recent).
   You can hide the sidebar.

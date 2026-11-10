@@ -21,7 +21,8 @@ one block per session and commit, in the order of the Status table; mark a block
   window's tests are skipped without it).
 - Checks before pushing: `uv run ruff check .`, `uv run ruff format --check .`, `uv run mypy`
   and `uv run mypy modules` (each also with `--platform win32`), `uv run mypy --strict
-  launcher/starlight_launcher.py launcher/launcher_gui.py` (both platforms), then the full suite:
+  launcher/starlight_launcher.py launcher/launcher_gui.py launcher/launcher_tray.py` (both
+  platforms), then the full suite:
   `STARLIGHT_CHROMIUM=/opt/pw-browsers/chromium timeout 1500 xvfb-run -a
   -s "-screen 0 1366x768x24" uv run pytest -p no:cacheprovider -q`.
 - Every behaviour change gets a test; run new tests against the previous commit (a git

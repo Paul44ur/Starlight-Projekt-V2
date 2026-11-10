@@ -73,6 +73,8 @@ def bare_app() -> tuple[Any, FakeRoot, list[str]]:
     app.exited = app.closing = app.polling = app._poll_busy = False
     app._poll_job = None
     app.services = None
+    app.tray = None  # (no icon next to the clock)
+    app.settings = types.SimpleNamespace(tray=False)
     app.ui = types.SimpleNamespace(_write_log=lambda text: None)
     errors: list[str] = []
     app.on_error = lambda message, details="": errors.append(message)

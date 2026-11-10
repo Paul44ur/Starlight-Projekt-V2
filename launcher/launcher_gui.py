@@ -35,6 +35,12 @@ from tkinter import font as tkfont
 from tkinter import messagebox, ttk
 from typing import Any, ClassVar
 
+# launcher_tray.py sits next to this file (in Starlight.exe it is a hidden import).
+_HERE = str(Path(__file__).resolve().parent)
+if _HERE not in sys.path:
+    sys.path.append(_HERE)
+import launcher_tray  # noqa: E402
+
 # The Starlight logo (a gold sparkle with purple rays on a purple square), 64 x 64 PNG: the
 # window icon. The header draws the same logo as vectors, so it is sharp at any scale.
 ICON_PNG = (
@@ -315,6 +321,26 @@ GERMAN = {
     ),
     "Open the chat in Starlight's own window, not in the browser": (
         "Den Chat in Starlights eigenem Fenster öffnen, nicht im Browser"
+    ),
+    "Keep Starlight next to the clock when its window is closed": (
+        "Starlight neben der Uhr weiterlaufen lassen, wenn sein Fenster geschlossen wird"
+    ),
+    "Open Starlight": "Starlight öffnen",
+    "Show launcher window": "Startfenster anzeigen",
+    "paused for a game": "für ein Spiel pausiert",
+    "model stopped": "Modell angehalten",
+    "Starlight is still running here. Right-click the icon to open or quit.": (
+        "Starlight läuft hier weiter. Klicke mit rechts auf das Symbol, um es zu öffnen oder "
+        "zu beenden."
+    ),
+    "Your answer is ready.": "Deine Antwort ist fertig.",
+    "The chat is in its own window (Open chat brings it back).": (
+        "Der Chat ist in einem eigenen Fenster („Chat öffnen“ holt es zurück)."
+    ),
+    "Your chat is at {url}.": "Dein Chat ist unter {url}.",
+    "Closing this window leaves Starlight running next to the clock; Quit Starlight stops it.": (
+        "Wenn du dieses Fenster schließt, läuft Starlight neben der Uhr weiter; „Starlight "
+        "beenden“ hält es an."
     ),
     "Answers:": "Antworten:",
     "Context:": "Kontext:",
@@ -700,6 +726,9 @@ class App:
         self.opened_browser = False
         self.chat_window: Any = None  # the chat in Starlight's own window (or the browser)
         self.window_was_open = False
+        # The icon next to the clock, while Starlight runs (launcher_tray.Tray; None: none).
+        self.tray: Any = None
+        self._attention_seen: int | None = None  # the last message of the chat window
         self.told_why = False  # the launcher window came back to say why the window failed
         self.settings_from = "running"  # the page Cancel in Settings goes back to
         self.polling = False
@@ -718,6 +747,8 @@ class App:
             self.fatal = str(exc)
             self.settings = launcher.Settings(root=Path.cwd())
         self.settings.assume_yes = True  # (maybe_tesseract: the setup page offered OCR)
+        first = launcher.read_attention(self.settings.root)  # (older than this window: no balloon)
+        self._attention_seen = first[0] if first else None
         self.ui = GuiUi(self.events, self.settings.root / "logs" / "launcher.log")
         self.root.report_callback_exception = self._callback_failed
         self._init_window()
@@ -767,7 +798,7 @@ class App:
         x = max((root.winfo_screenwidth() - width) // 2, 0)
         y = max((root.winfo_screenheight() - height) // 3, 0)
         root.geometry(f"{width}x{height}+{x}+{y}")
-        root.protocol("WM_DELETE_WINDOW", self.quit_app)
+        root.protocol("WM_DELETE_WINDOW", self.on_close_window)
 
     def _build_scroller(self) -> None:
         """The pages sit in a canvas with a scrollbar that shows only when a page is taller
@@ -1013,6 +1044,8 @@ class App:
         if changed:
             self.scroller.yview_moveto(0)
             self.root.after_idle(self._fit_body)
+        if self.tray is not None and name != "running" and self.root.state() == "withdrawn":
+            self._show_launcher()  # (hidden in the tray, but this page needs you)
 
     def _new_page(self, name: str) -> ttk.Frame:
         frame = ttk.Frame(self.body)
@@ -1207,6 +1240,7 @@ class App:
                 self.think_check = check  # only for the models that think first
         self.autostart_var = tk.BooleanVar(value=False)
         self.app_var = tk.BooleanVar(value=bool(self.settings.app_window))
+        self.tray_var = tk.BooleanVar(value=bool(self.settings.tray))
         next_row = len(rows) + 1
         if sys.platform == "win32":
             self.autostart_var.set(self.L.autostart_enabled())
@@ -1218,6 +1252,11 @@ class App:
             CheckRow(
                 self, options, "Open the chat in Starlight's own window, not in the browser",
                 self.app_var, self._refresh_summary,
+            ).grid(row=next_row, column=0, sticky="w")  # fmt: skip
+            next_row += 1
+            CheckRow(
+                self, options, "Keep Starlight next to the clock when its window is closed",
+                self.tray_var, self._refresh_summary,
             ).grid(row=next_row, column=0, sticky="w")  # fmt: skip
             next_row += 1
         # Two choices that are more than on or off: how the model words its answers, and how
@@ -1931,6 +1970,7 @@ class App:
             choices["tesseract"] = settings.tesseract
         if sys.platform == "win32":
             settings.app_window = choices["app_window"] = self.app_var.get()
+            settings.tray = choices["tray"] = self.tray_var.get()
         with contextlib.suppress(OSError):
             L.save_choices(settings.root, choices, drop)
         if self.in_settings:
@@ -2138,6 +2178,7 @@ class App:
 
     def on_running(self) -> None:
         self.show("running")
+        self._sync_tray()
         self.polling = True
         if self._poll_job is not None:  # after a restart, the earlier timer is still running
             self.root.after_cancel(self._poll_job)
@@ -2160,6 +2201,106 @@ class App:
         self._poll_busy = False
         if status is not None:
             self.events.put(("status", status))
+        # The chat window asks for your attention through a file (starlight/app_window.py).
+        with contextlib.suppress(Exception):
+            message = self.L.read_attention(self.settings.root, self._attention_seen)
+            if message is not None:
+                self._attention_seen = message[0]
+                self.events.put(("attention", message[1]))
+
+    # -- the tray icon --------------------------------------------------------------------------
+
+    def _sync_tray(self) -> None:
+        """The icon is there while Starlight runs and the setting is on; if it cannot be made
+        (not Windows, no icon allowed), everything is as it was without it."""
+        if self.tray is not None and not self.settings.tray:
+            self._stop_tray()
+        elif self.tray is None and self.settings.tray:
+            self._start_tray()
+
+    def _start_tray(self) -> None:
+        backend = launcher_tray.default_backend(self.settings.root)
+        if backend is None:
+            return
+        tray = launcher_tray.Tray(
+            backend, lambda action: self.events.put(("tray", action)), translate=tr
+        )
+        # (the Tk thread builds the first state; the icon's thread only ever reads it)
+        if tray.start(self._tray_state()):
+            self.tray = tray
+
+    def _tray_state(self) -> Any:
+        status = getattr(self, "last_status", None)
+        window = self.chat_window
+        return launcher_tray.TrayState(
+            chat=bool(status is not None and status.chat),
+            model=status.model if status is not None else "loading",
+            kill=status.kill if status is not None else None,
+            model_name=self.L.model_label(self.settings),
+            window_hidden=self.root.state() == "withdrawn",
+            own_window=window is not None and window.wanted and not window.reason,
+        )
+
+    def _push_tray_state(self) -> None:
+        if self.tray is not None:
+            self.tray.update(self._tray_state())
+
+    def _stop_tray(self) -> None:
+        tray, self.tray = self.tray, None
+        if tray is not None:
+            with contextlib.suppress(Exception):
+                tray.stop()
+            with contextlib.suppress(tk.TclError):
+                if self.root.state() == "withdrawn":
+                    self.root.deiconify()  # (hidden with no icon to bring it back: lost)
+
+    def _show_launcher(self) -> None:
+        """This window, in front (it may be hidden in the tray, or in the taskbar)."""
+        self.root.deiconify()
+        self.root.lift()
+        with contextlib.suppress(tk.TclError):
+            self.root.focus_force()
+        self._push_tray_state()
+
+    def on_close_window(self) -> None:
+        """The window's X. While Starlight runs with the tray icon, it only hides the window;
+        anywhere else it stops Starlight, as it always did."""
+        if self.tray is not None and self.page == "running" and not self.closing:
+            self.hide_to_tray()
+        else:
+            self.quit_app()
+
+    def hide_to_tray(self) -> None:
+        self.root.withdraw()
+        self._push_tray_state()
+        if not self.settings.tray_hint_shown:  # the first time: where did it go?
+            self.settings.tray_hint_shown = True
+            with contextlib.suppress(OSError):
+                self.L.save_choices(self.settings.root, {"tray_hint_shown": True})
+            self.tray.balloon(
+                tr("Starlight is still running here. Right-click the icon to open or quit.")
+            )
+
+    def on_tray(self, action: str) -> None:
+        """A choice from the icon (its thread put it on the queue)."""
+        if action == "open":
+            if self.page == "running" and self._tray_state().chat:
+                self.open_chat()
+            else:  # (not up yet, or a problem): this window has the news
+                self._show_launcher()
+        elif action == "show":
+            self._show_launcher()
+        elif action == "kill":
+            self.toggle_kill()  # the same as the button
+        elif action == "quit":
+            self._show_launcher()  # (the question needs a window to show in)
+            self.quit_app()
+
+    def on_attention(self, text: str) -> None:
+        """The chat window has something for you and is in the background. ``text`` came from
+        a web page: it is shown as plain text and nothing more."""
+        if self.tray is not None:
+            self.tray.balloon(text or tr("Your answer is ready."))
 
     # -- running page ---------------------------------------------------------------------------
 
@@ -2367,7 +2508,21 @@ class App:
         else:
             title = tr("Starlight is running")
             window = self.chat_window
-            if window is not None and window.wanted and not window.reason:
+            if self.tray is not None:
+                where = (
+                    tr("The chat is in its own window (Open chat brings it back).")
+                    if window is not None and window.wanted and not window.reason
+                    else trf("Your chat is at {url}.", url=chat_url)
+                )
+                sub = (
+                    where
+                    + " "
+                    + tr(
+                        "Closing this window leaves Starlight running next to the clock; "
+                        "Quit Starlight stops it."
+                    )
+                )
+            elif window is not None and window.wanted and not window.reason:
                 sub = tr(
                     "The chat is in its own window (Open chat brings it back). Close this "
                     "window to stop Starlight."
@@ -2392,14 +2547,18 @@ class App:
             self.opened_browser = True
             self.open_chat(self.settings.first_page)  # (--open: that page)
         self._follow_chat_window()
+        self._push_tray_state()
 
     def _follow_chat_window(self) -> None:
         """The chat's own window was closed: Starlight still runs, and this window comes
-        back to say so (with Open chat and Stop everything)."""
+        back to say so (with Open chat and Stop everything). With the tray icon, Starlight
+        stays next to the clock instead; this window only comes back to say why the chat
+        window failed."""
         open_now = self.chat_window is not None and self.chat_window.running()
         failed = self.chat_window is not None and bool(self.chat_window.reason)
         closed = self.window_was_open and not open_now
-        if (closed or (failed and not self.told_why)) and not self.closing:
+        tray = getattr(self, "tray", None)
+        if ((closed and tray is None) or (failed and not self.told_why)) and not self.closing:
             self.root.deiconify()  # (or it could not open: this window says why)
         self.told_why = self.told_why or failed
         self.window_was_open = open_now
@@ -2410,7 +2569,8 @@ class App:
             webbrowser.open(url)
             return
         self.chat_window.open(url)
-        if self.chat_window.wanted and not self.chat_window.reason:
+        hidden = getattr(self, "tray", None) is not None and self.root.state() == "withdrawn"
+        if self.chat_window.wanted and not self.chat_window.reason and not hidden:
             self.root.iconify()  # the chat is the window now; this one waits in the taskbar
 
     def open_stats(self) -> None:
@@ -2665,6 +2825,7 @@ class App:
 
     def on_error(self, message: str, details: str = "") -> None:
         self.polling = False
+        self._stop_tray()  # (Starlight is not running: no icon to open or quit it)
         self.err_message.configure(text=message)
         # The message shows above; the box holds the details and the last lines of the log
         # (what GuiUi wrote), and "Copy details" copies all three.
@@ -2730,6 +2891,7 @@ class App:
             return
         self.closing = True
         self.polling = False
+        self._stop_tray()  # (the icon goes first: no ghost icon left next to the clock)
         self.p_title.configure(text="Stopping ...")
         self.p_sub.configure(text="")
         self.show("progress")
@@ -2741,6 +2903,7 @@ class App:
 
     def on_exit(self) -> None:
         self.exited = True
+        self._stop_tray()
         self.root.destroy()
 
     # -- the loop -------------------------------------------------------------------------------

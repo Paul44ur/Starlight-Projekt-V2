@@ -34,12 +34,14 @@ jobs:
           python-version: "3.12"
       - name: Build Starlight.exe
         # --icon needs a full path: PyInstaller reads it relative to --specpath.
-        # --hidden-import launcher_gui: imported inside run_window, so PyInstaller can't see it.
+        # --hidden-import launcher_gui (and launcher_tray, which it imports): imported inside
+        # run_window, so PyInstaller can't see them.
         run: >
           uvx --python 3.12 pyinstaller --onefile --console --clean --noconfirm
           --name Starlight --distpath dist --workpath build/pyinstaller
           --specpath build/pyinstaller --icon "$PWD/launcher/starlight.ico"
-          --paths launcher --hidden-import launcher_gui launcher/starlight_launcher.py
+          --paths launcher --hidden-import launcher_gui --hidden-import launcher_tray
+          launcher/starlight_launcher.py
       - name: Starlight.exe starts
         run: dist\Starlight.exe --version
       - name: The setup window can be built (tkinter is inside the exe)
