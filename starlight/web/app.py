@@ -1603,6 +1603,11 @@ async def _run_ask(
             text, keep_history=True, on_token=on_token, images=images or None, conversation=name
         )
         kept = not (result.stopped or result.failed)
+        if kept:  # the meter comes back when the conversation is opened again
+            tokens = answer_stats(result.usage).get("context_tokens")
+            if tokens:
+                with contextlib.suppress(KeyError):  # (deleted while it was answering)
+                    kernel.conversations.set_context(name, tokens)
         queue.put_nowait(None)
         await pumper
         await send(answer(result))

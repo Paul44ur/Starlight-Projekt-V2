@@ -154,6 +154,13 @@ class ConversationStore:
             data["title"] = " ".join(first.split())[:60]
         self._write(conversation, data)
 
+    def set_context(self, conversation: str, tokens: int) -> None:
+        """How full the model's context was after the last answer (the chat's meter), kept
+        with the conversation. A later answer replaces it; a branch starts without one."""
+        data = self._read(conversation)
+        data["context_tokens"] = int(tokens)
+        self._write(conversation, data)
+
     def rename(self, conversation: str, title: str) -> None:
         data = self._read(conversation)
         data["title"] = " ".join(title.split())[:80]
@@ -213,6 +220,7 @@ class ConversationStore:
             "pinned": bool(data.get("pinned")),
             "archived": bool(data.get("archived")),
             "folder": data.get("folder") or "",
+            "context_tokens": _tokens(data.get("context_tokens")),
             "messages": _shown(data.get("messages", [])),
         }
 
@@ -289,6 +297,11 @@ class ConversationStore:
             found.append(dict(summary))
         self._summaries = known
         return _ordered(found, archived, limit)
+
+
+def _tokens(value: object) -> int | None:
+    """The stored context size, or None when there is none (or the file holds nonsense)."""
+    return value if isinstance(value, int) and not isinstance(value, bool) and value > 0 else None
 
 
 def _shown(messages: list[dict[str, Any]]) -> list[dict[str, Any]]:

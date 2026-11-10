@@ -222,6 +222,9 @@ conversations; the bar shows the open one's name (`showTitle`, its menu is the l
 `conversationMenu`); on a wide screen the menu button hides the sidebar (`body.no-sidebar`,
 kept in localStorage). The context meter comes from `answer_stats`: `context_tokens` is what
 the model read plus wrote in the answer's last step, out of `/api/status`'s `context_window`.
+`_run_ask` keeps that number with the conversation (`ConversationStore.set_context`, in memory only
+for a private one), `get()` returns it and the page shows it when the conversation is opened.
+A branch and an old conversation have none until their next answer.
 
 **The launcher window's error page.** `error_hints()` (starlight_launcher.py) matches the
 words of a problem's message and details against `ERROR_HINTS` (video memory, disk space,

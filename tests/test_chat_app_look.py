@@ -37,8 +37,12 @@ APP = (
     " send() {} close() {} }; window.WebSocket.OPEN = 1;\n"
     f"const LIST = {json.dumps(LIST)}, STATUS = {json.dumps(STATUS)};\n"
     "window.fetch = async (url) => { const u = String(url);"
-    " const body = u.includes('/api/conversations/') ? {private: false, messages: []}"
+    " const stored = (window.storedFor || ['c2']).some("
+    "id => u.endsWith('/api/conversations/' + id)) ? {context_tokens: 9000} : {};"
+    " const body = u.includes('/api/conversations/') ? {private: false, messages: [], ...stored}"
     " : u.includes('/api/conversations') ? LIST : STATUS;"
+    " if (u.includes('/api/status') && window.statusDelay) await new Promise("
+    "r => setTimeout(r, window.statusDelay));"
     " const type = {'content-type': 'application/json'};"
     " return new Response(JSON.stringify(body), {headers: type}); };"
 )
@@ -54,6 +58,30 @@ def test_an_answer_says_how_full_the_context_is(tmp_path: Path) -> None:
     with client(home(tmp_path / "h", remote=False)) as c:
         status = c.get("/api/status", headers=LOCAL).json()
     assert status["model_name"] == "echo" and status["context_window"] == 32768
+
+
+def test_the_web_chat_stores_the_context_number_with_the_conversation(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from starlight.core.model import EchoProvider
+
+    real = EchoProvider.chat
+
+    async def reporting(self: Any, messages: Any, tools: Any) -> Any:
+        response = await real(self, messages, tools)  # (the echo model reports no usage)
+        response.usage = {"prompt_tokens": 800, "completion_tokens": 200}
+        return response
+
+    monkeypatch.setattr(EchoProvider, "chat", reporting)
+    with client(home(tmp_path / "h", remote=False)) as c:
+        made = c.post("/api/conversations", headers=LOCAL).json()["id"]
+        assert c.get(f"/api/conversations/{made}", headers=LOCAL).json()["context_tokens"] is None
+        with c.websocket_connect("/ws", headers=LOCAL) as ws:
+            ws.send_json({"type": "ask", "text": "Hello", "conversation": made})
+            while (said := ws.receive_json())["type"] != "answer":
+                pass
+        assert said["stats"]["context_tokens"] == 1000
+        assert c.get(f"/api/conversations/{made}", headers=LOCAL).json()["context_tokens"] == 1000
 
 
 async def open_app(playwright: Any, site: str, extra: str = "", **context: Any) -> tuple[Any, Any]:
@@ -111,6 +139,23 @@ async def test_the_sidebar_holds_the_actions_the_pages_and_the_conversations(
             await browser.close()
 
 
+async def test_the_stored_number_shows_although_the_status_comes_late(
+    static_site: str,  # noqa: F811
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    async_api = pytest.importorskip("playwright.async_api")
+    monkeypatch.setenv("NO_PROXY", "127.0.0.1")
+    # the first conversation opens on page load, before /api/status answered
+    late = "window.statusDelay = 600; window.storedFor = ['c1'];\n"  # (c1 is the one opened)
+    async with async_api.async_playwright() as playwright:
+        browser, page = await open_app(playwright, static_site, late)
+        try:
+            await page.wait_for_function("() => contextWindow === 32768")
+            assert await page.locator("#meta-context").inner_text() == "Context 27%"
+        finally:
+            await browser.close()
+
+
 async def test_the_context_meter(
     static_site: str,  # noqa: F811
     monkeypatch: pytest.MonkeyPatch,
@@ -141,9 +186,13 @@ async def test_the_context_meter(
             await page.evaluate(SEND, answer)
             assert await bar.get_attribute("class") == "context-bar full"
             assert (await page.evaluate(text))[2].startswith("Nearly full")
-            await page.locator(".conv", has_text="Recipe for Sunday").click()  # another one
-            await page.wait_for_function("() => window.sockets.length > 0")
-            assert (await page.evaluate(text))[0] == NONE  # known after its next answer
+            await page.locator(".conv", has_text="Server check").click()  # none stored
+            await page.wait_for_function("() => conversation === 'c3'")
+            assert await page.evaluate(text) == [NONE, "", "Shows after the next answer.", ""]
+            await page.locator(".conv", has_text="Recipe for Sunday").click()  # 9000 stored
+            await page.wait_for_function("() => conversation === 'c2'")
+            assert (await page.evaluate(text))[:2] == ["27% used", "9k of 32.8k"]
+            assert (await page.evaluate(text))[3] == "Context 27%"
         finally:
             await browser.close()
         browser, page = await open_app(

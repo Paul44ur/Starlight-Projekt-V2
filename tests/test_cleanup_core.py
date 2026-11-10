@@ -386,6 +386,37 @@ async def test_a_state_pass_reads_the_state_file_once(
         assert kernel.modules.records["one"].status is ModuleStatus.LOADED
 
 
+# -- the context meter's number ---------------------------------------------------------------
+
+
+def test_a_conversation_keeps_how_full_its_context_was(tmp_path: Path) -> None:
+    store = ConversationStore(tmp_path / "conversations")
+    chat = store.create("Chat")
+    assert store.get(chat)["context_tokens"] is None  # (no answer yet)
+    store.save(chat, [Message("user", "hi"), Message("assistant", "hello")])
+    store.set_context(chat, 21400)
+    store.save(chat, [Message("user", "hi"), Message("assistant", "hello")])  # (a later save)
+    assert store.get(chat)["context_tokens"] == 21400
+    assert ConversationStore(tmp_path / "conversations").get(chat)["context_tokens"] == 21400
+    store.set_context(chat, 900)  # a regenerated answer replaces it
+    assert store.get(chat)["context_tokens"] == 900
+    assert store.get(store.branch(chat, 1))["context_tokens"] is None  # (unknown until it answers)
+    old = tmp_path / "conversations" / "a1d0a1d0a1d0.json"  # from before: no such key
+    old.write_text('{"id": "a1d0a1d0a1d0", "messages": []}', encoding="utf-8")
+    assert store.get("a1d0a1d0a1d0")["context_tokens"] is None
+
+
+def test_a_private_conversation_keeps_its_context_number_in_memory_only(tmp_path: Path) -> None:
+    folder = tmp_path / "conversations"
+    store = ConversationStore(folder)
+    secret = store.create(private=True)
+    store.save(secret, [Message("user", "hi"), Message("assistant", "hello")])
+    store.set_context(secret, 5000)
+    assert store.get(secret)["context_tokens"] == 5000
+    assert store.get(store.branch(secret, 1))["context_tokens"] is None
+    assert not list(folder.glob("*.json")) if folder.exists() else True  # (never on disk)
+
+
 # -- conversation list ----------------------------------------------------------------------
 
 
