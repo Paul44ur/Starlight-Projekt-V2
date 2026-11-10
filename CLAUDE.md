@@ -12,12 +12,17 @@ one block per session and commit, in the order of the Status table; mark a block
 (with its commit) when it is pushed.
 
 ## How we work
-- Branch `Starlight-V2-LM-Studio`; commit and push when a piece of work is done; no pull
-  request unless asked. GitHub Actions minutes are used up: don't trigger CI runs.
+- Branch `Starlight_Fable` (started 2026-11-10 from `main`; `main` and
+  `Starlight-V2-LM-Studio` stay as they are until the user says to merge); commit and push
+  when a piece of work is done; no pull request unless asked. GitHub Actions minutes are used
+  up: don't trigger CI runs.
+- A fresh container: `uv python install 3.12 && uv sync --extra all --locked --python 3.12
+  --python-preference only-managed` (the system's Python has no tkinter, and the launcher
+  window's tests are skipped without it).
 - Checks before pushing: `uv run ruff check .`, `uv run ruff format --check .`, `uv run mypy`
   and `uv run mypy modules` (each also with `--platform win32`), `uv run mypy --strict
   launcher/starlight_launcher.py launcher/launcher_gui.py` (both platforms), then the full suite:
-  `STARLIGHT_CHROMIUM=/opt/pw-browsers/chromium-1194/chrome-linux/chrome timeout 1500 xvfb-run -a
+  `STARLIGHT_CHROMIUM=/opt/pw-browsers/chromium timeout 1500 xvfb-run -a
   -s "-screen 0 1366x768x24" uv run pytest -p no:cacheprovider -q`.
 - Every behaviour change gets a test; run new tests against the previous commit (a git
   worktree) to show they fail on the old behaviour.
