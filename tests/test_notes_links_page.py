@@ -9,6 +9,7 @@ from typing import Any
 
 import pytest
 
+from tests.test_chat_page import answer
 from tests.test_chat_page import static_site as static_site  # (the fixture)
 from tests.test_notes_page import app as app  # (the fixtures)
 from tests.test_notes_page import notebook as notebook
@@ -86,13 +87,6 @@ async def test_link_suggestions_and_a_rename_that_asks_about_links(
 ) -> None:
     monkeypatch.setenv("NO_PROXY", "127.0.0.1")
     async with notes_page(static_site, app) as page:
-        questions: list[str] = []
-
-        async def answer(dialog: Any) -> None:
-            questions.append(dialog.message)
-            await dialog.accept()
-
-        page.on("dialog", answer)
         await opened(page, f"{static_site}/notes.html?path=Notes%2FPlan.md")
         await page.locator("#edit-toggle").click()
         await page.wait_for_selector(".cm-content")
@@ -119,8 +113,14 @@ async def test_link_suggestions_and_a_rename_that_asks_about_links(
         await page.wait_for_selector(".title-input")
         await page.locator(".title-input").fill("Groceries")
         await page.keyboard.press("Enter")
+        box = page.locator("dialog.ask")
+        await box.wait_for()
+        assert await box.locator("button").all_inner_texts() == [
+            "Leave the links",
+            "Change the links",
+        ]
+        assert "Also change the links to this note in other notes?" in await answer(page)
         await page.wait_for_function("() => location.search.includes('Groceries')")
-        assert questions and "Also change the links to this note in other notes?" in questions[-1]
         assert "[[Groceries#Food]]" in (more / "Notes" / "Plan.md").read_text("utf-8")
         assert "![[Groceries#Food]]" in (more / "Notes" / "Week.md").read_text("utf-8")
         assert page.errors == []  # type: ignore[attr-defined]

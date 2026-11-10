@@ -18,6 +18,7 @@ from starlight.core.modules import discover, import_module_class
 from starlight.core.permissions import Permission
 from tests import test_chat_page
 from tests.conftest import REPO
+from tests.test_chat_page import answer
 from tests.test_mail import User
 from tests.test_remote import LOCAL, PHONE, client, home, pair, phone
 
@@ -423,7 +424,6 @@ async def test_the_settings_card_sets_levels_and_single_protections(
         try:
             page = await browser.new_page()
             await page.route("**/api/**", server)
-            page.on("dialog", lambda dialog: dialog.accept())  # the "Switch this off?" question
             await page.goto(f"{static_site}/settings.html")
             await page.wait_for_selector("#safety h3")
             assert await page.locator("#safety h3").count() == 3
@@ -433,6 +433,10 @@ async def test_the_settings_card_sets_levels_and_single_protections(
 
             own_folder = page.get_by_label("Keep Starlight's own folder off-limits")
             await own_folder.evaluate("box => box.click()")  # (the box itself is drawn hidden)
+            assert await answer(page, yes=False) == "Switch this off?"  # no: it stays on
+            assert await own_folder.is_checked() and posted == []
+            await own_folder.evaluate("box => box.click()")
+            await answer(page)
             await page.wait_for_function("() => document.querySelector('.toast')")
             assert posted[-1] == {"key": "own_folder", "value": False}
             steps = page.get_by_label("Steps per request")

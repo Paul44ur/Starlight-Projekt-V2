@@ -12,7 +12,7 @@ async function showBoards() {
   const make = column.appendChild(el("button", "ok", "＋ New board"));
   make.type = "button";
   make.onclick = async () => {
-    const title = window.prompt(t("What should the board be called?"), t("Board"));
+    const title = ((await askText(t("What should the board be called?"), t("Board"), { yes: "Create" })) || "").trim();
     if (!title) return;
     try {
       const made = await api("/api/board", { method: "POST", body: { title } });

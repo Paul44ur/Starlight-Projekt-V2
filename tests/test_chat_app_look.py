@@ -12,7 +12,7 @@ from typing import Any
 import pytest
 
 from starlight.web.app import answer_stats
-from tests.test_chat_page import SEND, static_site  # noqa: F401  (a fixture)
+from tests.test_chat_page import SEND, answer, static_site  # noqa: F401  (a fixture)
 from tests.test_feedback_look import browser_page
 from tests.test_remote import LOCAL, client, home
 
@@ -222,9 +222,9 @@ async def test_the_name_in_the_bar_stays_and_names_are_never_translated(
             assert await title.is_visible() and await slash.is_visible()
             assert await title.inner_text() == "Plan the week"
             # renamed from the bar while the list leaves it out; a name is never translated
-            page.once("dialog", lambda dialog: dialog.accept("Memory"))
             await title.click()
             await page.locator(".popmenu button").first.click()
+            await answer(page, text="Memory")
             await page.wait_for_function(
                 "() => document.getElementById('title-text').textContent === 'Memory'"
             )

@@ -9,6 +9,7 @@ from typing import Any
 
 import pytest
 
+from tests.test_chat_page import YES
 from tests.test_chat_page import static_site as static_site  # (the fixture)
 from tests.test_notes_page import app as app  # (the fixtures)
 from tests.test_notes_page import notebook as notebook
@@ -184,7 +185,7 @@ async def test_new_rename_delete_and_bring_back(
 ) -> None:
     monkeypatch.setenv("NO_PROXY", "127.0.0.1")
     async with notes_page(static_site, app) as page:
-        page.on("dialog", lambda dialog: dialog.accept())  # "Move this note to the trash?"
+        await page.add_init_script(YES)  # "Move this note to the trash?": yes
         await opened(page, f"{static_site}/notes.html?path=Notes%2FPlan.md")
         await page.wait_for_selector("#edit-toggle")
         await page.locator("#new-note").click()  # (since C4 a menu: empty, or a template)

@@ -314,14 +314,14 @@ function toolRow(t) {
 
 async function setRule(pattern, setting) {
   // Only letting something run without asking is asked about: that is the risky way round.
-  if (setting === "safe" && !confirm(`Let ${pattern} run without asking you first?`)) return;
+  if (setting === "safe" && !(await askYesNo(`Let ${pattern} run without asking you first?`, { yes: "Allow", danger: true }))) return;
   try { await api("/api/permissions", { method: "POST", body: { pattern, setting } }); toast("Saved"); await load(); }
   catch (e) { toast(e.message); }
 }
 
 async function toggleModule(name, on, box) {
   const m = modules.find(x => x.name === name);
-  if (on && m && m.outside && !confirm(m.outside + "\n\nTurn it on?")) { box.checked = false; return; }
+  if (on && m && m.outside && !(await askYesNo("Turn it on?\n\n" + m.outside, { yes: "Turn on" }))) { box.checked = false; return; }
   box.disabled = true;
   try {
     const r = await api("/api/modules/" + name, { method: "POST", body: { enabled: on } });
@@ -349,7 +349,7 @@ async function loadDevices() {
     row.append(el("td", "", d.name), el("td", "small", d.paired), el("td", "small", d.last_seen || "never"));
     const act = el("td"); const b = el("button", "danger-outline", "Remove");
     b.onclick = async () => {
-      if (!confirm("Remove " + d.name + "? It can no longer use Starlight.")) return;
+      if (!(await askYesNo("Remove " + d.name + "?\n\nIt can no longer use Starlight.", { yes: "Remove", danger: true }))) return;
       try { await api("/api/devices/" + d.id, { method: "DELETE" }); } catch (e) { toast(e.message); }
       loadDevices();
     };
@@ -435,8 +435,8 @@ function safetyRow(sw, words) {
     const label = el("label", "switch");
     const box = el("input"); box.type = "checkbox"; box.checked = !!sw.value;
     box.setAttribute("aria-label", words.title);
-    box.onchange = () => {
-      if (!box.checked && words.warning && !confirm(tr("Switch this off?") + "\n\n" + words.title + "\n" + words.warning)) {
+    box.onchange = async () => {
+      if (!box.checked && words.warning && !(await askYesNo("Switch this off?\n\n" + words.title + "\n" + words.warning, { yes: "Switch off", danger: true }))) {
         box.checked = true; return;
       }
       setSafety({ key: sw.key, value: box.checked });
@@ -461,8 +461,8 @@ function safetyRow(sw, words) {
       ? Object.entries(sw.value || {}).map(([p, l]) => `${p}: ${l}`).join("\n")
       : (sw.value || []).join("\n");
     const save = el("button", "", "Save"); save.type = "button";
-    save.onclick = () => {
-      if (sw.key === "origins" && area.value.trim() && !confirm(tr("Let these pages use Starlight as you?") + "\n\n" + area.value.trim())) return;
+    save.onclick = async () => {
+      if (sw.key === "origins" && area.value.trim() && !(await askYesNo("Let these pages use Starlight as you?\n\n" + area.value.trim(), { yes: "Allow", danger: true }))) return;
       setSafety({ key: sw.key, value: area.value });
     };
     control.append(area, save);
@@ -488,7 +488,7 @@ async function chooseLevel(level) {
   if (level === s.level && !s.changed) return;
   let question = tr(LEVEL_HELP[level]);
   if (s.changed) question += "\n\n" + tr("The protections you set differently go back to this level.");
-  if ((level === "relaxed" || s.changed) && !confirm(question + "\n\n" + tr("Choose this level?"))) return;
+  if ((level === "relaxed" || s.changed) && !(await askYesNo("Choose this level?\n\n" + question, { yes: "Choose", danger: level === "relaxed" }))) return;
   await setSafety({ level });
 }
 

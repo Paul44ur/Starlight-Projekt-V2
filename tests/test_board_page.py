@@ -11,6 +11,7 @@ from typing import Any
 
 import pytest
 
+from tests.test_chat_page import answer
 from tests.test_chat_page import static_site as static_site  # (the fixture)
 from tests.test_notes_page import app as app  # (the fixtures)
 from tests.test_notes_page import notebook as notebook
@@ -178,8 +179,13 @@ async def test_the_boards_view_lists_and_makes_boards(
         assert await make.text_content() == (
             "\uff0b Neues Board" if locale == "de-DE" else "\uff0b New board"
         )
-        page.once("dialog", lambda dialog: dialog.accept("Holiday"))
         await make.click()
+        asked = await answer(page, text="Holiday")
+        assert asked == (
+            "Wie soll das Board heißen?"
+            if locale == "de-DE"
+            else "What should the board be called?"
+        )
         await page.wait_for_selector(".board-stage")
         assert (notebook / "Boards" / "Holiday.canvas").is_file()
         assert await page.locator("h1.title").text_content() == "Holiday"

@@ -261,6 +261,17 @@ words), tables until their last row; the result is the same however the text is 
 aside for questions and notices, and names the running tool from the dispatcher's report),
 and a status line and prompt with the modes. Pipes keep the plain output.
 
+**Questions.** A page never uses the browser's own boxes (`confirm`, `prompt`, `alert`):
+they look different on every system and name the address ("127.0.0.1:8700 says"). It asks
+with `askYesNo(text, {yes, no, danger})` and `askText(label, value, {yes})` from `common.js`,
+which show a small window in the page's look and resolve to the answer (`true`/`false`, or
+the text and `null` when cancelled). A text with a blank line in it shows as the question
+and its details. Esc and a click beside the window cancel. A dangerous answer (`danger`) is
+red, and Enter does not take it: the keyboard starts on Cancel. Keys pressed in a question
+stay in it, so the chat's Esc (stop the answer) is not set off. `tests/test_questions.py`
+checks that no page calls the browser's boxes; page tests answer a question with `answer`
+or answer all of them with `YES` (both in `tests/test_chat_page.py`).
+
 **Icons.** Buttons without words show line icons from `ICONS` in `common.js` (24 px SVG
 paths in the text colour): markup says `data-icon="mic"` and `drawIcons()` fills it in;
 code calls `setIcon(button, name)`, which marks an icon `.alone` (drawn a little larger)

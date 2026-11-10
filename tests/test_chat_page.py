@@ -48,6 +48,26 @@ def static_site() -> Iterator[str]:
     server.server_close()
 
 
+# For a page test that is not about the questions: every question is answered with yes.
+YES = (
+    "new MutationObserver(() => { const yes = document.querySelector("
+    "'dialog.ask[open] button[type=submit]'); if (yes) yes.click(); })"
+    ".observe(document, {childList: true, subtree: true});"
+)
+
+
+async def answer(page: Any, yes: bool = True, text: str | None = None) -> str:
+    """Answers the question the page shows (typing ``text`` first); returns what it asked."""
+    box = page.locator("dialog.ask")
+    await box.wait_for()
+    asked = str(await box.locator(".ask-q").inner_text())
+    if text is not None:
+        await box.locator("input").fill(text)
+    await box.locator("button[type=submit]" if yes else "button[type=button]").click()
+    await box.wait_for(state="detached")
+    return asked
+
+
 ANSWER = """## Your week
 
 Here is **what I found** for *you*, with `code` and a [link](https://example.org/a).
@@ -308,7 +328,8 @@ async def test_the_phone_header_is_one_row(
             await browser.close()
 
 
-SETTINGS_API = """
+SETTINGS_API = (
+    """
 window.posted = [];
 const TOOLS = [
   {name: "desktop.click", description: "Click at a screen position.", tag: "safe", now: "safe"},
@@ -333,8 +354,9 @@ window.fetch = async (url, init) => {
   if (url === "/api/devices") return json({remote: {enabled: false, hosts: []}, devices: []});
   return json({local: true});
 };
-window.confirm = () => true;
 """
+    + YES
+)  # (a question, e.g. "Let ... run without asking you first?": yes)
 
 
 async def test_settings_groups_tools_under_their_modules_and_fits_a_phone(

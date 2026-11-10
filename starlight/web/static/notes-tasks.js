@@ -156,7 +156,7 @@ async function copyLink(path) {
     await navigator.clipboard.writeText(link);
     toast(t("Link copied:") + " " + link);
   } catch (e) {
-    window.prompt(t("The link to this note:"), link);
+    askText(t("The link to this note:"), link, { yes: "Close", only: true, readonly: true });
   }
 }
 

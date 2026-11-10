@@ -18,6 +18,21 @@
     "Chat": "Chat", "Memory": "Gedächtnis", "Activity": "Aktivität", "Automations": "Automationen",
     "Settings": "Einstellungen", "Theme": "Farben",
     "Skip to the message box": "Zum Eingabefeld springen",
+    // Starlight's own questions (askYesNo, askText) and the conversation's menu
+    "Cancel": "Abbrechen", "Rename": "Umbenennen", "New name": "Neuer Name", "Leave": "Verlassen",
+    "Forget": "Vergessen", "Allow": "Erlauben", "Turn on": "Einschalten",
+    "Choose": "Wählen", "Leave practice mode?": "Übungsmodus verlassen?",
+    "Actions will run for real again.": "Aktionen werden wieder wirklich ausgeführt.",
+    "Folder (empty: none)": "Ordner (leer: keiner)", "The conversation stays.": "Das Gespräch bleibt.",
+    "Pin to the top": "Oben anheften", "Unpin": "Nicht mehr anheften",
+    "Put in a folder": "In einen Ordner legen", "Archive": "Archivieren",
+    "Take out of the archive": "Aus dem Archiv holen",
+    "Forget what it learned here": "Vergessen, was hier gelernt wurde",
+    "Download as Markdown": "Als Markdown herunterladen",
+    "Download as a web page": "Als Webseite herunterladen",
+    "Print or save as PDF": "Drucken oder als PDF speichern",
+    "Save this automation?": "Diese Automation speichern?", "Forget this?": "Das vergessen?",
+    "Turn it on?": "Einschalten?", "It can no longer use Starlight.": "Es kann Starlight dann nicht mehr nutzen.",
     // the chat
     "Starlight is not answering: the PC may be off or asleep.": "Starlight antwortet nicht: Der PC ist vielleicht aus oder im Ruhezustand.",
     "Wake the PC": "PC aufwecken", "connecting…": "verbinde…", "connected": "verbunden", "offline": "offline",
@@ -275,8 +290,9 @@
     "Not saved:": "Nicht gespeichert:",
     "Not saved yet: your text is still here. Try again in a moment.": "Noch nicht gespeichert: Dein Text ist noch da. Versuch es gleich noch einmal.",
     "Untitled": "Ohne Titel",
-    "Move this note to the trash? You can bring it back from the trash.":
-      "Diese Notiz in den Papierkorb legen? Du kannst sie aus dem Papierkorb zurückholen.",
+    "Move this note to the trash?": "Diese Notiz in den Papierkorb legen?",
+    "You can bring it back from the trash.": "Du kannst sie aus dem Papierkorb zurückholen.",
+    "Change the links": "Links ändern", "Leave the links": "Links lassen", "Create": "Anlegen",
     "Moved to the trash": "In den Papierkorb gelegt",
     "The trash is empty. Deleted notes wait here until you bring them back.":
       "Der Papierkorb ist leer. Gelöschte Notizen warten hier, bis du sie zurückholst.",
@@ -352,6 +368,14 @@
     "Language": "Sprache", "Automatic (like the browser)": "Automatisch (wie der Browser)",
   };
   const PATTERNS = [
+    [/^Delete "(.+)"\?$/, "„$1“ löschen?"],
+    [/^Forget the memories Starlight learned in "(.+)"\?$/, "Die Erinnerungen vergessen, die Starlight in „$1“ gelernt hat?"],
+    [/^Folder: (.+)$/, "Ordner: $1"],
+    [/^Delete the automation '(.+)'\?$/, "Die Automation „$1“ löschen?"],
+    [/^It may run (.+) without asking each time\.$/, "Sie darf $1 ausführen, ohne jedes Mal zu fragen."],
+    [/^Delete the skill (.+)\?$/, "Die Fähigkeit $1 löschen?"],
+    [/^Let (.+) run without asking you first\?$/, "$1 ausführen lassen, ohne dich vorher zu fragen?"],
+    [/^Remove (.+)\?$/, "$1 entfernen?"],
     [/^(\d+) waiting for your OK$/, "$1 warten auf dein OK"],
     [/^(\d+)% used$/, "$1 % belegt"],
     [/^([\d.,]+k?) of ([\d.,]+k?)$/, "$1 von $2"],
@@ -451,6 +475,4 @@
     childList: true, subtree: true, characterData: true, attributes: true, attributeFilter: ATTRIBUTES,
   });
   document.addEventListener("DOMContentLoaded", () => visit(document.body));
-  const ask = window.confirm.bind(window);
-  window.confirm = (question) => ask(window.starlightTranslate(question));
 })();

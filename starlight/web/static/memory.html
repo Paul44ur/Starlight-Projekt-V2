@@ -93,7 +93,7 @@ async function loadMemories() {
       text.replaceWith(area); row.replaceChildren(save);
     };
     const del = el("button", "danger-outline", "Delete");
-    del.onclick = async () => { if (confirm("Forget this?")) { try { await api("/api/memory/" + memoryPath(m.id), { method: "DELETE" }); } catch (e) { toast(e.message); } loadMemories(); } };
+    del.onclick = async () => { if (await askYesNo("Forget this?\n\n" + m.content, { yes: "Forget", danger: true })) { try { await api("/api/memory/" + memoryPath(m.id), { method: "DELETE" }); } catch (e) { toast(e.message); } loadMemories(); } };
     row.append(edit, del); item.appendChild(row); box.appendChild(item);
   });
   if (!shown.length) box.appendChild(el("div", "dim small", view === "people"
@@ -146,7 +146,7 @@ async function loadSkills() {
       row.appendChild(share);
       const del = el("button", "danger-outline", "Delete");
       del.onclick = async () => {
-        if (!confirm("Delete the skill " + s.name + "?")) return;
+        if (!(await askYesNo("Delete the skill " + s.name + "?", { yes: "Delete", danger: true }))) return;
         try { await api("/api/skills/" + encodeURIComponent(s.name), { method: "DELETE" }); } catch (e) { toast(e.message); }
         loadSkills();
       };

@@ -334,7 +334,7 @@ document.getElementById("save").onclick = async () => {
     const checked = await check();
     const extra = checked.may_run_without_asking.length
       ? `\n\nIt may run ${checked.may_run_without_asking.join(", ")} without asking each time.` : "";
-    if (!confirm(`Save this automation?\n\n${checked.does}${extra}`)) return;
+    if (!(await askYesNo(`Save this automation?\n\n${checked.does}${extra}`, { yes: "Save" }))) return;
     const saved = await api("/api/automations", { method: "POST", body: readRule() });
     toast("Saved: " + saved.saved + (saved.next ? " (next " + saved.next + ")" : ""));
     fillForm({ actions: [{}] });
@@ -344,7 +344,7 @@ document.getElementById("save").onclick = async () => {
 document.getElementById("clear").onclick = () => fillForm({ actions: [{}] });
 
 async function act(name, action) {
-  if (action === "remove" && !confirm(`Delete the automation '${name}'?`)) return;
+  if (action === "remove" && !(await askYesNo(`Delete the automation '${name}'?`, { yes: "Delete", danger: true }))) return;
   try {
     const done = await api(`/api/automations/${encodeURIComponent(name)}/${action}`, { method: "POST", body: {} });
     if (action === "run") toast(done.ok ? `'${name}' ran` : `'${name}' did not finish: see Activity`);

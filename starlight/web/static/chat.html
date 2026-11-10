@@ -786,9 +786,10 @@ function ask(text, files) {
 
 // -- / commands: done here in the page, never sent to the model ---------------------------------
 async function currentConversation() { return api("/api/conversations/" + conversation); }
+const leavePractice = () => askYesNo("Leave practice mode?\n\nActions will run for real again.", { yes: "Leave" });
 async function togglePractice() {
   const s = await api("/api/status");
-  if (s.practice && !confirm("Leave practice mode? Actions will run for real again.")) return;
+  if (s.practice && !(await leavePractice())) return;
   try {
     await api("/api/practice", { method: "POST", body: { on: !s.practice } });
     toast(s.practice ? "Practice mode is off" : "Practice mode: actions are described, not done");
@@ -921,7 +922,7 @@ document.addEventListener("keydown", (e) => {
   } else if (editing) { cancelEdit(); input.value = ""; input.oninput(); }
 });
 document.getElementById("practice").onclick = async () => {
-  if (!confirm("Leave practice mode? Actions will run for real again.")) return;
+  if (!(await leavePractice())) return;
   try { await api("/api/practice", { method: "POST", body: { on: false } }); toast("Practice mode is off"); }
   catch (e) { toast("Turn it off at the PC: " + e.message); }
   refresh();
@@ -1205,15 +1206,18 @@ async function changeConversation(id, change) {
 function conversationMenu(c, anchor) {
   const base = "/api/conversations/" + c.id;
   popMenu(anchor, [
-    ["✎", "Rename", async () => { const title = prompt("New name", c.title); if (title) changeConversation(c.id, { title }); }],
+    ["✎", "Rename", async () => {
+      const title = ((await askText("New name", c.title, { yes: "Rename" })) || "").trim();
+      if (title && title !== c.title) changeConversation(c.id, { title });
+    }],
     ["📌", c.pinned ? "Unpin" : "Pin to the top", () => changeConversation(c.id, { pinned: !c.pinned })],
-    ["📁", c.folder ? `Folder: ${c.folder}` : "Put in a folder", () => {
-      const folder = prompt("Folder (empty: none)", c.folder || "");
-      if (folder !== null) changeConversation(c.id, { folder });
+    ["📁", c.folder ? `Folder: ${c.folder}` : "Put in a folder", async () => {
+      const folder = await askText("Folder (empty: none)", c.folder || "", { yes: "Save" });
+      if (folder !== null) changeConversation(c.id, { folder: folder.trim() });
     }],
     ["🗄", c.archived ? "Take out of the archive" : "Archive", () => changeConversation(c.id, { archived: !c.archived })],
     ["🧠", "Forget what it learned here", async () => {
-      if (!confirm("Forget the memories Starlight learned in \"" + c.title + "\"? The conversation stays.")) return;
+      if (!(await askYesNo("Forget the memories Starlight learned in \"" + c.title + "\"?\n\nThe conversation stays.", { yes: "Forget", danger: true }))) return;
       try {
         const r = await api(base + "/forget-learned", { method: "POST" });
         const kept = r.kept_because_also_said_elsewhere.length;
@@ -1224,7 +1228,7 @@ function conversationMenu(c, anchor) {
     ["⤓", "Download as a web page", () => download(base + "/export?format=html")],
     ["🖨", "Print or save as PDF", () => window.open(base + "/export?format=html&show=true", "_blank")],
     ["🗑", "Delete", async () => {
-      if (!confirm("Delete \"" + c.title + "\"?")) return;
+      if (!(await askYesNo("Delete \"" + c.title + "\"?", { yes: "Delete", danger: true }))) return;
       await api(base, { method: "DELETE" });
       if (c.id === conversation) { const d = await api("/api/conversations", { method: "POST" }); await openConversation(d.id); } else loadList();
     }],

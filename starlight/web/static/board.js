@@ -366,15 +366,15 @@ export function openBoard(parent, board, options) {
   };
   button("＋ " + t("Text"), "Add a text card", () => editText(addCard("text", { text: "" })));
   button("＋ " + t("Note"), "Add a note card", async () => {
-    const name = window.prompt(t("Which note? (its name)"));
+    const name = ((await askText(t("Which note? (its name)"), "", { yes: "Add" })) || "").trim();
     if (!name) return;
     try {
       const found = await api("/api/notes/resolve?" + new URLSearchParams({ name }));
       addCard("file", { file: found.path, height: 220 });
     } catch (e) { toast(t("There is no note called") + " " + name); }
   });
-  button("＋ " + t("Web link"), "Add a web link", () => {
-    const url = (window.prompt(t("The web address (https://…)")) || "").trim();
+  button("＋ " + t("Web link"), "Add a web link", async () => {
+    const url = ((await askText(t("The web address (https://…)"), "", { yes: "Add", placeholder: "https://" })) || "").trim();
     if (!url) return;
     if (!/^https?:\/\/\S+$/i.test(url)) { toast(t("A link card needs a web address that starts with https://")); return; }
     addCard("link", { url, height: 100 });

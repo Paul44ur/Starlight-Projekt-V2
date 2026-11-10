@@ -135,6 +135,64 @@ function toast(text) {
   }, ms);
 }
 
+// -- Starlight's own questions -------------------------------------------------------------------
+// A small window in the page's look, instead of the browser's grey boxes ("127.0.0.1:8700
+// says ..."). One at a time; Esc or a click beside it cancels.
+//   await askYesNo("Delete this?", { yes: "Delete", danger: true })   -> true or false
+//   await askText("New name", "Plan the week", { yes: "Rename" })     -> the text, or null
+// A text with blank lines in it shows as the question and, under it, its details. A dangerous
+// answer (danger: true) is red, and Enter does not take it: the keyboard starts on Cancel.
+let questionOpen = null;
+function questionBox(text, options, value) {
+  if (questionOpen) questionOpen.close("");
+  const box = questionOpen = el("dialog", "ask");
+  const form = el("form");
+  form.method = "dialog";
+  const [question, ...more] = String(text).split(/\n\s*\n/);
+  const head = el("p", "ask-q", question);
+  head.id = "ask-q";
+  box.setAttribute("aria-labelledby", "ask-q");
+  form.appendChild(head);
+  more.forEach(part => form.appendChild(el("p", "ask-more", part)));
+  let input = null;
+  if (value !== undefined) {
+    input = el("input");
+    input.type = "text"; input.value = value; input.translate = false;
+    input.setAttribute("aria-labelledby", "ask-q");
+    if (options.placeholder) input.placeholder = options.placeholder;
+    if (options.readonly) input.readOnly = true;
+    form.appendChild(input);
+  } else {
+    box.setAttribute("role", "alertdialog");
+  }
+  const buttons = el("div", "ask-buttons");
+  const no = el("button", "", options.no || "Cancel");
+  no.type = "button"; no.onclick = () => box.close("");
+  const yes = el("button", options.danger ? "danger" : "primary", options.yes || "OK");
+  yes.type = "submit"; yes.value = "yes";
+  if (!options.only) buttons.appendChild(no);
+  buttons.appendChild(yes);
+  form.appendChild(buttons);
+  box.appendChild(form);
+  // Keys pressed in a question are its own: the page's Esc (stop the answer) stays out of it.
+  box.addEventListener("keydown", (e) => e.stopPropagation());
+  // A click beside the window (on the dimmed page) cancels, as Esc does.
+  box.addEventListener("mousedown", (e) => { if (e.target === box) box.close(""); });
+  document.body.appendChild(box);
+  box.showModal();
+  if (input) { input.focus(); input.select(); } else (options.danger ? no : yes).focus();
+  return new Promise((resolve) => {
+    box.addEventListener("close", () => {
+      const said = box.returnValue === "yes";
+      box.remove();
+      if (questionOpen === box) questionOpen = null;
+      resolve(input ? (said ? input.value : null) : said);
+    });
+  });
+}
+function askYesNo(text, options = {}) { return questionBox(text, options); }
+function askText(label, value = "", options = {}) { return questionBox(label, options, String(value ?? "")); }
+
 // A list that never arrived (no access, an error): its placeholder bars go after a while.
 setTimeout(() => document.querySelectorAll(".skeleton").forEach(s => s.remove()), 10000);
 

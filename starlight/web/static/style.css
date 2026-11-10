@@ -155,6 +155,22 @@ dialog#shortcuts::backdrop { background: rgb(0 0 0 / .45); }
                  border: 1px solid var(--border); border-bottom-width: 2px; border-radius: var(--r-1);
                  background: var(--panel2); color: var(--text); }
 #shortcuts .plus { color: var(--dim); margin: 0 2px; }
+/* Starlight's own questions (askYesNo, askText in common.js): a small window, not the
+   browser's grey box. The padding is on the form, so a click on the window's edge counts as
+   a click beside it only outside the window. */
+dialog.ask { border: 1px solid var(--border); border-radius: var(--r-3); background: var(--panel);
+             color: var(--text); box-shadow: var(--shadow-2); padding: 0;
+             width: min(440px, calc(100vw - 32px)); animation: ask-in var(--dur) var(--ease); }
+@keyframes ask-in { from { opacity: 0; transform: translateY(8px); } }
+dialog.ask::backdrop { background: rgb(0 0 0 / .45); }
+.ask form { padding: var(--s-5); margin: 0; }
+.ask-q { margin: 0 0 var(--s-3); font-size: var(--fs-lg); font-weight: 600; overflow-wrap: anywhere; }
+.ask-more { margin: 0 0 var(--s-3); color: var(--dim); white-space: pre-line; overflow-wrap: anywhere;
+            max-height: 40vh; overflow-y: auto; }
+.ask input { width: 100%; padding: 8px 10px; margin: 0 0 var(--s-3); background: var(--bg);
+             border: 1px solid var(--border); border-radius: var(--r-2); }
+.ask-buttons { display: flex; justify-content: flex-end; gap: var(--s-2); margin-top: var(--s-2); }
+.ask-buttons button { min-width: 88px; }
 @media (max-width: 760px) { header.top nav { gap: 8px; font-size: 13px; } }
 /* A touch screen (a phone, a tablet): every control at least 44 px, so a finger hits it; the
    mouse look stays as it is. At no weight (:where), so a page can make a small control, such

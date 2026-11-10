@@ -219,8 +219,9 @@ async function rename(input) {
   if (!title || title === note.title) { input.value = note.title; return; }
   if (!(await save())) return;
   const others = new Set(note.backlinks.map(b => b.from).filter(p => p !== note.path)).size;
-  const fixLinks = !others || confirm(t("Also change the links to this note in other notes? Notes that change:")
-    + " " + others + ". " + t("Each keeps its earlier version."));
+  // (Esc, or "Leave the links": the note is renamed, the links in other notes stay.)
+  const fixLinks = !others || await askYesNo(t("Also change the links to this note in other notes? Notes that change:")
+    + " " + others + ". " + t("Each keeps its earlier version."), { yes: "Change the links", no: "Leave the links" });
   try {
     const answer = await api("/api/note/rename",
       { method: "POST", body: { path: note.path, title, fix_links: fixLinks } });
@@ -258,7 +259,8 @@ async function newNote(template = "") {
 
 async function deleteNote() {
   const note = state.current;
-  if (!note || !confirm(t("Move this note to the trash? You can bring it back from the trash."))) return;
+  if (!note || !(await askYesNo(t("Move this note to the trash?") + "\n\n" + t("You can bring it back from the trash."),
+    { yes: "Move to the trash" }))) return;
   if (edit.editor) {
     if (!(await save())) {  // the last changes first: never delete over unsaved text
       toast(t("Not saved yet: your text is still here. Try again in a moment."));

@@ -12,7 +12,7 @@ from typing import Any
 
 import pytest
 
-from tests.test_chat_page import CHROMIUM
+from tests.test_chat_page import CHROMIUM, YES
 from tests.test_chat_page import static_site as static_site  # (the fixture)
 from tests.test_language_access import NAMELESS
 
@@ -48,7 +48,7 @@ async def automations_page(playwright: Any, site: str, locale: str = "en-US") ->
     page.sent = []  # type: ignore[attr-defined]
     page.errors = []  # type: ignore[attr-defined]
     page.on("pageerror", lambda e: page.errors.append(str(e)))  # type: ignore[attr-defined]
-    page.on("dialog", lambda d: d.accept())
+    await page.add_init_script(YES)  # ("Save this automation?": yes)
 
     async def answer(route: Any) -> None:
         request = route.request
