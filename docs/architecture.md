@@ -288,7 +288,7 @@ or answer all of them with `YES` (both in `tests/test_chat_page.py`).
 **Icons.** Buttons without words show line icons from `ICONS` in `common.js` (24 px SVG
 paths in the text colour): markup says `data-icon="mic"` and `drawIcons()` fills it in;
 code calls `setIcon(button, name)`, which marks an icon `.alone` (drawn a little larger)
-when its button has no words. Icons never take a click themselves: it is the button's. Each
+when its button has no words. Icons never take a click themselves: it is the button's. Menus take icon names too: `popMenu` draws an item's first field with `icon()` when `ICONS` has that name, and shows it as plain text otherwise. Each
 page's head has a light and a dark `theme-color` meta, right for the system's theme from
 the first paint; `paintBar()` copies `--panel` into them whenever the theme changes (a
 meta marked `data-fixed`, on the Kill page, keeps its colour). The app icons a phone puts on its home screen are PNGs in

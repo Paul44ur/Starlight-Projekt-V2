@@ -80,6 +80,13 @@ const ICONS = {
   activity: '<path d="M3.5 12h4l2.5-6.5 4 13 2.5-6.5h4"/>',
   automations: '<path d="M13 3.5 5.5 13.5H12l-1 7 7.5-10H12z"/>',
   settings: '<path d="M4 7h10M18 7h2M4 17h4M12 17h8"/><circle cx="16" cy="7" r="2"/><circle cx="10" cy="17" r="2"/>',
+  edit: '<path d="M4.5 19.5l1-4 10-10a2.1 2.1 0 0 1 3 3l-10 10zM14 7l3 3"/>',
+  pin: '<path d="M9 4h6l-1 5 3 3.5H7L10 9z"/><path d="M12 12.5V20"/>',
+  folder: '<path d="M3.5 7a1.5 1.5 0 0 1 1.5-1.5h4l2 2.5h8a1.5 1.5 0 0 1 1.5 1.5v8.5a1.5 1.5 0 0 1-1.5 1.5H5a1.5 1.5 0 0 1-1.5-1.5z"/>',
+  archive: '<rect x="3.5" y="4.5" width="17" height="4" rx="1"/><path d="M5 8.5V19a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V8.5M10 12.5h4"/>',
+  forget: '<path d="M13.5 5.5l5 5-8 8H6.5l-2.5-2.5a1.4 1.4 0 0 1 0-2zM8 11l5 5M10 19.5h9.5"/>',
+  print: '<path d="M7 9V4h10v5M7 17H5a1 1 0 0 1-1-1v-5a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v5a1 1 0 0 1-1 1h-2"/><rect x="7" y="14" width="10" height="6" rx="1"/>',
+  back: '<path d="M19.5 12h-14M11 6l-6 6 6 6"/>',
   chevron: '<path d="M7 10l5 5 5-5"/>',
   boards: '<rect x="3.5" y="4.5" width="7" height="7" rx="1.5"/><rect x="13.5" y="4.5" width="7" height="4.5" rx="1.5"/><rect x="3.5" y="14.5" width="7" height="5" rx="1.5"/><rect x="13.5" y="12" width="7" height="7.5" rx="1.5"/>',
 };

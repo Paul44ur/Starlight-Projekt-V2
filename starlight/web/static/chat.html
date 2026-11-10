@@ -235,8 +235,15 @@
   .popmenu button { display: flex; width: 100%; gap: 10px; text-align: left; border: 0; background: none;
                     padding: 6px 10px; border-radius: 6px; font-size: 14px; }
   .popmenu button:hover, .popmenu button.sel { background: var(--panel2); }
+  .popmenu button > span:first-child { display: inline-flex; align-items: center; }
+  .popmenu svg.ico { width: 18px; height: 18px; margin: 0; color: var(--dim); }
   .popmenu .hint { color: var(--dim); font-size: 12px; margin-left: auto; }
   .folder { font-size: 12px; color: var(--dim); padding: 10px 8px 4px; }
+  .folder:has(svg.ico) { display: flex; align-items: center; gap: 6px; }
+  .folder svg.ico, #list .conv > svg.ico, #title-lock svg.ico { width: 14px; height: 14px; margin: 0; }
+  #list .conv > svg.ico { color: var(--dim); }
+  #title-lock { display: inline-flex; align-items: center; margin-right: 4px; color: var(--dim); }
+  #title-lock[hidden] { display: none; }
   #archived { margin: 4px 8px 10px; font-size: 12px; }
   .msg.bot:has(.body:empty) .tools { visibility: hidden; }
   #mic.on, #talk.on { color: var(--bad); border-color: var(--bad); }
@@ -312,7 +319,7 @@
       <button id="menu" class="icon" title="Conversations" aria-label="Conversations" aria-controls="convs" aria-expanded="false" data-icon="menu"></button>
       <h1><img class="logo" src="/icon.svg" alt="" width="22" height="22" />Starlight</h1>
       <span class="bar-sep" aria-hidden="true" hidden>/</span>
-      <button id="title" class="title-btn" type="button" hidden aria-haspopup="menu" title="This conversation: rename, pin, folder, archive, download, delete" data-icon="chevron"><span id="title-text" translate="no"></span></button>
+      <button id="title" class="title-btn" type="button" hidden aria-haspopup="menu" title="This conversation: rename, pin, folder, archive, download, delete" data-icon="chevron"><span id="title-lock" hidden></span><span id="title-text" translate="no"></span></button>
       <span id="conn" class="pill off">connecting…</span>
       <span id="where" class="pill off" hidden></span>
       <button id="practice" class="pill warn" hidden title="Practice mode: actions that change something are described, not done. Press to turn it off"><span class="wide">practice mode · Off</span><span class="narrow">Practice</span></button>
@@ -829,21 +836,21 @@ async function togglePractice() {
   refresh();
 }
 const COMMANDS = [
-  ["/new", "＋", "New conversation", () => document.getElementById("new").click()],
-  ["/private", "🔒", "New private conversation", () => document.getElementById("newprivate").click()],
+  ["/new", "plus", "New conversation", () => document.getElementById("new").click()],
+  ["/private", "lock", "New private conversation", () => document.getElementById("newprivate").click()],
   ["/practice", "◌", "Practice mode on or off", togglePractice],
-  ["/pin", "📌", "Pin or unpin this conversation", async () => {
+  ["/pin", "pin", "Pin or unpin this conversation", async () => {
     const c = await currentConversation(); changeConversation(conversation, { pinned: !c.pinned });
     toast(c.pinned ? "Unpinned" : "Pinned to the top");
   }],
-  ["/archive", "🗄", "Archive this conversation", async () => {
-    await changeConversation(conversation, { archived: true }); toast("Archived (🗄 Archive in the list)");
+  ["/archive", "archive", "Archive this conversation", async () => {
+    await changeConversation(conversation, { archived: true }); toast("Archived (see Archived conversations in the list)");
   }],
-  ["/export", "⤓", "Download it as Markdown", () => download(`/api/conversations/${conversation}/export`)],
-  ["/pdf", "🖨", "Print or save it as PDF", () => window.open(`/api/conversations/${conversation}/export?format=html&show=true`, "_blank")],
-  ["/activity", "📜", "What Starlight did", () => { location.href = "/activity"; }],
-  ["/memory", "🧠", "Memory and skills", () => { location.href = "/memory"; }],
-  ["/settings", "⚙", "Settings", () => { location.href = "/settings"; }],
+  ["/export", "download", "Download it as Markdown", () => download(`/api/conversations/${conversation}/export`)],
+  ["/pdf", "print", "Print or save it as PDF", () => window.open(`/api/conversations/${conversation}/export?format=html&show=true`, "_blank")],
+  ["/activity", "activity", "What Starlight did", () => { location.href = "/activity"; }],
+  ["/memory", "memory", "Memory and skills", () => { location.href = "/memory"; }],
+  ["/settings", "settings", "Settings", () => { location.href = "/settings"; }],
   ["/stars", "✦", "A little starfall", () => starfall()],
   ["/help", "?", "These commands", () => addSys("Commands: " + COMMANDS.map(c => `${c[0]} (${c[2].toLowerCase()})`).join(", "))],
 ];
@@ -1160,6 +1167,15 @@ document.getElementById("shot").onchange = async (e) => {
 };
 
 // -- conversations ---------------------------------------------------------------------------
+// A small heading in the list, an icon before its words (a folder's name is the user's: never translated).
+function labelled(name, text, own) {
+  const label = el("div", "folder");
+  const words = el("span", "", text);
+  if (own) words.translate = false;
+  label.innerHTML = icon(name);
+  label.append(words);
+  return label;
+}
 async function loadList() {
   const search = document.getElementById("search").value;
   let data;
@@ -1169,7 +1185,7 @@ async function loadList() {
   const had = document.activeElement && document.activeElement.closest && document.activeElement.closest(".conv");
   const keep = had ? { id: had.dataset.id, more: document.activeElement !== had } : null;
   const list = document.getElementById("list"); list.innerHTML = "";
-  if (showArchived) list.appendChild(el("div", "folder", "🗄 Archive"));
+  if (showArchived) list.appendChild(labelled("archive", "Archived conversations"));
   // pinned ones stay on top; the rest are grouped by folder (no folder first)
   const pinned = data.conversations.filter(c => c.pinned);
   const rest = data.conversations.filter(c => !c.pinned)
@@ -1179,16 +1195,16 @@ async function loadList() {
   [...pinned, ...rest].forEach(c => {
     if (!c.pinned && (c.folder || "") !== folder) {
       folder = c.folder || "";
-      if (folder) list.appendChild(el("div", "folder", "📁 " + folder));
+      if (folder) list.appendChild(labelled("folder", folder, true));
       else if (pinned.length && !showArchived) list.appendChild(el("div", "folder", "Recent"));
     }
     const row = el("div", "conv" + (c.id === conversation ? " active" : ""));
-    const mark = c.private ? "🔒 " : "";
-    const t = el("span", "t", mark + c.title); t.translate = false; t.title = c.title + " — " + c.updated.replace("T", " ").slice(0, 16);
+    const t = el("span", "t", c.title); t.translate = false; t.title = c.title + " — " + c.updated.replace("T", " ").slice(0, 16);
     const acts = el("span", "acts");
     const more = el("button", "icon"); setIcon(more, "more"); more.title = "Rename, pin, folder, archive, download, delete"; more.setAttribute("aria-label", "More for this conversation");
     more.onclick = (e) => { e.stopPropagation(); conversationMenu(c, more); };
     acts.append(more); row.append(t, acts);
+    if (c.private) row.insertAdjacentHTML("afterbegin", icon("lock"));  // (its own element, before the title)
     row.onclick = () => openConversation(c.id);
     row.tabIndex = 0;
     row.dataset.id = c.id;
@@ -1197,7 +1213,8 @@ async function loadList() {
     };
     list.appendChild(row);
   });
-  const toggle = el("button", "icon", showArchived ? "← Back to your conversations" : "🗄 Archive");
+  const toggle = el("button", "icon", showArchived ? "Back to your conversations" : "Archived conversations");
+  setIcon(toggle, showArchived ? "back" : "archive");
   toggle.id = "archived";
   toggle.onclick = () => { showArchived = !showArchived; loadList(); };
   list.appendChild(toggle);
@@ -1215,7 +1232,10 @@ function showTitle(c) {
   button.hidden = !c;
   document.querySelector(".bar-sep").hidden = !c;
   if (!c) return;
-  document.getElementById("title-text").textContent = (c.private ? "🔒 " : "") + c.title;
+  const lock = document.getElementById("title-lock");
+  lock.hidden = !c.private;
+  lock.innerHTML = c.private ? icon("lock") : "";
+  document.getElementById("title-text").textContent = c.title;
   button.onclick = (e) => { e.stopPropagation(); conversationMenu(c, button); };
 }
 
@@ -1238,17 +1258,17 @@ async function changeConversation(id, change) {
 function conversationMenu(c, anchor) {
   const base = "/api/conversations/" + c.id;
   popMenu(anchor, [
-    ["✎", "Rename", async () => {
+    ["edit", "Rename", async () => {
       const title = ((await askText("New name", c.title, { yes: "Rename" })) || "").trim();
       if (title && title !== c.title) changeConversation(c.id, { title });
     }],
-    ["📌", c.pinned ? "Unpin" : "Pin to the top", () => changeConversation(c.id, { pinned: !c.pinned })],
-    ["📁", c.folder ? `Folder: ${c.folder}` : "Put in a folder", async () => {
+    ["pin", c.pinned ? "Unpin" : "Pin to the top", () => changeConversation(c.id, { pinned: !c.pinned })],
+    ["folder", c.folder ? `Folder: ${c.folder}` : "Put in a folder", async () => {
       const folder = await askText("Folder (empty: none)", c.folder || "", { yes: "Save" });
       if (folder !== null) changeConversation(c.id, { folder: folder.trim() });
     }],
-    ["🗄", c.archived ? "Take out of the archive" : "Archive", () => changeConversation(c.id, { archived: !c.archived })],
-    ["🧠", "Forget what it learned here", async () => {
+    ["archive", c.archived ? "Take out of the archive" : "Archive", () => changeConversation(c.id, { archived: !c.archived })],
+    ["forget", "Forget what it learned here", async () => {
       if (!(await askYesNo("Forget the memories Starlight learned in \"" + c.title + "\"?\n\nThe conversation stays.", { yes: "Forget", danger: true }))) return;
       try {
         const r = await api(base + "/forget-learned", { method: "POST" });
@@ -1256,10 +1276,10 @@ function conversationMenu(c, anchor) {
         toast(`Forgot ${r.forgotten.length} ${r.forgotten.length === 1 ? "memory" : "memories"}` + (kept ? ` (kept ${kept} also said elsewhere)` : ""));
       } catch (e) { toast(e.message); }
     }],
-    ["⤓", "Download as Markdown", () => download(base + "/export")],
-    ["⤓", "Download as a web page", () => download(base + "/export?format=html")],
-    ["🖨", "Print or save as PDF", () => window.open(base + "/export?format=html&show=true", "_blank")],
-    ["🗑", "Delete", async () => {
+    ["download", "Download as Markdown", () => download(base + "/export")],
+    ["download", "Download as a web page", () => download(base + "/export?format=html")],
+    ["print", "Print or save as PDF", () => window.open(base + "/export?format=html&show=true", "_blank")],
+    ["trash", "Delete", async () => {
       if (!(await askYesNo("Delete \"" + c.title + "\"?", { yes: "Delete", danger: true }))) return;
       await api(base, { method: "DELETE" });
       if (c.id === conversation) { const d = await api("/api/conversations", { method: "POST" }); await openConversation(d.id); } else loadList();
@@ -1267,7 +1287,8 @@ function conversationMenu(c, anchor) {
   ]);
 }
 
-// A small menu at an element: items are [icon, label, action, hint?].
+// A small menu at an element: items are [icon, label, action, hint?]. The icon is the name of
+// one in ICONS (drawn); any other text there is shown as it is.
 let openMenu = null;
 // refocus (Esc): back to the button that opened it, first, while that button is still shown
 function closeMenu(refocus) {
@@ -1281,10 +1302,12 @@ function popMenu(anchor, items, place) {
   closeMenu();
   const menu = el("div", "popmenu");
   menu.setAttribute("role", "menu");
-  items.forEach(([icon, label, action, hint]) => {
+  items.forEach(([name, label, action, hint]) => {
     const b = el("button");
     b.setAttribute("role", "menuitem");
-    b.append(el("span", "", icon), el("span", "", label));
+    const mark = el("span", "", ICONS[name] ? "" : name);
+    if (ICONS[name]) mark.innerHTML = icon(name);
+    b.append(mark, el("span", "", label));
     if (hint) b.appendChild(el("span", "hint", hint));
     b.onclick = (e) => { e.stopPropagation(); closeMenu(); action(); };
     menu.appendChild(b);

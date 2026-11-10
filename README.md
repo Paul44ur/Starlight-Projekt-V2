@@ -529,7 +529,7 @@ full; `/new` starts afresh); the line under the message box says it too.
 - Type **/** for the commands: `/new`, `/private`, `/practice`, `/pin`, `/archive`,
   `/export`, `/pdf`, `/activity`, `/memory`, `/settings`, `/stars`, `/help`.
 - ⋯ next to a conversation: rename, **pin** it to the top, put it in a **folder**,
-  **archive** it (🗄 Archive at the end of the list shows the archive), download it as
+  **archive** it (Archived conversations at the end of the list shows the archive), download it as
   Markdown or as a web page that works on its own, **print or save it as PDF**, or delete it.
 
 **Notes** (at the PC) shows your notes, journal and recipes from the Starlight folder.
