@@ -220,7 +220,33 @@ def test_only_starlights_own_pages_open_in_its_windows() -> None:
     for other in ("https://example.org/", "http://127.0.0.1:8765/", "file:///C:/x", 42):
         assert bridge.open_window(other) is False  # type: ignore[arg-type]
     assert opened == ["http://127.0.0.1:8700/api/conversations/c1/export?show=true"]
-    assert [name for name in dir(bridge) if not name.startswith("_")] == ["open_window"]
+    assert [name for name in dir(bridge) if not name.startswith("_")] == [
+        "attention",
+        "open_window",
+    ]
+
+
+def test_a_page_may_ask_for_attention_with_a_few_words() -> None:
+    asked: list[str] = []
+
+    def lit(text: str) -> bool:
+        asked.append(text)
+        return True
+
+    bridge = app_window.Bridge("http://127.0.0.1:8700", lambda url: None, attention=lit)
+    assert bridge.attention("x" * 500) is True
+    assert asked == ["x" * app_window.ATTENTION_TEXT]  # (cut: never a whole answer)
+    assert bridge.attention("Your answer is ready") is True
+    assert asked[-1] == "Your answer is ready"
+    off = app_window.Bridge("http://127.0.0.1:8700", lambda url: None, attention=lambda t: False)
+    assert off.attention("x") is False
+
+
+def test_without_windows_there_is_nothing_to_light_up() -> None:
+    assert sys.platform != "win32"  # (the real one is for Windows, see the launcher notes)
+    assert app_window.flash_taskbar() is False
+    bridge = app_window.Bridge("http://127.0.0.1:8700", lambda url: None)
+    assert bridge.attention("Your answer is ready") is False
 
 
 def test_starlight_app_opens_the_page_it_is_given(

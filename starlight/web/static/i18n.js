@@ -33,6 +33,15 @@
     "Print or save as PDF": "Drucken oder als PDF speichern",
     "Save this automation?": "Diese Automation speichern?", "Forget this?": "Das vergessen?",
     "Turn it on?": "Einschalten?", "It can no longer use Starlight.": "Es kann Starlight dann nicht mehr nutzen.",
+    // a sign when an answer is ready (chat, settings)
+    "Your answer is ready": "Deine Antwort ist fertig",
+    "Starlight is waiting for your OK": "Starlight wartet auf dein OK",
+    "When an answer is ready": "Wenn eine Antwort fertig ist",
+    "Tell me when an answer is ready": "Sag mir Bescheid, wenn eine Antwort fertig ist",
+    "Allow notifications": "Benachrichtigungen erlauben",
+    "Notifications are allowed in this browser.": "Benachrichtigungen sind in diesem Browser erlaubt.",
+    "Notifications are blocked in this browser's settings.": "Benachrichtigungen sind in den Einstellungen dieses Browsers blockiert.",
+    "— when Starlight's window is in the background, its title gets a dot, the taskbar button lights up (in Starlight's own window), and the browser shows a notification if you allowed it. Kept for this device.": "— Wenn Starlights Fenster im Hintergrund ist, bekommt sein Titel einen Punkt, die Schaltfläche in der Taskleiste leuchtet (in Starlights eigenem Fenster), und der Browser zeigt eine Benachrichtigung, wenn du sie erlaubt hast. Gilt nur für dieses Gerät.",
     // the chat
     "Starlight is not answering: the PC may be off or asleep.": "Starlight antwortet nicht: Der PC ist vielleicht aus oder im Ruhezustand.",
     "Wake the PC": "PC aufwecken", "connecting…": "verbinde…", "connected": "verbunden", "offline": "offline",

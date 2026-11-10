@@ -667,6 +667,37 @@ function thoughtsDone(body) {
   box.firstChild.textContent = `Thought for ${seconds} s`;
 }
 
+// -- a sign when an answer is ready ------------------------------------------------------------
+// You may have gone to another program or tab: the title gets a dot, Starlight's own window
+// lights up its taskbar button, and a browser shows a notification if you allowed it. The sign
+// never carries the answer's words (a notification can show on a locked screen).
+const away = () => document.hidden || !document.hasFocus();
+const plainTitle = document.title;
+let readyNote = null;
+function signalReady(text) {
+  if (!away() || !readySignOn()) return;
+  if (!document.title.startsWith("● ")) document.title = "● " + plainTitle;
+  const said = window.starlightTranslate ? window.starlightTranslate(text) : text;
+  try {
+    if (window.pywebview && window.pywebview.api && window.pywebview.api.attention) {
+      window.pywebview.api.attention(said);
+      return;
+    }
+    if (window.Notification && Notification.permission === "granted") {
+      if (readyNote) readyNote.close();
+      readyNote = new Notification("Starlight", { body: said, icon: "/icons/icon-192.png", tag: "starlight-ready" });
+      readyNote.onclick = () => { window.focus(); clearReady(); };
+    }
+  } catch (e) { /* a sign that cannot show is no reason to fail */ }
+}
+function clearReady() {
+  document.title = plainTitle;
+  try { if (readyNote) readyNote.close(); } catch (e) { /* already closed */ }
+  readyNote = null;
+}
+window.addEventListener("focus", clearReady);
+document.addEventListener("visibilitychange", () => { if (!document.hidden) clearReady(); });
+
 // The conversation an answer is coming for: if you open another one meanwhile, its words
 // are not shown there (open the first one again to see the answer).
 // The answer being written is for another conversation than the one open (by `answering`,
@@ -720,6 +751,7 @@ function handle(m) {
     else if (talk) talkAnswer(markdownToSpeech(m.text));
     else if (speakAnswers) say(markdownToSpeech(m.text));
     current = null; answering = null; regenPending = false; loadList();
+    signalReady("Your answer is ready");
   }
   else if ((m.type === "stopped" || m.type === "error") && regenPending && !current) {
     // Asking again did not even start: the earlier answer stays, so show it again.
@@ -748,8 +780,8 @@ function handle(m) {
     addSys("Starlight is still working on the last message.");
     if (regenPending) { regenPending = false; if (conversation) openConversation(conversation); }  // show the old answer again
   }
-  else if (m.type === "confirm") { showConfirm(m); }
-  else if (m.type === "prompt") { showPrompt(m); }
+  else if (m.type === "confirm") { showConfirm(m); signalReady("Starlight is waiting for your OK"); }
+  else if (m.type === "prompt") { showPrompt(m); signalReady("Starlight is waiting for your OK"); }
 }
 
 function showConfirm(m) {

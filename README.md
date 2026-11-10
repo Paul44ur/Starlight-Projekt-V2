@@ -192,14 +192,17 @@ following Windows.
 
 **The chat opens in Starlight's own window**, not in your browser: a window with Starlight's
 name and star in the taskbar, with every page of the chat in it (Chat, Notes, Memory,
-Activity, Automations, Settings). It uses WebView2, the part of Microsoft Edge that Windows 11
-already has. Links to other websites open in your browser; printing or exporting a
+Activity, Automations, Settings). It uses WebView2, the part of Microsoft Edge that Windows
+11 already has. Links to other websites open in your browser; printing or exporting a
 conversation opens a second Starlight window; a download asks where to save. The window
-remembers its size, your theme and your language. Closing it leaves Starlight running:
-**Open chat** brings it back, and closing the Starlight window stops everything. Prefer the
+remembers its size, your theme and your language. When an answer is ready (or Starlight
+waits for your OK) and the window is in the background, its title gets a dot and its taskbar
+button lights up; in a browser, a notification shows if you allowed it. Switch this off in
+Settings, under **When an answer is ready**. Closing it leaves Starlight running: **Open
+chat** brings it back, and closing the Starlight window stops everything. Prefer the
 browser? Untick **Open the chat in Starlight's own window** in Settings, or start
-`Starlight.exe --browser`. If the window cannot open (no WebView2), the browser opens the chat
-and the Starlight window says why.
+`Starlight.exe --browser`. If the window cannot open (no WebView2), the browser opens the
+chat and the Starlight window says why.
 
 Prefer the keyboard? Start `Starlight.exe --terminal` for a colored terminal chat in the
 window instead.

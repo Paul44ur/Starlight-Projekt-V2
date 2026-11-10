@@ -264,6 +264,16 @@ words), tables until their last row; the result is the same however the text is 
 aside for questions and notices, and names the running tool from the dispatcher's report),
 and a status line and prompt with the modes. Pipes keep the plain output.
 
+**A sign when an answer is ready.** When an answer arrives for the open conversation, or
+Starlight asks before a risky action, and the page is in the background (`document.hidden` or no
+focus), `signalReady` in `chat.html` puts a dot before the title. In Starlight's own window it
+calls `Bridge.attention` (`app_window.py`), which runs `flash_taskbar`: `FlashWindowEx` lights
+the taskbar button until the window is in front. In a browser it shows a notification through
+the Notification API, if the person allowed it (Settings has the button). The dot and the
+notification go when the window gets focus again. The switch is `starlight-ready-sign` in
+`localStorage` (`"off"` turns it off; on by default; `readySignOn()` in `common.js`). The sign
+never carries the words of the answer.
+
 **Questions.** A page never uses the browser's own boxes (`confirm`, `prompt`, `alert`):
 they look different on every system and name the address ("127.0.0.1:8700 says"). It asks
 with `askYesNo(text, {yes, no, danger})` and `askText(label, value, {yes})` from `common.js`,

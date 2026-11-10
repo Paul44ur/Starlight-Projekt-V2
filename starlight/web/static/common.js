@@ -120,6 +120,12 @@ async function api(path, options = {}) {
   return data;
 }
 
+// Whether this device tells you when an answer is ready (on, unless you switched it off in
+// Settings).
+function readySignOn() {
+  try { return localStorage.getItem("starlight-ready-sign") !== "off"; } catch (e) { return true; }
+}
+
 // One message at a time (a new one replaces the last, instead of covering it), and a longer
 // one stays longer, so it can be read.
 let toastShown = null;

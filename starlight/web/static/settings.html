@@ -148,6 +148,16 @@
         <option value="en">English</option><option value="de">Deutsch</option></select></div>
   </div>
 
+  <div class="card" id="ready-card">
+    <h2>When an answer is ready</h2>
+    <label class="practice"><span class="switch"><input type="checkbox" id="ready-sign" /><span></span></span>
+      <span><b>Tell me when an answer is ready</b> <span class="dim small">— when Starlight's window is in the
+      background, its title gets a dot, the taskbar button lights up (in Starlight's own window), and the
+      browser shows a notification if you allowed it. Kept for this device.</span></span></label>
+    <p class="dim small" id="ready-note" hidden></p>
+    <button type="button" id="ready-allow" style="margin-top: var(--s-2)" hidden>Allow notifications</button>
+  </div>
+
   <div class="card local-only" id="voice-card" hidden>
     <h2>Voice</h2>
     <p class="dim small">Which voice reads answers aloud, for each language. More can be installed here
@@ -546,6 +556,29 @@ async function tryVoice(name, code) {
     new Audio(URL.createObjectURL(await response.blob())).play();
   } catch (e) { toast("Could not speak"); }
 }
+
+// A sign when an answer is ready: for this device, on unless switched off.
+const readySign = document.getElementById("ready-sign");
+readySign.checked = readySignOn();
+readySign.onchange = () => {
+  try { if (readySign.checked) localStorage.removeItem("starlight-ready-sign"); else localStorage.setItem("starlight-ready-sign", "off"); } catch (e) { /* private window */ }
+};
+// A browser asks once for leave to show notifications; Starlight's own window needs none.
+function showNotificationState() {
+  const note = document.getElementById("ready-note"), allow = document.getElementById("ready-allow");
+  const asked = !window.pywebview && window.Notification ? Notification.permission : "";
+  const words = { granted: "Notifications are allowed in this browser.", denied: "Notifications are blocked in this browser's settings." };
+  note.textContent = words[asked] ? (window.starlightTranslate ? window.starlightTranslate(words[asked]) : words[asked]) : "";
+  note.hidden = !words[asked];
+  allow.hidden = asked !== "default";
+}
+document.getElementById("ready-allow").onclick = async () => {
+  try { await Notification.requestPermission(); } catch (e) { /* */ }
+  showNotificationState();
+};
+showNotificationState();
+// (Starlight's own window says who it is a moment after the page loaded.)
+window.addEventListener("pywebviewready", showNotificationState);
 
 // The language of these pages, for this browser (the answers follow what you write).
 const language = document.getElementById("language");

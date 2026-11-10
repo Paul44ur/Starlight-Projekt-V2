@@ -11,6 +11,8 @@ pywebview package (the ``app`` extra). The pages are the same as in the browser.
 * A Starlight page that would open in a new tab (print, export) opens in a new Starlight
   window; any other address opens in your browser. Downloads ask where to save.
 * Its own name and icon in the taskbar; the window's size is remembered.
+* When an answer is ready and the window is in the background, the page says so and the
+  taskbar button lights up until you come back.
 
 When there can be no window here (not Windows, the package missing, no WebView2), the command
 ends with ``UNAVAILABLE`` and says why: the launcher then opens the browser instead.
@@ -38,6 +40,8 @@ STARTING_TIMEOUT = 180.0  # seconds the web chat may take to start
 APP_ID = "Starlight.Chat"  # Windows groups the taskbar button by this (not with Python's)
 ICON = Path(__file__).parent / "web" / "static" / "icons" / "starlight.ico"
 SIZE = {"width": 1200, "height": 820}  # the first time; then the size it had
+ATTENTION_TEXT = 200  # letters of what a page may say when it asks for your attention
+FLASH_UNTIL_FRONT = 0x2 | 0xC  # FLASHW_TRAY | FLASHW_TIMERNOFG: the button, until in front
 MIN_SIZE = (420, 560)
 BACKGROUND = {"dark": "#0f1115", "light": "#f6f7f9"}  # style.css --bg, until the page paints
 
@@ -85,18 +89,30 @@ def answers(base: str, timeout: float = 2.0) -> bool:
 
 
 class Bridge:
-    """What the pages may ask of the window (``window.pywebview.api`` in JavaScript): only to
-    open another page of this Starlight in a new window."""
+    """What the pages may ask of the window (``window.pywebview.api`` in JavaScript): to open
+    another page of this Starlight in a new window, and to ask for your attention when an
+    answer is ready (the taskbar button lights up)."""
 
-    def __init__(self, base: str, opener: Callable[[str], Any]) -> None:
+    def __init__(
+        self,
+        base: str,
+        opener: Callable[[str], Any],
+        attention: Callable[[str], bool] | None = None,
+    ) -> None:
         self._base = base  # (names with _ are not offered to the pages)
         self._opener = opener
+        self._attention = attention or (lambda _text: flash_taskbar())
 
     def open_window(self, url: str) -> bool:
         if not isinstance(url, str) or not same_origin(url, self._base):
             return False  # another site: the page lets the browser open it
         self._opener(url)
         return True
+
+    def attention(self, text: str = "") -> bool:
+        """The page has something for you (an answer, a question) while the window is in the
+        background. ``text`` says what, in a few words (never the answer itself)."""
+        return bool(self._attention(str(text)[:ATTENTION_TEXT]))
 
 
 class Remembered:
@@ -155,6 +171,56 @@ def light_system() -> bool:
             return bool(winreg.QueryValueEx(handle, "AppsUseLightTheme")[0])
     except OSError:
         return False
+
+
+def flash_taskbar(pid: int | None = None) -> bool:
+    """Light up the taskbar button of this process's windows until one comes to the front
+    (Windows). False: nothing to light up, or it is in front already."""
+    if sys.platform != "win32":
+        return False
+    import ctypes
+    from ctypes import wintypes
+
+    class FlashInfo(ctypes.Structure):  # FLASHWINFO
+        _fields_ = (
+            ("size", wintypes.UINT),
+            ("window", wintypes.HWND),
+            ("flags", wintypes.DWORD),
+            ("count", wintypes.UINT),
+            ("timeout", wintypes.DWORD),
+        )
+
+    user32 = ctypes.WinDLL("user32")  # (its own handle: the argument types below stay here)
+    user32.GetWindowThreadProcessId.argtypes = [wintypes.HWND, ctypes.POINTER(wintypes.DWORD)]
+    user32.GetWindow.argtypes, user32.GetWindow.restype = (
+        [wintypes.HWND, wintypes.UINT],
+        wintypes.HWND,
+    )
+    user32.IsWindowVisible.argtypes = [wintypes.HWND]
+    user32.GetForegroundWindow.restype = wintypes.HWND
+    user32.FlashWindowEx.argtypes = [ctypes.POINTER(FlashInfo)]
+    mine = os.getpid() if pid is None else pid
+    found: list[int] = []
+
+    def each(handle: int, _param: int) -> bool:
+        owner = wintypes.DWORD()
+        user32.GetWindowThreadProcessId(handle, ctypes.byref(owner))
+        shown = user32.IsWindowVisible(handle) and not user32.GetWindow(handle, 4)  # GW_OWNER
+        if owner.value == mine and shown:  # (a visible top-level window of this process)
+            found.append(handle)
+        return True
+
+    callback = ctypes.WINFUNCTYPE(wintypes.BOOL, wintypes.HWND, wintypes.LPARAM)(each)
+    user32.EnumWindows(callback, 0)
+    front = user32.GetForegroundWindow()
+    lit = False
+    for handle in found:
+        if handle == front:
+            continue
+        info = FlashInfo(ctypes.sizeof(FlashInfo), handle, FLASH_UNTIL_FRONT, 0, 0)
+        user32.FlashWindowEx(ctypes.byref(info))
+        lit = True
+    return lit
 
 
 def _own_taskbar_button() -> None:
