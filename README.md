@@ -1217,7 +1217,7 @@ If you installed with `Starlight.exe`, uv isn't on your PATH. Either install it 
 - Tests and checks:
 
   ```bash
-  uv run pytest
+  uv run pytest -n 4   # without -n: the same tests, one after another
   uv run ruff check . && uv run ruff format --check .
   uv run mypy && uv run mypy modules
   ```

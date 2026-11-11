@@ -35,6 +35,17 @@ The default model needs 16 GB of video memory; smaller models are offered during
 - Questions such as "Delete this conversation?" appear in Starlight's own look, not as browser
   boxes.
 
+### Also new
+- **When an answer is ready** and Starlight is in the background, its taskbar button lights up
+  and a notification shows. Settings has the switch.
+- **Ctrl+K** opens a box to jump to a conversation, a note, a page or a command.
+- **Settings, Model:** pick another model that is already installed, and the context size. It
+  applies after a restart; new models are still downloaded in the Starlight window.
+- **Settings, Backup and restore:** saves your conversations, notes, memory, skills and settings
+  into one file. Passwords and paired devices are not in it, and the file is not encrypted. A
+  restore replaces what you have; a copy of it is saved first, and it is applied when
+  Starlight starts next.
+
 ### Good to know
 - It asks before risky actions. Some, such as sending mail or clicking on the desktop, run
   without asking out of the box; the README lists them and how to turn the questions back on.

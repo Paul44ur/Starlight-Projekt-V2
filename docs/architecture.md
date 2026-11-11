@@ -945,7 +945,7 @@ uv run starlight modules new my_weather   # copy the template, then edit modules
 ## Development
 
 ```bash
-uv run pytest
+uv run pytest -n 4   # without -n: the same tests, one after another
 uv run ruff check . && uv run ruff format --check .
 uv run mypy && uv run mypy modules
 ```

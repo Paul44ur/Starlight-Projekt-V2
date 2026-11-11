@@ -15,6 +15,60 @@ from starlight.core.logging import shutdown_logging
 REPO = Path(__file__).resolve().parent.parent
 
 
+# --- Running the tests side by side (`pytest -n 4`) ---------------------------------------
+# Every test gets an xdist group: its own file by default, so a file's tests stay in one
+# worker and module-scoped fixtures keep working (like `--dist loadfile`). Files that must
+# not overlap with each other share one named group, so they run one after another in a
+# single worker. Without `-n` (or without xdist) the groups do nothing.
+ONE_WORKER = "one-worker"
+# The files in the one-worker group, each with the reason.
+ONE_WORKER_FILES: dict[str, str] = {
+    # The window tests share ONE X display (under xvfb) and fight over the keyboard focus
+    # and the pointer when two windows are open at once. The files below import tkinter or
+    # launcher_gui; most of their tests open a real window.
+    "test_launcher_look.py": "tkinter window",
+    "test_launcher_window.py": "tkinter window",
+    "test_launcher_tray.py": "tkinter window",
+    "test_launcher_model.py": "tkinter window",
+    "test_cleanup_launcher.py": "tkinter window",
+    "test_app_window.py": "tkinter window",
+    "test_deep_links.py": "tkinter window",
+    "test_language_access.py": "tkinter window",
+    "test_lmstudio.py": "tkinter window",
+    "test_regressions.py": "tkinter window",
+    "test_sweep_fixes.py": "tkinter window",
+    "test_ui_layout.py": "tkinter window",
+}
+
+
+def xdist_group_for(path: str) -> str:
+    """The xdist group of a test file (its path as pytest reports it)."""
+    name = Path(path).name
+    return ONE_WORKER if name in ONE_WORKER_FILES else name
+
+
+def pytest_configure(config: pytest.Config) -> None:
+    # The marker is registered by xdist itself; without xdist, say it here (no warning).
+    config.addinivalue_line("markers", "xdist_group(name): run these tests in one xdist worker")
+    if not config.pluginmanager.hasplugin("xdist"):
+        return
+    # `-n 4` alone should keep groups together, as `-n 4 --dist loadgroup` does. Without
+    # `-n` nothing changes. The controller picks the scheduler here; a worker re-reads the
+    # command line (where `--dist` is not given), so it is told to add the group to the
+    # test ids, which is what the scheduler sorts by.
+    if getattr(config.option, "dist", "no") == "load":
+        config.option.dist = "loadgroup"
+    if hasattr(config, "workerinput"):
+        config.option.loadgroup = True
+
+
+@pytest.hookimpl(tryfirst=True)
+def pytest_collection_modifyitems(items: list[pytest.Item]) -> None:
+    for item in items:
+        if item.get_closest_marker("xdist_group") is None:
+            item.add_marker(pytest.mark.xdist_group(name=xdist_group_for(str(item.path))))
+
+
 @pytest.fixture
 def paths(tmp_path: Path) -> Paths:
     """An empty Starlight project with only the module template."""
