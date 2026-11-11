@@ -749,6 +749,7 @@ class App:
         self.settings.assume_yes = True  # (maybe_tesseract: the setup page offered OCR)
         first = launcher.read_attention(self.settings.root)  # (older than this window: no balloon)
         self._attention_seen = first[0] if first else None
+        launcher.clear_restart_request(self.settings.root)  # (one from before is stale)
         self.ui = GuiUi(self.events, self.settings.root / "logs" / "launcher.log")
         self.root.report_callback_exception = self._callback_failed
         self._init_window()
@@ -1413,6 +1414,7 @@ class App:
     def use_model_url(self, url: str, size: int = 0) -> None:
         """Make a model from elsewhere the chosen one (the "your own model" card)."""
         self.settings.model_url = url
+        self.settings.model_choice = ""  # (a file chosen on the Settings page no longer wins)
         if size:
             self.sizes[url] = size
         card = self.cards["custom"]
@@ -1428,6 +1430,12 @@ class App:
     def _current_model_key(self) -> str:
         if self.settings.model_server == "lmstudio":
             return LMSTUDIO
+        if self.settings.chosen_in_use:  # a file chosen on the chat's Settings page
+            name = self.settings.model_file.name
+            for key, url in self.L.MODEL_PRESETS.items():
+                if self.L._file_name(url) == name:
+                    return str(key)
+            return "custom"
         for key, url in self.L.MODEL_PRESETS.items():
             if url == self.settings.model_url:
                 return str(key)
@@ -1437,12 +1445,15 @@ class App:
         return str(self.settings.model_url if key == "custom" else self.L.MODEL_PRESETS[key])
 
     def _model_file_of(self, key: str) -> Path:
+        if key == "custom" and self.settings.chosen_in_use:
+            return Path(self.settings.model_file)
         return Path(self.settings.models / self.L._file_name(self._model_url_of(key)))
 
     def _make_card(self, parent: ttk.Frame, key: str, row: int) -> None:
         c = self.c
         if key == "custom":
-            title = f"Your own model: {shorten(self.L._file_name(self.settings.model_url))}"
+            own = self.settings.model_file.name if self.settings.chosen_in_use else ""
+            title = f"Your own model: {shorten(own or self.L._file_name(self.settings.model_url))}"
             text = "Set as model_url in config/launcher.json."
         elif key == LMSTUDIO:
             title = "LM Studio"
@@ -1947,13 +1958,17 @@ class App:
         if settings.use_model and key == LMSTUDIO:
             settings.lmstudio_model = self._lms_choice()
             choices["lmstudio_model"] = settings.lmstudio_model
-        if settings.use_model and key not in ("custom", LMSTUDIO):
+        if settings.use_model and settings.chosen_in_use and key == self._current_model_key():
+            pass  # the file chosen on the chat's Settings page stays as it is
+        elif settings.use_model and key not in ("custom", LMSTUDIO):
             settings.model_url = L.MODEL_PRESETS[key]
             choices["model"] = key
-            drop = ("model_url",)  # a saved model_url would win over "model" (load_settings)
+            drop = ("model_url", "model_file")  # (model_url would win over "model")
+            settings.model_choice = ""
         elif settings.use_model and key == "custom":
             choices["model_url"] = settings.model_url
-            drop = ("model",)
+            drop = ("model", "model_file")
+            settings.model_choice = ""
         if sys.platform == "win32" and self.autostart_var.get() != L.autostart_enabled():
             try:
                 L.set_autostart(self.autostart_var.get(), L.autostart_command(settings.root))
@@ -2207,6 +2222,12 @@ class App:
             if message is not None:
                 self._attention_seen = message[0]
                 self.events.put(("attention", message[1]))
+        # The Settings page asks for a restart through a file, and looks for this heartbeat
+        # to know that someone can restart (starlight/core/modelchoice.py).
+        with contextlib.suppress(Exception):
+            self.L.write_alive(self.settings.root)
+            if self.L.restart_requested(self.settings.root):
+                self.events.put(("restart_request",))
 
     # -- the tray icon --------------------------------------------------------------------------
 
@@ -2295,6 +2316,25 @@ class App:
         elif action == "quit":
             self._show_launcher()  # (the question needs a window to show in)
             self.quit_app()
+
+    def on_restart_request(self) -> None:
+        """The chat's Settings page asked to restart Starlight (to use the model chosen there):
+        the same as "Save and restart", with the settings read from the file again."""
+        self.L.clear_restart_request(self.settings.root)
+        if self.closing or self.page != "running" or self.services is None:
+            return  # (not running, or already on its way)
+        try:
+            settings = self.L.load_settings(self.args)
+        except self.L.LauncherError:
+            return  # a broken launcher.json: keep what runs, the error shows at the next start
+        settings.assume_yes = True
+        self.settings = settings
+        # The Settings page of this window was filled from the old file: build it again, or
+        # "Save and restart" there would put the earlier model and context back.
+        self.pages["setup"].destroy()
+        self._build_setup()
+        self.show_progress("Restarting Starlight ...")
+        threading.Thread(target=self._stop_then_begin, name="restart", daemon=True).start()
 
     def on_attention(self, text: str) -> None:
         """The chat window has something for you and is in the background. ``text`` came from
@@ -2899,6 +2939,8 @@ class App:
 
     def _shutdown(self) -> None:
         self._stop_services()
+        with contextlib.suppress(Exception):
+            self.L.clear_alive(self.settings.root)
         self.events.put(("exit",))
 
     def on_exit(self) -> None:

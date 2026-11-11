@@ -278,6 +278,16 @@ everything**); under **Tools** it also has **Speed test** (tokens per second), *
 exam** (does this model use Starlight's tools well?) and **Disk space** (what each model and
 folder takes; unused models can be removed there).
 
+**On the Settings page of the chat.** The **Model** card shows the model in use and lets you
+pick another one that is already there: a `.gguf` file in the models folder, or a model that
+LM Studio, Ollama or your other model server reports. You can also pick the context size. This
+works at the PC only; from your phone the card only shows the model. **Save** writes your choice
+to `config\launcher.json` (the earlier file is kept in `config\history`). It applies after
+Starlight restarts: while the Starlight window is running, **Restart Starlight** there does
+that (it stops the chat for about a minute, and asks first if an answer is being written).
+Downloading new models, changing the kind of model server and everything else stay in the
+Starlight window under **Settings**.
+
 #### A different model
 
 Thirty models are ready to pick in the setup window, with `--model <name>`, or with

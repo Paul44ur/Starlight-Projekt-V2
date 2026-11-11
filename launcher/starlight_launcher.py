@@ -464,6 +464,10 @@ DEFAULT_CONTEXT = 32768
 class Settings:
     root: Path
     model_url: str = DEFAULT_MODEL_URL
+    # The name of a .gguf file in the models folder, chosen on the chat's Settings page
+    # ("model_file" in config/launcher.json). While that file is there it is the model, whatever
+    # model/model_url say; if it is gone, they apply again (the launcher downloads that one).
+    model_choice: str = ""
     context: int = 32768
     variant: str = "vulkan"  # llama.cpp build: vulkan (any GPU) or cpu
     llama_release: str = "latest"  # or a tag such as "b6500"
@@ -511,7 +515,14 @@ class Settings:
 
     @property
     def model_file(self) -> Path:
+        if self.chosen_in_use:
+            return self.models / self.model_choice
         return self.models / _file_name(self.model_url)
+
+    @property
+    def chosen_in_use(self) -> bool:
+        """The file chosen on the Settings page is there, so it is the model."""
+        return bool(self.model_choice) and (self.models / self.model_choice).is_file()
 
     @property
     def uses_lmstudio(self) -> bool:
@@ -604,15 +615,25 @@ def load_settings(args: argparse.Namespace) -> Settings:
                     "links",
                 ):
                     setattr(settings, key, value)
+            choice = data.get("model_file")  # only a plain file name, never a path
+            if (
+                isinstance(choice, str)
+                and choice.lower().endswith(".gguf")
+                and choice == Path(choice.replace("\\", "/")).name
+            ):
+                settings.model_choice = choice
         except (OSError, ValueError) as exc:
             raise LauncherError(f"{saved} is not valid JSON: {exc}") from exc
     settings.first_page = str(getattr(args, "page", "") or "")
     if getattr(args, "model", None):
         settings.model_url = preset_url(args.model)
+        settings.model_choice = ""  # (a model asked for on the command line wins)
     for key in ("model_url", "context", "variant", "llama_release", "port"):
         value = getattr(args, key)
         if value is not None:
             setattr(settings, key, value)
+            if key == "model_url":
+                settings.model_choice = ""
     settings.viewer = settings.viewer and not args.no_viewer
     if getattr(args, "no_think", False):
         settings.think = False
@@ -1790,6 +1811,37 @@ def end_pause(root: Path) -> bool:
     return True
 
 
+# The chat's Settings page talks to the launcher window through two files in data/ (the same
+# names and few lines as starlight/core/modelchoice.py, which the web process uses): the
+# launcher writes ALIVE_FILE on every poll, so the page knows a launcher can restart
+# Starlight; the page writes RESTART_FILE to ask for that.
+ALIVE_FILE = "launcher.alive.json"
+RESTART_FILE = "launcher.restart.json"
+
+
+def write_alive(root: Path) -> None:
+    """Say that a launcher window is running (atomically: a reader never sees half a file)."""
+    path = root / "data" / ALIVE_FILE
+    path.parent.mkdir(parents=True, exist_ok=True)
+    part = path.with_name(path.name + ".part")
+    part.write_text(json.dumps({"pid": os.getpid(), "time": time.time()}), encoding="utf-8")
+    replace_file(part, path)
+
+
+def clear_alive(root: Path) -> None:
+    with contextlib.suppress(OSError):
+        (root / "data" / ALIVE_FILE).unlink()
+
+
+def restart_requested(root: Path) -> bool:
+    return (root / "data" / RESTART_FILE).is_file()
+
+
+def clear_restart_request(root: Path) -> None:
+    with contextlib.suppress(OSError):
+        (root / "data" / RESTART_FILE).unlink()
+
+
 # Starlight's own window writes this file when an answer is ready while it is in the
 # background (starlight/app_window.py: the same path and the same few lines). The launcher
 # window's tray icon shows it as a notification. Anything in it may come from a web page, so
@@ -2651,7 +2703,7 @@ def model_label(settings: Settings) -> str:
     if not settings.use_model:
         return ""
     for key, url in MODEL_PRESETS.items():
-        if url == settings.model_url and key in MODEL_INFO:
+        if url == settings.model_url and key in MODEL_INFO and not settings.chosen_in_use:
             return MODEL_INFO[key][0]
     return settings.model_file.stem
 

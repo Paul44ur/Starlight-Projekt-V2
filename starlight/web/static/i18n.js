@@ -18,6 +18,39 @@
     "Chat": "Chat", "Memory": "Gedächtnis", "Activity": "Aktivität", "Automations": "Automationen",
     "Settings": "Einstellungen", "Theme": "Farben",
     "Skip to the message box": "Zum Eingabefeld springen",
+    // the model card (settings)
+    "The model Starlight answers with. Saved in config/launcher.json.":
+      "Das Modell, mit dem Starlight antwortet. Gespeichert in config/launcher.json.",
+    "In use now": "Gerade im Einsatz", "Context size": "Kontextgröße", "Automatic": "Automatisch",
+    "Restart": "Neu starten", "Restart Starlight": "Starlight neu starten",
+    "whichever model the server has loaded": "das Modell, das der Server gerade geladen hat",
+    "Saved. It applies after Starlight restarts.": "Gespeichert. Es gilt nach einem Neustart von Starlight.",
+    "The model is changed at the PC.": "Das Modell wird am PC geändert.",
+    "config/starlight.local.yaml sets a model: a setting in it wins over this page.":
+      "config/starlight.local.yaml legt ein Modell fest: Diese Einstellung hat Vorrang vor dieser Seite.",
+    "No Starlight window is running: restart Starlight yourself.":
+      "Es läuft kein Starlight-Fenster: Starte Starlight selbst neu.",
+    "New models are downloaded in the Starlight window (Settings there).":
+      "Neue Modelle werden im Starlight-Fenster geladen (dort unter Einstellungen).",
+    "Restart Starlight now?": "Starlight jetzt neu starten?",
+    "The chat stops for about a minute while the model loads.":
+      "Der Chat steht etwa eine Minute still, während das Modell lädt.",
+    "Restart now?": "Jetzt neu starten?",
+    "An answer is being written and will be cut off.": "Eine Antwort wird gerade geschrieben und wird abgebrochen.",
+    "Starlight restarts now. This page works again in about a minute.":
+      "Starlight startet jetzt neu. Diese Seite geht in etwa einer Minute wieder.",
+    "Starlight runs with its built-in test model: models are set up in the Starlight window.":
+      "Starlight läuft mit dem eingebauten Testmodell: Modelle richtest du im Starlight-Fenster ein.",
+    "There is no model file in the models folder yet.": "Im Ordner „models“ liegt noch keine Modelldatei.",
+    "The address of the model server is not set.": "Die Adresse des Modellservers ist nicht eingetragen.",
+    "config/launcher.json has a mistake: fix it first.":
+      "In config/launcher.json steckt ein Fehler: Behebe ihn zuerst.",
+    "That model is not in the list.": "Dieses Modell steht nicht in der Liste.",
+    "That context size is not one of the offered sizes.": "Diese Kontextgröße gehört nicht zu den angebotenen.",
+    "That model file is gone.": "Diese Modelldatei gibt es nicht mehr.",
+    "no Starlight window is running: restart Starlight yourself":
+      "Es läuft kein Starlight-Fenster: Starte Starlight selbst neu.",
+    "choose a model": "Wähle ein Modell", "the context size is a number": "Die Kontextgröße ist eine Zahl",
     // Starlight's own questions (askYesNo, askText) and the conversation's menu
     "Cancel": "Abbrechen", "Rename": "Umbenennen", "New name": "Neuer Name", "Leave": "Verlassen",
     "Forget": "Vergessen", "Allow": "Erlauben", "Turn on": "Einschalten",
@@ -395,6 +428,9 @@
     [/^Delete "(.+)"\?$/, "„$1“ löschen?"],
     [/^Forget the memories Starlight learned in "(.+)"\?$/, "Die Erinnerungen vergessen, die Starlight in „$1“ gelernt hat?"],
     [/^Folder: (.+)$/, "Ordner: $1"],
+    [/^context (\d+)$/, "Kontext $1"],
+    [/^(.+) does not answer, so there is no list of models\.$/, "$1 antwortet nicht, darum gibt es keine Modellliste."],
+    [/^(.+) lists no models\.$/, "$1 meldet keine Modelle."],
     [/^Delete the automation '(.+)'\?$/, "Die Automation „$1“ löschen?"],
     [/^It may run (.+) without asking each time\.$/, "Sie darf $1 ausführen, ohne jedes Mal zu fragen."],
     [/^Delete the skill (.+)\?$/, "Die Fähigkeit $1 löschen?"],

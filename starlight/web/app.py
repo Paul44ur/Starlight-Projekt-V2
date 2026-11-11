@@ -55,6 +55,7 @@ from starlight.notebook import undo_change
 from starlight.web.auth import COOKIE, Device, Devices
 from starlight.web.backup_api import add_backup_api
 from starlight.web.export import export_html
+from starlight.web.model_api import add_model_api
 from starlight.web.notes_api import add_notes_api
 
 STATIC = Path(__file__).with_name("static")
@@ -1179,6 +1180,7 @@ def create_app(paths: Paths | None = None) -> Any:
 
     add_notes_api(app, kernel, local_only, body)
     add_backup_api(app, kernel, local_only, body)
+    add_model_api(app, paths, kernel, viewer, local_only, body, lambda: ANSWERING.count > 0)
 
     # -- settings: safety limits (starlight/core/safety.py) ---------------------------------
 
@@ -1539,7 +1541,25 @@ def answer_stats(usage: list[dict[str, Any]]) -> dict[str, Any]:
     return stats
 
 
-async def _run_ask(
+class Answering:
+    """How many answers are being written (any chat page): the Settings page asks before it
+    restarts Starlight in the middle of one."""
+
+    count = 0
+
+
+ANSWERING = Answering()
+
+
+async def _run_ask(*args: Any, **kwargs: Any) -> None:
+    ANSWERING.count += 1
+    try:
+        await _run_ask_inner(*args, **kwargs)
+    finally:
+        ANSWERING.count -= 1
+
+
+async def _run_ask_inner(
     kernel: Kernel,
     web_ui: WebUI,
     send: Any,

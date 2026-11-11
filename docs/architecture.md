@@ -305,6 +305,26 @@ control characters). The launcher's status poll reads it, and a new id shows a b
 own, as `modelpause.py` and the launcher do for the pause file; `app_window.py` does not import
 the launcher. The text comes from a web page, so it is only ever shown as plain text.
 
+**Choosing the model on the Settings page.** `starlight/core/modelchoice.py` and
+`starlight/web/model_api.py` (`GET /api/model`, `POST /api/model`, `POST /api/model/restart`).
+The launcher writes the model part of the configuration (`config/starlight.launcher.yaml`) on
+every start, from `config/launcher.json`. So the page changes that file and never the
+configuration: it keeps a copy in `config/history` (the last ten), refuses a file with a mistake
+and writes the rest as it was. Only models that are already there can be chosen: the `.gguf`
+files in the models folder (no `mmproj` files, no models in several parts), or the names the
+model server lists (3 seconds; if it does not answer, the list is empty and nothing is saved).
+A chosen file is saved as `model_file`; the launcher uses it while the file exists and falls
+back to its preset (`model`, `model_url`) if it is gone. There is no switch while Starlight
+runs: the kernel builds its provider, its prompts and its context window once, for one model.
+So the choice is `pending` until a restart. The web process never starts the model server, so
+it asks the launcher window: it writes `data/launcher.restart.json`, and the window's poll
+deletes it, reads `launcher.json` again and does what "Save and restart" does. The window
+writes `data/launcher.alive.json` on every poll; a heartbeat younger than 15 seconds is what
+"a launcher is running" means (without one the page says to restart by hand). The two files
+and a few lines live on both sides, as for the pause file; the web process does not import the
+launcher. The restart answers 409 while an answer is being written, unless the page sends
+`force` after asking.
+
 **Questions.** A page never uses the browser's own boxes (`confirm`, `prompt`, `alert`):
 they look different on every system and name the address ("127.0.0.1:8700 says"). It asks
 with `askYesNo(text, {yes, no, danger})` and `askText(label, value, {yes})` from `common.js`,

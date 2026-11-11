@@ -19,6 +19,13 @@
   #backup-card p { margin: 6px 0; }
   body.remote .local-only button, body.remote .local-only input, body.remote .local-only .switch {
     pointer-events: none; opacity: .5; }
+  /* the model card: the choice is for the PC; another device only looks */
+  body.remote #model-edit { display: none; }
+  #model-remote { display: none; }
+  body.remote #model-remote { display: block; }
+  #model-card .row { margin-top: var(--s-2); }
+  #model-card .row label { min-width: 6.5em; }
+  #model-card select { min-width: 0; max-width: 100%; flex: 1 1 14em; }
   .card.mods { overflow-x: visible; }
   #filter { width: 100%; margin: 4px 0 6px; }
   #summary { margin-bottom: 8px; }
@@ -183,6 +190,27 @@
     <label class="practice"><span class="switch"><input type="checkbox" id="practice" /><span></span></span>
       <span><b>Practice mode</b> <span class="dim small">— actions that change something (sending
       mail, clicking, running code, commands …) are described, not done. Looking things up still works.</span></span></label>
+  </div>
+
+  <div class="card" id="model-card" hidden>
+    <h2>Model</h2>
+    <p class="dim small">The model Starlight answers with. Saved in config/launcher.json.</p>
+    <div class="row"><span class="dim">In use now</span> <b id="model-now" translate="no"></b>
+      <span class="dim small" id="model-now-context"></span></div>
+    <p class="small swarn" id="model-problem" hidden></p>
+    <p class="small swarn" id="model-local" hidden>config/starlight.local.yaml sets a model: a setting in it wins over this page.</p>
+    <p class="small" id="model-pending" hidden>Saved. It applies after Starlight restarts.</p>
+    <p class="dim small" id="model-remote">The model is changed at the PC.</p>
+    <div id="model-edit">
+      <div class="row"><label for="model-pick">Model</label><select id="model-pick" translate="no"></select></div>
+      <div class="row"><label for="model-context">Context size</label><select id="model-context"></select></div>
+      <div class="row"><button id="model-save" class="primary" type="button">Save</button></div>
+      <div class="row" id="model-restart-row" hidden>
+        <button id="model-restart" type="button">Restart Starlight</button>
+        <span class="dim small" id="model-restart-note" hidden>No Starlight window is running: restart Starlight yourself.</span>
+      </div>
+    </div>
+    <p class="dim small">New models are downloaded in the Starlight window (Settings there).</p>
   </div>
 
   <div class="card local-only safety" id="safety-card">
@@ -520,6 +548,78 @@ async function chooseLevel(level) {
   await setSafety({ level });
 }
 
+// -- the model (starlight/core/modelchoice.py) ------------------------------------------
+let modelState = null;
+
+function modelSize(bytes) {
+  return bytes >= 1e9 ? (bytes / 1e9).toFixed(1) + " GB" : Math.max(1, Math.round(bytes / 1e6)) + " MB";
+}
+
+function contextLabel(size) { return size ? Math.round(size / 1024) + "k" : tr("Automatic"); }
+
+async function loadModel() {
+  try { modelState = await api("/api/model"); } catch (e) { return; }
+  if (!modelState || !Array.isArray(modelState.options)) return;  // (an older Starlight)
+  showModel();
+}
+
+function showModel() {
+  const m = modelState;
+  document.getElementById("model-card").hidden = false;
+  document.getElementById("model-now").textContent = m.running.model || tr("whichever model the server has loaded");
+  document.getElementById("model-now-context").textContent = m.running.context ? "context " + m.running.context : "";
+  const problem = document.getElementById("model-problem");
+  problem.hidden = !m.problem; problem.textContent = m.problem || "";
+  document.getElementById("model-local").hidden = !m.overridden;
+  document.getElementById("model-pending").hidden = !m.pending;
+  const pick = document.getElementById("model-pick");
+  pick.replaceChildren();
+  const known = m.options.some(o => o.id === m.current.model);
+  if (!known) { const none = new Option("—", ""); none.selected = true; pick.appendChild(none); }
+  m.options.forEach(o => {
+    const option = new Option(o.size ? o.label + " (" + modelSize(o.size) + ")" : o.label, o.id);
+    option.selected = o.id === m.current.model;
+    pick.appendChild(option);
+  });
+  const context = document.getElementById("model-context");
+  context.replaceChildren();
+  const sizes = m.contexts.includes(m.current.context) ? m.contexts : [...m.contexts, m.current.context];
+  sizes.forEach(n => { const o = new Option(contextLabel(n), String(n)); o.selected = n === m.current.context; context.appendChild(o); });
+  const save = document.getElementById("model-save");
+  const sync = () => { save.disabled = !pick.value; };
+  pick.onchange = sync; sync();
+  save.onclick = saveModel;
+  document.getElementById("model-restart-row").hidden = !m.pending;
+  document.getElementById("model-restart").hidden = !m.restart.possible;
+  document.getElementById("model-restart-note").hidden = m.restart.possible;
+  document.getElementById("model-restart").onclick = restartStarlight;
+}
+
+async function saveModel() {
+  const body = { model: document.getElementById("model-pick").value, context: Number(document.getElementById("model-context").value) };
+  try { modelState = await api("/api/model", { method: "POST", body }); toast(tr("Saved")); }
+  catch (e) { toast(e.message); return; }
+  showModel();
+}
+
+async function restartStarlight() {
+  if (!(await askYesNo("Restart Starlight now?\n\nThe chat stops for about a minute while the model loads.", { yes: "Restart" }))) return;
+  let force = false;
+  for (;;) {
+    const response = await fetch("/api/model/restart", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(force ? { force: true } : {}) });
+    if (response.status === 409 && !force) {  // an answer is being written
+      if (!(await askYesNo("Restart now?\n\nAn answer is being written and will be cut off.", { yes: "Restart", danger: true }))) return;
+      force = true;
+      continue;
+    }
+    if (response.ok) { toast(tr("Starlight restarts now. This page works again in about a minute.")); return; }
+    let detail = "";
+    try { detail = (await response.json()).detail || ""; } catch (e) { /* */ }
+    toast(detail || response.statusText);
+    return;
+  }
+}
+
 // -- voices ------------------------------------------------------------------------------
 const LANGUAGES = { de: "German", en: "English" };
 async function loadVoices() {
@@ -680,7 +780,7 @@ document.getElementById("backup-cancel").onclick = async () => {
 
 (async () => {
   try { const s = await api("/api/status"); if (!s.local) document.body.classList.add("remote"); } catch (e) { /* */ }
-  load(); loadSafety(); loadDevices(); loadVoices(); loadBackup();
+  load(); loadSafety(); loadModel(); loadDevices(); loadVoices(); loadBackup();
 })();
 </script>
 </body>
