@@ -548,6 +548,10 @@ def create_app(paths: Paths | None = None) -> Any:
     def common() -> Response:
         return Response(page("common.js"), media_type="text/javascript")
 
+    @app.get("/quick.js")
+    def quick() -> Response:
+        return Response(page("quick.js"), media_type="text/javascript")
+
     @app.get("/i18n.js")
     def i18n() -> Response:
         return Response(page("i18n.js"), media_type="text/javascript")

@@ -116,7 +116,8 @@ document.getElementById("new-note").onclick = async (event) => {
 
 // The keys of this page, for the ? window (common.js).
 window.SHORTCUTS = [
-  ["Ctrl+K", "Find a note"], ["Ctrl+N", "A new note"], ["Ctrl+E", "Edit or read the note"],
+  ["Ctrl+K", "Find a note"], ["Ctrl+Shift+K", "Jump to a conversation, a note or a page"],
+  ["Ctrl+N", "A new note"], ["Ctrl+E", "Edit or read the note"],
   ["Ctrl+S", "Save"], ["Esc", "Close the side panel or the finder"],
   ["Space", "Flashcards: show the answer"], ["1–4", "Flashcards: how well you knew it"],
   ["?", "These shortcuts (Ctrl+/ while typing in a box)"],

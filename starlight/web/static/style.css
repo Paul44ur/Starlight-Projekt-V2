@@ -171,6 +171,27 @@ dialog.ask::backdrop { background: rgb(0 0 0 / .45); }
              border: 1px solid var(--border); border-radius: var(--r-2); }
 .ask-buttons { display: flex; justify-content: flex-end; gap: var(--s-2); margin-top: var(--s-2); }
 .ask-buttons button { min-width: 88px; }
+/* The quick switcher (quick.js, every page): a box on top, a list of groups under it. The
+   padding is on the inner box, so a click on the window's edge counts only outside it. */
+dialog#quick { border: 1px solid var(--border); border-radius: var(--r-3); background: var(--panel);
+               color: var(--text); box-shadow: var(--shadow-2); padding: 0; margin: 12vh auto auto;
+               width: min(560px, calc(100vw - 32px)); animation: ask-in var(--dur) var(--ease); }
+dialog#quick::backdrop { background: rgb(0 0 0 / .45); }
+.quick-box { padding: var(--s-3); }
+.quick-box input { width: 100%; padding: 8px 10px; font-size: var(--fs-lg); background: var(--bg);
+                   border: 1px solid var(--border); border-radius: var(--r-2); }
+.quick-list { max-height: 55vh; overflow-y: auto; margin-top: var(--s-2); }
+.quick-head { margin: var(--s-2) var(--s-2) 2px; color: var(--dim); font-size: var(--fs-xs); font-weight: 600;
+              text-transform: uppercase; letter-spacing: .04em; }
+.quick-row { display: flex; align-items: center; gap: var(--s-2); padding: 7px 10px; border-radius: var(--r-2);
+             cursor: pointer; }
+.quick-row[aria-selected="true"] { background: color-mix(in srgb, var(--accent) 18%, transparent);
+                                   box-shadow: inset 2px 0 0 var(--accent); }
+.quick-row > .ico { flex: none; color: var(--dim); }
+.quick-row .q-t { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.quick-row .q-w { flex: 1 1 0; min-width: 0; margin-left: auto; text-align: right; color: var(--dim);
+                  font-size: var(--fs-sm); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.quick-none { margin: var(--s-3) var(--s-2); color: var(--dim); }
 @media (max-width: 760px) { header.top nav { gap: 8px; font-size: 13px; } }
 /* A touch screen (a phone, a tablet): every control at least 44 px, so a finger hits it; the
    mouse look stays as it is. At no weight (:where), so a page can make a small control, such

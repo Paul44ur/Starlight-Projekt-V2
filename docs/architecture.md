@@ -336,6 +336,22 @@ stay in it, so the chat's Esc (stop the answer) is not set off. `tests/test_ques
 checks that no page calls the browser's boxes; page tests answer a question with `answer`
 or answer all of them with `YES` (both in `tests/test_chat_page.py`).
 
+**The quick switcher.** `quick.js` (loaded by every page right after `common.js`, served by
+its own route and kept by the service worker) is one box to jump somewhere. Ctrl+K (Cmd+K)
+opens it, except on the Notes page, where Ctrl+K stays that page's own note finder;
+Ctrl+Shift+K opens it everywhere. It is a `<dialog>` in the page's look with a text box and
+groups of at most six rows: *Conversations* (`GET /api/conversations`, with `?search=` once
+you type), *Notes* (`GET /api/notes/search`, only at the PC: `/api/status` says `local`, and
+a paired phone is not asked), *Pages* and *Commands* (a fixed list, filtered on the text as
+it is shown, so also by the German names). Requests wait 150 ms after the last key, an
+older answer never replaces a newer one, and a failed request just leaves its group out.
+Titles are the user's words: they are set with `textContent` and marked `translate="no"`,
+never as HTML. Keys pressed in it stay in it, so the chat's Esc does not stop an answer.
+From another page a conversation opens at `/?c=<id>`, and the two commands that start one
+at `/?new=new` and `/?new=private`; `chat-page.js` reads them once, takes them out of the
+address, and an id that does not exist gives the chat as usual. `tests/test_quick_switcher.py`
+checks it.
+
 **Icons.** Buttons without words show line icons from `ICONS` in `common.js` (24 px SVG
 paths in the text colour): markup says `data-icon="mic"` and `drawIcons()` fills it in;
 code calls `setIcon(button, name)`, which marks an icon `.alone` (drawn a little larger)

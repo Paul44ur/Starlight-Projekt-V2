@@ -155,13 +155,29 @@ function takeShared() {
   return false;
 }
 
+// From the quick switcher on another page (quick.js): /?c=<id> opens that conversation, and
+// /?new=new or /?new=private starts one. Read once and taken out of the address; an id that
+// does not exist (or anything else) gives the chat as usual.
+function takeJump() {
+  const params = new URLSearchParams(location.search);
+  const id = params.get("c"), start = params.get("new");
+  if (id === null && start === null) return {};
+  history.replaceState(null, "", "/");
+  return { id: id && id.length <= 80 ? id : null, start: start === "new" || start === "private" ? start : null };
+}
+
 (async () => {
   const fresh = takeShared();
+  const jump = takeJump();
   await loadList();
-  if (fresh) {  // a question about a note: in a conversation of its own
-    try { conversation = (await api("/api/conversations", { method: "POST" })).id; } catch (e) { /* the current one */ }
+  if (fresh || jump.start) {  // a question about a note, or a command: in a conversation of its own
+    const body = jump.start === "private" ? { private: true } : undefined;
+    try { conversation = (await api("/api/conversations", { method: "POST", body })).id; } catch (e) { /* the current one */ }
+  } else if (jump.id) {
+    try { await api("/api/conversations/" + encodeURIComponent(jump.id)); conversation = jump.id; } catch (e) { /* none: as usual */ }
   }
   if (conversation) await openConversation(conversation);
+  if (jump.start) input.focus();
   connect(); refresh(); setInterval(refresh, 4000);
   if ("serviceWorker" in navigator) navigator.serviceWorker.register("/sw.js").catch(() => { /* http on a phone: no offline page */ });
 })();

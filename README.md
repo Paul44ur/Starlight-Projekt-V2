@@ -530,6 +530,10 @@ A **↓** button above the box brings you back to the newest message; a dot on i
 new arrived below. **Ctrl+/** (or **?** when you are not typing) shows the keyboard shortcuts,
 here and on the Notes page; the conversation list, its ⋯ menus and the phone's drawer (the menu
 button) work with the keyboard too (Tab, Enter, the arrow keys, Esc).
+**Ctrl+K** (Cmd+K on a Mac) opens the quick switcher on every page: one box to jump to a
+conversation, a note (on the PC), a page or a command such as *New conversation*. Type to
+narrow the list, use the arrow keys and Enter. On the Notes page Ctrl+K stays the note finder;
+**Ctrl+Shift+K** opens the quick switcher there.
 
 **How it is laid out.** On the left: **New conversation**, **Private conversation**, the
 search, the pages (Notes, Memory, Activity, Automations, Settings), your conversations

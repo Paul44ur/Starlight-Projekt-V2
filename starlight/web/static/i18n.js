@@ -66,6 +66,10 @@
     "Print or save as PDF": "Drucken oder als PDF speichern",
     "Save this automation?": "Diese Automation speichern?", "Forget this?": "Das vergessen?",
     "Turn it on?": "Einschalten?", "It can no longer use Starlight.": "Es kann Starlight dann nicht mehr nutzen.",
+    // the quick switcher (every page)
+    "Jump to a conversation, a note or a page": "Zu einem Gespräch, einer Notiz oder einer Seite springen",
+    "Quick switcher": "Schnellwechsel", "Change the theme": "Farben wechseln", "Nothing found": "Nichts gefunden",
+    "Search or jump to ...": "Suchen oder springen zu ...",
     // a sign when an answer is ready (chat, settings)
     "Your answer is ready": "Deine Antwort ist fertig",
     "Starlight is waiting for your OK": "Starlight wartet auf dein OK",

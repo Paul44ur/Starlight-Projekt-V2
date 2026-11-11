@@ -17,7 +17,7 @@ def test_the_app_serves_every_file_the_chat_page_loads(tmp_path: Path) -> None:
     html = (STATIC / "chat.html").read_text("utf-8")
     scripts = re.findall(r'<script src="/([^"]+)"></script>', html)
     sheets = re.findall(r'<link rel="stylesheet" href="/([^"]+)" />', html)
-    assert scripts == ["i18n.js", "common.js", "markdown.js", "render.js", *PARTS]
+    assert scripts == ["i18n.js", "common.js", "quick.js", "markdown.js", "render.js", *PARTS]
     assert sheets == ["style.css", "chat.css"]
     assert "<style" not in html and "<script>" not in html  # (nothing inline any more)
     assert tuple(PARTS) == CHAT_SCRIPTS

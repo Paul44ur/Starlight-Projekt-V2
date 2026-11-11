@@ -55,6 +55,7 @@ new ResizeObserver(() => {
 window.SHORTCUTS = [
   ["Enter", "Send"], ["Shift+Enter", "A new line"], ["Esc", "Stop the answer, or close a menu"],
   ["↑", "In the empty box: your last question again"], ["/", "Commands"],
+  ["Ctrl+K", "Jump to a conversation, a note or a page"],
   ["Ctrl+Alt+J", "Kill switch: stop everything Starlight does (anywhere on the PC)"],
   ["Ctrl+/", "These shortcuts (? when not typing)"],
 ];
