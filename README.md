@@ -1023,6 +1023,37 @@ off with `starlight remote disable`.
 - **Everything is logged.** Every action Starlight takes is recorded in
   `logs\audit.log`.
 
+### Backup and restore
+
+Settings has a card "Backup and restore" (at the PC only), and there are two commands:
+`starlight backup [--to FOLDER]` and `starlight restore FILE`.
+
+- **In the file:** your conversations, your notes (every folder in your Starlight folder
+  that the Notes page shows, such as Notes, Journal, Recipes, Boards, Templates and folders
+  you made yourself, and the loose files in it, with the pictures in `Notes\Attachments`),
+  the deleted notes in the trash and the earlier versions of your notes (they are kept with
+  the history), the flashcard schedule, memory, skills and your settings.
+- **Not in the file, among your notes:** hidden files and folders (names that start with a
+  dot, such as `.git` or `.obsidian`: a restore leaves the ones in your note folders where
+  they are), files with names Windows cannot hold (such as `con`), any single file over
+  2 GB, and the `code` folder (the programs Starlight wrote for you: copy it by hand if you
+  want it). If everything together is over 8 GB, or has over 200,000 files, no backup is
+  made and Starlight names the biggest parts, so you can move them away first. The page and
+  the command say what was left out.
+- **Skills:** the skills are in the file, their change history is not. Starlight runs `git`
+  on that history, and a history folder from a file could make git start programs.
+- **Settings of this PC:** `starlight.launcher.yaml` (the model server) and
+  `starlight.remote.yaml` (phone access) describe this PC. They are not in the file, and a
+  restore never changes them.
+- **Not in the file:** passwords and keys (they belong to this PC and this Windows user: enter
+  them again), paired phones (pair them again), the app window's profile, indexes (they are
+  built again), logs and models.
+- **Restore replaces, it does not merge.** The file is checked and unpacked, and the
+  restore is applied the next time Starlight starts: close it and start it again. Before
+  that, a copy of what you had is saved as `backups\before-restore-<time>.zip` (the newest
+  3 are kept). "Cancel the restore" on the card takes it back before the restart.
+- **The file is not encrypted.** Keep it somewhere safe.
+
 ## Troubleshooting
 
 **First, run `starlight doctor`** (or `uv run starlight doctor`). It checks the model and
@@ -1145,6 +1176,8 @@ If you installed with `Starlight.exe`, uv isn't on your PATH. Either install it 
 | `starlight model info / serve / bench [--card "RX 9060 XT 16 GB"]` | The model: settings, start its server, measure its speed (it also prints a line for the benchmark table below). |
 | `starlight model nightly [--schedule / --unschedule]` | The tool-use exam and the speed test against your real model, compared with the last run: anything worse is listed (and the exit code is 2). Results go to `logs\nightly\` and one line to `logs\nightly.log`. `--schedule` runs it every night at 03:15 (Windows Task Scheduler, your account; the model server has to be running then). A local CI for your own PC. |
 | `starlight rules` | What Starlight may do, in plain words: runs without asking, asks first, never runs, and the limits. |
+| `starlight backup [--to FOLDER]` | Saves conversations, notes, memory, skills and settings into one zip (default: `backups\`). Not in it: passwords, paired devices. |
+| `starlight restore FILE` | Replaces your data with a backup. Applied at once if Starlight is not running, else at its next start. |
 | `starlight support-bundle [--out FOLDER] [--no-activity]` | One zip with the logs, settings and `starlight doctor`'s checks, to send to someone helping you. Your memory, conversations and secrets are not in it; secret values, anything that looks like a password or key, and your user folder's path are hidden. Look inside before you send it. |
 | `starlight model exam` | The tool-use exam: eight small tasks (pick a tool, fill in its arguments, use what it found, know when no tool is needed, German too) that show whether a model gets on with Starlight's tools. Nothing really runs; it takes a minute or two. |
 | `starlight model pause / resume` | Free the graphics card by hand (as game mode does), and bring the model back. |

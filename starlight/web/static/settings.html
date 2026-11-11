@@ -14,6 +14,9 @@
   #code { font-size: 32px; letter-spacing: .3em; font-weight: 700; }
   .locked { display: none; }
   body.remote .locked { display: block; }
+  body.remote #backup-card { display: none; }  /* PC only: a phone is not shown it at all */
+  #backup-card .row { margin: 8px 0; }
+  #backup-card p { margin: 6px 0; }
   body.remote .local-only button, body.remote .local-only input, body.remote .local-only .switch {
     pointer-events: none; opacity: .5; }
   .card.mods { overflow-x: visible; }
@@ -210,6 +213,21 @@
           <option value="blocked">Blocked</option><option value="default">Default</option></select>
         <button id="apply">Apply</button></div>
     </details>
+  </div>
+
+  <div class="card local-only" id="backup-card">
+    <h2>Backup and restore</h2>
+    <p class="dim small">Saves your conversations, notes, memory, skills and settings into one file.
+      Passwords and paired devices are not included: you enter them or pair again.</p>
+    <p class="dim small">A restore replaces what you have now, it does not merge. The file is not
+      encrypted: keep it somewhere safe.</p>
+    <div class="row"><button id="backup-save" class="primary">Save a backup</button>
+      <button id="backup-restore">Restore from a file…</button>
+      <input type="file" id="backup-file" accept=".zip,application/zip" hidden aria-label="Backup file" /></div>
+    <p class="small" id="backup-left" role="status" hidden></p>
+    <p class="small" id="backup-summary" role="status" hidden></p>
+    <div class="row" id="backup-notice" hidden><span class="small" id="backup-notice-text" role="status"></span>
+      <button id="backup-cancel" hidden>Cancel the restore</button></div>
   </div>
 </div>
 <script src="/common.js"></script>
@@ -588,9 +606,81 @@ language.onchange = () => {
   location.reload();
 };
 
+// Backup and restore: the restore is staged here and applied when Starlight starts next.
+const backupNote = (text, cancel) => {
+  document.getElementById("backup-notice").hidden = false;
+  document.getElementById("backup-notice-text").textContent = text;
+  document.getElementById("backup-cancel").hidden = !cancel;
+};
+const backupDate = (iso) => {
+  const day = new Date(iso);
+  if (!iso || Number.isNaN(day.getTime())) return "?";
+  return day.toLocaleDateString(window.starlightLanguage === "de" ? "de-DE" : "en-GB",
+    { day: "numeric", month: "long", year: "numeric" });
+};
+const backupLine = (m) => tr(`Backup from ${backupDate(m.created)}, Starlight ${m.starlight_version || "?"}. `
+  + `Conversations: ${(m.counts || {}).conversations || 0} · notes: ${(m.counts || {}).notes || 0} `
+  + `· memories: ${(m.counts || {}).memories || 0}`);
+async function loadBackup() {
+  try {
+    const state = await api("/api/backup");
+    if (state.pending) backupNote(tr("Ready. Close Starlight and start it again to finish the restore."), true);
+    const last = state.last;
+    let seen = null;
+    try { seen = localStorage.getItem("starlight-backup-seen"); } catch (e) { /* */ }
+    if (last && last.at && last.at !== seen && !state.pending) {
+      backupNote(tr(last.ok
+        ? `Restored from the backup of ${backupDate(last.backup_created)}. What you had before is in backups/${last.safety}.`
+        : `The restore was not applied: ${last.reason}`) + (last.ok && last.reason ? " " + tr(last.reason) : ""), false);
+      try { localStorage.setItem("starlight-backup-seen", last.at); } catch (e) { /* */ }
+    }
+  } catch (e) { /* the card still works without it */ }
+}
+document.getElementById("backup-save").onclick = async () => {
+  const left = document.getElementById("backup-left");
+  try {  // first: can it be made, and what would it leave out?
+    const check = await api("/api/backup/check");
+    left.hidden = !check.left_out.length;
+    left.textContent = check.left_out.map((line) => tr(line) + ".").join(" ");
+  } catch (e) { left.hidden = true; toast(e.message); return; }
+  const link = document.createElement("a");
+  link.href = "/api/backup/download"; link.download = "";
+  document.body.appendChild(link); link.click(); link.remove();
+};
+const backupFile = document.getElementById("backup-file");
+document.getElementById("backup-restore").onclick = () => backupFile.click();
+backupFile.onchange = async () => {
+  const chosen = backupFile.files[0];
+  backupFile.value = "";
+  if (!chosen) return;
+  const summary = document.getElementById("backup-summary");
+  summary.hidden = false; summary.textContent = tr("Checking the file…");
+  let found;
+  try {
+    const response = await fetch("/api/backup/inspect", { method: "POST", body: chosen });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(data.detail || response.statusText);
+    found = data;
+  } catch (e) { summary.hidden = true; toast(e.message); return; }
+  summary.textContent = backupLine(found.manifest);
+  if (!(await askYesNo("Replace your current conversations, notes, memory and settings with this backup?\n\nA copy of what you have now is saved first. It is applied when Starlight starts next.", { yes: "Restore", danger: true }))) return;
+  try {
+    await api("/api/backup/restore", { method: "POST", body: { token: found.token } });
+    summary.hidden = true;
+    backupNote(tr("Ready. Close Starlight and start it again to finish the restore."), true);
+  } catch (e) { toast(e.message); }
+};
+document.getElementById("backup-cancel").onclick = async () => {
+  try {
+    await api("/api/backup/pending", { method: "DELETE" });
+    document.getElementById("backup-notice").hidden = true;
+    toast("The restore was cancelled.");
+  } catch (e) { toast(e.message); }
+};
+
 (async () => {
   try { const s = await api("/api/status"); if (!s.local) document.body.classList.add("remote"); } catch (e) { /* */ }
-  load(); loadSafety(); loadDevices(); loadVoices();
+  load(); loadSafety(); loadDevices(); loadVoices(); loadBackup();
 })();
 </script>
 </body>

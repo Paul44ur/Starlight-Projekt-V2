@@ -824,6 +824,53 @@ def cmd_support_bundle(paths: Paths, args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_backup(paths: Paths, args: argparse.Namespace) -> int:
+    from starlight.core import backup
+
+    folder = Path(args.to).expanduser() if args.to else backup.backups_dir(paths)
+    target = folder / backup.backup_name()
+    try:
+        manifest = backup.create_backup(backup.sources_for(paths), target)
+    except backup.BackupError as exc:
+        print(str(exc), file=sys.stderr)
+        return 1
+    counts = manifest["counts"]
+    print(f"Backup saved: {target}")
+    print(
+        f"{counts['conversations']} conversations, {counts['notes']} notes, "
+        f"{counts['memories']} memories."
+    )
+    for line in manifest["left_out"]:
+        print(line + ".")
+    print("Passwords and paired devices are not in it. The file is not encrypted: keep it safe.")
+    return 0
+
+
+def cmd_restore(paths: Paths, args: argparse.Namespace) -> int:
+    from starlight.core import backup
+    from starlight.core.corelock import core_running
+
+    file = Path(args.file).expanduser()
+    if not file.is_file():
+        print(f"No such file: {file}", file=sys.stderr)
+        return 1
+    try:
+        manifest = backup.stage_restore(paths, file)
+    except backup.BackupError as exc:
+        print(str(exc), file=sys.stderr)
+        return 1
+    print(f"Backup of {manifest.get('created', 'unknown date')} checked.")
+    if core_running(paths.data / "core.lock"):
+        print("Close Starlight and start it again to finish the restore.")
+        return 0
+    outcome = backup.apply_pending(paths)
+    if outcome and outcome.get("ok"):
+        print(f"Restored. What you had before is in backups/{outcome['safety']}.")
+        return 0
+    print(f"The restore was not applied: {(outcome or {}).get('reason', 'unknown reason')}")
+    return 1
+
+
 def cmd_service(paths: Paths, args: argparse.Namespace) -> int:
     from starlight import service
     from starlight.core.corelock import core_running
@@ -1059,6 +1106,15 @@ def build_parser() -> argparse.ArgumentParser:
         "--no-activity", action="store_true", help="leave out the audit log (what it did)"
     )
 
+    backup_cmd = sub.add_parser(
+        "backup", help="save conversations, notes, memory, skills and settings into one zip"
+    )
+    backup_cmd.add_argument("--to", help="the folder for the zip (default: backups/)")
+    restore_cmd = sub.add_parser(
+        "restore", help="replace your data with a backup file (applied at the next start)"
+    )
+    restore_cmd.add_argument("file", help="a file made by `starlight backup`")
+
     model = sub.add_parser(
         "model",
         help="the local model: info, serve, bench, exam (tool use), nightly, pause, resume",
@@ -1074,6 +1130,10 @@ def build_parser() -> argparse.ArgumentParser:
     model.add_argument("--runs", type=int, default=3, help="benchmark runs")
     model.add_argument("--print-only", action="store_true", help="serve: only print the command")
     return parser
+
+
+# Commands that build a Kernel or open the data themselves.
+_OPENS_DATA = ("run", "ask", "tools", "memory", "serve", "web", "app", "skills")
 
 
 def main(argv: Sequence[str] | None = None) -> int:
@@ -1096,8 +1156,20 @@ def _main(argv: Sequence[str] | None) -> int:
     _ensure_console(paths)
     if args.command in ("run", "web", "serve", "connect", "viewer", "app"):  # they keep running
         crashes.watch(paths.logs)
+    if args.command in _OPENS_DATA:
+        # A staged restore is applied here, before anything has built a Kernel and opened
+        # the data (core/backup.py). It never raises.
+        from starlight.core import backup
+
+        outcome = backup.apply_pending(paths)
+        if outcome is not None and not outcome.get("ok"):
+            print(f"Restore not applied: {outcome.get('reason')}", file=sys.stderr)
     try:
         match args.command:
+            case "backup":
+                return cmd_backup(paths, args)
+            case "restore":
+                return cmd_restore(paths, args)
             case "ask":
                 return asyncio.run(cmd_ask(paths, args))
             case "run":

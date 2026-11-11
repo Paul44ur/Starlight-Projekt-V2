@@ -858,6 +858,26 @@ checksum taken from the bytes written; and a reply that nests JSON 60 000 deep a
 `{"name"` is plain text (it used to raise `RecursionError` in the stream filter), with
 a still-unfinished tool call rescanned only when something that can end it arrives.
 
+**Backup and restore** (`starlight/core/backup.py`, routes in `starlight/web/backup_api.py`).
+A backup is a zip: `manifest.json` first (format, version, date, counts, secret names), then
+`config/` (the yaml files), `data/` (conversations, notebook choices, `skills.git`, and the
+history database copied with sqlite's backup API), `memory/`, `skills/` and `notes/` (every
+top-level folder and loose file of the output folder that the Notes index covers: not hidden, not
+in `SKIP_TOP`; the manifest lists them as `notes_folders` and `notes_files`, and a restore swaps
+exactly those; the output folder lies outside the project). Left out: secret values,
+paired devices, indexes, caches, logs, models, the STOP file, and the per-PC config files `starlight.launcher.yaml` and `starlight.remote.yaml` (ignored on restore, never replaced or deleted). The skills are in the backup, their change history (`data/skills.git`) is not: Starlight runs `git` on it, and a git folder from a file can carry hooks or a config that make git start programs. It is separate from the
+launcher's update snapshot on purpose. An uploaded file is untrusted: names must be relative
+POSIX paths in the allowed places (no `..`, drive letters, backslashes, NUL, links or
+duplicates), there are caps on members and sizes, and the bytes really written are counted,
+not those in the header. `create_backup` applies the limits a restore enforces before it writes anything: a file over `MAX_FILE`, or a name `_check_name` would refuse, is left out and named (`left_out`); more than `MAX_TOTAL` or `MAX_MEMBERS` raises a `BackupError` that names the biggest parts. So a backup that is made can always be validated. Hidden files in the note folders (such as a `.git` folder) are not in a backup and are left where they are: a restore moves them from the old folder into the new one, and keeps the old folder, named in the outcome, if that fails. A restore is staged: the file is unpacked into
+`backups/.restore-<id>/` and `data/restore-pending.json` is written. `apply_pending` runs in
+`cli._main` before any command that builds a Kernel, so no data is open. It saves
+`backups/before-restore-<time>.zip` first (newest 3 kept; if that fails, nothing changes),
+swaps part by part with the old part moved aside (all rolled back if one fails), deletes the
+indexes so they rebuild, and writes `data/restore-result.json`, which Settings shows once.
+A damaged pending file is recorded and never stops the start. If another Starlight holds
+`data/core.lock`, the restore stays staged.
+
 ## Build plan status
 
 | Step | | Status |

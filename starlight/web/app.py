@@ -53,6 +53,7 @@ from starlight.core.permissions import (
 from starlight.core.ui import current_ui
 from starlight.notebook import undo_change
 from starlight.web.auth import COOKIE, Device, Devices
+from starlight.web.backup_api import add_backup_api
 from starlight.web.export import export_html
 from starlight.web.notes_api import add_notes_api
 
@@ -1177,6 +1178,7 @@ def create_app(paths: Paths | None = None) -> Any:
     # -- the Notes page's API (notes_api.py) ------------------------------------------------
 
     add_notes_api(app, kernel, local_only, body)
+    add_backup_api(app, kernel, local_only, body)
 
     # -- settings: safety limits (starlight/core/safety.py) ---------------------------------
 
