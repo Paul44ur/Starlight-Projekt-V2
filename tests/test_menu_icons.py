@@ -33,7 +33,9 @@ def icon_names() -> set[str]:
 
 
 def test_every_icon_name_the_chat_page_uses_is_drawn() -> None:
-    page = (STATIC / "chat.html").read_text(encoding="utf-8")
+    # (the page's markup and its scripts: chat.html loads them in parts)
+    parts = ["chat.html", *sorted(p.name for p in STATIC.glob("chat-*.js"))]
+    page = "\n".join((STATIC / name).read_text(encoding="utf-8") for name in parts)
     used = set(re.findall(r'data-icon="(\w+)"', page))
     used |= set(re.findall(r'setIcon\(\w+, "(\w+)"\)', page))
     used |= set(re.findall(r'icon\("(\w+)"\)', page))

@@ -217,10 +217,18 @@ keeps the two in step and checks that text on every filled colour is readable (W
 4.5:1). Both show a focus ring only while the keyboard is used. The plan for the rest of this
 work is `docs/plan-ui.md`.
 
+**The chat page in parts.** `chat.html` holds only the markup. Its look is `chat.css`, and its
+code is five plain scripts that share globals, loaded in this order: `chat-core.js` (state,
+scrolling, the socket, `handle()`, the message flow), `chat-messages.js` (drawing messages),
+`chat-list.js` (conversations, menus, the sidebar), `chat-input.js` (the message box, `/`
+commands, files, voice) and `chat-page.js` (the ready sign, the status, start-up). The web app
+serves only the names in `CHAT_SCRIPTS` (as for the Notes page), and `sw.js` keeps them for
+the phone's offline page.
+
 **The chat page's layout** (after the Claude app's, in Starlight's look): the sidebar holds
 the actions, the pages (`.side-nav`, the same links the phone's drawer shows) and the
 conversations; the bar shows the open one's name (`showTitle`, its menu is the list's
-`conversationMenu`); on a wide screen the menu button hides the sidebar (`body.no-sidebar`,
+`conversationMenu`, both in `chat-list.js`); on a wide screen the menu button hides the sidebar (`body.no-sidebar`,
 kept in localStorage). The context meter comes from `answer_stats`: `context_tokens` is what
 the model read plus wrote in the answer's last step, out of `/api/status`'s `context_window`.
 `_run_ask` keeps that number with the conversation (`ConversationStore.set_context`, in memory only
@@ -267,7 +275,7 @@ and a status line and prompt with the modes. Pipes keep the plain output.
 
 **A sign when an answer is ready.** When an answer arrives for the open conversation, or
 Starlight asks before a risky action, and the page is in the background (`document.hidden` or no
-focus), `signalReady` in `chat.html` puts a dot before the title. In Starlight's own window it
+focus), `signalReady` in `chat-page.js` puts a dot before the title. In Starlight's own window it
 calls `Bridge.attention` (`app_window.py`), which runs `flash_taskbar`: `FlashWindowEx` lights
 the taskbar button until the window is in front. In a browser it shows a notification through
 the Notification API, if the person allowed it (Settings has the button). The dot and the
@@ -311,7 +319,7 @@ or answer all of them with `YES` (both in `tests/test_chat_page.py`).
 **Icons.** Buttons without words show line icons from `ICONS` in `common.js` (24 px SVG
 paths in the text colour): markup says `data-icon="mic"` and `drawIcons()` fills it in;
 code calls `setIcon(button, name)`, which marks an icon `.alone` (drawn a little larger)
-when its button has no words. Icons never take a click themselves: it is the button's. Menus take icon names too: `popMenu` draws an item's first field with `icon()` when `ICONS` has that name, and shows it as plain text otherwise. Each
+when its button has no words. Icons never take a click themselves: it is the button's. Menus take icon names too: `popMenu` (`chat-list.js`) draws an item's first field with `icon()` when `ICONS` has that name, and shows it as plain text otherwise. Each
 page's head has a light and a dark `theme-color` meta, right for the system's theme from
 the first paint; `paintBar()` copies `--panel` into them whenever the theme changes (a
 meta marked `data-fixed`, on the Kill page, keeps its colour). The app icons a phone puts on its home screen are PNGs in

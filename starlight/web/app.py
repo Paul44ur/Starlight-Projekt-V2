@@ -63,6 +63,11 @@ NOTES_SCRIPTS = (
     "notes-page.js", "notes-tasks.js", "notes-info.js", "notes-views.js", "notes-find.js",
     "notes-edit.js", "notes-editor.js",
 )  # fmt: skip
+# The chat page's scripts, loaded in this order by chat.html. Only these are served from
+# /chat-....js.
+CHAT_SCRIPTS = (
+    "chat-core.js", "chat-messages.js", "chat-list.js", "chat-input.js", "chat-page.js",
+)  # fmt: skip
 # The files in static/vendor the pages may load (see bundles/*/README.md).
 VENDOR = {
     "editor.js": "text/javascript; charset=utf-8",  # CodeMirror 6, for the Notes page
@@ -552,6 +557,18 @@ def create_app(paths: Paths | None = None) -> Any:
     @app.get("/render.js")
     def render() -> Response:
         return Response(page("render.js"), media_type="text/javascript")
+
+    @app.get("/chat.css")
+    def chat_style() -> Response:
+        return Response(page("chat.css"), media_type="text/css")
+
+    @app.get("/chat-{part}.js")
+    def chat_script(part: str) -> Response:
+        """The chat page's parts: only the files listed in CHAT_SCRIPTS."""
+        name = f"chat-{part}.js"
+        if name not in CHAT_SCRIPTS:
+            raise HTTPException(status_code=404, detail="no such file")
+        return Response(page(name), media_type="text/javascript")
 
     @app.get("/notes.css")
     def notes_style() -> Response:

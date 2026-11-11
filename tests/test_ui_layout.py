@@ -34,7 +34,7 @@ def test_hidden_wins_over_a_class_that_sets_display() -> None:
 
 
 def test_message_bubbles_never_wider_than_their_column() -> None:
-    chat = read("chat.html")
+    chat = read("chat.css")  # (the page's look moved out of chat.html)
     assert "max-width: min(780px, 100%)" in chat
     assert "overflow-wrap: anywhere" in chat
 
@@ -46,7 +46,7 @@ def test_the_bar_wraps_and_a_wide_table_scrolls_inside_its_card() -> None:
 
 
 def test_the_input_hint_is_short_on_a_phone() -> None:
-    assert 'matchMedia("(max-width: 760px)")' in read("chat.html")
+    assert 'matchMedia("(max-width: 760px)")' in read("chat-core.js")
 
 
 @pytest.mark.skipif(not has_display(), reason="needs tkinter and a display")
