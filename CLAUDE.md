@@ -4,12 +4,15 @@ A local AI assistant: Python core (`starlight/`), modules (`modules/`), a FastAP
 (`starlight/web/`), and a standard-library Windows launcher (`launcher/`). The user is German,
 on Windows 11; the pages have German translations (`starlight/web/static/i18n.js`).
 
-## Active plan
-**Read `docs/plan-notes-app.md` before working on notes, the journal, memory, to-dos or a
-Notes page.** It holds the agreed plan for the notes app built into Starlight, the user's
-decisions, what was verified, and its status. The work is split into blocks (section 9):
-one block per session and commit, in the order of the Status table; mark a block done there
-(with its commit) when it is pushed.
+## Plans
+No plan is open. The two earlier plans are finished (every block done) and are kept as a
+reference for why things are the way they are:
+- `docs/plan-notes-app.md`: the notes app (notes, journal, memory, to-dos, the Notes page):
+  the user's decisions and what was verified. Read it before changing that area.
+- `docs/plan-ui.md`: the look of the pages and the launcher window.
+
+New work goes on `Starlight_Fable` (below). For a larger piece, agree a plan with the user
+first and keep it in `docs/plan-<topic>.md` with a Status table, as these two do.
 
 ## How we work
 - Branch `Starlight_Fable` (started 2026-11-10 from `main`; `main` and
