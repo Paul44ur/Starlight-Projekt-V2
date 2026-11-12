@@ -21,21 +21,24 @@ from dataclasses import dataclass
 
 ESC = "\x1b["
 
-# The web's colours (style.css), for a dark and a light terminal. "code" is a code span's
-# text and its background.
+# The web's colours (style.css, the Night Sky tokens), for a dark and a light terminal. "code"
+# is a code span's text (--text) and its background (--panel2). The star is --primary; on a
+# light terminal it takes --primary-edge, the darker gold, as plain gold is too faint on white.
 COLOURS: dict[str, dict[str, str]] = {
     "dark": {
-        "accent": "#a99bff", "star": "#f5c542", "dim": "#9aa3b2", "code": "#e6e8ec",
-        "code_bg": "#262b36", "ok": "#3fb950", "warn": "#d29922", "bad": "#f85149",
+        "accent": "#a99bff", "star": "#f2c14e", "dim": "#9aa1c4", "code": "#e8eaf6",
+        "code_bg": "#1a1f38", "ok": "#6ee7b7", "warn": "#fdba74", "bad": "#ff8a80",
     },
     "light": {
-        "accent": "#5543d1", "star": "#b7791f", "dim": "#5a6372", "code": "#1f2328",
-        "code_bg": "#eceff3", "ok": "#1a7f37", "warn": "#9a6700", "bad": "#cf222e",
+        "accent": "#5543d1", "star": "#b8860b", "dim": "#4e5578", "code": "#14172b",
+        "code_bg": "#ecedf7", "ok": "#157a4b", "warn": "#a3510b", "bad": "#c0262d",
     },
 }  # fmt: skip
-# The nearest of the basic 16 colours, for terminals that have no more (SGR codes).
+# The nearest of the basic 16 colours, for terminals that have no more (SGR codes). The dark
+# look takes the bright ones, as its colours are light; a code span has no background here, so
+# it stays cyan to stand out from the text.
 BASIC: dict[str, dict[str, str]] = {
-    "dark": {"accent": "94", "star": "93", "dim": "90", "code": "36", "ok": "32", "warn": "33",
+    "dark": {"accent": "94", "star": "93", "dim": "90", "code": "36", "ok": "92", "warn": "93",
              "bad": "91"},
     "light": {"accent": "34", "star": "33", "dim": "90", "code": "36", "ok": "32", "warn": "33",
               "bad": "31"},

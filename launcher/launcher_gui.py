@@ -33,7 +33,7 @@ from functools import partial
 from pathlib import Path
 from tkinter import font as tkfont
 from tkinter import messagebox, ttk
-from typing import Any, ClassVar
+from typing import Any, ClassVar, Literal
 
 # launcher_tray.py sits next to this file (in Starlight.exe it is a hidden import).
 _HERE = str(Path(__file__).resolve().parent)
@@ -104,6 +104,11 @@ def sparkle(cx: float, cy: float, r: float, pinch: float = 0.22) -> list[float]:
     return points
 
 
+# The web's star icon (common.js: M12 2 L14.2 9.8 L22 12 L14.2 14.2 L12 22 L9.8 14.2 L2 12
+# L9.8 9.8 Z) on a 24 x 24 grid.
+STAR = [12, 2, 14.2, 9.8, 22, 12, 14.2, 14.2, 12, 22, 9.8, 14.2, 2, 12, 9.8, 9.8]
+
+
 def rounded_square(size: float, radius: float, steps: int = 8) -> list[float]:
     """A square with rounded corners as polygon points."""
     points: list[float] = []
@@ -131,19 +136,25 @@ class Palette:
     warn: str
     bad: str  # red for text and status dots
     danger: str  # red behind white text (the stop button): dark enough to read on
+    primary: str  # gold: the star and the ONE main button of a page
+    on_primary: str  # text on the gold button
+    primary_edge: str  # the gold button's border (Tk has no "transparent": the dark look
+    # uses the gold itself, so no edge shows)
 
 
-# The same colors as the web pages (starlight/web/static/style.css: --accent, --on-accent,
-# button.danger), so the window and the chat look like one program.
+# The same colors as the web pages (starlight/web/static/style.css: --accent, --primary,
+# --on-primary, --primary-edge, --danger ...), so the window and the chat look like one program.
 DARK = Palette(
     bg="#0b0e1a", panel="#12162a", panel2="#1a1f38", border="#262c4a", text="#e8eaf6",
     dim="#9aa1c4", accent="#a99bff", on_accent="#0b0e1a", ok="#6ee7b7", warn="#fdba74",
-    bad="#ff8a80", danger="#b42318",
+    bad="#ff8a80", danger="#b42318", primary="#f2c14e", on_primary="#1a1404",
+    primary_edge="#f2c14e",
 )  # fmt: skip
 LIGHT = Palette(
     bg="#f5f6fb", panel="#ffffff", panel2="#ecedf7", border="#d8dbea", text="#14172b",
     dim="#4e5578", accent="#5543d1", on_accent="#ffffff", ok="#157a4b", warn="#a3510b",
-    bad="#c0262d", danger="#b42318",
+    bad="#c0262d", danger="#b42318", primary="#f2c14e", on_primary="#1a1404",
+    primary_edge="#b8860b",
 )  # fmt: skip
 
 
@@ -885,8 +896,13 @@ class App:
         self.f_bold = tkfont.Font(family=family, size=10, weight="bold")
         self.f_small = tkfont.Font(family=family, size=9)
         self.f_link = tkfont.Font(family=family, size=9, underline=True)
-        self.f_big = tkfont.Font(family=family, size=18, weight="bold")
-        self.f_head = tkfont.Font(family=family, size=12, weight="bold")
+        # Headings: Segoe UI Semibold (Tk cannot load the web's Space Grotesk), a little
+        # larger than the body text. Elsewhere the default family in bold.
+        head = "Segoe UI Semibold" if sys.platform == "win32" else family
+        weight: Literal["normal", "bold"] = "normal" if sys.platform == "win32" else "bold"
+        self.f_big = tkfont.Font(family=head, size=20, weight=weight)
+        self.f_head = tkfont.Font(family=head, size=13, weight=weight)
+        self.f_title = tkfont.Font(family=head, size=11, weight=weight)
         self.f_mono = tkfont.Font(
             family="Consolas" if sys.platform == "win32" else "monospace", size=9
         )
@@ -910,18 +926,21 @@ class App:
         style.configure("Section.TLabel", foreground=c.dim, font=self.f_small)
         style.configure("Card.TLabel", background=c.panel, foreground=c.text)  # (on a card)
         style.configure("CardTitle.TLabel", background=c.panel, foreground=c.text,
-                        font=self.f_bold)  # fmt: skip
+                        font=self.f_title)  # fmt: skip
         style.configure("TButton", background=c.panel2, foreground=c.text, borderwidth=1,
                         padding=(self.px(14), self.px(7)), relief="flat")  # fmt: skip
         # Pointed at: a light accent tint and an accent border (as the web pages' buttons).
         style.map("TButton", background=[("active", mix(c.panel2, c.accent, 0.14)),
                                          ("disabled", c.panel)],
                   foreground=[("disabled", c.dim)], bordercolor=[("active", c.accent)])  # fmt: skip
-        accent_hover = mix(c.accent, "#ffffff" if c is DARK else "#000000", 0.14)
-        style.configure("Accent.TButton", background=c.accent, foreground=c.on_accent,
-                        bordercolor=c.accent, focuscolor=c.on_accent, font=self.f_bold)  # fmt: skip
-        style.map("Accent.TButton", background=[("active", accent_hover), ("disabled", c.panel2)],
-                  bordercolor=[("active", accent_hover)],
+        # The ONE main button of a page is gold (the web's button.primary); the style keeps
+        # its old name. Its edge shows only in the day look.
+        gold_hover = mix(c.primary, "#ffffff" if c is DARK else "#000000", 0.14)
+        style.configure("Accent.TButton", background=c.primary, foreground=c.on_primary,
+                        bordercolor=c.primary_edge, focuscolor=c.on_primary,
+                        font=self.f_bold)  # fmt: skip
+        style.map("Accent.TButton", background=[("active", gold_hover), ("disabled", c.panel2)],
+                  bordercolor=[("active", gold_hover if c is DARK else c.primary_edge)],
                   foreground=[("disabled", c.dim)])  # fmt: skip
         # c.danger, not c.bad: white text on the bright red of the dark look was too faint
         danger_hover = mix(c.danger, "#ffffff", 0.12)
@@ -994,7 +1013,7 @@ class App:
         bar.pack(fill="x")
         inner = tk.Frame(bar, bg=c.panel)
         inner.pack(fill="x", padx=self.px(28), pady=self.px(12))
-        self._draw_logo(inner)
+        self._draw_star(inner)
         tk.Label(inner, text="Starlight", font=self.f_head, bg=c.panel, fg=c.text).pack(
             side="left", padx=(self.px(10), 0)
         )
@@ -1003,25 +1022,15 @@ class App:
         ).pack(side="right")
         tk.Frame(self.root, bg=c.border, height=1).pack(fill="x")
 
-    def _draw_logo(self, parent: tk.Misc) -> None:
-        """The logo, drawn as vectors: purple square (lavender in the light look), the gold
-        sparkle and its rays."""
-        light = self.c is LIGHT
-        size = self.px(34)
+    def _draw_star(self, parent: tk.Misc) -> None:
+        """The brand mark: the gold four-point star (the web pages' ``star`` icon)."""
+        size = self.px(26)
         canvas = tk.Canvas(parent, width=size, height=size, bg=self.c.panel, highlightthickness=0)
-        scale = size / 512
-        bg, ray, edge = ("#f3efff", "#c9a6ff", "#d9a63a") if light else ("#4a1d9c", "#d7c2ff", "")
-        canvas.create_polygon(rounded_square(size, 112 * scale), fill=bg, outline="")
-        for angle in (0, 32, -32):
-            cos, sin = math.cos(math.radians(angle)), math.sin(math.radians(angle))
-            points: list[float] = []
-            for x, y in ((-226, 0), (0, -16), (226, 0), (0, 16)):
-                points += [(256 + x * cos - y * sin) * scale, (256 + x * sin + y * cos) * scale]
-            canvas.create_polygon(points, fill=ray, outline="")
-        canvas.create_polygon(
-            [v * scale for v in sparkle(256, 256, 214, 0.36)], fill="#f8d56b", outline=edge
-        )
+        scale = size / 24
+        canvas.create_polygon([v * scale for v in STAR], fill=self.c.primary, outline="",
+                              tags="star")  # fmt: skip
         canvas.pack(side="left")
+        self.star_canvas = canvas
 
     # -- pages ----------------------------------------------------------------------------------
 
@@ -2350,20 +2359,20 @@ class App:
         self.r_title = self._label(page, "", "Big.TLabel")
         self.r_title.grid(row=0, column=0, sticky="w")
         self.r_sub = self._label(page, "", "Dim.TLabel", wrap=True)
-        self.r_sub.grid(row=1, column=0, sticky="w", pady=(self.px(2), self.px(14)))
+        self.r_sub.grid(row=1, column=0, sticky="w", pady=(self.px(4), self.px(18)))
 
         card = tk.Frame(page, bg=c.panel, highlightthickness=1, highlightbackground=c.border)
         card.grid(row=2, column=0, sticky="ew")
         card.columnconfigure(2, weight=1)
         for index, name in enumerate(("Model", "Chat", "Statistics", "Kill switch")):
             pad = (
-                self.px(12) if index == 0 else self.px(4),
-                self.px(12) if index == 3 else self.px(4),
+                self.px(16) if index == 0 else self.px(5),
+                self.px(16) if index == 3 else self.px(5),
             )
             title = tk.Label(
                 card, text=tr(name), font=self.f_bold, bg=c.panel, fg=c.text, anchor="w", width=11
             )
-            title.grid(row=index, column=0, sticky="w", padx=(self.px(16), 0), pady=pad)
+            title.grid(row=index, column=0, sticky="w", padx=(self.px(20), 0), pady=pad)
             dot = tk.Canvas(
                 card, width=self.px(12), height=self.px(12), bg=c.panel, highlightthickness=0
             )
@@ -2379,7 +2388,7 @@ class App:
         # click). The tools below are quieter, so the eye finds the main ones first.
         gap = self.px(4)
         main = ttk.Frame(page)
-        main.grid(row=3, column=0, sticky="ew", pady=(self.px(18), 0))
+        main.grid(row=3, column=0, sticky="ew", pady=(self.px(22), 0))
         tools = ttk.Frame(page)
         tools.grid(row=5, column=0, sticky="ew")
         for frame in (main, tools):
@@ -2433,8 +2442,8 @@ class App:
     def _wrap_status(self, page_width: int) -> None:
         """The status texts (a long model name, LM Studio's advice) wrap inside their box."""
         # the name column with its margin, the dot with its margins, a right margin, border
-        used = self.status_title_width + self.px(16) + self.px(12) + 2 * self.px(8)
-        wrap = max(page_width - used - self.px(16) - 2, self.px(160))
+        used = self.status_title_width + self.px(20) + self.px(12) + 2 * self.px(8)
+        wrap = max(page_width - used - self.px(20) - 2, self.px(160))
         for _dot, _oval, label in self.status_rows.values():
             label.configure(wraplength=wrap)
 
@@ -2797,7 +2806,7 @@ class App:
         self.err_hints.grid(row=2, column=0, sticky="ew", pady=(0, self.px(12)))
         self.err_hints.columnconfigure(0, weight=1)
         self._label(self.err_hints, "What you can try", "CardTitle.TLabel").grid(
-            row=0, column=0, sticky="w", padx=self.px(16), pady=(self.px(12), self.px(4))
+            row=0, column=0, sticky="w", padx=self.px(20), pady=(self.px(16), self.px(6))
         )
         self.err_hint_labels: list[ttk.Label] = []
         self.err_details_open = tk.BooleanVar(value=False)
@@ -2890,7 +2899,7 @@ class App:
         for row, label in enumerate(self.err_hint_labels, start=1):
             last = row == len(self.err_hint_labels)
             label.configure(wraplength=self._page_width() - self.px(40))
-            label.grid(row=row, column=0, sticky="w", padx=self.px(16),
+            label.grid(row=row, column=0, sticky="w", padx=self.px(20),
                        pady=(self.px(1), self.px(12) if last else self.px(1)))  # fmt: skip
         if hints:
             self.err_hints.grid()

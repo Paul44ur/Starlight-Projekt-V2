@@ -228,6 +228,12 @@ in `static/vendor/`, a hash file and the licence, all checked by
 font from the internet and nothing leaves the PC. The service worker keeps the font files
 with the shell. The plan is `docs/plan-ui-2.md`.
 
+The launcher window follows the same look: `Palette` has `primary`, `on_primary` and
+`primary_edge`, the one main button of each page is gold (the style is still called
+`Accent.TButton`), the brand is the gold star drawn on a canvas, and headings use "Segoe UI
+Semibold" (Tk cannot load the web font). The terminal chat's colours (`termstyle.COLOURS`)
+are the same tokens, and `tests/test_launcher_night_sky.py` compares them with `style.css`.
+
 **The chat page in parts.** `chat.html` holds only the markup. Its look is `chat.css`, and its
 code is five plain scripts that share globals, loaded in this order: `chat-core.js` (state,
 scrolling, the socket, `handle()`, the message flow), `chat-messages.js` (drawing messages),
