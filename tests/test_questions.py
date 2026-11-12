@@ -52,9 +52,14 @@ async def test_a_question_is_a_window_in_the_pages_look(
             assert await page.evaluate("() => document.activeElement.textContent") == "Cancel"
             assert await box.get_attribute("role") == "alertdialog"
             panel = await box.evaluate("b => getComputedStyle(b).backgroundColor")
-            assert panel == await page.evaluate(
-                "() => getComputedStyle(document.getElementById('convs')).backgroundColor"
-            )
+            lifted = """() => {  // --panel2 as computed (a question lifts off the page)
+                const probe = document.body.appendChild(document.createElement("i"));
+                probe.style.background = "var(--panel2)";
+                const colour = getComputedStyle(probe).backgroundColor;
+                probe.remove();
+                return colour;
+            }"""
+            assert panel == await page.evaluate(lifted)
             await page.keyboard.press("Enter")  # (on Cancel)
             assert await said(page) is False and await box.count() == 0
             # an everyday one: Enter says yes; Esc and a click beside it say no

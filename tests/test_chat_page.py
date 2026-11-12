@@ -320,7 +320,9 @@ async def test_the_phone_header_is_one_row(
         try:
             await page.set_viewport_size({"width": 360, "height": 740})
             header = await page.locator("#main header.top").bounding_box()
-            assert header is not None and header["height"] < 60  # no second row
+            assert (
+                header is not None and header["height"] < 70
+            )  # no second row (a row of 40 px buttons)
             assert await page.locator("#kill").is_visible()
             await page.locator("#menu").click()  # the links are in the drawer
             assert await page.locator(".drawer-nav a[href='/settings']").is_visible()

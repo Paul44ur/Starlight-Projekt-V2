@@ -25,11 +25,11 @@ ESC = "\x1b["
 # text and its background.
 COLOURS: dict[str, dict[str, str]] = {
     "dark": {
-        "accent": "#6ea8fe", "star": "#f5c542", "dim": "#9aa3b2", "code": "#e6e8ec",
+        "accent": "#a99bff", "star": "#f5c542", "dim": "#9aa3b2", "code": "#e6e8ec",
         "code_bg": "#262b36", "ok": "#3fb950", "warn": "#d29922", "bad": "#f85149",
     },
     "light": {
-        "accent": "#2563eb", "star": "#b7791f", "dim": "#5a6372", "code": "#1f2328",
+        "accent": "#5543d1", "star": "#b7791f", "dim": "#5a6372", "code": "#1f2328",
         "code_bg": "#eceff3", "ok": "#1a7f37", "warn": "#9a6700", "bad": "#cf222e",
     },
 }  # fmt: skip

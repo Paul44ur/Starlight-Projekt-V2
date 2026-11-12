@@ -76,7 +76,7 @@ def test_the_manifests_and_pages_name_the_app_icons(tmp_path: Path) -> None:
     for name in PAGES:
         page = (STATIC / f"{name}.html").read_text("utf-8")
         assert '<link rel="apple-touch-icon" href="/icons/icon-180.png" />' in page, name
-        for scheme, colour in (("light", "#ffffff"), ("dark", "#171a21")):
+        for scheme, colour in (("light", "#ffffff"), ("dark", "#12162a")):
             media = f"(prefers-color-scheme: {scheme})"
             meta = f'<meta name="theme-color" content="{colour}" media="{media}" />'
             assert meta in page, (name, scheme)  # (right before the scripts run)
@@ -105,7 +105,7 @@ async def test_the_browser_bar_takes_the_colour_of_the_page(
                 await page.evaluate("() => cycleTheme()")  # light
                 assert await page.evaluate(bar) == "#ffffff", url
                 await page.evaluate("() => cycleTheme()")  # dark
-                assert await page.evaluate(bar) == "#171a21", url
+                assert await page.evaluate(bar) == "#12162a", url
             finally:
                 await browser.close()
         # the kill switch keeps its red, whatever the theme

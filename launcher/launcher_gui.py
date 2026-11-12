@@ -136,14 +136,14 @@ class Palette:
 # The same colors as the web pages (starlight/web/static/style.css: --accent, --on-accent,
 # button.danger), so the window and the chat look like one program.
 DARK = Palette(
-    bg="#0f1115", panel="#171a21", panel2="#1e222b", border="#2a2f3a", text="#e6e8ec",
-    dim="#9aa3b2", accent="#6ea8fe", on_accent="#0b1220", ok="#3fb950", warn="#d29922",
-    bad="#f85149", danger="#b3231d",
+    bg="#0b0e1a", panel="#12162a", panel2="#1a1f38", border="#262c4a", text="#e8eaf6",
+    dim="#9aa1c4", accent="#a99bff", on_accent="#0b0e1a", ok="#6ee7b7", warn="#fdba74",
+    bad="#ff8a80", danger="#b42318",
 )  # fmt: skip
 LIGHT = Palette(
-    bg="#f6f7f9", panel="#ffffff", panel2="#eef0f4", border="#d8dce3", text="#1f2328",
-    dim="#5a6372", accent="#2563eb", on_accent="#ffffff", ok="#1a7f37", warn="#9a6700",
-    bad="#cf222e", danger="#b3231d",
+    bg="#f5f6fb", panel="#ffffff", panel2="#ecedf7", border="#d8dbea", text="#14172b",
+    dim="#4e5578", accent="#5543d1", on_accent="#ffffff", ok="#157a4b", warn="#a3510b",
+    bad="#c0262d", danger="#b42318",
 )  # fmt: skip
 
 

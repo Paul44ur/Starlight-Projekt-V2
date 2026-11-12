@@ -6,7 +6,7 @@
   "start_url": "/kill",
   "scope": "/kill",
   "display": "standalone",
-  "background_color": "#0f1115",
+  "background_color": "#0b0e1a",
   "theme_color": "#b3231d",
   "icons": [
     { "src": "/kill-icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" },

@@ -217,6 +217,17 @@ keeps the two in step and checks that text on every filled colour is readable (W
 4.5:1). Both show a focus ring only while the keyboard is used. The plan for the rest of this
 work is `docs/plan-ui.md`.
 
+**The Night Sky look.** `style.css` has two looks. Night is the default (`:root`); day is
+designed on its own and set twice (`:root[data-theme="light"]` and the system's light
+setting). Violet (`--accent`) is for links, focus, switches and progress. Gold (`--primary`,
+with `--on-primary` and, on a day page, `--primary-edge`) is only for the star and the one
+main action of a view. New tokens: `--font-display`, `--font-body`, `--font-mono`, `--r-4`,
+`--on-danger` and `--scrim`. Headings use Space Grotesk. It is bundled (`bundles/fonts`, files
+in `static/vendor/`, a hash file and the licence, all checked by
+`tests/test_night_sky_tokens.py`) and served by Starlight itself, so a page never loads a
+font from the internet and nothing leaves the PC. The service worker keeps the font files
+with the shell. The plan is `docs/plan-ui-2.md`.
+
 **The chat page in parts.** `chat.html` holds only the markup. Its look is `chat.css`, and its
 code is five plain scripts that share globals, loaded in this order: `chat-core.js` (state,
 scrolling, the socket, `handle()`, the message flow), `chat-messages.js` (drawing messages),

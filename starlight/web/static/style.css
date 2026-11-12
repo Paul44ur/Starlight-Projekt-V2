@@ -1,70 +1,109 @@
-/* Starlight web pages: one look for chat, settings, memory and pairing.
-   The design system lives here: tokens (colour, spacing, radius, type, elevation, motion),
-   base element styles, and small building blocks (.card, .pill, .row, .toast, utilities).
-   Pages share these instead of re-inventing them inline. A new shared rule belongs here. */
+/* Starlight web pages: one look for chat, settings, memory and pairing ("Night Sky", see
+   docs/plan-ui-2.md). The design system lives here: tokens (colour, spacing, radius, type,
+   elevation, motion), base element styles, and small building blocks (.card, .pill, .row,
+   .toast, utilities). Pages share these instead of re-inventing them inline. A new shared
+   rule belongs here. The night look is the default; the day look is designed, not inverted. */
+/* The heading font (Space Grotesk, OFL): served by Starlight itself from /vendor, never from
+   the internet (bundles/fonts). The unicode-range of each file is the package's own. */
+@font-face {
+  font-family: "Space Grotesk"; font-style: normal; font-display: swap; font-weight: 300 700;
+  src: url(/vendor/space-grotesk-latin-ext.woff2) format("woff2-variations");
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+@font-face {
+  font-family: "Space Grotesk"; font-style: normal; font-display: swap; font-weight: 300 700;
+  src: url(/vendor/space-grotesk-latin.woff2) format("woff2-variations");
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
 :root {
-  /* colour — dark (the default) */
-  --bg: #0f1115; --panel: #171a21; --panel2: #1e222b; --border: #2a2f3a;
-  --text: #e6e8ec; --dim: #9aa3b2; --accent: #6ea8fe; --you: #0b2a4a;
-  --ok: #3fb950; --warn: #d29922; --bad: #f85149;
-  --accent-tint: color-mix(in srgb, var(--accent) 14%, transparent);  /* soft accent wash for hovers */
-  --on-accent: #0b1220;   /* text on a filled accent: dark on the light blue of the dark look */
-  --danger: #b3231d;      /* filled red behind white text (--bad is too light for that) */
-  /* elevation */
-  --shadow: 0 8px 24px rgba(0,0,0,.35);               /* kept: the name other code already uses */
-  --shadow-1: 0 1px 2px rgba(0,0,0,.28), 0 2px 6px rgba(0,0,0,.22);   /* resting: cards, menus */
-  --shadow-2: 0 8px 24px rgba(0,0,0,.35);             /* lifted: toasts, popovers */
+  /* colour: night (the default) */
+  --bg: #0b0e1a; --panel: #12162a; --panel2: #1a1f38; --border: #262c4a;
+  --text: #e8eaf6; --dim: #9aa1c4; --accent: #a99bff; --you: #1a1f38;
+  --ok: #6ee7b7; --warn: #fdba74; --bad: #ff8a80;
+  --accent-tint: color-mix(in srgb, var(--accent) 16%, transparent);  /* soft accent wash for hovers */
+  --on-accent: #0b0e1a;   /* text on a filled accent (or ok, warn): dark on the light colours of the night look */
+  --danger: #b42318;      /* filled red behind --on-danger text (--bad is too light for that) */
+  --on-danger: #ffffff;
+  /* the one light: the star and the one main action of a view (never links or switches) */
+  --primary: #f2c14e; --on-primary: #1a1404; --primary-edge: transparent;
+  --scrim: rgb(4 6 14 / .62);  /* behind a dialog */
+  /* type */
+  --font-body: "Segoe UI Variable Text", "Segoe UI", system-ui, -apple-system, Roboto, sans-serif;
+  --font-display: "Space Grotesk", var(--font-body);
+  --font-mono: ui-monospace, "Cascadia Mono", Consolas, monospace;
+  /* elevation (the rgb is the night ground, so a shadow is a darker night, not a grey) */
+  --shadow: 0 12px 32px rgb(2 4 12 / .55);            /* kept: the name other code already uses */
+  --shadow-1: 0 1px 2px rgb(2 4 12 / .4), 0 2px 8px rgb(2 4 12 / .3);   /* resting: cards, menus */
+  --shadow-2: 0 12px 32px rgb(2 4 12 / .55);          /* lifted: toasts, popovers, dialogs */
   /* spacing scale (4-based) */
   --s-1: 4px; --s-2: 8px; --s-3: 12px; --s-4: 16px; --s-5: 24px; --s-6: 32px;
   /* corner radius */
-  --r-1: 6px; --r-2: 8px; --r-3: 12px; --r-pill: 999px;
+  --r-1: 6px; --r-2: 8px; --r-3: 12px; --r-4: 16px; --r-pill: 999px;
   /* type scale */
   --fs-xs: 12px; --fs-sm: 13px; --fs-md: 15px; --fs-lg: 16px; --fs-xl: 20px;
   /* motion (durations are also capped by prefers-reduced-motion, below) */
   --ease: cubic-bezier(.2,.6,.2,1); --dur-fast: 90ms; --dur: 160ms;
-  /* code: keywords, strings, numbers, comments, names called, variables */
-  --hl-k: #c792ea; --hl-s: #a5d6a7; --hl-n: #f78c6c; --hl-c: #7f8796; --hl-f: #82aaff; --hl-v: #ffcb6b;
+  /* code: keywords, strings, numbers, comments, names called, variables (4.5:1 on --panel and --panel2) */
+  --hl-k: #c792ea; --hl-s: #a5d6a7; --hl-n: #f78c6c; --hl-c: #8c93b8; --hl-f: #82aaff; --hl-v: #ffcb6b;
 }
 :root[data-theme="light"] {
-  --bg: #f6f7f9; --panel: #ffffff; --panel2: #f0f2f5; --border: #d8dce3; --text: #1f2328;
-  --dim: #5a6372; --you: #dbeafe; --shadow: 0 8px 24px rgba(0,0,0,.12);
-  --accent: #2563eb; --on-accent: #ffffff; --bad: #cf222e;  /* (red text, readable on white) */
-  --shadow-1: 0 1px 2px rgba(23,35,56,.08), 0 2px 6px rgba(23,35,56,.08);
-  --shadow-2: 0 8px 24px rgba(0,0,0,.12);
-  --hl-k: #8250df; --hl-s: #116329; --hl-n: #b35900; --hl-c: #6e7781; --hl-f: #0550ae; --hl-v: #953800;
+  /* colour: day */
+  --bg: #f5f6fb; --panel: #ffffff; --panel2: #ecedf7; --border: #d8dbea; --text: #14172b;
+  --dim: #4e5578; --you: #ecebfd;
+  --accent: #5543d1; --on-accent: #ffffff; --ok: #157a4b; --warn: #a3510b;
+  --bad: #c0262d;  /* (red text, readable on white) */
+  --primary-edge: #b8860b;  /* the gold button needs its edge on a day page (3:1 against white) */
+  --accent-tint: color-mix(in srgb, var(--accent) 10%, transparent);
+  --scrim: rgb(20 23 43 / .38);
+  --shadow: 0 12px 32px rgb(20 23 43 / .14);
+  --shadow-1: 0 1px 2px rgb(20 23 43 / .06), 0 2px 8px rgb(20 23 43 / .06);
+  --shadow-2: 0 12px 32px rgb(20 23 43 / .14);
+  --hl-k: #7141d1; --hl-s: #116329; --hl-n: #a14e00; --hl-c: #5c647e; --hl-f: #0550ae; --hl-v: #8a3b00;
 }
 @media (prefers-color-scheme: light) {
   :root:not([data-theme="dark"]) {
-    --bg: #f6f7f9; --panel: #ffffff; --panel2: #f0f2f5; --border: #d8dce3; --text: #1f2328;
-    --dim: #5a6372; --you: #dbeafe; --shadow: 0 8px 24px rgba(0,0,0,.12);
-    --accent: #2563eb; --on-accent: #ffffff; --bad: #cf222e;  /* (red text, readable on white) */
-    --shadow-1: 0 1px 2px rgba(23,35,56,.08), 0 2px 6px rgba(23,35,56,.08);
-    --shadow-2: 0 8px 24px rgba(0,0,0,.12);
-    --hl-k: #8250df; --hl-s: #116329; --hl-n: #b35900; --hl-c: #6e7781; --hl-f: #0550ae; --hl-v: #953800;
+    --bg: #f5f6fb; --panel: #ffffff; --panel2: #ecedf7; --border: #d8dbea; --text: #14172b;
+    --dim: #4e5578; --you: #ecebfd;
+    --accent: #5543d1; --on-accent: #ffffff; --ok: #157a4b; --warn: #a3510b;
+    --bad: #c0262d;  /* (red text, readable on white) */
+    --primary-edge: #b8860b;
+    --accent-tint: color-mix(in srgb, var(--accent) 10%, transparent);
+    --scrim: rgb(20 23 43 / .38);
+    --shadow: 0 12px 32px rgb(20 23 43 / .14);
+    --shadow-1: 0 1px 2px rgb(20 23 43 / .06), 0 2px 8px rgb(20 23 43 / .06);
+    --shadow-2: 0 12px 32px rgb(20 23 43 / .14);
+    --hl-k: #7141d1; --hl-s: #116329; --hl-n: #a14e00; --hl-c: #5c647e; --hl-f: #0550ae; --hl-v: #8a3b00;
   }
 }
 * { box-sizing: border-box; }
 /* The hidden attribute must win over the display set by a class (.pill below). */
 [hidden] { display: none !important; }
 html, body { height: 100%; }
-body { margin: 0; font: var(--fs-md)/1.5 -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+body { margin: 0; font: var(--fs-md)/1.5 var(--font-body);
        background: var(--bg); color: var(--text); }
+/* Titles use the display font; code and keys the mono one. */
+h1, h2 { font-family: var(--font-display); }
+code, pre, samp { font-family: var(--font-mono); }
 a { color: var(--accent); text-decoration: none; }
 a:hover { text-decoration: underline; }
 button, select, input, textarea { font: inherit; color: var(--text); }
-button { background: var(--panel2); border: 1px solid var(--border); border-radius: var(--r-2);
-         padding: 6px 12px; cursor: pointer;
+button { background: var(--panel2); border: 1px solid var(--border); border-radius: var(--r-pill);
+         padding: 8px 16px; cursor: pointer;
          transition: border-color var(--dur) var(--ease), background var(--dur) var(--ease),
                      color var(--dur) var(--ease), box-shadow var(--dur) var(--ease); }
 button:hover { border-color: var(--accent); background: var(--accent-tint); }
 button:active { transform: translateY(1px); }
 button:disabled { opacity: .5; cursor: default; transform: none; }
-button.danger { color: #fff; background: var(--danger); border-color: var(--danger); }
-button.danger:hover { background: #c93a33; border-color: #c93a33; }
-button.ok { color: #06240f; background: var(--ok); border-color: var(--ok); }
-button.ok:hover { background: color-mix(in srgb, var(--ok) 88%, #fff); border-color: var(--ok); }
-button.primary { color: var(--on-accent); background: var(--accent); border-color: var(--accent); font-weight: 600; }
-button.primary:hover { background: color-mix(in srgb, var(--accent) 88%, #fff); border-color: var(--accent); }
+button.danger { color: var(--on-danger); background: var(--danger); border-color: var(--danger); }
+button.danger:hover { background: color-mix(in srgb, var(--danger) 85%, var(--on-danger));
+                      border-color: color-mix(in srgb, var(--danger) 85%, var(--on-danger)); }
+button.ok { color: var(--on-accent); background: var(--ok); border-color: var(--ok); }
+button.ok:hover { background: color-mix(in srgb, var(--ok) 88%, var(--text)); border-color: var(--ok); }
+/* The one main action of a view: gold, with the edge it needs on a day page. */
+button.primary { color: var(--on-primary); background: var(--primary); border-color: var(--primary-edge);
+                 font-weight: 600; }
+button.primary:hover { background: color-mix(in srgb, var(--primary) 88%, var(--text));
+                       border-color: var(--primary-edge); }
 button.icon { padding: 4px 8px; font-size: var(--fs-sm); background: none; border-color: transparent; color: var(--dim); }
 button.icon:hover { color: var(--text); border-color: var(--border); background: none; }
 /* The line icons (common.js, ICONS): drawn in the text colour, as big as the text. A button
@@ -72,33 +111,45 @@ button.icon:hover { color: var(--text); border-color: var(--border); background:
 svg.ico { width: 1.25em; height: 1.25em; flex: none; vertical-align: -.25em; fill: none;
           stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round;
           pointer-events: none; }
+/* The star is the one filled icon: solid gold, no outline (the brand mark). */
+svg.ico .star { fill: var(--primary); stroke: none; }
 /* setIcon marks an icon .alone when its button has no words */
 svg.ico:not(.alone) { margin-right: .4em; }
 button > svg.ico.alone { width: 18px; height: 18px; }
-button.quiet { background: none; border-color: transparent; color: var(--dim); }
+button.quiet { background: none; border-color: transparent; color: var(--dim); padding: 6px 12px; }
 button.quiet:hover { color: var(--text); background: var(--accent-tint); border-color: transparent; }
 /* A dangerous action in a list (Remove): a red outline, filled only when pointed at. */
 button.danger-outline { color: var(--bad); background: none; border-color: var(--bad); }
-button.danger-outline:hover { color: #fff; background: var(--danger); border-color: var(--danger); }
+button.danger-outline:hover { color: var(--on-danger); background: var(--danger); border-color: var(--danger); }
 input[type=text], input[type=search], input[type=password], input[type=number], input[type=email],
 input[type=url], input[type=tel], input[type=date], input[type=time], input[type=datetime-local],
 textarea, select,
 :where(input:not([type])) {  /* (a box made without a type is a text box too; :where() lets a page's own style win) */
-  background: var(--panel2); border: 1px solid var(--border); border-radius: var(--r-2); padding: 8px 10px;
+  background: var(--panel2); border: 1px solid var(--border); border-radius: var(--r-3); padding: 8px 12px;
   transition: border-color var(--dur) var(--ease), box-shadow var(--dur) var(--ease); }
 input:focus, textarea:focus, select:focus { border-color: var(--accent); }
 input[type=checkbox], input[type=radio] { accent-color: var(--accent); }
-/* (a date or time box draws its picker icon dark; light it up in the dark look) */
+/* (a date or time box draws its picker icon dark; light it up in the night look) */
 :root:not([data-theme="light"]) input::-webkit-calendar-picker-indicator { filter: invert(.8); }
 @media (prefers-color-scheme: light) {
   :root:not([data-theme="dark"]) input::-webkit-calendar-picker-indicator { filter: none; } }
 .pill { display: inline-block; font-size: var(--fs-xs); padding: 2px 8px; border-radius: var(--r-pill);
         border: 1px solid var(--border); white-space: nowrap; }
-.pill.on { color: #06240f; background: var(--ok); border-color: var(--ok); }
+.pill.on { color: var(--on-accent); background: var(--ok); border-color: var(--ok); }
 .pill.off { color: var(--dim); }
-.pill.warn { color: #2b1d00; background: var(--warn); border-color: var(--warn); }
+.pill.warn { color: var(--on-accent); background: var(--warn); border-color: var(--warn); }
 .dim { color: var(--dim); }
 .small { font-size: var(--fs-sm); }
+/* Numbers (times, tokens, sizes, percentages, counts): mono, with figures of one width, so
+   they line up. */
+.num { font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
+/* A small heading above a group: 12 px, upper case, quiet. */
+.section-label { font-size: var(--fs-xs); font-weight: 600; text-transform: uppercase;
+                 letter-spacing: .8px; color: var(--dim); }
+/* A key, shown next to what it does (the shortcuts window, a hint on a button). */
+kbd { font-family: var(--font-mono); font-size: var(--fs-xs); padding: 2px 6px;
+      border: 1px solid var(--border); border-bottom-width: 2px; border-radius: var(--r-1);
+      background: var(--panel2); color: var(--text); }
 /* The bar wraps on a narrow screen, so every button stays on screen. */
 header.top { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; row-gap: 6px;
              padding: 10px 14px; border-bottom: 1px solid var(--border); background: var(--panel); }
@@ -110,9 +161,9 @@ header.top nav { display: flex; gap: var(--s-3); font-size: 14px; }
 body.remote a[href="/notes"] { display: none; }  /* PC only */
 .page { max-width: 980px; margin: 0 auto; padding: 18px 16px 60px; }
 /* A wide table scrolls inside its card instead of pushing the whole page sideways. */
-.card { background: var(--panel); border: 1px solid var(--border); border-radius: var(--r-3);
-        padding: 14px 16px; margin: 14px 0; overflow-x: auto; box-shadow: var(--shadow-1); }
-.card h2 { font-size: var(--fs-md); margin: 0 0 10px; }
+.card { background: var(--panel); border: 1px solid var(--border); border-radius: var(--r-4);
+        padding: 20px; margin: 14px 0; overflow-x: auto; box-shadow: var(--shadow-1); }
+.card h2 { font-size: var(--fs-lg); margin: 0 0 12px; }
 table { width: 100%; border-collapse: collapse; font-size: 14px; }
 td, th { text-align: left; padding: 6px 8px; border-bottom: 1px solid var(--border); vertical-align: top; }
 th { color: var(--dim); font-weight: 600; font-size: var(--fs-xs); text-transform: uppercase; letter-spacing: .04em; }
@@ -141,45 +192,46 @@ th { color: var(--dim); font-weight: 600; font-size: var(--fs-xs); text-transfor
 .skeleton i:nth-child(2) { width: 82%; }
 .skeleton i:nth-child(3) { width: 64%; }
 @keyframes shimmer { from { background-position: 100% 0; } to { background-position: -100% 0; } }
+/* The three small windows below (shortcuts, questions, quick switcher) are one family: --panel2,
+   radius 18 (the plan's value for windows: between --r-4 and a pill), the lifted shadow, and
+   the scrim behind. (::backdrop may not see the page's tokens in an old browser: the fallback.) */
 /* The keyboard shortcuts of a page (press ?): a small window (common.js). */
-dialog#shortcuts { border: 1px solid var(--border); border-radius: var(--r-3); background: var(--panel);
+dialog#shortcuts { border: 1px solid var(--border); border-radius: 18px; background: var(--panel2);
                    color: var(--text); box-shadow: var(--shadow-2); padding: var(--s-5);
                    width: min(480px, calc(100vw - 32px)); animation: toast-in var(--dur) var(--ease); }
-dialog#shortcuts::backdrop { background: rgb(0 0 0 / .45); }
+dialog#shortcuts::backdrop { background: var(--scrim, rgb(0 0 0 / .5)); }
 #shortcuts h2 { margin: 0 0 var(--s-4); font-size: var(--fs-lg); }
 #shortcuts dl { display: grid; grid-template-columns: auto 1fr; gap: 10px 16px; margin: 0 0 var(--s-4);
                 align-items: baseline; }
 #shortcuts dt { white-space: nowrap; }
 #shortcuts dd { margin: 0; color: var(--dim); }
-#shortcuts kbd { font: 12px ui-monospace, Consolas, "Cascadia Mono", monospace; padding: 2px 6px;
-                 border: 1px solid var(--border); border-bottom-width: 2px; border-radius: var(--r-1);
-                 background: var(--panel2); color: var(--text); }
 #shortcuts .plus { color: var(--dim); margin: 0 2px; }
 /* Starlight's own questions (askYesNo, askText in common.js): a small window, not the
    browser's grey box. The padding is on the form, so a click on the window's edge counts as
    a click beside it only outside the window. */
-dialog.ask { border: 1px solid var(--border); border-radius: var(--r-3); background: var(--panel);
+dialog.ask { border: 1px solid var(--border); border-radius: 18px; background: var(--panel2);
              color: var(--text); box-shadow: var(--shadow-2); padding: 0;
              width: min(440px, calc(100vw - 32px)); animation: ask-in var(--dur) var(--ease); }
 @keyframes ask-in { from { opacity: 0; transform: translateY(8px); } }
-dialog.ask::backdrop { background: rgb(0 0 0 / .45); }
+dialog.ask::backdrop { background: var(--scrim, rgb(0 0 0 / .5)); }
 .ask form { padding: var(--s-5); margin: 0; }
-.ask-q { margin: 0 0 var(--s-3); font-size: var(--fs-lg); font-weight: 600; overflow-wrap: anywhere; }
+.ask-q { margin: 0 0 var(--s-3); font-family: var(--font-display); font-size: var(--fs-lg); font-weight: 600;
+         overflow-wrap: anywhere; }
 .ask-more { margin: 0 0 var(--s-3); color: var(--dim); white-space: pre-line; overflow-wrap: anywhere;
             max-height: 40vh; overflow-y: auto; }
-.ask input { width: 100%; padding: 8px 10px; margin: 0 0 var(--s-3); background: var(--bg);
-             border: 1px solid var(--border); border-radius: var(--r-2); }
+.ask input { width: 100%; padding: 8px 12px; margin: 0 0 var(--s-3); background: var(--bg);
+             border: 1px solid var(--border); border-radius: var(--r-3); }
 .ask-buttons { display: flex; justify-content: flex-end; gap: var(--s-2); margin-top: var(--s-2); }
 .ask-buttons button { min-width: 88px; }
 /* The quick switcher (quick.js, every page): a box on top, a list of groups under it. The
    padding is on the inner box, so a click on the window's edge counts only outside it. */
-dialog#quick { border: 1px solid var(--border); border-radius: var(--r-3); background: var(--panel);
+dialog#quick { border: 1px solid var(--border); border-radius: 18px; background: var(--panel2);
                color: var(--text); box-shadow: var(--shadow-2); padding: 0; margin: 12vh auto auto;
                width: min(560px, calc(100vw - 32px)); animation: ask-in var(--dur) var(--ease); }
-dialog#quick::backdrop { background: rgb(0 0 0 / .45); }
+dialog#quick::backdrop { background: var(--scrim, rgb(0 0 0 / .5)); }
 .quick-box { padding: var(--s-3); }
-.quick-box input { width: 100%; padding: 8px 10px; font-size: var(--fs-lg); background: var(--bg);
-                   border: 1px solid var(--border); border-radius: var(--r-2); }
+.quick-box input { width: 100%; padding: 8px 12px; font-size: var(--fs-lg); background: var(--bg);
+                   border: 1px solid var(--border); border-radius: var(--r-3); }
 .quick-list { max-height: 55vh; overflow-y: auto; margin-top: var(--s-2); }
 .quick-head { margin: var(--s-2) var(--s-2) 2px; color: var(--dim); font-size: var(--fs-xs); font-weight: 600;
               text-transform: uppercase; letter-spacing: .04em; }
@@ -194,8 +246,9 @@ dialog#quick::backdrop { background: rgb(0 0 0 / .45); }
 .quick-none { margin: var(--s-3) var(--s-2); color: var(--dim); }
 @media (max-width: 760px) { header.top nav { gap: 8px; font-size: 13px; } }
 /* A touch screen (a phone, a tablet): every control at least 44 px, so a finger hits it; the
-   mouse look stays as it is. At no weight (:where), so a page can make a small control, such
-   as a chip's button, a little smaller on purpose. */
+   mouse look (40 px: 8 px of padding around a line of text) stays as it is. At no weight
+   (:where), so a page can make a small control, such as a chip's button, a little smaller on
+   purpose. */
 @media (pointer: coarse) {
   :where(button, select, .button-link, input[type=text], input[type=search], input[type=password],
          input[type=number], input[type=email], input[type=url], input[type=tel], input[type=date],
@@ -208,17 +261,18 @@ dialog#quick::backdrop { background: rgb(0 0 0 / .45); }
 /* Read by screen readers, not shown. */
 .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden;
            clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
-/* Keyboard use: a clear ring around what has the focus (not around mouse clicks). */
-:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+/* Keyboard use: a clear ring around what has the focus (not around mouse clicks), on every control. */
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 button:focus:not(:focus-visible), a:focus:not(:focus-visible) { outline: none; }
 .skip { position: absolute; left: 8px; top: -60px; z-index: 100; background: var(--panel);
         border: 1px solid var(--accent); border-radius: var(--r-2); padding: 8px 12px; }
 .skip:focus { top: 8px; }
 /* More contrast when the system asks for it (Windows: Contrast themes, "increase contrast"). */
 @media (prefers-contrast: more) {
-  :root, :root[data-theme] { --dim: var(--text); --border: var(--text); --accent: #4aa3ff; }
-  :root[data-theme="light"] { --accent: #0047b3; }
-  @media (prefers-color-scheme: light) { :root:not([data-theme="dark"]) { --accent: #0047b3; } }
+  :root, :root[data-theme] { --dim: var(--text); --border: var(--text); --accent: #c9c0ff;
+                             --primary-edge: var(--text); }
+  :root[data-theme="light"] { --accent: #3d2db0; }
+  @media (prefers-color-scheme: light) { :root:not([data-theme="dark"]) { --accent: #3d2db0; } }
   .pill, button, input, select, textarea { border-width: 2px; }
 }
 @media (forced-colors: active) {
@@ -248,7 +302,7 @@ button:focus:not(:focus-visible), a:focus:not(:focus-visible) { outline: none; }
 .md .callout-tip { --c: var(--ok); }
 .md .callout-warning { --c: var(--warn); }
 .md .callout-quote { --c: var(--dim); }
-.md .callout-todo { --c: #a371f7; }
+.md .callout-todo { --c: var(--accent); }
 .md .callout-title { display: flex; gap: 8px; align-items: baseline; font-weight: 600; color: var(--c); }
 .md summary.callout-title { cursor: pointer; list-style: none; }
 .md summary.callout-title::-webkit-details-marker { display: none; }
@@ -268,8 +322,8 @@ button:focus:not(:focus-visible), a:focus:not(:focus-visible) { outline: none; }
 .md .task-chip { display: inline-block; margin-left: .4em; padding: 0 .5em; border: 1px solid var(--border);
                  border-radius: 999px; font-size: .8em; line-height: 1.55; color: var(--dim); white-space: nowrap;
                  font-style: normal; vertical-align: .05em; }
-.md .task-chip.overdue { color: #fff; background: #c62828; border-color: #c62828; }
-.md .task-chip.today { color: #2b1d00; background: var(--warn); border-color: var(--warn); }
+.md .task-chip.overdue { color: var(--on-danger); background: var(--danger); border-color: var(--danger); }
+.md .task-chip.today { color: var(--on-accent); background: var(--warn); border-color: var(--warn); }
 .md .task-priority { padding: 0 .3em; }
 .md .task-chip.task-stage { color: var(--accent); border-color: var(--accent); }
 /* a ```mermaid block's diagram (render.js, block G5) */

@@ -96,7 +96,7 @@ async def test_every_text_box_reads_well_in_the_dark(
             # check boxes and radio buttons in Starlight's accent
             radio = page.locator('input[name="trigger"]').first
             accent = await radio.evaluate("r => getComputedStyle(r).accentColor")
-            assert accent == "rgb(110, 168, 254)"
+            assert accent == "rgb(169, 155, 255)"
             # deleting a rule is a quiet red outline (it asks first anyway)
             delete = page.locator(".rule .actions button", has_text="Delete")
             assert await delete.get_attribute("class") == "danger-outline"
@@ -148,6 +148,6 @@ async def test_the_approval_that_waits_for_you_stands_out(
         try:
             await page.wait_for_selector("#approvals:not([hidden]) .waiting")
             edge = await page.locator("#approvals").evaluate("c => getComputedStyle(c).boxShadow")
-            assert "rgb(210, 153, 34)" in edge  # an amber edge (--warn)
+            assert "rgb(253, 186, 116)" in edge  # an amber edge (--warn)
         finally:
             await browser.close()

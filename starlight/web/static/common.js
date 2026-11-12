@@ -89,6 +89,8 @@ const ICONS = {
   back: '<path d="M19.5 12h-14M11 6l-6 6 6 6"/>',
   chevron: '<path d="M7 10l5 5 5-5"/>',
   boards: '<rect x="3.5" y="4.5" width="7" height="7" rx="1.5"/><rect x="13.5" y="4.5" width="7" height="4.5" rx="1.5"/><rect x="3.5" y="14.5" width="7" height="5" rx="1.5"/><rect x="13.5" y="12" width="7" height="7.5" rx="1.5"/>',
+  // the brand mark: the one filled icon, gold (style.css: svg.ico .star)
+  star: '<path class="star" d="M12 2 L14.2 9.8 L22 12 L14.2 14.2 L12 22 L9.8 14.2 L2 12 L9.8 9.8 Z"/>',
 };
 function icon(name, alone) {
   return '<svg class="ico' + (alone ? " alone" : "") + '" viewBox="0 0 24 24" aria-hidden="true" focusable="false">'

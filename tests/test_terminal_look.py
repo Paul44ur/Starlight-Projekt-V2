@@ -83,9 +83,9 @@ def test_words_wrap_at_the_width_and_are_never_split() -> None:
 
 def test_the_colours_are_the_webs_at_the_terminals_depth() -> None:
     dark, light = palette("truecolor"), palette("truecolor", light=True)
-    assert dark.accent == "\x1b[38;2;110;168;254m"  # --accent, dark (style.css)
-    assert light.accent == "\x1b[38;2;37;99;235m"  # --accent, light
-    assert palette("256").accent == "\x1b[38;5;75m"
+    assert dark.accent == "\x1b[38;2;169;155;255m"  # --accent, dark (style.css)
+    assert light.accent == "\x1b[38;2;85;67;209m"  # --accent, light
+    assert palette("256").accent == "\x1b[38;5;141m"
     assert palette("standard").accent == "\x1b[94m"  # the basic 16: bright blue
     for none in (palette(None), palette("truecolor", no_color=True)):
         assert none.accent == none.bad == none.code == ""  # NO_COLOR: no colours ...

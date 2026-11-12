@@ -227,7 +227,7 @@ async def test_the_bar_stays_one_row_in_a_narrower_window(
             try:
                 await page.wait_for_function("() => !document.getElementById('title').hidden")
                 bar = await page.locator("#main header.top").bounding_box()
-                assert bar is not None and bar["height"] < 60, width  # (the sidebar beside it)
+                assert bar is not None and bar["height"] < 70, width  # (the sidebar beside it)
                 assert await page.locator("#kill").is_visible()
             finally:
                 await browser.close()

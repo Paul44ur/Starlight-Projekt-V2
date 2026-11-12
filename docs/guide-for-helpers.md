@@ -36,16 +36,18 @@ The user is German and uses Windows 11. Everything runs on their own PC.
 All shared styles are in `starlight/web/static/style.css`. A page adds only what is its own
 (`chat.css`, `notes.css`, or a `<style>` block in a small page).
 
-**Tokens** (defined on `:root`, with a light and a dark value each):
+**Tokens** (defined on `:root`, with a night and a day value each; night is the default; values are in `docs/plan-ui-2.md` section 2):
 
 | Kind | Tokens |
 |---|---|
 | Surfaces | `--bg` (page), `--panel` (cards, bars), `--panel2` (hover, fields) |
 | Lines and text | `--border`, `--text`, `--dim` (secondary text) |
-| Accent | `--accent`, `--accent-tint` (soft hover wash), `--on-accent` (text on a filled accent) |
-| Status | `--ok`, `--warn`, `--bad` (red text), `--danger` (filled red behind white text) |
+| Accent (violet: links, focus, switches) | `--accent`, `--accent-tint` (soft hover wash), `--on-accent` (text on a filled accent, ok or warn) |
+| Primary (gold: the star and ONE main action) | `--primary`, `--on-primary`, `--primary-edge` (the border on a day page) |
+| Status | `--ok`, `--warn`, `--bad` (red text), `--danger` (filled red behind `--on-danger` text) |
 | Space | `--s-1` 4px, `--s-2` 8px, `--s-3` 12px, `--s-4` 16px, `--s-5` 24px, `--s-6` 32px |
-| Radius | `--r-1` 6px, `--r-2` 8px, `--r-3` 12px, `--r-pill` |
+| Radius | `--r-1` 6px, `--r-2` 8px, `--r-3` 12px, `--r-4` 16px (cards), `--r-pill` |
+| Fonts | `--font-display` (Space Grotesk, headings), `--font-body`, `--font-mono` |
 | Type | `--fs-xs` 12px, `--fs-sm` 13px, `--fs-md` 15px, `--fs-lg` 16px, `--fs-xl` 20px |
 | Shadow | `--shadow-1` (resting), `--shadow-2` (lifted: toasts, dialogs, menus) |
 | Motion | `--ease`, `--dur-fast`, `--dur` |
@@ -53,7 +55,7 @@ All shared styles are in `starlight/web/static/style.css`. A page adds only what
 **Building blocks** already in `style.css`. Use them before you write new CSS:
 
 - Layout: `.page`, `.card`, `.row`, `.stack`, `.cluster`, `.grow`
-- Text: `.dim`, `.muted`, `.small`, `.truncate`, `.sr-only`
+- Text: `.dim`, `.muted`, `.small`, `.truncate`, `.sr-only`, `.num` (mono numbers), `.section-label`, `kbd`
 - Status: `.pill` (with `.on`, `.warn`, `.off`), `.toast`, `.skeleton` (loading bars)
 - Buttons: plain `button`, `button.primary` (the one main action), `button.ok`,
   `button.danger` (filled red), `button.danger-outline`, `button.icon`, `button.quiet`

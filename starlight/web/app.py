@@ -78,6 +78,9 @@ VENDOR = {
     "graph-LICENSES.txt": "text/plain; charset=utf-8",
     "mermaid.js": "text/javascript; charset=utf-8",  # Mermaid, for diagrams (on first use)
     "mermaid-LICENSES.txt": "text/plain; charset=utf-8",
+    "space-grotesk-latin.woff2": "font/woff2",  # the heading font (bundles/fonts)
+    "space-grotesk-latin-ext.woff2": "font/woff2",
+    "space-grotesk-LICENSE.txt": "text/plain; charset=utf-8",
 }
 # The app icons in static/icons (drawn by bundles/icons/make_icons.py) and their size.
 APP_ICONS = {
