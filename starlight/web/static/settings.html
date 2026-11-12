@@ -11,6 +11,12 @@
 <link rel="stylesheet" href="/style.css" />
 <script src="/i18n.js"></script>
 <style>
+  /* the Night Sky look: one centred column of cards, titles in the display font */
+  .page { max-width: 760px; }
+  .card { margin: var(--s-4) 0; }
+  .card h2 { font-size: var(--fs-xl); font-weight: 600; margin: 0 0 var(--s-2); }
+  header.top h1 { font-size: var(--fs-xl); font-weight: 600; }
+  header.top h1 svg.ico { width: 22px; height: 22px; margin-right: 0; vertical-align: 0; }
   #code { font-size: 32px; letter-spacing: .3em; font-weight: 700; }
   .locked { display: none; }
   body.remote .locked { display: block; }
@@ -59,9 +65,9 @@
                 color: var(--dim); }
   .seg button + button { border-left: 1px solid var(--border); }
   .seg button:hover { color: var(--text); }
-  .seg button.sel.safe { background: var(--ok); color: #06240f; }
-  .seg button.sel.confirm { background: var(--warn); color: #2b1d00; }
-  .seg button.sel.blocked { background: var(--danger); color: #fff; }
+  .seg button.sel.safe { background: var(--ok); color: var(--on-accent); }
+  .seg button.sel.confirm { background: var(--warn); color: var(--on-accent); }
+  .seg button.sel.blocked { background: var(--danger); color: var(--on-danger); }
   /* wide enough for "Zurücksetzen"; the column stays when there is nothing to reset */
   .reset { flex: none; width: 7.5em; text-align: right; font-size: 12px; padding: 0; background: none; border: 0;
            color: var(--accent); }
@@ -73,8 +79,8 @@
                  border: 1px solid var(--border); transition: background .15s; }
   .switch span::before { content: ""; position: absolute; width: 16px; height: 16px; left: 2px; top: 2px;
                          border-radius: 50%; background: var(--dim); transition: transform .15s, background .15s; }
-  .switch input:checked + span { background: var(--ok); border-color: var(--ok); }
-  .switch input:checked + span::before { transform: translateX(16px); background: #fff; }
+  .switch input:checked + span { background: var(--accent); border-color: var(--accent); }
+  .switch input:checked + span::before { transform: translateX(16px); background: var(--on-accent); }
   .switch input:focus-visible + span { outline: 2px solid var(--accent); outline-offset: 2px; }
   details.advanced { margin-top: 12px; border-top: 1px solid var(--border); padding-top: 10px; }
   details.advanced summary { cursor: pointer; color: var(--dim); font-size: 13px; }
@@ -97,11 +103,15 @@
                                background: color-mix(in srgb, var(--bad) 11%, transparent); }
   .plain .practice { display: flex; gap: 10px; align-items: center; margin-top: 12px; }
   /* Safety limits: a level, then one row per protection. */
-  .seg.levels { margin: 6px 0 4px; }
-  .seg.levels button { padding: 5px 14px; font-size: 13.5px; }
-  .seg button.sel.strict { background: var(--ok); color: #06240f; }
-  .seg button.sel.balanced { background: var(--accent); color: var(--on-accent); }
-  .seg button.sel.relaxed { background: var(--warn); color: #2b1d00; }
+  /* the level: three large choice cards side by side (stacked on a phone), the chosen one lit */
+  .levels { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--s-3); margin: var(--s-3) 0; }
+  .levels button { display: flex; flex-direction: column; align-items: flex-start; gap: var(--s-1);
+    min-height: 92px; padding: 14px; text-align: left; border: 1px solid var(--border);
+    border-radius: var(--r-3); background: transparent; }
+  .levels button:hover { background: var(--accent-tint); border-color: var(--accent); }
+  .levels button.sel { border: 2px solid var(--accent); padding: 13px; background: var(--panel2); }
+  .levels .lname { font-weight: 600; }
+  .levels .lhelp { font-size: var(--fs-sm); color: var(--dim); overflow-wrap: anywhere; }
   .safety h3 { font-size: 14px; margin: 16px 0 2px; }
   .srow { display: flex; align-items: flex-start; gap: 12px; padding: 8px 0; border-top: 1px dashed var(--border); }
   .sinfo { flex: 1; min-width: 0; }
@@ -110,7 +120,7 @@
   .sdesc { color: var(--dim); font-size: 12.5px; }
   .swarn { color: var(--bad); font-size: 12.5px; margin-top: 2px; }
   .sctl { flex: none; display: flex; align-items: center; gap: 6px; }
-  .sctl input[type=number] { width: 84px; }
+  .sctl input[type=number] { width: 84px; font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
   .sctl .unit { min-width: 64px; }  /* every number box lines up, with a unit or without */
   .sctl textarea { width: 260px; min-height: 64px; font-family: ui-monospace, Consolas, monospace; font-size: 12.5px; }
   .sctl.wide { flex-direction: column; align-items: flex-end; }
@@ -124,6 +134,7 @@
     details.advanced summary { padding: 12px 0; }
   }
   @media (max-width: 600px) {
+    .levels { grid-template-columns: minmax(0, 1fr); }
     .srow { flex-wrap: wrap; }
     .sctl, .sctl textarea { width: 100%; }
     .sctl.wide { align-items: stretch; }
@@ -135,7 +146,7 @@
 </head>
 <body>
 <header class="top">
-  <h1><img class="logo" src="/icon.svg" alt="" width="22" height="22" />Settings</h1><span class="spacer"></span>
+  <h1 data-icon="star">Settings</h1><span class="spacer"></span>
   <nav><a href="/">Chat</a><a href="/notes">Notes</a><a href="/memory">Memory</a><a href="/activity">Activity</a><a href="/automations">Automations</a></nav>
   <button id="theme" class="icon" onclick="cycleTheme()" aria-label="Theme" data-icon="system"></button>
 </header>
@@ -146,7 +157,7 @@
   <div class="card local-only" id="devices-card">
     <h2>Your phone and other devices</h2>
     <p class="dim small" id="remote-state">…</p>
-    <div class="row"><button id="pair" class="primary">Show a pairing code</button><span id="code"></span>
+    <div class="row"><button id="pair" class="primary">Show a pairing code</button><span id="code" class="num"></span>
       <span class="dim small" id="code-note"></span></div>
     <table id="devices"><thead><tr><th>Device</th><th>Paired</th><th>Last used</th><th></th></tr></thead><tbody></tbody></table>
   </div>
@@ -196,7 +207,7 @@
     <h2>Model</h2>
     <p class="dim small">The model Starlight answers with. Saved in config/launcher.json.</p>
     <div class="row"><span class="dim">In use now</span> <b id="model-now" translate="no"></b>
-      <span class="dim small" id="model-now-context"></span></div>
+      <span class="dim small num" id="model-now-context"></span></div>
     <p class="small swarn" id="model-problem" hidden></p>
     <p class="small swarn" id="model-local" hidden>config/starlight.local.yaml sets a model: a setting in it wins over this page.</p>
     <p class="small" id="model-pending" hidden>Saved. It applies after Starlight restarts.</p>
@@ -216,7 +227,7 @@
   <div class="card local-only safety" id="safety-card">
     <h2>Safety limits</h2>
     <p class="dim small">How careful Starlight is. Pick a level, then change any single protection. Saved in config/starlight.safety.yaml.</p>
-    <div class="seg levels" id="levels" role="group" aria-label="Safety level"></div>
+    <div class="levels" id="levels" role="group" aria-label="Safety level"></div>
     <p class="dim small" id="level-help"></p>
     <p class="dim small" id="level-changed" hidden></p>
     <p class="small swarn" id="local-file" hidden>config/starlight.local.yaml exists: a setting in it wins over this page.</p>
@@ -403,7 +414,7 @@ async function loadDevices() {
   const body = document.querySelector("#devices tbody"); body.innerHTML = "";
   data.devices.forEach(d => {
     const row = el("tr");
-    row.append(el("td", "", d.name), el("td", "small", d.paired), el("td", "small", d.last_seen || "never"));
+    row.append(el("td", "", d.name), el("td", "small num", d.paired), el("td", d.last_seen ? "small num" : "small", d.last_seen || "never"));
     const act = el("td"); const b = el("button", "danger-outline", "Remove");
     b.onclick = async () => {
       if (!(await askYesNo("Remove " + d.name + "?\n\nIt can no longer use Starlight.", { yes: "Remove", danger: true }))) return;
@@ -441,12 +452,22 @@ async function loadSafety() {
   showSafety();
 }
 
+// The level's help without its name in front ("Strict: ..."), in the page's language.
+function levelHelpLine(level) {
+  const words = tr(LEVEL_HELP[level]).replace(/^[^:]+:\s*/, "");
+  const line = el("span", "lhelp", words.charAt(0).toUpperCase() + words.slice(1));
+  line.setAttribute("translate", "no");  // (already in the page's language)
+  return line;
+}
+
 function showSafety() {
   const s = safetyState;
   const levels = document.getElementById("levels");
   levels.replaceChildren();
   s.levels.forEach(level => {
-    const b = el("button", level + (s.level === level ? " sel" : ""), LEVELS[level]);
+    const b = el("button", level + (s.level === level ? " sel" : ""));
+    b.type = "button";
+    b.append(el("span", "lname", LEVELS[level]), levelHelpLine(level));
     b.setAttribute("aria-pressed", s.level === level ? "true" : "false");
     b.onclick = () => chooseLevel(level);
     levels.appendChild(b);

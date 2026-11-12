@@ -460,7 +460,7 @@ async def test_the_settings_card_sets_levels_and_single_protections(
             await german.route("**/api/**", server)
             await german.goto(f"{static_site}/settings.html")
             await german.wait_for_selector("#safety h3")
-            assert await german.locator("#levels button.strict").inner_text() == "Streng"
+            assert await german.locator("#levels button.strict .lname").inner_text() == "Streng"
             titles = await german.locator("#safety .stitle").all_inner_texts()
             assert any(t.startswith("Schritte pro Anfrage") for t in titles)
             assert "Grenzen und der Wächter" in await german.locator("#safety h3").all_inner_texts()

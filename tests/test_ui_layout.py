@@ -25,6 +25,9 @@ def test_every_page_shows_the_real_logo_not_an_emoji() -> None:
                  "activity.html", "automations.html", "kill.html"):  # fmt: skip
         page = read(name)
         assert "⭐" not in page, name
+        if name == "settings.html":  # (the Night Sky look: the gold star icon is its mark)
+            assert 'data-icon="star"' in page
+            continue
         assert '<img class="logo" src="/icon.svg"' in page, name
 
 
