@@ -31,6 +31,8 @@ class FakeDesktop:
     def __init__(self, width: int = 2560, height: int = 1440) -> None:
         self.width, self.height = width, height
         self.text = ""
+        self.pause_after: int | None = None  # typing pauses after this many characters
+        self.resume = threading.Event()
         self.mouse = (800, 600)
         self.events: list[tuple[Any, ...]] = []
         self.released = 0
@@ -69,6 +71,10 @@ class FakeDesktop:
 
     def type_char(self, char: str) -> None:
         self.text += char
+        if self.pause_after is not None and len(self.text) == self.pause_after:
+            # Typing waits here until the test has pressed the kill key, so "halfway" does
+            # not depend on how fast two threads run on a busy machine.
+            self.resume.wait(10)
 
     def press_keys(self, keys: list[str]) -> None:
         self.events.append(("keys", *keys))
@@ -154,6 +160,7 @@ async def test_kill_hotkey_stops_typing_halfway(desktop_project: Paths) -> None:
         ModelResponse(tool_calls=[ToolCall("desktop.type_text", {"text": text})])
     )
     fake = FakeDesktop()
+    fake.pause_after = 5  # typing has visibly started, and waits for the key
     async with Kernel(desktop_project, provider=provider, ui=Yes()) as kernel:
         install(kernel, fake)
 
@@ -164,6 +171,7 @@ async def test_kill_hotkey_stops_typing_halfway(desktop_project: Paths) -> None:
             while len(fake.text) < 5 and time.monotonic() < deadline:
                 time.sleep(0.005)
             kernel.kill_switch.trigger("hotkey <ctrl>+<alt>+j", source="hotkey")
+            fake.resume.set()
 
         threading.Thread(target=press_hotkey_midway, daemon=True).start()
         result = await kernel.ask("type a long sentence")
