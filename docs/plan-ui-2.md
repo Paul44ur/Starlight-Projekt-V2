@@ -10,7 +10,7 @@ one block per commit. `docs/plan-ui.md` (U1-U10) is the look this replaces; its 
 
 | Block | What | Needs | State |
 |---|---|---|---|
-| V1 | Foundation: tokens (night and day), the heading font, shared components | – | open |
+| V1 | Foundation: tokens (night and day), the heading font, shared components | – | **done** (6500345) |
 | V2 | The chat page | V1 | open |
 | V3 | The Settings page | V1 | open |
 | V4 | The Notes page (editor, graph, boards) | V1 | open |
