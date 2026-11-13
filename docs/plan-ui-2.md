@@ -16,7 +16,7 @@ one block per commit. `docs/plan-ui.md` (U1-U10) is the look this replaces; its 
 | V4 | The Notes page (editor, graph, boards) | V1 | **done** (01a7407) |
 | V5 | Memory, Activity, Automations, Kill, Pair | V1 | **done** (01a7407) |
 | V6 | The launcher window and the terminal's colours | V1 | **done** (604d7b6) |
-| V7 | Review: phone, German, contrast, screenshots of every page, docs | V2-V6 | open |
+| V7 | Review: phone, German, contrast, screenshots of every page, docs | V2-V6 | **done** (07ec118; fixes 0a8ea4b, d8dd16b) |
 
 ## 1. The philosophy
 

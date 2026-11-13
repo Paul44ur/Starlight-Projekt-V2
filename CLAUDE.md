@@ -5,18 +5,16 @@ A local AI assistant: Python core (`starlight/`), modules (`modules/`), a FastAP
 on Windows 11; the pages have German translations (`starlight/web/static/i18n.js`).
 
 ## Plans
-**Open: `docs/plan-ui-2.md`**, the Night Sky look for every page (blocks V1-V7). Read it
-before changing how any page or the launcher window looks; mark a block done there (with its
-commit) when it is pushed.
-
-The two earlier plans are finished (every block done) and are kept as a reference for why
-things are the way they are:
+No plan is open. The three plans are finished (every block done) and are kept as a reference
+for why things are the way they are:
+- `docs/plan-ui-2.md`: the Night Sky look of every page and the launcher window (V1-V7), the
+  current look. Read it before changing how any page or the launcher window looks.
 - `docs/plan-notes-app.md`: the notes app (notes, journal, memory, to-dos, the Notes page):
   the user's decisions and what was verified. Read it before changing that area.
-- `docs/plan-ui.md`: the look of the pages and the launcher window.
+- `docs/plan-ui.md`: the look before Night Sky (its structure still holds).
 
 New work goes on `Starlight_Fable` (below). For a larger piece, agree a plan with the user
-first and keep it in `docs/plan-<topic>.md` with a Status table, as these two do.
+first and keep it in `docs/plan-<topic>.md` with a Status table, as these do.
 
 ## How we work
 - Branch `Starlight_Fable` (started 2026-11-10 from `main`; `main` and
