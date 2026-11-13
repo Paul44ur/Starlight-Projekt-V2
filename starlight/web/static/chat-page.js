@@ -58,6 +58,8 @@ function showContext(tokens) {
   const used = document.getElementById("context-used"), of = document.getElementById("context-of");
   const bar = document.getElementById("context-bar"), note = document.getElementById("context-note");
   const line = document.getElementById("meta-context");
+  const top = document.getElementById("bar-context");  // (the thin meter in the bar)
+  top.hidden = !tokens || !contextWindow;
   if (!tokens || !contextWindow) {
     used.textContent = "–"; of.textContent = ""; bar.className = "context-bar";
     bar.firstElementChild.style.width = "0";
@@ -74,6 +76,9 @@ function showContext(tokens) {
   note.textContent = percent >= 85 ? "Nearly full: older turns get summarized. /new starts afresh."
     : "Older turns are summarized when it is full.";
   line.textContent = "Context " + percent + "%";
+  document.getElementById("bar-context-pct").textContent = percent + "%";
+  document.getElementById("bar-context-fill").style.width = percent + "%";
+  top.dataset.level = percent >= 85 ? "full" : percent >= 60 ? "warn" : "ok";
 }
 async function refresh() {
   try {
@@ -92,7 +97,8 @@ async function refresh() {
       k.title = s.local ? "The kill switch is on: Starlight does nothing until you resume"
                         : "Release the kill switch on the PC";
     } else if (k.dataset.on !== "0") {
-      k.replaceChildren(el("span", "wide", "Kill switch"), el("span", "narrow", "Kill"));
+      k.replaceChildren(el("span", "wide", "Kill switch"), el("span", "narrow", "Kill"),
+                        el("kbd", "key-wide", "Ctrl Alt J"));
       k.className = "kill"; k.dataset.on = "0"; k.disabled = false;
       k.title = "Kill switch: stop everything Starlight does on this PC, until you resume (also Ctrl+Alt+J)";
     }

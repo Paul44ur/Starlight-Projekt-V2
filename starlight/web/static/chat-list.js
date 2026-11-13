@@ -30,12 +30,12 @@ async function loadList() {
   const rest = data.conversations.filter(c => !c.pinned)
     .sort((a, b) => (a.folder || "").localeCompare(b.folder || ""));
   let folder = null;
-  if (pinned.length && !showArchived) list.appendChild(el("div", "folder", "Pinned"));
+  if (pinned.length && !showArchived) list.appendChild(el("div", "folder section-label", "Pinned"));
   [...pinned, ...rest].forEach(c => {
     if (!c.pinned && (c.folder || "") !== folder) {
       folder = c.folder || "";
       if (folder) list.appendChild(labelled("folder", folder, true));
-      else if (pinned.length && !showArchived) list.appendChild(el("div", "folder", "Recent"));
+      else if (pinned.length && !showArchived) list.appendChild(el("div", "folder section-label", "Recent"));
     }
     const row = el("div", "conv" + (c.id === conversation ? " active" : ""));
     const t = el("span", "t", c.title); t.translate = false; t.title = c.title + " — " + c.updated.replace("T", " ").slice(0, 16);
@@ -178,6 +178,7 @@ document.addEventListener("click", (e) => { if (openMenu && !openMenu.contains(e
 async function openConversation(id) {
   setDrawer(false);
   showContext(null);  // (another conversation: known again after its next answer)
+  showAnswerStats(null);
   let data;
   try { data = await api("/api/conversations/" + id); } catch (e) { toast(e.message); return; }
   conversation = id; log.innerHTML = ""; current = null;
@@ -194,6 +195,7 @@ async function openConversation(id) {
 }
 document.getElementById("new").onclick = async () => { const d = await api("/api/conversations", { method: "POST" }); await openConversation(d.id); input.focus(); };
 document.getElementById("newprivate").onclick = async () => { const d = await api("/api/conversations", { method: "POST", body: { private: true } }); await openConversation(d.id); input.focus(); };
+document.getElementById("quick-open").onclick = () => { setDrawer(false); if (window.openQuick) window.openQuick(); };
 document.getElementById("search").oninput = () => loadList();
 const phone = matchMedia("(max-width: 760px)");  // (the drawer; wider: the sidebar)
 function setDrawer(open) {

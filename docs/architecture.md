@@ -234,6 +234,18 @@ The launcher window follows the same look: `Palette` has `primary`, `on_primary`
 Semibold" (Tk cannot load the web font). The terminal chat's colours (`termstyle.COLOURS`)
 are the same tokens, and `tests/test_launcher_night_sky.py` compares them with `style.css`.
 
+**The Notes page in the Night Sky look.** The list on the left and the info panel are cards
+(radius `--r-4`) inset on the night ground. Their rows are 44 px high with a radius of 12;
+the open note rests on `--panel2` with a small `--accent` dot. Titles use `--font-display`,
+counts and dates use `.num`. The one gold button of a view is the new-note button, unless the
+view has its own main action (New board, Study all, Show answer, Write today's page): then
+`notes-page.js` makes that one gold and the list's button plain. No colour is written into
+`notes.css` or the notes scripts (`tests/test_notes_night_sky.py` checks this). The editor
+theme in `notes-editor.js`, the search panel, the graph (SVG and canvas) and the board's
+preset colours all use tokens. The canvas graph reads the tokens when it draws and draws
+again when the look changes. The to-do callout is `--warn` with a dashed line. A colour
+written as `#rrggbb` in a `.canvas` file is the user's own and stays.
+
 **The chat page in parts.** `chat.html` holds only the markup. Its look is `chat.css`, and its
 code is five plain scripts that share globals, loaded in this order: `chat-core.js` (state,
 scrolling, the socket, `handle()`, the message flow), `chat-messages.js` (drawing messages),
@@ -251,6 +263,20 @@ the model read plus wrote in the answer's last step, out of `/api/status`'s `con
 `_run_ask` keeps that number with the conversation (`ConversationStore.set_context`, in memory only
 for a private one), `get()` returns it and the page shows it when the conversation is opened.
 A branch and an old conversation have none until their next answer.
+
+**The chat page in the Night Sky look.** The sidebar and the details pane are cards inset 12 px
+on the ground (`body` has the padding; a phone has none and keeps its drawer). The sidebar has
+a brand row with the star, New conversation as `button.primary`, a "Search or jump to…" button
+(`#quick-open`) that calls `window.openQuick` from `quick.js` (the same as Ctrl+K), and rows of
+44 px; the open conversation has `--panel2` and a violet dot (`.conv::before`). The bar has no
+panel: the name in the display font, a thin context bar with its percentage (`#bar-context`,
+filled by `showContext`; the old meter in `#side` stays) and the Kill switch with its key. A
+key (`.key-wide`: Kill switch, Enter beside Send) shows from 1200 px, never on a touch screen.
+Your messages are a card, Starlight's answers have a gold star and no card. The tool steps of an
+answer fold into one chip, a button with `aria-expanded` (`toolFold`, `toolSummary` in
+`chat-messages.js`); the timeline (`.toolrow`, as before) opens behind it. `#side` shows from
+1200 px, with "This answer" (tools, time, tokens, set by `addStats` through `showAnswerStats`).
+The message box is a pill; Send is round and shows its icon at every width.
 
 **The launcher window's error page.** `error_hints()` (starlight_launcher.py) matches the
 words of a problem's message and details against `ERROR_HINTS` (video memory, disk space,
@@ -327,6 +353,13 @@ most) of cards with titles in the display font. The safety level is three choice
 buttons with `aria-pressed`, still found as `#levels button.<level>`; the chosen one has a 2px
 `--accent` line. Switches are `--accent`, and a card has at most one gold (`primary`) button.
 The look is all in the page's own `<style>`; the behaviour and the server calls did not change.
+
+**Memory, Activity, Automations, Kill and Pair in the Night Sky look.** The first three have the
+Settings page's header (the gold star, the title in the display font) and one centred column of
+cards; dates and counts are `.num`. Only Save on Automations and Pair on the pairing page are
+gold. `kill.html` keeps its own fixed red (the button's edge is the one colour written out in
+these pages, in `--kill-edge`); everything else on the five pages is a token. The behaviour,
+ids and server calls did not change.
 
 **Choosing the model on the Settings page.** `starlight/core/modelchoice.py` and
 `starlight/web/model_api.py` (`GET /api/model`, `POST /api/model`, `POST /api/model/restart`).

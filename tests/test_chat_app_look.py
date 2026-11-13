@@ -113,8 +113,13 @@ async def test_the_sidebar_holds_the_actions_the_pages_and_the_conversations(
             assert await side.locator(".side-nav a > svg.ico").count() == 5
             assert await page.locator("header.top a[href='/notes']").count() == 0  # (moved)
             labels = await page.locator("#list .folder, #list .conv .t").all_inner_texts()
-            assert labels[:5] == ["Pinned", "Plan the week", "Server check", "Recent",
-                                  "Recipe for Sunday"]  # fmt: skip
+            assert labels[:5] == [
+                "PINNED",
+                "Plan the week",
+                "Server check",
+                "RECENT",
+                "Recipe for Sunday",
+            ]  # fmt: skip  (.section-label: upper case)
             await page.wait_for_function(
                 "() => document.getElementById('model-name').textContent === 'qwen3-14b'"
             )
@@ -207,7 +212,8 @@ async def test_the_context_meter(
             )
             words = await page.evaluate(text)
             assert words[:2] == ["92 % belegt", "30k von 32,8k"]  # (a German comma)
-            assert await page.locator("#side h2").first.inner_text() == "Dieser PC"
+            first = await page.locator("#side h2").first.inner_text()
+            assert first == "DIESER PC"  # (.section-label: upper case)
             assert await page.locator(".side-nav").get_attribute("aria-label") == "Seiten"
         finally:
             await browser.close()

@@ -18,6 +18,8 @@
     "Chat": "Chat", "Memory": "Gedächtnis", "Activity": "Aktivität", "Automations": "Automationen",
     "Settings": "Einstellungen", "Theme": "Farben",
     "Skip to the message box": "Zum Eingabefeld springen",
+    // the memory, activity, automations, kill and pair pages in the Night Sky look
+    "· from": "· von", "· until": "· bis", "· expired": "· abgelaufen",
     // the model card (settings)
     "The model Starlight answers with. Saved in config/launcher.json.":
       "Das Modell, mit dem Starlight antwortet. Gespeichert in config/launcher.json.",
@@ -79,6 +81,12 @@
     "Notifications are allowed in this browser.": "Benachrichtigungen sind in diesem Browser erlaubt.",
     "Notifications are blocked in this browser's settings.": "Benachrichtigungen sind in den Einstellungen dieses Browsers blockiert.",
     "— when Starlight's window is in the background, its title gets a dot, the taskbar button lights up (in Starlight's own window), and the browser shows a notification if you allowed it. Kept for this device.": "— Wenn Starlights Fenster im Hintergrund ist, bekommt sein Titel einen Punkt, die Schaltfläche in der Taskleiste leuchtet (in Starlights eigenem Fenster), und der Browser zeigt eine Benachrichtigung, wenn du sie erlaubt hast. Gilt nur für dieses Gerät.",
+    // the chat in the Night Sky look
+    "Search or jump to…": "Suchen oder springen zu …",
+    "This answer": "Diese Antwort", "Tools": "Werkzeuge", "Time": "Zeit", "Tokens": "Token",
+    "Used 1 tool": "1 Werkzeug benutzt",
+    "How full the model's context is": "Wie voll der Kontext des Modells ist",
+    "Ctrl K": "Strg K", "Ctrl Alt J": "Strg Alt J", "Enter": "Eingabe",
     // the chat
     "Starlight is not answering: the PC may be off or asleep.": "Starlight antwortet nicht: Der PC ist vielleicht aus oder im Ruhezustand.",
     "Wake the PC": "PC aufwecken", "connecting…": "verbinde…", "connected": "verbunden", "offline": "offline",
@@ -444,6 +452,8 @@
     [/^(\d+)% used$/, "$1 % belegt"],
     [/^([\d.,]+k?) of ([\d.,]+k?)$/, "$1 von $2"],
     [/^Context (\d+)%$/, "Kontext $1 %"],
+    [/^1 memory$/, "1 Erinnerung"],
+    [/^(\d+) memories$/, "$1 Erinnerungen"],
     [/^(\d+) shown$/, "$1 angezeigt"],
     [/^works once, for (\d+) minutes$/, "gilt einmal, $1 Minuten lang"],
     [/^Done: (.+)$/, "Erledigt: $1"],
@@ -502,6 +512,7 @@
       "Es sind $1 Dateien, mehr als eine Sicherung fassen kann ($2). Die meisten Dateien: $3. Verschiebe oder lösche einige, oder kopiere sie von Hand."],
     [/^Some hidden files of your old notes are still in (.+)\.$/,
       "Einige versteckte Dateien deiner alten Notizen liegen noch in $1."],
+    [/^Used (\d+) tools$/, "$1 Werkzeuge benutzt"],
   ];
   // Never translated: the conversation, code, and what you type.
   const KEEP = ".msg .body, pre, code, textarea, [translate=no], .notranslate";

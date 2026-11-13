@@ -261,10 +261,10 @@ async def test_slash_stars(static_site: str, monkeypatch: pytest.MonkeyPatch) ->
             )
             await page.locator("#input").fill("/stars")
             await page.locator("#input").press("Enter")
-            assert await page.locator(".star").count() == 48
+            assert await page.locator("div.star").count() == 48  # (not the star icon)
             assert await page.evaluate("() => window.sockets.at(-1).sent.length") == 0  # (local)
             assert await page.locator("#input").input_value() == ""
-            await page.wait_for_function("() => !document.querySelector('.star')", timeout=9000)
+            await page.wait_for_function("() => !document.querySelector('div.star')", timeout=9000)
         finally:
             await browser.close()
 

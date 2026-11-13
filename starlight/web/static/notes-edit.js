@@ -291,7 +291,7 @@ async function showTrash() {
     const row = list.appendChild(el("li", "trash-row"));
     const card = row.appendChild(el("div", "card-note"));
     card.setAttribute("translate", "no");
-    card.append(el("div", "t", nameOf(item.path)), el("div", "w", folderOf(item.path) + " · " + item.when));
+    card.append(el("div", "t", nameOf(item.path)), el("div", "w num", folderOf(item.path) + " · " + item.when));
     const back = row.appendChild(el("button", "", "Bring back"));
     back.type = "button";
     back.onclick = async () => {
@@ -350,7 +350,7 @@ function calendarStrip(shown) {
     cell.type = "button";
     cell.dataset.day = day;
     cell.title = day + (has ? "" : " · " + t("no page yet"));
-    cell.append(el("span", "wd", names[date.getDay()]), el("span", "dn", String(date.getDate())));
+    cell.append(el("span", "wd", names[date.getDay()]), el("span", "dn num", String(date.getDate())));
     cell.onclick = () => (has ? go({ path: "Journal/" + day + ".md" }) : writeDay(day));
   }
   return strip;
@@ -599,7 +599,7 @@ async function showHistory() {
     : "No earlier versions yet. Starlight keeps one before each change.")));
   dialog.hidden = false;
   for (const version of data.versions) {
-    const button = el("button", "", version.when);
+    const button = el("button", "num", version.when);
     button.type = "button";
     button.setAttribute("aria-pressed", "false");
     button.appendChild(el("small", "", t(REASONS[version.reason] || version.reason)));

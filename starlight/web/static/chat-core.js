@@ -49,7 +49,7 @@ toLatest.onclick = () => log.scrollTo({ top: log.scrollHeight,
 const footer = document.querySelector("footer");
 new ResizeObserver(() => {
   document.getElementById("main").style.setProperty("--footer-h", footer.offsetHeight + "px");
-  document.documentElement.style.setProperty("--toast-bottom", footer.offsetHeight + 12 + "px");  // (above it)
+  document.documentElement.style.setProperty("--toast-bottom", footer.offsetHeight + 12 + (parseFloat(getComputedStyle(document.body).paddingBottom) || 0) + "px");  // (above it; the page has a margin round it)
 }).observe(footer);
 // The keys of this page, for the ? window (common.js).
 window.SHORTCUTS = [

@@ -116,7 +116,7 @@ async def test_the_browser_bar_takes_the_colour_of_the_page(
             assert await page.evaluate(bar) == "#b3231d"
             # and it says whose switch it is
             assert "Starlight" in await page.locator("h1").inner_text()
-            assert await page.locator("h1 img.logo").is_visible()
+            assert await page.locator("h1 svg.ico").is_visible()  # (the star)
         finally:
             await browser.close()
 

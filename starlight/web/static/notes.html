@@ -23,6 +23,7 @@
 </header>
 <div class="notes">
   <aside class="side" aria-label="Your notes">
+    <div class="brand"><span data-icon="star" aria-hidden="true"></span><span class="brand-name">Starlight</span></div>
     <div class="top-row">
       <input id="search" type="search" placeholder="Search notes" aria-label="Search notes" />
       <button type="button" id="new-note" title="New note (Ctrl+N)" aria-label="New note (Ctrl+N)" data-icon="plus"></button>
@@ -36,19 +37,19 @@
       <button data-view="cards" data-icon="cards">Flashcards</button>
       <button data-view="trash" data-icon="trash">Trash</button>
     </div>
-    <div id="pinned-box" hidden><h3>Pinned</h3><ul class="plain" id="pinned" translate="no"></ul></div>
-    <h3>Folders</h3>
+    <div id="pinned-box" hidden><h3 class="section-label">Pinned</h3><ul class="plain" id="pinned" translate="no"></ul></div>
+    <h3 class="section-label">Folders</h3>
     <div id="folders" translate="no"></div>
-    <div id="tags-section" hidden><h3>Tags</h3><ul class="plain" id="tags-box" translate="no"></ul></div>
+    <div id="tags-section" hidden><h3 class="section-label">Tags</h3><ul class="plain" id="tags-box" translate="no"></ul></div>
   </aside>
   <main id="note" class="reading" tabindex="-1"><div class="column" id="column"></div></main>
   <aside class="info" id="info" aria-label="About this note">
-    <h3>Outline</h3><ul class="plain" id="outline" translate="no"></ul>
-    <h3>Linked from</h3><ul class="plain" id="backlinks" translate="no"></ul>
-    <h3>Graph</h3><div class="mini-graph" id="mini-graph" translate="no"></div>
-    <h3>Related</h3><ul class="plain" id="related" translate="no"></ul>
-    <h3>Mentioned without a link</h3><ul class="plain" id="mentions" translate="no"></ul>
-    <h3>Properties</h3><dl id="props" translate="no"></dl>
+    <h3 class="section-label">Outline</h3><ul class="plain" id="outline" translate="no"></ul>
+    <h3 class="section-label">Linked from</h3><ul class="plain" id="backlinks" translate="no"></ul>
+    <h3 class="section-label">Graph</h3><div class="mini-graph" id="mini-graph" translate="no"></div>
+    <h3 class="section-label">Related</h3><ul class="plain" id="related" translate="no"></ul>
+    <h3 class="section-label">Mentioned without a link</h3><ul class="plain" id="mentions" translate="no"></ul>
+    <h3 class="section-label">Properties</h3><dl id="props" translate="no"></dl>
   </aside>
 </div>
 <div id="switcher" class="switcher" hidden role="dialog" aria-modal="true" aria-label="Find a note">

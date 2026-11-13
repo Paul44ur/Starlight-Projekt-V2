@@ -71,7 +71,7 @@ async function showTasks() {
     const section = column.appendChild(el("section", "task-group"));
     section.dataset.group = key;
     const heading = section.appendChild(el("h3", "", t(label)));
-    heading.appendChild(el("span", "count", String(data[key].length)));
+    heading.appendChild(el("span", "count num", String(data[key].length)));
     const list = section.appendChild(el("ul", "task-rows md"));
     for (const task of data[key]) list.appendChild(taskRow(task, data.date));
   }
@@ -92,7 +92,7 @@ async function showKanban() {
     const lane = board.appendChild(el("section", "kanban-col"));
     lane.dataset.stage = stage;
     const heading = lane.appendChild(el("h3", "", t(label)));
-    heading.appendChild(el("span", "count", String(data[stage].length)));
+    heading.appendChild(el("span", "count num", String(data[stage].length)));
     const cards = lane.appendChild(el("ul", "kanban-cards md"));
     for (const card of data[stage]) cards.appendChild(kanbanCard(card, stage, data));
     if (!data[stage].length) cards.appendChild(el("li", "kanban-empty", t("Nothing here")));

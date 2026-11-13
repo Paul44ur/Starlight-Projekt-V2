@@ -83,7 +83,7 @@ async def test_cards_are_text_and_links_are_web_links_only(
         colour = await page.locator('.board-card[data-id="b2"]').evaluate(
             "c => c.style.getPropertyValue('--card')"
         )
-        assert colour == "#30a46c"  # (colour 4: green)
+        assert colour == "var(--ok)"  # (colour 4: green, from the token)
         assert await page.evaluate("() => window.hacked") is None
         await note.locator(".board-file").click()  # a note card opens its note
         await page.wait_for_function(
@@ -175,7 +175,7 @@ async def test_the_boards_view_lists_and_makes_boards(
         await page.locator('.quick button[data-view="boards"]').click()
         await page.wait_for_selector(".card-note")
         assert await page.locator(".card-note .t").all_text_contents() == ["Plan"]
-        make = page.locator("#column button.ok")
+        make = page.locator("#column button.primary")
         assert await make.text_content() == (
             "\uff0b Neues Board" if locale == "de-DE" else "\uff0b New board"
         )

@@ -11,21 +11,26 @@
 <link rel="stylesheet" href="/style.css" />
 <script src="/i18n.js"></script>
 <style>
+  /* The kill switch keeps its own fixed red identity in every look: the page's theme colour, the
+     home-screen icon and this big button are one red that a person learns to find in a hurry.
+     The edge of the button is the only colour written out here; everything else is a token. */
+  body { --kill-edge: #ff8a80; }
   body { display: flex; flex-direction: column; align-items: center; justify-content: center;
          min-height: 100%; padding: 24px; text-align: center; gap: 18px; }
   #stop { width: min(78vw, 320px); height: min(78vw, 320px); border-radius: 50%; font-size: 30px;
-          font-weight: 800; color: #fff; background: var(--danger); border: 6px solid #ff8a80;
-          box-shadow: var(--shadow); }
+          font-weight: 800; font-family: var(--font-display); color: var(--on-danger); background: var(--danger);
+          border: 6px solid var(--kill-edge); box-shadow: var(--shadow-2); }
   #stop:focus-visible { outline: 4px solid var(--accent); outline-offset: 6px; }
   #stop.done { background: var(--panel2); color: var(--text); border-color: var(--border); }
-  #state { font-size: 17px; min-height: 2.6em; }
+  #state { font-size: var(--fs-lg); min-height: 2.6em; max-width: 30em; }
   /* the logo and the name, small above the button: whose switch this is */
-  .lockup { display: flex; align-items: center; gap: 8px; margin: 0; font-size: var(--fs-md); font-weight: 700; }
+  .lockup { display: flex; align-items: center; gap: var(--s-2); margin: 0; font-size: var(--fs-xl); font-weight: 600; }
+  .lockup svg.ico { width: 22px; height: 22px; margin-right: 0; vertical-align: 0; }
   .lockup .dim { font-weight: 400; }
 </style>
 </head>
 <body>
-<h1 class="lockup"><img class="logo" src="/icon.svg" alt="" width="22" height="22" /><span>Starlight</span><span class="dim">Kill switch</span></h1>
+<h1 class="lockup" data-icon="star"><span>Starlight</span><span class="dim">Kill switch</span></h1>
 <button id="stop" type="button">STOP<br />everything</button>
 <p id="state" role="status" aria-live="assertive">One press stops everything Starlight is doing on the PC, until you resume there.</p>
 <p class="small dim">Add this page to your home screen for a one-tap kill switch. <a href="/">Back to the chat</a></p>

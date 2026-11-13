@@ -10,7 +10,9 @@ function addMsg(who, text, files, plain) {
   const stick = atBottom();
   log.querySelector(".empty")?.remove();  // (the start of a new conversation)
   const m = el("div", "msg " + (who === "you" ? "you" : "bot"));
-  m.appendChild(el("div", "who", who === "you" ? "you" : "starlight"));
+  const name = el("div", "who", who === "you" ? "you" : "starlight");
+  if (who !== "you") name.insertAdjacentHTML("afterbegin", icon("star"));  // (the gold star before an answer)
+  m.appendChild(name);
   const body = el("div", "body", who === "you" || plain ? text || "" : undefined);
   if (who !== "you" && !plain) setAnswer(body, text || "");
   m.appendChild(body);
@@ -49,12 +51,38 @@ function markLatest() {
 const TOOL_MARK = { running: "⋯", done: "✓", failed: "✗", refused: "⊘", practice: "◌", stopped: "■" };
 const TOOL_SAYS = { running: "running …", done: "done", failed: "failed", refused: "not run",
                     practice: "practice mode: described, not run", stopped: "stopped" };
+// The steps fold into one chip ("Used 2 tools") that opens the whole timeline: the chip is a
+// button, the timeline (.toolrow, every step as it was) sits behind it.
+function toolFold(body) {
+  const row = body.toolRow = el("div", "toolrow");
+  row.hidden = true;
+  const fold = el("div", "toolfold");
+  const sum = el("button", "toolsum"); sum.type = "button";
+  sum.setAttribute("aria-expanded", "false");
+  sum.append(el("span", "ts-mark"), el("span", "ts-text"));
+  sum.insertAdjacentHTML("beforeend", icon("chevron"));
+  sum.onclick = () => {
+    row.hidden = !row.hidden;
+    sum.setAttribute("aria-expanded", String(!row.hidden));
+  };
+  fold.append(sum, row);
+  body.parentElement.insertBefore(fold, body);
+  body.toolSum = sum;
+  return row;
+}
+function toolSummary(body) {
+  const sum = body.toolSum, steps = [...body.toolRow.children];
+  const states = steps.map(c => c.dataset.state);
+  const mark = states.includes("running") ? "running"
+    : states.some(s => s === "failed" || s === "refused" || s === "stopped") ? "failed" : "done";
+  sum.dataset.state = mark;
+  sum.querySelector(".ts-mark").textContent = TOOL_MARK[mark];
+  sum.querySelector(".ts-text").textContent = steps.length === 1 ? "Used 1 tool" : `Used ${steps.length} tools`;
+  sum.title = steps.map(c => c.textContent).join("\n");  // (the steps, on a hover)
+}
 function toolStep(body, tool, state, ms, error) {
   let row = body.toolRow;
-  if (!row) {
-    row = body.toolRow = el("div", "toolrow");
-    body.parentElement.insertBefore(row, body);
-  }
+  if (!row) row = toolFold(body);
   let chip = state === "running" ? null
     : [...row.children].reverse().find(c => c.dataset.tool === tool && c.dataset.state === "running");
   if (!chip) { chip = el("span", "toolstep"); chip.dataset.tool = tool; row.appendChild(chip); }
@@ -62,6 +90,7 @@ function toolStep(body, tool, state, ms, error) {
   const time = ms ? " " + (ms < 1000 ? Math.round(ms) + " ms" : (ms / 1000).toFixed(1) + " s") : "";
   chip.textContent = `${TOOL_MARK[state] || "•"} ${tool}${time}`;
   chip.title = error || TOOL_SAYS[state] || "";
+  toolSummary(body);
 }
 // A note or file the assistant changed: a chip under the answer. Undo sends only the id the
 // server gave the change (never a path), and the server keeps the current file as a version.
@@ -90,6 +119,7 @@ function toolsDone(body) {  // the answer ended: a tool still "running" was stop
   if (body && body.toolRow) body.toolRow.querySelectorAll('[data-state="running"]').forEach(c => {
     c.dataset.state = "stopped"; c.textContent = `${TOOL_MARK.stopped} ${c.dataset.tool}`; c.title = TOOL_SAYS.stopped;
   });
+  if (body && body.toolRow) toolSummary(body);
 }
 
 // An answer's text (body.raw), drawn at once; while it streams in, at most once a frame.
@@ -116,7 +146,16 @@ function addStats(body, stats) {
   const parts = [];
   if (stats.tokens_per_second) parts.push(stats.tokens_per_second + " tok/s");
   parts.push(stats.seconds + " s");
-  body.parentElement.appendChild(el("div", "att", parts.join(" · ")));
+  body.parentElement.appendChild(el("div", "att num", parts.join(" · ")));
+  showAnswerStats(body, stats);
+}
+// "This answer" in the details pane: the tools it used, how long it took, how many tokens.
+function showAnswerStats(body, stats) {
+  const set = (id, text) => { document.getElementById(id).textContent = text; };
+  if (!body || !stats) { set("answer-tools", "–"); set("answer-time", "–"); set("answer-tokens", "–"); return; }
+  set("answer-tools", String(body.toolRow ? body.toolRow.children.length : 0));
+  set("answer-time", stats.seconds + " s");
+  set("answer-tokens", stats.tokens ? String(stats.tokens) : "–");
 }
 function addSys(text) { const stick = atBottom(); log.appendChild(el("div", "msg sys", text)); if (stick) scrollToEnd(); }
 

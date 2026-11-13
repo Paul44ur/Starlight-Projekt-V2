@@ -11,14 +11,20 @@
 <link rel="stylesheet" href="/style.css" />
 <script src="/i18n.js"></script>
 <style>
-  .mem { border-bottom: 1px solid var(--border); padding: 10px 0; }
+  /* the Night Sky look: one centred column of cards, titles in the display font */
+  .page { max-width: 760px; }
+  .card { margin: var(--s-4) 0; }
+  .card h2 { font-size: var(--fs-xl); font-weight: 600; margin: 0 0 var(--s-2); }
+  header.top h1 { font-size: var(--fs-xl); font-weight: 600; }
+  header.top h1 svg.ico { width: 22px; height: 22px; margin-right: 0; vertical-align: 0; }
+  .mem { border-bottom: 1px solid var(--border); padding: var(--s-3) 0; }
   .mem:last-child { border-bottom: none; }
   .mem .topic { font-weight: 600; }
   .mem .text { white-space: pre-wrap; margin: 4px 0; }
   .mem textarea { width: 100%; min-height: 80px; }
-  .skill { border-bottom: 1px solid var(--border); padding: 10px 0; }
-  .skill pre { white-space: pre-wrap; background: var(--panel2); padding: 8px; border-radius: 8px;
-               font-size: 13px; max-height: 240px; overflow: auto; }
+  .skill { border-bottom: 1px solid var(--border); padding: var(--s-3) 0; }
+  .skill pre { white-space: pre-wrap; background: var(--panel2); padding: var(--s-2) var(--s-3); border-radius: var(--r-2);
+               font-size: var(--fs-sm); max-height: 240px; overflow: auto; }
   body.remote .local-only { display: none; }
   /* Export: a link that looks and sizes like the buttons beside it */
   a.button-link { display: inline-block; padding: 8px 16px; border: 1px solid var(--border);
@@ -26,14 +32,15 @@
   a.button-link:hover { border-color: var(--accent); text-decoration: none; }
   .views { display: flex; gap: 6px; margin: 8px 0 2px; flex-wrap: wrap; }
   .views button.on { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
-  .month { font-size: 12px; text-transform: uppercase; letter-spacing: .05em; color: var(--dim);
-           margin: 14px 0 0; padding-bottom: 4px; border-bottom: 1px solid var(--border); }
+  .month { margin: var(--s-4) 0 0; padding-bottom: var(--s-1); border-bottom: 1px solid var(--border); }
   .mem.expired { opacity: .6; }
+  /* a touch screen: rows with room for a finger */
+  @media (pointer: coarse) { .mem, .skill { padding-block: var(--s-4); } }
 </style>
 </head>
 <body>
 <header class="top">
-  <h1><img class="logo" src="/icon.svg" alt="" width="22" height="22" />Memory &amp; skills</h1><span class="spacer"></span>
+  <h1 data-icon="star">Memory &amp; skills</h1><span class="spacer"></span>
   <nav><a href="/">Chat</a><a href="/notes">Notes</a><a href="/activity">Activity</a><a href="/automations">Automations</a><a href="/settings">Settings</a></nav>
   <button id="theme" class="icon" onclick="cycleTheme()" aria-label="Theme" data-icon="system"></button>
 </header>
@@ -42,7 +49,7 @@
     <h2>What Starlight remembers about you</h2>
     <p class="dim small">Each memory is a plain text file in the <code>memory</code> folder. Edit or delete
       anything that is wrong or that you don't want kept.</p>
-    <div class="row"><input id="search" type="search" class="grow" placeholder="Search memories" aria-label="Search memories" /><span id="count" class="dim small"></span></div>
+    <div class="row"><input id="search" type="search" class="grow" placeholder="Search memories" aria-label="Search memories" /><span id="count" class="dim small num"></span></div>
     <div class="views" id="views"></div>
     <div id="memories"><div class="skeleton" aria-hidden="true"><i></i><i></i><i></i></div></div>
   </div>
@@ -79,12 +86,18 @@ async function loadMemories() {
   let last = null;
   shown.forEach(m => {
     const head = heading(m);
-    if (head && head !== last) { box.appendChild(el("div", "month", head)); last = head; }
+    if (head && head !== last) { box.appendChild(el("div", "month section-label", head)); last = head; }
     const item = el("div", "mem" + (m.expired ? " expired" : ""));
-    item.appendChild(el("div", "topic", m.topic));
-    const text = el("div", "text", m.content); item.appendChild(text);
-    const until = m.expires ? (m.expired ? " · expired " : " · until ") + m.expires : "";
-    item.appendChild(el("div", "dim small", (m.date || "") + until + " · from " + m.source));
+    const topic = el("div", "topic", m.topic); topic.translate = false;  // (your words)
+    item.appendChild(topic);
+    const text = el("div", "text", m.content); text.translate = false; item.appendChild(text);
+    // dates in mono, the words around them as they were
+    const meta = el("div", "dim small");
+    meta.appendChild(el("span", "num", m.date || ""));
+    if (m.expires) meta.append(m.expired ? " · expired " : " · until ", el("span", "num", m.expires));
+    meta.append(" · from ", el("span", "", m.source));  // (a file name or a source: not translated)
+    meta.lastChild.translate = false;
+    item.appendChild(meta);
     const row = el("div", "row");
     const edit = el("button", "", "Edit");
     edit.onclick = () => {
@@ -127,7 +140,7 @@ async function loadSkills() {
   data.skills.forEach(s => {
     const item = el("div", "skill");
     const head = el("div", "row");
-    head.append(el("b", "", s.name), el("span", "pill " + (s.status === "approved" ? "on" : s.status === "draft" ? "warn" : "off"), s.status), el("span", "dim small", "v" + s.version));
+    head.append(el("b", "", s.name), el("span", "pill " + (s.status === "approved" ? "on" : s.status === "draft" ? "warn" : "off"), s.status), el("span", "dim small num", "v" + s.version));
     item.appendChild(head);
     item.appendChild(el("div", "small", s.description));
     item.appendChild(el("pre", "", s.instructions));

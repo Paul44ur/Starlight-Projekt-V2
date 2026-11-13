@@ -12,7 +12,9 @@
 //   changed elsewhere meanwhile is never overwritten.
 
 const GRID = 20;
-const COLORS = { 1: "#e5484d", 2: "#f76b15", 3: "#e5b000", 4: "#30a46c", 5: "#00a2c7", 6: "#8e4ec6" };
+// The six preset colours of a .canvas board are tokens, so they suit the night and the day look.
+// (A colour written as #rrggbb in the file is the user's own and stays as it is.)
+const COLORS = { 1: "var(--bad)", 2: "var(--warn)", 3: "var(--hl-v)", 4: "var(--ok)", 5: "var(--hl-f)", 6: "var(--hl-k)" };
 const PICTURE = /\.(png|jpe?g|gif|webp|svg)$/i;
 const SVGNS = "http://www.w3.org/2000/svg";
 

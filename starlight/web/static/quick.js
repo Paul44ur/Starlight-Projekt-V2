@@ -215,6 +215,8 @@ window.SHORTCUTS = window.SHORTCUTS || [
     ask();
   }
 
+  window.openQuick = open;  // (the chat's "Search or jump to…" button; same as Ctrl+K)
+
   document.addEventListener("keydown", (e) => {
     if (e.key.toLowerCase() !== "k" || !(e.ctrlKey || e.metaKey) || e.altKey) return;
     if (pageIsNotes() && !e.shiftKey) return;  // (the Notes page's own finder)

@@ -11,21 +11,27 @@
 <link rel="stylesheet" href="/style.css" />
 <script src="/i18n.js"></script>
 <style>
-  .rule { display: grid; grid-template-columns: 1fr auto; gap: 4px 12px; padding: 9px 0;
+  /* the Night Sky look: one centred column of cards, titles in the display font */
+  .page { max-width: 760px; }
+  .card { margin: var(--s-4) 0; }
+  .card h2 { font-size: var(--fs-xl); font-weight: 600; margin: 0 0 var(--s-2); }
+  header.top h1 { font-size: var(--fs-xl); font-weight: 600; }
+  header.top h1 svg.ico { width: 22px; height: 22px; margin-right: 0; vertical-align: 0; }
+  .rule { display: grid; grid-template-columns: 1fr auto; gap: var(--s-1) var(--s-3); padding: var(--s-3) 0; min-height: 44px;
           border-bottom: 1px solid var(--border); align-items: center; }
   .rule:last-child { border-bottom: none; }
   .rule .does { grid-column: 1 / -1; font-size: 14px; overflow-wrap: anywhere; }
   .rule .actions { display: flex; gap: 6px; flex-wrap: wrap; justify-content: flex-end; }
-  fieldset { border: 1px solid var(--border); border-radius: 10px; margin: 12px 0; padding: 10px 12px; }
+  fieldset { border: 1px solid var(--border); border-radius: var(--r-3); margin: var(--s-3) 0; padding: var(--s-3); }
   legend { font-weight: 700; padding: 0 6px; }
   label.choice { display: inline-flex; gap: 6px; align-items: center; margin-right: 14px; }
   .step { display: grid; grid-template-columns: 11em 1fr auto; gap: 8px; align-items: start;
           margin: 8px 0; }
-  .step textarea { width: 100%; min-height: 2.6em; font-family: ui-monospace, Consolas, monospace; font-size: 13px; }
+  .step textarea { width: 100%; min-height: 2.6em; font-family: var(--font-mono); font-size: var(--fs-sm); }
   .step .what { display: grid; gap: 6px; }
   .hint { font-size: 12px; color: var(--dim); }
-  .preview { background: var(--panel2); border-radius: 8px; padding: 8px 10px; margin-top: 10px; }
-  .template { display: flex; gap: 10px; align-items: baseline; padding: 6px 0;
+  .preview { background: var(--panel2); border-radius: var(--r-2); padding: var(--s-2) var(--s-3); margin-top: 10px; }
+  .template { display: flex; gap: 10px; align-items: baseline; padding: var(--s-3) 0;
               border-bottom: 1px solid var(--border); }
   .template:last-child { border-bottom: none; }
   .template .text { flex: 1; overflow-wrap: anywhere; }
@@ -37,7 +43,7 @@
 </head>
 <body>
 <header class="top">
-  <h1><img class="logo" src="/icon.svg" alt="" width="22" height="22" />Automations</h1><span class="spacer"></span>
+  <h1 data-icon="star">Automations</h1><span class="spacer"></span>
   <nav><a href="/">Chat</a><a href="/notes">Notes</a><a href="/memory">Memory</a><a href="/activity">Activity</a><a href="/settings">Settings</a></nav>
   <button id="theme" class="icon" onclick="cycleTheme()" aria-label="Theme" data-icon="system"></button>
 </header>
@@ -97,7 +103,7 @@
 
       <div class="row">
         <button type="button" id="check">Check</button>
-        <button type="button" id="save" class="ok">Save</button>
+        <button type="button" id="save" class="primary">Save</button>
         <button type="button" id="clear">Clear</button>
       </div>
       <div id="preview" class="preview" hidden aria-live="polite"></div>
@@ -360,9 +366,10 @@ async function load() {
   data.rules.forEach(r => {
     const row = el("div", "rule");
     const head = el("div", "");
-    head.append(el("b", "", r.name), el("span", "pill " + (r.enabled ? "on" : "off"), r.enabled ? "on" : "off"));
+    const nm = el("b", "", r.name); nm.translate = false;  // (your name)
+    head.append(nm, el("span", "pill " + (r.enabled ? "on" : "off"), r.enabled ? "on" : "off"));
     if (r.problem) head.append(el("span", "pill off", "needs a new schedule"));  // (r.does says why)
-    if (r.next) head.append(el("span", "dim small", "  next " + r.next));
+    if (r.next) head.append(el("span", "dim small num", "  next " + r.next));
     const actions = el("div", "actions");
     [["run", "Run now"], [r.enabled ? "disable" : "enable", r.enabled ? "Switch off" : "Switch on"], ["remove", "Delete"]]
       .forEach(([a, label]) => { const b = el("button", a === "remove" ? "danger-outline" : "", label); b.onclick = () => act(r.name, a); actions.appendChild(b); });

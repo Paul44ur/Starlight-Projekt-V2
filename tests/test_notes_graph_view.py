@@ -93,7 +93,7 @@ async def test_the_graph_view(
         count = await page.locator(".graph-count").text_content()
         assert ("Notizen" if german else "notes") in count
         colours = await page.locator(".whole-graph .node circle").evaluate_all(
-            "cs => new Set(cs.map(c => c.getAttribute('fill'))).size"
+            "cs => new Set(cs.map(c => getComputedStyle(c).fill)).size"
         )
         assert colours >= 2  # (by folder)
 

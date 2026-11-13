@@ -16,9 +16,11 @@
 <body>
   <a class="skip" href="#input">Skip to the message box</a>
   <aside id="convs" tabindex="-1">
+    <div class="side-brand"><span class="brand-star" data-icon="star" aria-hidden="true"></span><span class="brand-name">Starlight</span></div>
     <div class="side-actions">
-      <button id="new" class="side-row" type="button" title="New conversation" data-icon="plus"><span>New conversation</span></button>
+      <button id="new" class="side-row primary" type="button" title="New conversation" data-icon="plus"><span>New conversation</span></button>
       <button id="newprivate" class="side-row" type="button" title="New private conversation: never saved, nothing learned from it, gone when Starlight stops" data-icon="lock"><span>Private conversation</span></button>
+      <button id="quick-open" class="side-row jump" type="button" title="Search or jump to…" data-icon="search"><span>Search or jump to…</span><kbd class="key-pc">Ctrl K</kbd></button>
     </div>
     <div class="head">
       <input id="search" type="search" placeholder="Search chats" aria-label="Search chats" />
@@ -42,10 +44,11 @@
       <span id="privacy" class="pill" hidden title="A private conversation: never saved, nothing is learned from it, and it is gone when Starlight stops">private</span>
       <button id="paused" class="pill warn" hidden title="Game mode: the model is off the graphics card. Press to bring it back now"><span class="wide">model paused · Resume</span><span class="narrow">Paused ▶</span></button>
       <span class="spacer"></span>
+      <div id="bar-context" class="bar-context" hidden title="How full the model's context is"><span class="bc-label">Context</span><span class="bc-bar"><i id="bar-context-fill"></i></span><span id="bar-context-pct" class="num"></span></div>
       <a id="waiting" class="pill warn" href="/activity#approvals" hidden title="Things Starlight prepared wait for your OK"><span class="wide"></span><span class="narrow"></span></a>
       <button id="speaker" class="icon" title="Read answers aloud" aria-label="Read answers aloud" aria-pressed="false" data-icon="mute"></button>
       <button id="theme" class="icon wide" title="Theme" onclick="cycleTheme()" data-icon="system"></button>
-      <button id="kill" class="kill" title="Kill switch: stop everything Starlight does on this PC, until you resume (also Ctrl+Alt+J)"><span class="wide">Kill switch</span><span class="narrow">Kill</span></button>
+      <button id="kill" class="kill" title="Kill switch: stop everything Starlight does on this PC, until you resume (also Ctrl+Alt+J)"><span class="wide">Kill switch</span><span class="narrow">Kill</span><kbd class="key-wide">Ctrl Alt J</kbd></button>
     </header>
     <div id="log" role="log" aria-live="polite" aria-label="The conversation"></div>
     <button id="tolatest" type="button" hidden title="Jump to the latest message" aria-label="Jump to the latest message" data-icon="down"></button>
@@ -60,22 +63,27 @@
         <button id="mic" type="button" class="icon" title="Speak (press again to stop)" aria-label="Speak" data-icon="mic"></button>
         <button id="talk" type="button" class="icon" title="Conversation: just talk, and hear the answers; speaking interrupts an answer" aria-label="Conversation mode" aria-pressed="false" data-icon="talk"></button>
         <textarea id="input" rows="1" aria-label="Your message" placeholder="Ask Starlight…  (Enter to send, Shift+Enter for a new line)"></textarea>
+        <kbd id="send-key" class="key-wide">Enter</kbd>
         <button id="send" class="primary" type="submit" data-icon="send"><span class="label">Send</span></button>
       </form>
       <div class="meta" aria-live="off"><span id="meta-context"></span></div>
     </footer>
   </div>
   <aside id="side">
-    <h2>This PC</h2>
+    <h2 class="section-label">This PC</h2>
     <div class="kv"><span>Model</span><span id="model" translate="no">…</span></div>
-    <h2>Context</h2>
-    <div class="context-top"><span id="context-used">–</span><span id="context-of" class="dim"></span></div>
+    <h2 class="section-label">Context</h2>
+    <div class="context-top"><span id="context-used">–</span><span id="context-of" class="dim num"></span></div>
     <div class="context-bar" id="context-bar"><i></i></div>
     <div id="context-note" class="dim small">Shows after the next answer.</div>
-    <h2>Allowed servers</h2><div id="servers" class="dim small">none</div>
-    <h2>Logins</h2><div id="logins" class="dim small">none</div>
-    <h2>Secrets</h2><div id="secrets" class="dim small">none</div>
-    <h2>Saved files</h2><div id="saves" class="item"></div>
+    <h2 class="section-label">This answer</h2>
+    <div class="kv"><span>Tools</span><span id="answer-tools" class="num">–</span></div>
+    <div class="kv"><span>Time</span><span id="answer-time" class="num">–</span></div>
+    <div class="kv"><span>Tokens</span><span id="answer-tokens" class="num">–</span></div>
+    <h2 class="section-label">Allowed servers</h2><div id="servers" class="dim small">none</div>
+    <h2 class="section-label">Logins</h2><div id="logins" class="dim small">none</div>
+    <h2 class="section-label">Secrets</h2><div id="secrets" class="dim small">none</div>
+    <h2 class="section-label">Saved files</h2><div id="saves" class="item"></div>
   </aside>
   <div id="drop">Drop pictures or documents to add them to your message</div>
 

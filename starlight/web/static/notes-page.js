@@ -51,7 +51,7 @@ function drawTags() {
     b.type = "button";
     b.style.paddingLeft = 8 + entry.depth * 14 + "px";
     b.appendChild(el("span", "name", "#" + entry.tag.split("/").pop()));
-    b.appendChild(el("span", "count", String(entry.count)));
+    b.appendChild(el("span", "count num", String(entry.count)));
     b.title = "#" + entry.tag;
     b.dataset.tag = entry.tag;
     b.onclick = () => go({ tag: entry.tag });
@@ -102,7 +102,7 @@ function folderBox(folder, tree, open, first) {
   const label = el("span", "name", folder ? nameOf(folder) : t("Starlight folder"));
   if (!folder) label.removeAttribute("translate");
   summary.appendChild(label);
-  summary.appendChild(el("span", "count", String(count)));
+  summary.appendChild(el("span", "count num", String(count)));
   box.appendChild(summary);
   const subfolders = [...new Set(inside.filter(f => f !== folder)
     .map(f => folder + "/" + f.slice(folder.length + 1).split("/")[0]))].sort();
@@ -266,5 +266,14 @@ async function openNote(path, heading, editing = false) {
   document.getElementById("note").scrollTop = 0;
   if (heading) showHeading(body, note.headings, heading);
   if (editing) await startEditing();
+}
+
+// One gold button per view: the new-note button in the list is the main action, unless the
+// view has one of its own (New board, Study all, Show answer ...): then that one is gold.
+{
+  const newNote = document.getElementById("new-note");
+  const sync = () => newNote.classList.toggle("primary", !column.querySelector("button.primary"));
+  new MutationObserver(sync).observe(column, { childList: true, subtree: true });
+  sync();
 }
 

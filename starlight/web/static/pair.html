@@ -12,21 +12,23 @@
 <link rel="stylesheet" href="/style.css" />
 <script src="/i18n.js"></script>
 <style>
-  body { display: flex; align-items: flex-start; justify-content: center; padding: 12vh 16px 24px; }
+  /* the Night Sky look: one card on the night ground, the star above the name; it is made for
+     a phone first, so everything is full width and 44 px high */
+  body { display: flex; align-items: flex-start; justify-content: center; padding: 12vh var(--s-4) var(--s-5); }
   .box { width: 100%; max-width: 400px; text-align: center; background: var(--panel); border: 1px solid var(--border);
-         border-radius: var(--r-3); box-shadow: var(--shadow-1); padding: var(--s-5) var(--s-5) var(--s-4); }
-  .box h1 { display: flex; align-items: center; justify-content: center; gap: 10px; font-size: var(--fs-xl);
-            margin: 0 0 var(--s-3); }
-  .box h1 .logo { width: 28px; height: 28px; }
-  input { width: 100%; margin: 8px 0; text-align: center; }
+         border-radius: var(--r-4); box-shadow: var(--shadow-1); padding: var(--s-5); }
+  .box h1 { display: flex; align-items: center; justify-content: center; gap: var(--s-2); font-size: var(--fs-xl);
+            font-weight: 600; margin: 0 0 var(--s-3); }
+  .box h1 svg.ico { width: 28px; height: 28px; margin-right: 0; vertical-align: 0; }
+  input { width: 100%; margin: var(--s-2) 0; text-align: center; min-height: 44px; }
   #code { font-size: 28px; letter-spacing: .3em; padding: 10px 8px 10px calc(8px + .3em);
-          font-family: ui-monospace, Consolas, "Cascadia Mono", monospace; }
-  button { width: 100%; padding: 10px; margin-top: 8px; }
+          font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
+  button { width: 100%; min-height: 44px; margin-top: var(--s-2); }
 </style>
 </head>
 <body>
 <div class="box">
-  <h1><img class="logo" src="/icon.svg" alt="" width="22" height="22" />Starlight</h1>
+  <h1 data-icon="star">Starlight</h1>
   <p class="dim">This device isn't paired yet. On your PC, open Starlight's <b>Settings</b> and press
     <b>Show a pairing code</b> (or run <code>starlight remote pair</code>), then enter the code here.</p>
   <!-- 6 digits, as starlight/web/auth.py Devices.new_code makes them -->

@@ -9,7 +9,7 @@
 async function showBoards() {
   clearInfo(); state.view = "boards"; markCurrent();
   column.replaceChildren(el("h1", "title", t("Boards")));
-  const make = column.appendChild(el("button", "ok", "＋ New board"));
+  const make = column.appendChild(el("button", "primary", "＋ New board"));
   make.type = "button";
   make.onclick = async () => {
     const title = ((await askText(t("What should the board be called?"), t("Board"), { yes: "Create" })) || "").trim();
@@ -71,7 +71,7 @@ async function showCards() {
   }
   const head = column.appendChild(el("div", "deck-head"));
   head.appendChild(el("span", "dim", t(`Today: ${data.due} due, ${data.new} new`)));
-  const all = head.appendChild(el("button", "ok", t("Study all")));
+  const all = head.appendChild(el("button", "primary", t("Study all")));
   all.type = "button";
   all.disabled = !(data.due + data.new);
   all.onclick = () => studyCards("");
@@ -82,7 +82,7 @@ async function showCards() {
     const words = row.appendChild(el("div", "deck-words"));
     words.appendChild(el("div", "deck-name", deck.deck)).setAttribute("translate", "no");
     const cards = deck.cards === 1 ? "1 card" : `${deck.cards} cards`;
-    words.appendChild(el("div", "deck-facts", t(`${cards} · ${deck.due} due · ${deck.new} new`)));
+    words.appendChild(el("div", "deck-facts num", t(`${cards} · ${deck.due} due · ${deck.new} new`)));
     const study = row.appendChild(el("button", "", t("Study")));
     study.type = "button";
     study.disabled = !(deck.due + deck.new);
@@ -132,7 +132,7 @@ async function studyCards(deck) {
     from.href = "/notes?" + new URLSearchParams({ path: card.path });
     from.onclick = (event) => { event.preventDefault(); go({ path: card.path }); };
     controls.replaceChildren();
-    const reveal = controls.appendChild(el("button", "ok", t("Show answer")));
+    const reveal = controls.appendChild(el("button", "primary", t("Show answer")));
     reveal.type = "button";
     reveal.onclick = () => answer(card, now);
     state.study = (event) => {  // (a focused button takes Space and Enter itself)
@@ -188,7 +188,7 @@ async function studyCards(deck) {
     if (round.total) face.appendChild(el("p", "dim", t(`${round.known} known${missed}`)));
     box.querySelector(".study-hint")?.remove();
     controls.replaceChildren();
-    const more = controls.appendChild(el("button", "ok", t("Back to the decks")));
+    const more = controls.appendChild(el("button", "primary", t("Back to the decks")));
     more.type = "button";
     more.onclick = () => showCards();
     back.remove();
@@ -224,7 +224,21 @@ async function openBoardView(path) {
 // a click on a point opens its note. Names show when zoomed in. Up to 300 points the picture
 // is SVG (points can be reached with Tab and opened with Enter), beyond that a canvas.
 
-const GRAPH_COLOURS = ["#4c8bf5", "#e8833a", "#2ea043", "#b05fd8", "#c9a227", "#e05d7c", "#1fa3a3", "#8a8fa0"];
+// One colour per folder, taken from the page's tokens (so they suit the night and the day look).
+const GRAPH_COLOURS = ["--accent", "--ok", "--warn", "--hl-f", "--bad", "--hl-v", "--hl-k", "--dim"];
+const graphVar = (i) => "var(" + GRAPH_COLOURS[i % GRAPH_COLOURS.length] + ")";
+// The canvas cannot use var(): it reads the tokens when it draws. When the look changes
+// (the theme button, or the system's day and night) the picture is drawn again.
+let graphLookWatch = null;
+function watchLook(redraw) {
+  graphLookWatch?.();
+  const root = document.documentElement;
+  const seen = new MutationObserver(redraw);
+  seen.observe(root, { attributes: true, attributeFilter: ["data-theme"] });
+  const media = window.matchMedia("(prefers-color-scheme: light)");
+  media.addEventListener("change", redraw);
+  graphLookWatch = () => { seen.disconnect(); media.removeEventListener("change", redraw); graphLookWatch = null; };
+}
 const graphFilter = { folder: "", tag: "", memories: false };
 
 async function showGraph() {
@@ -249,7 +263,7 @@ async function showGraph() {
   const box = remember.appendChild(el("input"));
   box.type = "checkbox"; box.checked = graphFilter.memories;
   remember.append(" " + t("Memories"));
-  const counted = bar.appendChild(el("span", "dim small graph-count"));
+  const counted = bar.appendChild(el("span", "dim small graph-count num"));
   const zoom = bar.appendChild(el("span", "graph-zoom"));
   const stage = column.appendChild(el("div", "graph-stage"));
   const legend = column.appendChild(el("div", "graph-legend"));
@@ -279,7 +293,7 @@ function drawWhole(stage, legend, zoom, data) {
   if (!data.nodes.length) { stage.appendChild(el("div", "soon", t("No notes to show."))); return; }
   const nodes = data.nodes.map(n => ({ ...n })), links = data.links.map(l => ({ ...l }));
   const groups = [...new Set(nodes.map(n => n.folder.split("/")[0] || "—"))].sort();
-  const colour = (n) => GRAPH_COLOURS[groups.indexOf(n.folder.split("/")[0] || "—") % GRAPH_COLOURS.length];
+  const colourIndex = (n) => groups.indexOf(n.folder.split("/")[0] || "—");
   const radius = (n) => Math.min(3.5 + Math.sqrt(n.links) * 2, 16);
   const simulation = graphKit.forceSimulation(nodes)
     .force("link", graphKit.forceLink(links).id(n => n.id).distance(42))
@@ -310,22 +324,23 @@ function drawWhole(stage, legend, zoom, data) {
     canvas.setAttribute("role", "img");
     canvas.setAttribute("aria-label", t("A map of how your notes link together"));
     const ctx = canvas.getContext("2d");
-    const styles = getComputedStyle(document.body);
     redraw = () => {
+      const styles = getComputedStyle(document.documentElement);
+      const token = (name) => styles.getPropertyValue(name).trim();
       ctx.setTransform(1, 0, 0, 1, 0, 0);
       ctx.clearRect(0, 0, canvas.width, canvas.height);
       ctx.setTransform(ratio * view.k, 0, 0, ratio * view.k, ratio * view.x, ratio * view.y);
-      ctx.strokeStyle = styles.getPropertyValue("--border").trim() || "#888";
+      ctx.strokeStyle = token("--border");
       ctx.lineWidth = 1 / view.k;
       ctx.beginPath();
       for (const l of links) { ctx.moveTo(l.source.x, l.source.y); ctx.lineTo(l.target.x, l.target.y); }
       ctx.stroke();
       for (const n of nodes) {
         ctx.beginPath(); ctx.arc(n.x, n.y, radius(n), 0, 2 * Math.PI);
-        ctx.fillStyle = colour(n); ctx.fill();
+        ctx.fillStyle = token(GRAPH_COLOURS[colourIndex(n) % GRAPH_COLOURS.length]); ctx.fill();
       }
       if (named()) {
-        ctx.fillStyle = styles.getPropertyValue("--text").trim() || "#222";
+        ctx.fillStyle = token("--text");
         ctx.font = `${11 / view.k}px system-ui, sans-serif`; ctx.textAlign = "center";
         for (const n of nodes) ctx.fillText(n.title, n.x, n.y + radius(n) + 12 / view.k);
       }
@@ -341,7 +356,7 @@ function drawWhole(stage, legend, zoom, data) {
       point.dataset.path = n.id;
       point.setAttribute("aria-label", n.title);
       point.appendChild(svg("title")).textContent = n.title;
-      point.appendChild(svg("circle", { r: radius(n), fill: colour(n) }));
+      point.appendChild(svg("circle", { r: radius(n), style: "fill:" + graphVar(colourIndex(n)) }));
       point.appendChild(svg("text", { "text-anchor": "middle" })).textContent = n.title;
       point.addEventListener("keydown", (event) => { if (event.key === "Enter") openPoint(n); });
       return point;
@@ -418,9 +433,10 @@ function drawWhole(stage, legend, zoom, data) {
     button.onclick = act;
   }
   redraw();
+  if (canvasMode) watchLook(redraw); else graphLookWatch?.();
   for (const group of groups) {
     const item = legend.appendChild(el("span", "graph-key"));
-    item.appendChild(el("span", "swatch")).style.background = GRAPH_COLOURS[groups.indexOf(group) % GRAPH_COLOURS.length];
+    item.appendChild(el("span", "swatch")).style.background = graphVar(groups.indexOf(group));
     item.append(group === "Memories" ? t("Memories") : group);
   }
   stage.dataset.mode = canvasMode ? "canvas" : "svg";

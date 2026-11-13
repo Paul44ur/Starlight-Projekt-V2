@@ -284,7 +284,7 @@ function showView(view) {
     column.replaceChildren(calendarStrip(today()), el("h1", "title", t("Today")));
     const box = column.appendChild(el("div", "soon"));
     box.appendChild(el("p", "", t("No journal page for today yet.")));
-    const write = box.appendChild(el("button", "ok", "Write today's page"));
+    const write = box.appendChild(el("button", "primary", "Write today's page"));
     write.type = "button";
     write.onclick = () => writeDay(today());
     return;
@@ -298,7 +298,7 @@ function showView(view) {
       return;
     }
     column.appendChild(el("p", "dim", t("Notes written without a title wait here. Starlight can file them into your notes; it asks before moving anything.")));
-    const sort = column.appendChild(el("button", "ok", "Sort my inbox"));
+    const sort = column.appendChild(el("button", "primary", "Sort my inbox"));
     sort.type = "button";
     sort.onclick = () => {
       const ask = window.starlightLanguage === "de" ? "Sortiere meinen Eingang in meine Notizen." : "Sort my inbox into my notes.";
