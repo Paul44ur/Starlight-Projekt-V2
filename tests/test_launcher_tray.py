@@ -311,6 +311,20 @@ def run_events(app: Any) -> None:
         getattr(app, f"on_{event[0]}")(*event[1:])
 
 
+def running_and_polled_by_hand(app: Any, services: Any) -> None:
+    """``on_running()`` without the window's own polling. With ``services`` set, on_running
+    starts a thread that runs ``_poll_once`` and goes on every 1.5 seconds; it would race with
+    the test's own ``_poll_once`` calls (both read the same message, so it shows twice) and
+    only on a busy machine, when the thread starts late."""
+    app.services = None
+    app.on_running()
+    app.polling = False  # (the timer stops at its next tick)
+    if app._poll_job is not None:
+        app.root.after_cancel(app._poll_job)
+        app._poll_job = None
+    app.services = services
+
+
 def ready(app: Any, kill: bool = False) -> None:
     app.on_status(L.Status("ready", "Qwen3 8B", True, True, kill, 50.0))
 
@@ -584,9 +598,8 @@ def test_the_window_asks_for_a_notification_when_the_chat_window_has_news(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     app, backend = with_tray(monkeypatch, tmp_path)
-    app.services = types.SimpleNamespace(poll=lambda: None)
     try:
-        app.on_running()
+        running_and_polled_by_hand(app, types.SimpleNamespace(poll=lambda: None))
         app._poll_once()
         run_events(app)
         assert "balloon" not in backend.kinds()  # (nothing was said)

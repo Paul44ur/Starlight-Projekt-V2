@@ -218,6 +218,10 @@
     "and press": "und drücke", "Show a pairing code": "Kopplungscode zeigen", "(or run": "(oder führe", "), then enter the code here.": "\u00a0aus) und gib den Code hier ein.",
     "Pair": "Koppeln", "Pairing code": "Kopplungscode", "Name for this device (e.g. My phone)": "Name für dieses Gerät (z. B. Mein Handy)",
     "Name for this device": "Name für dieses Gerät", "Paired. Opening the chat…": "Gekoppelt. Der Chat öffnet sich…",
+    // what the server answers to a pairing try (shown under the Pair button)
+    "pairing is for your other devices": "Koppeln ist für deine anderen Geräte gedacht",
+    "wrong page": "falsche Seite",
+    "wrong or expired code (or too many tries)": "falscher oder abgelaufener Code (oder zu viele Versuche)",
     // settings
     "Viewing from another device.": "Ansicht von einem anderen Gerät.",
     "Permissions, modules, devices and skills can only be changed on the PC itself.": "Berechtigungen, Module, Geräte und Fähigkeiten lassen sich nur am PC selbst ändern.",

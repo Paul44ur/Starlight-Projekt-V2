@@ -603,6 +603,9 @@ async def pair_states(page: Any, site: str) -> Scenario:
     await settle(page)
     yield "pair"
     await page.locator("#go").click()
+    # (the answer comes from the server: read the page only after it has arrived, not
+    # before; on a slow machine "network idle" alone can come too early)
+    await page.wait_for_function("() => document.getElementById('msg').textContent !== ''")
     await settle(page)
     yield "pair after a try"
 
@@ -736,6 +739,9 @@ async def test_no_page_shows_an_english_text_in_german(
 
 # What a page says in a toast, a dialog or a tooltip that it sets later: one sample of each.
 TEXTS = [
+    "pairing is for your other devices",
+    "wrong page",
+    "wrong or expired code (or too many tries)",
     "Choose this level?",
     "Delete the skill weekly-report?",
     "Leave practice mode?",

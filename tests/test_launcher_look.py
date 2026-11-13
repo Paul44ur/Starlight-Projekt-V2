@@ -5,6 +5,7 @@ stays readable (WCAG AA: 4.5:1 for text)."""
 from __future__ import annotations
 
 import re
+import time
 from typing import Any
 
 import pytest
@@ -201,9 +202,22 @@ def test_the_focus_ring_shows_only_while_the_keyboard_is_used(
             return int(str(style.lookup("TButton", "focusthickness")))
 
         app.root.deiconify()
+        # The X server hands the keyboard only to a window that is on the screen (mapped), and
+        # a request made before that is ignored without a word. Mapping is the server's work:
+        # on a busy machine (four workers on one display) it comes later than this test goes
+        # on. So: wait until the window is shown, ask for the focus, then wait until Tk has
+        # heard (FocusIn) that it has it; a key event made before that is dropped.
+        deadline = time.monotonic() + 10
+        while not app.root.winfo_viewable() and time.monotonic() < deadline:
+            app.root.update()
+        assert app.root.winfo_viewable(), "the window was not shown"
         app.root.focus_force()
         app.btn_stats.focus_set()  # (key events go to the widget with the focus)
+        app.root.winfo_pointerxy()  # (a question to the server: answered after the focus change)
         app.root.update()
+        while app.root.focus_displayof() is None and time.monotonic() < deadline:
+            app.root.update()
+        assert app.root.focus_displayof() is not None, "the window did not get the keyboard"
         assert ring() == 0
         app.btn_stats.event_generate("<Tab>")
         app.root.update()

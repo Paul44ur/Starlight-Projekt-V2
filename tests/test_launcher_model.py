@@ -12,7 +12,12 @@ from pathlib import Path
 import pytest
 
 from tests.test_launcher import L
-from tests.test_launcher_tray import needs_display, run_events, with_tray
+from tests.test_launcher_tray import (
+    needs_display,
+    run_events,
+    running_and_polled_by_hand,
+    with_tray,
+)
 from tests.test_launcher_window import parse
 
 
@@ -110,7 +115,6 @@ def test_the_window_restarts_when_the_settings_page_asks(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     app, _backend = with_tray(monkeypatch, tmp_path)
-    app.services = types.SimpleNamespace(poll=lambda: None)
     restarts: list[str] = []
     reread: list[int] = []
     monkeypatch.setattr(app, "_stop_then_begin", lambda: restarts.append("restart"))
@@ -119,7 +123,7 @@ def test_the_window_restarts_when_the_settings_page_asks(
     chosen = L.Settings(root=tmp_path, model_choice="mine.gguf", context=16384)
     monkeypatch.setattr(L, "load_settings", lambda args: (reread.append(1), chosen)[1])
     try:
-        app.on_running()
+        running_and_polled_by_hand(app, types.SimpleNamespace(poll=lambda: None))
         app._poll_once()
         assert (tmp_path / "data" / "launcher.alive.json").is_file()  # the heartbeat
         run_events(app)

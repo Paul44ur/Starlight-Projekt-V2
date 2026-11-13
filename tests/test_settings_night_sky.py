@@ -173,6 +173,13 @@ async def test_switches_use_the_accent_and_a_card_has_one_gold_button_at_most(
                 # "Tell me when an answer is ready" is on by default
                 assert await page.locator("#ready-sign").is_checked()
                 track = page.locator("#ready-sign + span")
+                # (the switch fades to its colour: on a busy machine the page is read in the
+                # middle of the fade, so wait until it is over; the check below still decides)
+                await page.wait_for_function(
+                    "sel => { const t = document.querySelector(sel);"
+                    " return getComputedStyle(t).backgroundColor && !t.getAnimations().length; }",
+                    arg="#ready-sign + span",
+                )
                 assert await track.evaluate("t => getComputedStyle(t).backgroundColor") == accent
                 # a switch that is off is not lit
                 off = page.locator("#practice + span")
