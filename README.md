@@ -516,6 +516,18 @@ you need to approve appear with **Approve / Deny** buttons, and a sidebar shows 
 allowed. Prefer the keyboard? Start it with `--terminal` (or run `starlight run`) for a
 colored terminal chat. Both use the same assistant, settings and safeguards.
 
+**How Starlight looks.** Every page has the same look, called Night Sky. It is dark by
+default and has a day look that is just as careful: press the moon or sun button in the top
+bar (or choose "like your system"). The gold star and the one gold button of a page mark the
+main action: New conversation, Send, Save. Everything else is quiet, and links, switches and
+the focus ring are violet. Cards have room to breathe, and times, sizes and counts are
+written in a fixed-width font so they line up. A key you can press is shown next to its
+button on a wide screen (Enter beside Send, Ctrl K beside search, Ctrl Alt J beside the kill
+switch). On a screen 1200 pixels wide or more, the chat also shows a details pane: this
+answer (tools, time, tokens), the context and this PC. On a phone the pages stack in one
+column and the controls are big enough for a finger. High contrast and "reduce motion" in
+Windows are respected, and every page is also in German.
+
 **The web chat.** Your conversations are saved: the list on the left reopens, renames, searches
 and deletes them (the terminal continues the most recent one). Drop pictures or documents (PDF,
 Word, Excel, text) onto the chat, or press the paperclip, to send them with your message.

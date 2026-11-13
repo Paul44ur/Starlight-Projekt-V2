@@ -196,7 +196,12 @@ window.SHORTCUTS = window.SHORTCUTS || [
       else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "k") e.preventDefault();
     });
     box.addEventListener("mousedown", (e) => { if (e.target === box) close(); });
-    box.addEventListener("close", () => { clearTimeout(timer); latest.conversations++; latest.notes++; });
+    box.addEventListener("close", () => {
+      // The event comes a moment after close(): opened again by then (Ctrl+K right after a
+      // choice), the new answers must not be thrown away as the old window's.
+      if (box.open) return;
+      clearTimeout(timer); latest.conversations++; latest.notes++;
+    });
     document.body.appendChild(box);
   }
 

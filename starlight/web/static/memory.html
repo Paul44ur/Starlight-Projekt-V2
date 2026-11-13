@@ -33,7 +33,8 @@
   .views { display: flex; gap: 6px; margin: 8px 0 2px; flex-wrap: wrap; }
   .views button.on { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
   .month { margin: var(--s-4) 0 0; padding-bottom: var(--s-1); border-bottom: 1px solid var(--border); }
-  .mem.expired { opacity: .6; }
+  /* an expired memory is quieter by its colour (opacity would lower the contrast of the text) */
+  .mem.expired .topic, .mem.expired .text { color: var(--dim); }
   /* a touch screen: rows with room for a finger */
   @media (pointer: coarse) { .mem, .skill { padding-block: var(--s-4); } }
 </style>

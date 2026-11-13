@@ -228,7 +228,6 @@
     <h2>Safety limits</h2>
     <p class="dim small">How careful Starlight is. Pick a level, then change any single protection. Saved in config/starlight.safety.yaml.</p>
     <div class="levels" id="levels" role="group" aria-label="Safety level"></div>
-    <p class="dim small" id="level-help"></p>
     <p class="dim small" id="level-changed" hidden></p>
     <p class="small swarn" id="local-file" hidden>config/starlight.local.yaml exists: a setting in it wins over this page.</p>
     <div id="safety"><div class="skeleton" aria-hidden="true"><i></i><i></i><i></i></div></div>
@@ -472,7 +471,6 @@ function showSafety() {
     b.onclick = () => chooseLevel(level);
     levels.appendChild(b);
   });
-  document.getElementById("level-help").textContent = LEVEL_HELP[s.level];
   const changed = document.getElementById("level-changed");
   changed.hidden = !s.changed;
   changed.textContent = s.changed === 1 ? "1 protection is set differently below." : `${s.changed} protections are set differently below.`;

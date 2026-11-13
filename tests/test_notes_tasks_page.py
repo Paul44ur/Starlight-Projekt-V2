@@ -18,9 +18,18 @@ from tests.test_notes_page import notebook as notebook
 from tests.test_notes_page import notes_page, opened
 from tests.test_remote import LOCAL
 
+# "Today" is taken ONCE per test. A test that asked the clock each time wrote its notes on one
+# day and compared them on the next when a run crossed midnight.
+TODAY = dt.date.today()
+
+
+@pytest.fixture(autouse=True)
+def _one_today(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(f"{__name__}.TODAY", dt.date.today())
+
 
 def days(n: int) -> str:
-    return (dt.date.today() + dt.timedelta(days=n)).isoformat()
+    return (TODAY + dt.timedelta(days=n)).isoformat()
 
 
 def versions(app: Any) -> int:

@@ -157,7 +157,7 @@ header.top h1 { display: flex; align-items: center; gap: var(--s-2); font-size: 
                 font-weight: 700; white-space: nowrap; }
 img.logo { width: 22px; height: 22px; flex: none; border-radius: var(--r-1); }
 header.top .spacer { flex: 1; }
-header.top nav { display: flex; gap: var(--s-3); font-size: 14px; }
+header.top nav { display: flex; flex-wrap: wrap; gap: var(--s-1) var(--s-3); font-size: 14px; }  /* (wraps: German names are longer) */
 body.remote a[href="/notes"] { display: none; }  /* PC only */
 .page { max-width: 980px; margin: 0 auto; padding: 18px 16px 60px; }
 /* A wide table scrolls inside its card instead of pushing the whole page sideways. */
@@ -257,6 +257,8 @@ dialog#quick::backdrop { background: var(--scrim, rgb(0 0 0 / .5)); }
   :where(.button-link) { display: inline-flex; align-items: center; }
   /* a link in the top bar: a taller place to tap, while the bar keeps its height */
   header.top nav a { padding-block: 12px; margin-block: -12px; }
+  /* a folded section (a summary that is not a module's row) */
+  :where(details:not(.mod)) > summary { padding-block: 12px; }
 }
 /* Read by screen readers, not shown. */
 .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden;

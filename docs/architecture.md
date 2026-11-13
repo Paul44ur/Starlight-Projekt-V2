@@ -228,6 +228,16 @@ in `static/vendor/`, a hash file and the licence, all checked by
 font from the internet and nothing leaves the PC. The service worker keeps the font files
 with the shell. The plan is `docs/plan-ui-2.md`.
 
+One review checks all the pages together. `tests/test_pages_review.py` opens each page in both
+looks and checks: nothing scrolls sideways at 360 px, touch targets of 44 px, a focus ring in
+`--accent`, every control visible in forced colours and high contrast, no animation with reduced
+motion, the title in the display font, and one gold button at most. `tests/test_german_everywhere.py`
+opens each page in German (with menus, dialogs and every view open) and fails on an English
+text. The texts that stay English on purpose are listed there with the reason: module and tool
+descriptions (the modules' own docstrings), a tool's question to you, and the reason a tool
+gives for a failure. What the server sends in English as a fixed sentence (the activity
+sentences, an automation's description) is turned into German by `PATTERNS` in `i18n.js`.
+
 The launcher window follows the same look: `Palette` has `primary`, `on_primary` and
 `primary_edge`, the one main button of each page is gold (the style is still called
 `Accent.TButton`), the brand is the gold star drawn on a canvas, and headings use "Segoe UI
@@ -352,14 +362,13 @@ the launcher. The text comes from a web page, so it is only ever shown as plain 
 most) of cards with titles in the display font. The safety level is three choice cards: real
 buttons with `aria-pressed`, still found as `#levels button.<level>`; the chosen one has a 2px
 `--accent` line. Switches are `--accent`, and a card has at most one gold (`primary`) button.
-The look is all in the page's own `<style>`; the behaviour and the server calls did not change.
+The look is all in the page's own `<style>`.
 
 **Memory, Activity, Automations, Kill and Pair in the Night Sky look.** The first three have the
 Settings page's header (the gold star, the title in the display font) and one centred column of
 cards; dates and counts are `.num`. Only Save on Automations and Pair on the pairing page are
 gold. `kill.html` keeps its own fixed red (the button's edge is the one colour written out in
-these pages, in `--kill-edge`); everything else on the five pages is a token. The behaviour,
-ids and server calls did not change.
+these pages, in `--kill-edge`); everything else on the five pages is a token.
 
 **Choosing the model on the Settings page.** `starlight/core/modelchoice.py` and
 `starlight/web/model_api.py` (`GET /api/model`, `POST /api/model`, `POST /api/model/restart`).

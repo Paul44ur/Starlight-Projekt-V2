@@ -168,7 +168,10 @@ function waitFor(body) {
   const timer = setInterval(() => {
     if (!body.isConnected || !body.classList.contains("waiting")) { clearInterval(timer); return; }
     const seconds = Math.round((Date.now() - started) / 1000);
-    if (seconds >= 3) body.dataset.wait = `Working on it … ${seconds} s`;
+    if (seconds >= 3) {
+      const text = `Working on it … ${seconds} s`;
+      body.dataset.wait = window.starlightTranslate ? window.starlightTranslate(text) : text;  // (only in German)
+    }
   }, 1000);
 }
 function doneWaiting(body) { if (body) { body.classList.remove("waiting"); thoughtsDone(body); } }

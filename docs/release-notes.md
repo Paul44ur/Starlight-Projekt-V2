@@ -36,6 +36,9 @@ The default model needs 16 GB of video memory; smaller models are offered during
   boxes.
 
 ### Also new
+- **A new look for every page:** Night Sky. Dark by default, with an equal day look; gold
+  only for the star and the one main action; a details pane in the chat; keys shown next to
+  their buttons. Nothing about how the pages work has changed.
 - **When an answer is ready** and Starlight is in the background, its taskbar button lights up
   and a notification shows. Settings has the switch.
 - **Ctrl+K** opens a box to jump to a conversation, a note, a page or a command.

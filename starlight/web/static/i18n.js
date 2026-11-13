@@ -132,8 +132,8 @@
     "Take a photo": "Foto aufnehmen", "Speak (press again to stop)": "Sprechen (nochmal drücken zum Beenden)", "Speak": "Sprechen",
     "Conversation: just talk, and hear the answers; speaking interrupts an answer": "Unterhaltung: einfach sprechen und die Antworten hören; wer spricht, unterbricht die Antwort",
     "Conversation mode": "Unterhaltungsmodus", "Your message": "Deine Nachricht",
-    "Ask Starlight…  (Enter to send, Shift+Enter for a new line)": "Frag Starlight…  (Enter zum Senden, Umschalt+Enter für eine neue Zeile)",
     "Ask Starlight…": "Frag Starlight…",
+    "Ask Starlight…  (Enter to send, Shift+Enter for a new line)": "Frag Starlight…  (Enter zum Senden, Umschalt+Enter für eine neue Zeile)",
     "Edit": "Bearbeiten", "Copy": "Kopieren", "Copied": "Kopiert", "Regenerate": "Neu antworten", "Branch": "Abzweigen",
     "Change this question and ask it again (its answer is replaced)": "Diese Frage ändern und neu stellen (die Antwort wird ersetzt)",
     "Ask the last message again and replace this answer": "Die letzte Nachricht neu stellen und diese Antwort ersetzen",
@@ -215,7 +215,7 @@
     "Timeline": "Zeitleiste", "People & places": "Personen & Orte", "Undo": "Rückgängig",
     // pairing
     "This device isn't paired yet. On your PC, open Starlight's": "Dieses Gerät ist noch nicht gekoppelt. Öffne am PC Starlights",
-    "and press": "und drücke", "Show a pairing code": "Kopplungscode zeigen", "(or run": "(oder führe", "), then enter the code here.": "aus) und gib den Code hier ein.",
+    "and press": "und drücke", "Show a pairing code": "Kopplungscode zeigen", "(or run": "(oder führe", "), then enter the code here.": "\u00a0aus) und gib den Code hier ein.",
     "Pair": "Koppeln", "Pairing code": "Kopplungscode", "Name for this device (e.g. My phone)": "Name für dieses Gerät (z. B. Mein Handy)",
     "Name for this device": "Name für dieses Gerät", "Paired. Opening the chat…": "Gekoppelt. Der Chat öffnet sich…",
     // settings
@@ -435,7 +435,109 @@
     "Ready. Close Starlight and start it again to finish the restore.": "Bereit. Schließe Starlight und starte es neu, um die Wiederherstellung abzuschließen.",
     "Cancel the restore": "Wiederherstellung abbrechen",
     "The restore was cancelled.": "Die Wiederherstellung wurde abgebrochen.",
+    // German that was missing (V7 review)
+    "Runs without asking": "Läuft ohne Nachfrage", "Asks you first": "Fragt dich vorher",
+    "Never runs": "Läuft nie", "nothing": "nichts",
+    "Limits (past them it asks first)": "Grenzen (darüber hinaus fragt es vorher)",
+    "Allowed for a while": "Für eine Weile erlaubt",
+    "Turn it on to see its tools.": "Schalte es ein, um seine Werkzeuge zu sehen.",
+    "On: click to turn off": "An: Klick schaltet aus", "Off: click to turn on": "Aus: Klick schaltet ein",
+    "Back to the tool's own setting (runs)": "Zurück zur eigenen Einstellung des Werkzeugs (läuft)",
+    "Back to the tool's own setting (asks first)": "Zurück zur eigenen Einstellung des Werkzeugs (fragt vorher)",
+    "Back to the tool's own setting (blocked)": "Zurück zur eigenen Einstellung des Werkzeugs (gesperrt)",
+    "Remote access is off. Turn it on with `starlight remote enable` (needs Tailscale on this PC and your phone).":
+      "Der Fernzugriff ist aus. Schalte ihn mit `starlight remote enable` ein (braucht Tailscale auf diesem PC und deinem Handy).",
+    "Remote access is off. Turn it on with `starlight remote enable` (needs Tailscale on this PC and your phone). No devices are paired yet.":
+      "Der Fernzugriff ist aus. Schalte ihn mit `starlight remote enable` ein (braucht Tailscale auf diesem PC und deinem Handy). Noch ist kein Gerät gekoppelt.",
+    "never": "nie", "Practice mode on": "Übungsmodus an", "Practice mode off": "Übungsmodus aus",
+    "Listening for \"Hey Starlight\"": "Ich höre auf „Hey Starlight“", "Not listening any more": "Ich höre nicht mehr zu",
+    "No people or places yet: Starlight notes them as you mention them.": "Noch keine Personen oder Orte: Starlight merkt sie sich, wenn du sie erwähnst.",
+    "Undo last change": "Letzte Änderung rückgängig",
+    "practice mode on": "Übungsmodus an", "practice mode off": "Übungsmodus aus",
+    "kill switch released": "Not-Aus aufgehoben", "a request was stopped": "eine Anfrage wurde gestoppt",
+    "could not answer a request (the model did not respond)": "konnte eine Anfrage nicht beantworten (das Modell hat nicht geantwortet)",
+    "the paused model was resumed": "das pausierte Modell wurde fortgesetzt",
+    "Starlight started": "Starlight gestartet", "Starlight stopped": "Starlight beendet",
+    "running …": "läuft …", "done": "fertig", "not run": "nicht ausgeführt", "stopped": "gestoppt",
+    "practice mode: described, not run": "Übungsmodus: beschrieben, nicht ausgeführt",
+    "Send (Enter)": "Senden (Enter)", "Stop this answer (Esc)": "Diese Antwort stoppen (Esc)",
+    "Wait until this answer is finished": "Warte, bis diese Antwort fertig ist",
+    "Only a saved answer can be a branch point": "Nur eine gespeicherte Antwort kann ein Abzweigpunkt sein",
+    "A new branch from there; the original stays as it was": "Ein neuer Zweig ab hier; das Original bleibt, wie es war",
+    "Only the latest answer can be regenerated": "Nur die letzte Antwort kann neu erzeugt werden",
+    "Nothing to ask again": "Nichts, was noch einmal gefragt werden kann",
+    "Not changed: the earlier question and answer stay": "Nicht geändert: Die frühere Frage und Antwort bleiben",
+    "Stopped; the earlier answer stays": "Gestoppt; die frühere Antwort bleibt",
+    "Practice mode on or off": "Übungsmodus an oder aus", "Pin or unpin this conversation": "Dieses Gespräch anheften oder lösen",
+    "Archive this conversation": "Dieses Gespräch archivieren", "Download it as Markdown": "Als Markdown herunterladen",
+    "Print or save it as PDF": "Drucken oder als PDF speichern", "Memory and skills": "Gedächtnis und Fähigkeiten",
+    "Practice mode is off": "Übungsmodus ist aus", "Unpinned": "Nicht mehr angeheftet",
+    "Commands:": "Befehle:",
+    // the events an automation can start on (modules/automations/module.py)
+    "an event is about to start": "ein Termin beginnt gleich", "a reminder is due": "eine Erinnerung ist fällig",
+    "new mail arrived (with mail watch on)": "neue Mail ist da (bei eingeschalteter Mail-Überwachung)",
+    "one of your servers stopped answering": "einer deiner Server antwortet nicht mehr",
+    "a server answers again": "ein Server antwortet wieder",
+    "a device never seen before joined your network": "ein noch nie gesehenes Gerät ist in dein Netzwerk gekommen",
+    "a known device came onto your network": "ein bekanntes Gerät ist ins Netzwerk gekommen",
+    "a known device left your network": "ein bekanntes Gerät hat das Netzwerk verlassen",
+    "a smart-home device changed": "ein Smart-Home-Gerät hat sich geändert",
+    "a watched price crossed your limit": "ein beobachteter Preis hat deine Grenze überschritten",
+    "a watched page changed": "eine beobachtete Seite hat sich geändert", "a backup finished": "eine Sicherung ist fertig",
+    "Starlight saved a file": "Starlight hat eine Datei gespeichert", "focus mode began": "der Fokusmodus hat begonnen",
+    "focus mode ended": "der Fokusmodus ist zu Ende",
+    "a new file in a folder you watch": "eine neue Datei in einem beobachteten Ordner",
+    "a USB stick or drive was plugged in": "ein USB-Stick oder Laufwerk wurde eingesteckt",
+    "a USB stick or drive was taken out": "ein USB-Stick oder Laufwerk wurde herausgezogen",
+    "the battery is low, on battery": "der Akku ist schwach, im Akkubetrieb",
+    "the charger was plugged in": "das Ladegerät wurde angesteckt", "the charger was unplugged": "das Ladegerät wurde abgesteckt",
+    "a program was started": "ein Programm wurde gestartet",
+    "no mouse or keyboard for a while": "seit einer Weile keine Maus- oder Tastaturbenutzung",
+    "you are back at the PC": "du bist wieder am PC",
+    "Practice mode: actions are described, not done": "Übungsmodus: Aktionen werden beschrieben, nicht ausgeführt",
+    "Pinned to the top": "Oben angeheftet",
+    "The model is loading again (about a minute)": "Das Modell lädt wieder (etwa eine Minute)",
+    "It was not paused": "Es war nicht pausiert",
+    "The kill switch is on: Starlight does nothing until you resume": "Der Not-Aus ist an: Starlight tut nichts, bis du fortsetzt",
+    "Release the kill switch on the PC": "Gib den Not-Aus am PC wieder frei",
+    "Asked the PC to wake up; give it a minute": "Den PC gebeten aufzuwachen; gib ihm eine Minute",
   };
+
+  // An automation's description comes from the server in English ("every day at 07:30: run
+  // weather.forecast"). Its words are swapped; tools, names and the quoted texts stay as they are.
+  const DAYS = { Monday: "Montag", Tuesday: "Dienstag", Wednesday: "Mittwoch", Thursday: "Donnerstag",
+                 Friday: "Freitag", Saturday: "Samstag", Sunday: "Sonntag" };
+  const DAY = "(?:Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday)";
+  function ruleTrigger(t) {
+    let m;
+    if ((m = /^every (\d+) (day|hour|minute)s?$/.exec(t))) {
+      const n = Number(m[1]);
+      if (n === 1) return { day: "jeden Tag", hour: "jede Stunde", minute: "jede Minute" }[m[2]];
+      return `alle ${n} ` + { day: "Tage", hour: "Stunden", minute: "Minuten" }[m[2]];
+    }
+    if ((m = /^every (\d+) seconds$/.exec(t))) return `alle ${m[1]} Sekunden`;
+    if ((m = /^every day at (.+)$/.exec(t))) return `jeden Tag um ${m[1]}`;
+    if ((m = /^monthly on day (\d+) at (.+)$/.exec(t))) return `monatlich am ${m[1]}. um ${m[2]}`;
+    if ((m = /^weekdays at (.+)$/.exec(t))) return `werktags um ${m[1]}`;
+    if ((m = /^weekends at (.+)$/.exec(t))) return `am Wochenende um ${m[1]}`;
+    if ((m = new RegExp(`^(${DAY}(?:, ${DAY})*) at (.+)$`).exec(t))) return m[1].replace(/\w+/g, (d) => DAYS[d]) + " um " + m[2];
+    if ((m = /^when (\S+) happens(?: and (.+))?$/.exec(t))) return `wenn ${m[1]} passiert` + (m[2] ? ` und ${m[2]}` : "");
+    return null;
+  }
+  const quoted = (q) => q.replace(/^"(.*)"$/, "„$1“");
+  function ruleStep(step) {
+    let m = /^(.*?) \(only if (.+)\)$/.exec(step), only = "";
+    if (m) { step = m[1]; only = ` (nur wenn ${m[2]})`; }
+    if ((m = /^run (\S+)( .*)?$/.exec(step))) return `${m[1]} ausführen${m[2] || ""}${only}`;
+    if ((m = /^ask ("[\s\S]*")$/.exec(step))) return `Starlight fragen ${quoted(m[1])}${only}`;
+    if ((m = /^tell you ("[\s\S]*")$/.exec(step))) return `dir sagen ${quoted(m[1])}${only}`;
+    return null;
+  }
+  function describeRule(trigger, steps) {
+    const when = ruleTrigger(trigger);
+    const done = steps.split(/; then (?=run |ask |tell you )/).map(ruleStep);
+    return when === null || done.includes(null) ? null : `${when}: ${done.join("; dann ")}`;
+  }
   const PATTERNS = [
     [/^Delete "(.+)"\?$/, "„$1“ löschen?"],
     [/^Forget the memories Starlight learned in "(.+)"\?$/, "Die Erinnerungen vergessen, die Starlight in „$1“ gelernt hat?"],
@@ -463,7 +565,9 @@
     [/^Runs without asking: (.+)$/, "Läuft ohne Nachfrage: $1"],
     [/^next (.+)$/, "nächstes Mal $1"],
     [/^Saved: (.+)$/, "Gespeichert: $1"],
-    [/^This automation: (.+)$/, "Diese Automation: $1"],
+    [/^This automation: (.+?)( — it may run (.+) without asking each time\.)?$/,
+      (m, does, more, tools) => "Diese Automation: " + (window.starlightTranslate(does)) +
+        (more ? ` — sie darf ${tools} ohne Nachfrage ausführen.` : "")],
     [/^model: (.+)$/, "Modell: $1"],
     [/^Theme: like your system \(click to change\)$/, "Farben: wie das System (Klick wechselt)"],
     [/^Theme: light \(click to change\)$/, "Farben: hell (Klick wechselt)"],
@@ -513,6 +617,50 @@
     [/^Some hidden files of your old notes are still in (.+)\.$/,
       "Einige versteckte Dateien deiner alten Notizen liegen noch in $1."],
     [/^Used (\d+) tools$/, "$1 Werkzeuge benutzt"],
+    // German that was missing (V7 review)
+    [/^(.+): (\d+) more min$/, "$1: noch $2 Min."],
+    [/^Module (.+)$/, "Modul $1"],
+    [/^Only at the PC: (.+)$/, "Nur am PC: $1"],
+    [/^Turn it off at the PC: (.+)$/, "Schalte es am PC aus: $1"],
+    [/^Could not import it: (.+)$/, "Konnte nicht importiert werden: $1"],
+    [/^Could not add (.+)$/, "$1 konnte nicht hinzugefügt werden"],
+    [/^(.+) v(\d+) added as a draft: read it, then approve it$/, "$1 v$2 als Entwurf hinzugefügt: lies ihn, dann erlaube ihn"],
+    [/^'(.+)' ran$/, "„$1“ ist gelaufen"],
+    [/^'(.+)' did not finish: see Activity$/, "„$1“ wurde nicht fertig: siehe Aktivität"],
+    [/^(German|English): (.+)$/, (m, language, voice) => (language === "German" ? "Deutsch: " : "Englisch: ") + voice],
+    [/^([a-z0-9_]+) is on$/, "$1 ist an"],
+    [/^([a-z0-9_]+) could not start$/, "$1 konnte nicht starten"],
+    [/^No command (.+): type \/ to see them$/, "Kein Befehl $1: Tippe / für die Liste"],
+    [/^Game mode \((.+)\): the model is off the graphics card\. Press to bring it back now$/,
+      "Spielmodus ($1): Das Modell ist von der Grafikkarte genommen. Drücken, um es jetzt zurückzuholen"],
+    [/^1 waiting for your OK$/, "1 wartet auf dein OK"],
+    [/^(\d+) waiting for your OK$/, "$1 warten auf dein OK"],
+    [/^Working on it … ([\d.,]+) s$/, "Ich arbeite daran … $1 s"],
+    [/^Thought for ([\d.,]+) s$/, "Nachgedacht: $1 s"],
+    [/^Forgot 1 memory( \(kept (\d+) also said elsewhere\))?$/, (m, kept, n) => "1 Erinnerung vergessen" + (kept ? ` (${n} behalten, auch woanders gesagt)` : "")],
+    [/^Forgot (\d+) memories( \(kept (\d+) also said elsewhere\))?$/, (m, count, kept, n) => `${count} Erinnerungen vergessen` + (kept ? ` (${n} behalten, auch woanders gesagt)` : "")],
+    [/^Remote access is on at (.+) \(through Tailscale\)\. Pair a device with a code, then open that address on it\.( No devices are paired yet\.)?$/,
+      (m, hosts, none) => `Der Fernzugriff ist an unter ${hosts} (über Tailscale). Koppel ein Gerät mit einem Code und öffne dann diese Adresse darauf.` + (none ? " Noch ist kein Gerät gekoppelt." : "")],
+    // what the activity page says (starlight/core/activity.py)
+    [/^ran ([\w*]+\.[\w*]+) \(you approved it\)(.*)$/, "$1 ausgeführt (von dir erlaubt)$2"],
+    [/^ran ([\w*]+\.[\w*]+)( .*)?$/, "$1 ausgeführt$2"],
+    [/^did not run (\S+): (.+)$/, "$1 nicht ausgeführt: $2"],
+    [/^practice mode: described (\S+)( .*)?$/, "Übungsmodus: $1 beschrieben$2"],
+    [/^([\w*]+\.[\w*]+) failed: (.+)$/, "$1 fehlgeschlagen: $2"],
+    [/^([\w*]+\.[\w*]+) was stopped by the kill switch$/, "$1 wurde vom Not-Aus gestoppt"],
+    [/^kill switch ENGAGED: (.*)$/, "Not-Aus AUSGELÖST: $1"],
+    [/^answered a request \((\d+) steps?(?:, (\d+) tool calls?)?\)$/,
+      (m, steps, calls) => `eine Anfrage beantwortet (${steps} ${steps === "1" ? "Schritt" : "Schritte"}` + (calls ? `, ${calls} ${calls === "1" ? "Werkzeugaufruf" : "Werkzeugaufrufe"}` : "") + ")"],
+    [/^rule changed: (.+) -> (.+)$/, "Regel geändert: $1 -> $2"],
+    [/^a device was paired \((.+)\)$/, "ein Gerät wurde gekoppelt ($1)"],
+    [/^a wrong pairing code was tried \((.+)\)$/, "ein falscher Kopplungscode wurde versucht ($1)"],
+    [/^a device was removed: (.*)$/, "ein Gerät wurde entfernt: $1"],
+    // an automation, as the server describes it
+    [/^(.+?): ((?:run|ask|tell you) .+)$/, (m, trigger, steps) => describeRule(trigger, steps) ?? m],
+    [/^"(.+)" \(does not run until the schedule is fixed: (.+)\)$/, "„$1“ (läuft nicht, bis der Zeitplan korrigiert ist: $2)"],
+    [/^the arguments of (.+) are not valid JSON$/, "die Argumente von $1 sind kein gültiges JSON"],
+    [/^([a-z]+\.[a-z_]+) — (.+)$/, (m, event, when) => `${event} — ${window.starlightTranslate(when)}`],
+    [/^(.+) · fields: (.+)$/, (m, when, fields) => `${window.starlightTranslate(when)} · Felder: ${fields}`],
   ];
   // Never translated: the conversation, code, and what you type.
   const KEEP = ".msg .body, pre, code, textarea, [translate=no], .notranslate";

@@ -129,6 +129,11 @@ async def test_the_list_is_a_card_with_44_pixel_rows(
             assert height[0] >= 44 and height[1] == "12px", (selector, height)
         # the open note: --panel2 behind it and a small --accent dot
         here = page.locator('#folders .item[aria-current="page"]')
+        # (the row's background fades in when it becomes the open one: wait until it is solid,
+        # instead of reading it in the middle of the fade)
+        await here.evaluate(
+            "e => Promise.all(e.getAnimations().map(a => a.finished.catch(() => null)))"
+        )
         assert rgb(await here.evaluate("e => getComputedStyle(e).backgroundColor")) == await token(
             page, "--panel2"
         )

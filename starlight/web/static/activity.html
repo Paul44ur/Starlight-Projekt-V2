@@ -110,7 +110,8 @@ async function loadQueue() {
   data.items.forEach(item => {
     const row = el("div", "waiting");
     const title = el("div", "", "");
-    title.append(el("b", "", item.title), el("span", "dim small num", "  " + whenText(item.created)));
+    const name = el("b", "", item.title); name.translate = false;  // (a title from outside)
+    title.append(name, el("span", "dim small num", "  " + whenText(item.created)));
     row.appendChild(title);
     if (item.detail) row.appendChild(el("pre", "", item.detail));
     row.appendChild(el("div", "runs dim", "Approving runs " + item.runs));

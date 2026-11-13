@@ -470,3 +470,32 @@ def test_every_page_loads_the_switcher_and_the_app_serves_it(tmp_path: Path) -> 
         assert '"/quick.js"' in c.get("/sw.js", headers=LOCAL).text  # (kept for the phone)
         for name in ("chat-core.js", "notes-find.js"):  # (each page lists the key for ?)
             assert "Jump to a conversation, a note or a page" in (STATIC / name).read_text("utf-8")
+
+
+async def test_opened_again_at_once_it_still_shows_the_new_answers(
+    static_site: str,  # noqa: F811
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The dialog's close event comes a moment after close(). It used to count the answers of
+    the window opened in between as old ones and drop them (the cause of a flaky test)."""
+    monkeypatch.setenv("NO_PROXY", "127.0.0.1")
+    async with api().async_playwright() as playwright:
+        browser, page = await chat(playwright, static_site)
+        try:
+            await ready(page)
+            await page.wait_for_function(
+                "() => document.querySelectorAll('#quick .quick-row').length > 10"
+            )
+            # The answers are slow, and the old window's close event arrives meanwhile.
+            await page.evaluate(
+                "() => { const f = window.fetch; window.fetch = async (u, i) => {"
+                " await new Promise(r => setTimeout(r, 200)); return f(u, i); };"
+                " document.getElementById('quick').close(); openQuick();"
+                " setTimeout(() => document.getElementById('quick')"
+                ".dispatchEvent(new Event('close')), 50); }"
+            )
+            await page.wait_for_function(
+                "() => document.querySelectorAll('#quick .quick-row').length > 10"
+            )
+        finally:
+            await browser.close()

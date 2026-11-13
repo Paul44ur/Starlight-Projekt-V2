@@ -33,7 +33,11 @@ const COMMANDS = [
   ["/memory", "memory", "Memory and skills", () => { location.href = "/memory"; }],
   ["/settings", "settings", "Settings", () => { location.href = "/settings"; }],
   ["/stars", "✦", "A little starfall", () => starfall()],
-  ["/help", "?", "These commands", () => addSys("Commands: " + COMMANDS.map(c => `${c[0]} (${c[2].toLowerCase()})`).join(", "))],
+  ["/help", "?", "These commands", () => {
+    // (German keeps its capital letters: its nouns have them)
+    const say = (text) => window.starlightTranslate ? window.starlightTranslate(text) : text, small = (text) => window.starlightLanguage === "de" ? text : text.toLowerCase();
+    addSys(say("Commands:") + " " + COMMANDS.map(c => `${c[0]} (${small(say(c[2]))})`).join(", "));
+  }],
 ];
 // A typed command; false when the text is not one (it is then sent as a message).
 function runCommand(text) {
