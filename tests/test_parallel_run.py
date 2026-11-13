@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import re
 import subprocess
 import sys
 from pathlib import Path
@@ -52,6 +53,16 @@ def collect(*args: str) -> subprocess.CompletedProcess[str]:
     )
 
 
+def test_every_file_that_opens_a_window_is_in_the_one_worker_group() -> None:
+    """A test file that uses tkinter or the launcher window shares the one X display: run
+    beside another such file, it takes the keyboard focus from it (a focus-ring test failed
+    that way). So each one must be listed; a new one is caught here."""
+    here = REPO / "tests"
+    opens = re.compile(r"^\s*(import tkinter|from tkinter|.*\blauncher_gui\b)", re.M)
+    found = {f.name for f in here.glob("test_*.py") if opens.search(f.read_text(encoding="utf-8"))}
+    assert found - set(ONE_WORKER_FILES) == set()
+
+
 def test_a_plain_run_collects_without_a_warning_about_the_marker() -> None:
     result = collect("-W", "error", "tests/test_parallel_run.py")
     assert result.returncode == 0, result.stdout + result.stderr
@@ -67,6 +78,7 @@ def test_a_run_without_xdist_still_collects(tmp_path: Path) -> None:
 
 GROUPED = """
 import os
+import re
 import pytest
 
 pytestmark = pytest.mark.xdist_group(name="x")

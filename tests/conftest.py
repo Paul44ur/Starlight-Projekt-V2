@@ -30,6 +30,7 @@ ONE_WORKER_FILES: dict[str, str] = {
     "test_launcher_window.py": "tkinter window",
     "test_launcher_tray.py": "tkinter window",
     "test_launcher_model.py": "tkinter window",
+    "test_launcher_night_sky.py": "tkinter window",
     "test_cleanup_launcher.py": "tkinter window",
     "test_app_window.py": "tkinter window",
     "test_deep_links.py": "tkinter window",
