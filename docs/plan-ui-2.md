@@ -11,11 +11,11 @@ one block per commit. `docs/plan-ui.md` (U1-U10) is the look this replaces; its 
 | Block | What | Needs | State |
 |---|---|---|---|
 | V1 | Foundation: tokens (night and day), the heading font, shared components | – | **done** (6500345) |
-| V2 | The chat page | V1 | open |
-| V3 | The Settings page | V1 | open |
-| V4 | The Notes page (editor, graph, boards) | V1 | open |
-| V5 | Memory, Activity, Automations, Kill, Pair | V1 | open |
-| V6 | The launcher window and the terminal's colours | V1 | open |
+| V2 | The chat page | V1 | **done** (01a7407) |
+| V3 | The Settings page | V1 | **done** (e3991ce) |
+| V4 | The Notes page (editor, graph, boards) | V1 | **done** (01a7407) |
+| V5 | Memory, Activity, Automations, Kill, Pair | V1 | **done** (01a7407) |
+| V6 | The launcher window and the terminal's colours | V1 | **done** (604d7b6) |
 | V7 | Review: phone, German, contrast, screenshots of every page, docs | V2-V6 | open |
 
 ## 1. The philosophy
