@@ -25,6 +25,9 @@
                    color: var(--dim); font-size: var(--fs-sm); white-space: nowrap; }
   .side-row.jump svg.ico { color: var(--dim); }
   .side-row.jump span:not(.ico) { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  /* a long (German) name wraps to two lines before it is cut */
+  :root:lang(de) .side-row.jump { height: auto; min-height: 40px; padding-block: 4px; }
+  :root:lang(de) .side-row.jump span:not(.ico) { white-space: normal; line-height: 1.25; }
   .side-row.jump kbd { margin-left: auto; flex: none; white-space: nowrap; }
   .side-nav a { display: flex; align-items: center; gap: 12px; min-height: 44px; padding: 0 12px;
                 border-radius: var(--r-3); color: var(--text); font-size: var(--fs-md); text-decoration: none; }
@@ -212,6 +215,9 @@
            border: 0; border-radius: 10px; background: transparent; }
   /* the hint stays on one line (cut with an ellipsis), the pill has the keys beside it */
   #input:placeholder-shown { white-space: nowrap; text-overflow: ellipsis; overflow: hidden; }
+  /* German is longer: its hint wraps to two small lines inside the pill instead of being cut */
+  :root:lang(de) #input:placeholder-shown { white-space: normal; font-size: var(--fs-sm);
+                                            line-height: 16px; padding-block: 6px; }
   /* (the whole field shows the focus, above) */
   #input:focus, #input:focus-visible { outline: none; }
   @media (forced-colors: active) { #form:focus-within { outline: 2px solid Highlight; } }

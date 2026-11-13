@@ -353,3 +353,138 @@ async def test_the_help_command_lists_the_commands_in_english_too(
         assert text.startswith("Commands: /new (new conversation)"), text
     finally:
         await context.__aexit__(None, None, None)
+
+
+# -- the layout problems the review saw in its screenshots (V7b) ------------------------------
+
+
+async def test_the_notes_toolbar_and_note_fit_a_360_px_phone(
+    static_site: str, full_app: Any
+) -> None:
+    context, page = await open_page(
+        static_site, full_app, "notes", width=360, height=760, lang="de"
+    )
+    try:
+        box = await page.evaluate(
+            """() => {
+              const last = [...document.querySelectorAll('.crumbs .actions > *')]
+                .filter(b => b.checkVisibility()).map(b => b.getBoundingClientRect());
+              return { right: Math.max(...last.map(r => r.right)),
+                       left: Math.min(...last.map(r => r.left)),
+                       title: document.querySelector('h1.title').getBoundingClientRect().top,
+                       list: document.querySelector('.side').getBoundingClientRect().height,
+                       crumbs: document.querySelector('.crumbs').scrollWidth };
+            }"""
+        )
+        assert box["left"] >= 0 and box["right"] <= 360, box  # (the toolbar is not cut)
+        assert box["list"] <= 0.25 * 760 + 1, box  # (the list stays a short card)
+        assert box["title"] < 0.6 * 760, box  # (the note is in sight without scrolling)
+    finally:
+        await context.__aexit__(None, None, None)
+
+
+async def test_the_device_remove_button_is_whole_on_a_360_px_phone(
+    static_site: str, full_app: Any
+) -> None:
+    context, page = await open_page(
+        static_site, full_app, "settings", width=360, height=760, lang="de"
+    )
+    try:
+        box = await page.evaluate(
+            """() => {
+              const r = document.querySelector('#devices button').getBoundingClientRect();
+              const card = document.getElementById('devices-card');
+              return { left: r.left, right: r.right, scroll: card.scrollWidth,
+                       width: card.clientWidth };
+            }"""
+        )
+        assert box["left"] >= 0 and box["right"] <= 360, box
+        assert box["scroll"] <= box["width"], box  # (the card does not scroll inside)
+    finally:
+        await context.__aexit__(None, None, None)
+
+
+FITS = """([selector, kind]) => {
+  const el = document.querySelector(selector);
+  const s = getComputedStyle(el);
+  const font = s.fontStyle + ' ' + s.fontWeight + ' ' + s.fontSize + ' ' + s.fontFamily;
+  const ctx = document.createElement('canvas').getContext('2d');
+  ctx.font = font;
+  const text = kind === 'placeholder' ? el.placeholder
+    : kind === 'option' ? el.selectedOptions[0].textContent : el.textContent.trim();
+  const pad = side => parseFloat(s['padding' + side]) + parseFloat(s['border' + side + 'Width']);
+  let room = el.clientWidth - parseFloat(s.paddingLeft) - parseFloat(s.paddingRight);
+  if (kind === 'option') room -= 24;  // (the arrow)
+  const width = ctx.measureText(text).width;
+  const lineHeight = parseFloat(s.lineHeight) || parseFloat(s.fontSize) * 1.2;
+  const high = el.clientHeight - parseFloat(s.paddingTop) - parseFloat(s.paddingBottom);
+  const wraps = s.whiteSpace !== 'nowrap';
+  const lines = Math.max(1, Math.floor((high + 1) / lineHeight));
+  const fits = width <= room + 3 || (wraps && Math.ceil(width / room) <= lines);
+  return { width, room, wraps, fits,
+           text };
+}"""
+
+
+@pytest.mark.parametrize("lang", ["en", "de"])
+async def test_the_message_hint_and_the_search_button_are_not_cut(
+    lang: str, static_site: str, full_app: Any
+) -> None:
+    context, page = await open_page(static_site, full_app, "chat", lang=lang)
+    try:
+        for selector, kind in (("#input", "placeholder"), ("#quick-open span", "text")):
+            found = await page.evaluate(FITS, [selector, kind])
+            if kind == "text":  # (a span: it is cut when its content is wider than its box)
+                found["fits"] = await page.evaluate(
+                    "s => { const e = document.querySelector(s);"
+                    " return e.scrollWidth <= e.clientWidth"
+                    " && e.scrollHeight <= e.clientHeight + 1; }",
+                    selector,
+                )
+            assert found["fits"], (lang, selector, found)
+    finally:
+        await context.__aexit__(None, None, None)
+
+
+async def test_an_automation_step_shows_its_whole_kind_and_hint(
+    static_site: str, full_app: Any
+) -> None:
+    context, page = await open_page(static_site, full_app, "automations", lang="de")
+    try:
+        step = await page.evaluate("() => document.querySelectorAll('.step').length")
+        if not step:
+            await page.locator("#add-step").click()
+        kind = await page.evaluate(FITS, [".step > select", "option"])
+        hint = await page.evaluate(FITS, [".step .what > input:last-of-type", "placeholder"])
+        assert kind["fits"], kind
+        assert hint["fits"], hint
+    finally:
+        await context.__aexit__(None, None, None)
+
+
+@pytest.mark.parametrize("scheme", LOOKS)
+async def test_the_mention_highlight_keeps_a_readable_contrast(
+    scheme: str, static_site: str, full_app: Any
+) -> None:
+    context, page = await open_page(static_site, full_app, "notes", scheme=scheme)
+    try:
+        await page.wait_for_selector(".info li.mention mark")
+        ratio = await page.evaluate(
+            """() => {
+              const mark = document.querySelector('.info li.mention mark');
+              const card = mark.closest('.info');
+              const rgba = c => c.match(/[\\d.]+/g).map(Number);
+              const lin = v => { v /= 255;
+                return v <= 0.04045 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4; };
+              const lum = ([r, g, b]) => 0.2126 * lin(r) + 0.7152 * lin(g) + 0.0722 * lin(b);
+              const ground = rgba(getComputedStyle(card).backgroundColor);
+              const [r, g, b, a = 1] = rgba(getComputedStyle(mark).backgroundColor);
+              const back = [r, g, b].map((v, i) => v * a + ground[i] * (1 - a));
+              const text = rgba(getComputedStyle(mark).color);
+              const x = lum(text), y = lum(back);
+              return (Math.max(x, y) + .05) / (Math.min(x, y) + .05);
+            }"""
+        )
+        assert ratio >= 4.5, (scheme, ratio)
+    finally:
+        await context.__aexit__(None, None, None)

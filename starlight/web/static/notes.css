@@ -236,7 +236,9 @@ body.board-open .column { max-width: none; }
 .mini-graph .none { margin: 0; }
 .info ul.plain li.mention { display: flex; align-items: flex-start; gap: 4px; }
 .info ul.plain li.mention .back { flex: 1 1 auto; min-width: 0; width: auto; }
-.info li.mention mark { color: inherit; background: color-mix(in srgb, var(--warn) 38%, transparent); border-radius: 3px; }
+/* the text colour on a violet wash: 4.5:1 or more in the night and the day look */
+.info li.mention mark { color: var(--text); background: color-mix(in srgb, var(--accent) 30%, transparent);
+                        border-radius: 3px; padding: 0 2px; }
 .info ul.plain li.mention .link-it { flex: none; width: auto; font-size: 12px; padding: 2px 9px; margin-top: 4px;
                                      border: 1px solid var(--border); border-radius: var(--r-1); color: var(--accent); }
 .info ul.plain li.mention .link-it:hover { border-color: var(--accent); }
@@ -358,7 +360,12 @@ body.editing .info .prop-value, body.editing .info .prop-x, body.editing .info .
 }
 @media (max-width: 760px) {
   .notes { grid-template-columns: 1fr; grid-template-rows: auto 1fr; }
-  .side { max-height: 38vh; }
+  /* the list is a short card above the note; its star row goes (the top bar names the page),
+     so the note starts high on a phone */
+  .side { max-height: 24vh; }
+  .side .brand { display: none; }
+  /* the note's toolbar wraps inside the column, never cut at the right */
+  .crumbs .actions { flex-wrap: wrap; margin-left: 0; max-width: 100%; }
   .notes { gap: var(--s-2); padding: var(--s-2); }
   main.reading { padding: 18px 16px 60px; }
 }
