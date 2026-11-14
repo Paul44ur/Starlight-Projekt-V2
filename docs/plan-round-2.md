@@ -9,11 +9,11 @@ writes each brief, reviews the diff, runs the full suite and merges.
 
 | Block | What | Needs | State |
 |---|---|---|---|
-| R1 | German for what is still English: Activity entries, automation templates, skill cards | – | open |
+| R1 | German for what is still English: Activity entries, automation templates, skill cards | – | **done** (ce2bd7a) |
 | R2 | Phone width (360 px): three layout faults | R1 | open |
-| R3 | The statistics page in the Night Sky look, and in German | – | open |
-| R4 | Drafts: the message box keeps what you typed, per conversation | – | open |
-| R5 | Search shows where it found your words, and jumps there | – | open |
+| R3 | The statistics page in the Night Sky look, and in German | – | **done** (dc6c9dd) |
+| R4 | Drafts: the message box keeps what you typed, per conversation | – | **done** (61bb42c) |
+| R5 | Search shows where it found your words, and jumps there | – | **done** (fc126ca) |
 | R6 | The conversation list grouped by time (Today, Yesterday, …) | R5 | open |
 | R7 | Starter suggestions on a new conversation | R4 | open |
 | R8 | Automations page: when each rule last ran, and how it went | R1 | open |
