@@ -77,6 +77,17 @@
   .conv.active { background: var(--panel2); }
   .conv .t { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .conv .acts { display: none; }
+  /* a search hit: the line of the message under the title */
+  .conv .tx { flex: 1; min-width: 0; display: flex; flex-direction: column; padding: 6px 0; }
+  .conv .tx .t { flex: none; }
+  .conv .hit { color: var(--dim); font-size: var(--fs-xs); overflow: hidden;
+               text-overflow: ellipsis; white-space: nowrap; }
+  .conv .hit mark { background: var(--accent-tint); color: var(--text); border-radius: 2px; }
+  /* the message a search hit opened: marked for a moment */
+  .msg.found { outline: 2px solid var(--accent); outline-offset: 4px; border-radius: var(--r-2);
+               animation: found-fade 2s var(--ease) forwards; }
+  @keyframes found-fade { 0%, 70% { outline-color: var(--accent); } 100% { outline-color: transparent; } }
+  @media (prefers-reduced-motion: reduce) { .msg.found { animation: none; } }
   .conv:hover .acts, .conv.active .acts { display: flex; }
   #main { flex: 1; display: flex; flex-direction: column; min-width: 0; position: relative; }
   /* The messages sit in the same 900 px column as the message box below them. */

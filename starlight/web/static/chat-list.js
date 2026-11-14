@@ -42,13 +42,14 @@ async function loadList() {
     const acts = el("span", "acts");
     const more = el("button", "icon"); setIcon(more, "more"); more.title = "Rename, pin, folder, archive, download, delete"; more.setAttribute("aria-label", "More for this conversation");
     more.onclick = (e) => { e.stopPropagation(); conversationMenu(c, more); };
-    acts.append(more); row.append(t, acts);
+    acts.append(more);
+    if (c.hit) row.append(withHit(t, c.hit, search), acts); else row.append(t, acts);
     if (c.private) row.insertAdjacentHTML("afterbegin", icon("lock"));  // (its own element, before the title)
-    row.onclick = () => openConversation(c.id);
+    row.onclick = () => openConversation(c.id, c.hit);
     row.tabIndex = 0;
     row.dataset.id = c.id;
     row.onkeydown = (e) => {
-      if ((e.key === "Enter" || e.key === " ") && e.target === row) { e.preventDefault(); openConversation(c.id); }
+      if ((e.key === "Enter" || e.key === " ") && e.target === row) { e.preventDefault(); openConversation(c.id, c.hit); }
     };
     list.appendChild(row);
   });
@@ -62,6 +63,20 @@ async function loadList() {
   // A search or the archive can leave the open conversation out of the list: its name stays.
   const open = data.conversations.find(c => c.id === conversation);
   showTitle(open || (titled && titled.id === conversation ? titled : null));
+}
+// A search hit under a title: one line of the message, the found words marked. Built from
+// nodes and text only (a conversation's content is untrusted); it is the user's own words.
+// The server says where the words are (hit.mark): it finds "Straße" for "strasse" too.
+function withHit(title, hit, words) {
+  const line = el("span", "hit"); line.translate = false;
+  const text = String(hit.text || ""), found = words.trim();
+  let at = -1, end = -1;
+  if (Array.isArray(hit.mark)) [at, end] = hit.mark;
+  else if (found) { at = text.toLowerCase().indexOf(found.toLowerCase()); end = at + found.length; }
+  if (!(Number.isInteger(at) && Number.isInteger(end) && at >= 0 && end > at && end <= text.length)) line.textContent = text;
+  else line.append(text.slice(0, at), el("mark", "", text.slice(at, end)), text.slice(end));
+  const both = el("span", "tx"); both.append(title, line);
+  return both;
 }
 // The open conversation's name in the bar; a click opens its menu (as its ⋯ in the list).
 let titled = null;
@@ -175,7 +190,7 @@ function popMenu(anchor, items, place) {
   return menu;
 }
 document.addEventListener("click", (e) => { if (openMenu && !openMenu.contains(e.target)) closeMenu(); });
-async function openConversation(id) {
+async function openConversation(id, hit) {
   setDrawer(false);
   showContext(null);  // (another conversation: known again after its next answer)
   showAnswerStats(null);
@@ -185,13 +200,24 @@ async function openConversation(id) {
   showContext(data.context_tokens || null);  // (the number kept with it, if it has one)
   if (data.title) { const { messages, ...about } = data; showTitle(about); }  // (also outside a search)
   document.getElementById("privacy").hidden = !data.private;
-  data.messages.forEach(m => {
+  data.messages.forEach((m, n) => {
     const body = addMsg(m.role === "user" ? "you" : "bot", m.content);
+    body.parentElement.dataset.n = n;  // (which message: a search hit names it)
     if (m.role !== "user") body.parentElement.dataset.kept = "1";
     (m.tools || []).forEach(t => toolStep(body, t.tool, t.ok ? "done" : "failed"));
   });
   if (!data.messages.length) showEmpty(data.private);
   loadList(); scrollToEnd();
+  if (hit) showFound(hit.message);
+}
+// A search hit: that message in the middle of the view, marked for a moment.
+function showFound(n) {
+  const found = log.querySelector(`.msg[data-n="${Number(n)}"]`);
+  if (!found) return;
+  pinned = false;  // (reading there, not following the newest message)
+  found.scrollIntoView({ block: "center" });
+  found.classList.add("found");
+  setTimeout(() => found.classList.remove("found"), 2000);
 }
 document.getElementById("new").onclick = async () => { const d = await api("/api/conversations", { method: "POST" }); await openConversation(d.id); input.focus(); };
 document.getElementById("newprivate").onclick = async () => { const d = await api("/api/conversations", { method: "POST", body: { private: true } }); await openConversation(d.id); input.focus(); };

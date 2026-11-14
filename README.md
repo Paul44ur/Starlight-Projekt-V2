@@ -529,7 +529,9 @@ column and the controls are big enough for a finger. High contrast and "reduce m
 Windows are respected, and every page is also in German.
 
 **The web chat.** Your conversations are saved: the list on the left reopens, renames, searches
-and deletes them (the terminal continues the most recent one). Drop pictures or documents (PDF,
+and deletes them (the terminal continues the most recent one). A search also looks into what
+was said: a conversation found that way shows the line with your words under its title, and
+opening it jumps to that message and marks it for a moment. Drop pictures or documents (PDF,
 Word, Excel, text) onto the chat, or press the paperclip, to send them with your message.
 Answers show their formatting: headings, lists, tables, links and code blocks (each with its own
 **Copy**). Until the first word arrives, the answer shows that Starlight is working, and for how

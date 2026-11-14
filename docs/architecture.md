@@ -274,6 +274,17 @@ the model read plus wrote in the answer's last step, out of `/api/status`'s `con
 for a private one), `get()` returns it and the page shows it when the conversation is opened.
 A branch and an old conversation have none until their next answer.
 
+**Search hits.** `ConversationStore.list(search)` looks into the messages. When a conversation is
+found by a message and not by its title, its entry gets `hit: {text, message, mark}` (`_hit`):
+one line around the first place of the words, where the words are in that line (`mark`: start
+and end; "ß" is found by "ss", so the page cannot work it out), and the message's number
+counted as `get()` counts the
+messages it returns (`_shown`; a tool's result or a system note is not one). Words only in
+those are found without a `hit`. The summaries kept for unchanged files never hold a hit.
+In `chat-list.js` the row shows the line (`withHit`: nodes and `textContent`, the words in
+`<mark>`), `openConversation(id, hit)` puts the number on each message (`data-n`) and
+`showFound` scrolls to it and sets `.found` for two seconds.
+
 **The chat page in the Night Sky look.** The sidebar and the details pane are cards inset 12 px
 on the ground (`body` has the padding; a phone has none and keeps its drawer). The sidebar has
 a brand row with the star, New conversation as `button.primary`, a "Search or jump to…" button

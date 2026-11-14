@@ -246,12 +246,11 @@ class ConversationStore:
         found: list[dict[str, Any]] = []
         for conversation, data in self._private.items():
             messages = data.get("messages", [])
-            if (
-                wanted
-                and wanted not in (data.get("title") or "").casefold()
-                and not any(wanted in str(m.get("content", "")).casefold() for m in messages)
-            ):
-                continue
+            hit = None
+            if wanted and wanted not in (data.get("title") or "").casefold():
+                if not any(wanted in str(m.get("content", "")).casefold() for m in messages):
+                    continue
+                hit = _hit(messages, wanted)
             found.append({
                 "id": conversation,
                 "title": data.get("title") or "Private conversation",
@@ -261,6 +260,7 @@ class ConversationStore:
                 "pinned": bool(data.get("pinned")),
                 "archived": bool(data.get("archived")),
                 "folder": data.get("folder") or "",
+                **({"hit": hit} if hit else {}),
             })  # fmt: skip
         if not self.folder.is_dir():
             return _ordered(found, archived, limit)
@@ -288,13 +288,12 @@ class ConversationStore:
                 "folder": data.get("folder") or "",
             }
             known[path] = (key, summary)
-            if (
-                wanted
-                and wanted not in (data.get("title") or "").casefold()
-                and not any(wanted in str(m.get("content", "")).casefold() for m in messages)
-            ):
-                continue
-            found.append(dict(summary))
+            hit = None
+            if wanted and wanted not in (data.get("title") or "").casefold():
+                if not any(wanted in str(m.get("content", "")).casefold() for m in messages):
+                    continue
+                hit = _hit(messages, wanted)
+            found.append({**summary, **({"hit": hit} if hit else {})})
         self._summaries = known
         return _ordered(found, archived, limit)
 
@@ -302,6 +301,55 @@ class ConversationStore:
 def _tokens(value: object) -> int | None:
     """The stored context size, or None when there is none (or the file holds nonsense)."""
     return value if isinstance(value, int) and not isinstance(value, bool) and value > 0 else None
+
+
+def _text(content: object) -> str:
+    """The words of a message's content: a string, or a list of parts (text and pictures)."""
+    if isinstance(content, list):
+        parts = (p.get("text") if isinstance(p, dict) else p for p in content)
+        return " ".join(p for p in parts if isinstance(p, str))
+    return str(content)
+
+
+def _find(text: str, wanted: str) -> tuple[int, int] | None:
+    """Where the casefolded ``wanted`` is in ``text``, as (start, end) in the text's own
+    letters. Casefolding can change the length ("ß" becomes "ss"), so the place is mapped
+    back letter by letter."""
+    folded: list[str] = []
+    origin: list[int] = []
+    for index, char in enumerate(text):
+        small = char.casefold()
+        folded.append(small)
+        origin.extend([index] * len(small))
+    at = "".join(folded).find(wanted) if wanted else -1
+    if at < 0:
+        return None
+    return origin[at], origin[at + len(wanted) - 1] + 1
+
+
+def _hit(messages: list[dict[str, Any]], wanted: str) -> dict[str, Any] | None:
+    """Where a search found its words: one line around the first place in a message the chat
+    shows, and where the words are in that line (``mark``: start and end). ``message`` counts
+    as the chat's list of messages does (``_shown``), so the page can find it. None when only
+    something the page hides (a tool's result) has the words."""
+    for number, message in enumerate(_shown(messages)):
+        text = " ".join(_text(message["content"]).split())
+        place = _find(text, wanted)
+        if place is None:
+            continue
+        at, stop = place
+        start, end = max(0, at - 40), min(len(text), max(at + 80, stop))
+        if start and text[start - 1] != " " and " " in text[start:at]:
+            start = text.index(" ", start) + 1
+        if end < len(text) and text[end] != " " and " " in text[stop:end]:
+            end = text.rindex(" ", stop, end)
+        lead = "…" if start else ""
+        return {
+            "text": lead + text[start:end].rstrip() + ("…" if end < len(text) else ""),
+            "message": number,
+            "mark": [len(lead) + at - start, len(lead) + stop - start],
+        }
+    return None
 
 
 def _shown(messages: list[dict[str, Any]]) -> list[dict[str, Any]]:
