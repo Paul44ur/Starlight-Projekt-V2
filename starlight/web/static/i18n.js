@@ -477,6 +477,34 @@
     "Print or save it as PDF": "Drucken oder als PDF speichern", "Memory and skills": "Gedächtnis und Fähigkeiten",
     "Practice mode is off": "Übungsmodus ist aus", "Unpinned": "Nicht mehr angeheftet",
     "Commands:": "Befehle:",
+    // German that was missing (round 2, R1)
+    // Activity: the kind of an entry, and the fixed words of a reason the server gives
+    "starlight": "Starlight", "unknown": "unbekannt", "unknown address": "unbekannte Adresse",
+    "unknown error": "unbekannter Fehler", "not confirmed": "nicht bestätigt",
+    "not confirmed (injection guard)": "nicht bestätigt (Schutz vor untergeschobenen Anweisungen)",
+    "not confirmed (limit)": "nicht bestätigt (Grenze für Aktionen ohne Nachfrage erreicht)",
+    "not confirmed by user": "von dir nicht bestätigt", "blocked by permissions": "durch die Berechtigungen gesperrt",
+    "timed out": "Zeitlimit überschritten",
+    "failsafe: mouse moved into a screen corner": "Notbremse: Maus in eine Bildschirmecke bewegt",
+    // Memory: the state of a skill and its button
+    "approved": "erlaubt", "draft": "Entwurf", "rejected": "abgelehnt", "Reject": "Ablehnen",
+    // Automations: a field's label, and the texts of the ready-made rules (modules/automations/module.py, TEMPLATES)
+    "Tool": "Werkzeug",
+    "Still open for today and tomorrow: {result.count} task(s)":
+      "Für heute und morgen noch offen: {result.count} Aufgabe(n)",
+    "{result.total} flashcard(s) are waiting for you today. Say 'quiz me', or study them in Notes, Cards.":
+      "Heute warten {result.total} Karteikarte(n) auf dich. Sag 'frag mich ab' oder lerne sie in den Notizen bei den Karteikarten.",
+    "{result.count} note(s) still say status: open or doing. Say 'show my open notes' to go through them.":
+      "{result.count} Notiz(en) haben noch den Status open oder doing. Sag 'zeig meine offenen Notizen', um sie durchzugehen.",
+    "Run all my backups (backup.list, then backup.run for each).":
+      "Führe alle meine Sicherungen aus (backup.list, dann backup.run für jede).",
+    "{result.count} pairs of memories say nearly the same thing. Say 'tidy my memory' to merge them.":
+      "{result.count} Paare von Erinnerungen sagen fast dasselbe. Sag 'räum mein Gedächtnis auf', um sie zusammenzuführen.",
+    "Certificates expiring soon: {result.expiring}": "Zertifikate, die bald ablaufen: {result.expiring}",
+    "Your monthly review is ready: {result.saved}": "Dein Monatsrückblick ist fertig: {result.saved}",
+    "Plan my week: read my calendar for the next 7 days (calendar.agenda) and my open to-dos (todo.list_tasks), then save a short plan for the week as a note (notes.note) called 'Week plan' with today's date.":
+      "Plane meine Woche: Lies meinen Kalender für die nächsten 7 Tage (calendar.agenda) und meine offenen Aufgaben (todo.list_tasks) und speichere dann einen kurzen Wochenplan als Notiz (notes.note) mit dem Titel 'Week plan' und dem heutigen Datum.",
+    "The battery is at {event.percent}%: plug in the charger.": "Der Akku ist bei {event.percent} %: Schließ das Ladegerät an.",
     // the events an automation can start on (modules/automations/module.py)
     "an event is about to start": "ein Termin beginnt gleich", "a reminder is due": "eine Erinnerung ist fällig",
     "new mail arrived (with mail watch on)": "neue Mail ist da (bei eingeschalteter Mail-Überwachung)",
@@ -528,7 +556,8 @@
     if ((m = /^when (\S+) happens(?: and (.+))?$/.exec(t))) return `wenn ${m[1]} passiert` + (m[2] ? ` und ${m[2]}` : "");
     return null;
   }
-  const quoted = (q) => q.replace(/^"(.*)"$/, "„$1“");
+  // (the words of a ready-made rule are in DE; a text you wrote yourself stays as it is)
+  const quoted = (q) => q.replace(/^"(.*)"$/, (m, t) => `„${Object.prototype.hasOwnProperty.call(DE, t) ? DE[t] : t}“`);
   function ruleStep(step) {
     let m = /^(.*?) \(only if (.+)\)$/.exec(step), only = "";
     if (m) { step = m[1]; only = ` (nur wenn ${m[2]})`; }
@@ -648,17 +677,31 @@
     // what the activity page says (starlight/core/activity.py)
     [/^ran ([\w*]+\.[\w*]+) \(you approved it\)(.*)$/, "$1 ausgeführt (von dir erlaubt)$2"],
     [/^ran ([\w*]+\.[\w*]+)( .*)?$/, "$1 ausgeführt$2"],
-    [/^did not run (\S+): (.+)$/, "$1 nicht ausgeführt: $2"],
+    [/^did not run (\S+): (.+)$/, (m, tool, why) => `${tool} nicht ausgeführt: ${why === "blocked" ? "gesperrt" : why === "denied" ? "abgelehnt" : window.starlightTranslate(why)}`],
     [/^practice mode: described (\S+)( .*)?$/, "Übungsmodus: $1 beschrieben$2"],
-    [/^([\w*]+\.[\w*]+) failed: (.+)$/, "$1 fehlgeschlagen: $2"],
+    [/^([\w*]+\.[\w*]+) failed: (.+)$/, (m, tool, why) => `${tool} fehlgeschlagen: ${window.starlightTranslate(why)}`],
     [/^([\w*]+\.[\w*]+) was stopped by the kill switch$/, "$1 wurde vom Not-Aus gestoppt"],
-    [/^kill switch ENGAGED: (.*)$/, "Not-Aus AUSGELÖST: $1"],
+    [/^kill switch ENGAGED: (.*)$/, (m, why) => `Not-Aus AUSGELÖST: ${window.starlightTranslate(why)}`],
     [/^answered a request \((\d+) steps?(?:, (\d+) tool calls?)?\)$/,
       (m, steps, calls) => `eine Anfrage beantwortet (${steps} ${steps === "1" ? "Schritt" : "Schritte"}` + (calls ? `, ${calls} ${calls === "1" ? "Werkzeugaufruf" : "Werkzeugaufrufe"}` : "") + ")"],
     [/^rule changed: (.+) -> (.+)$/, "Regel geändert: $1 -> $2"],
-    [/^a device was paired \((.+)\)$/, "ein Gerät wurde gekoppelt ($1)"],
-    [/^a wrong pairing code was tried \((.+)\)$/, "ein falscher Kopplungscode wurde versucht ($1)"],
+    [/^a device was paired \((.+)\)$/, (m, who) => `ein Gerät wurde gekoppelt (${window.starlightTranslate(who)})`],
+    [/^a wrong pairing code was tried \((.+)\)$/, (m, who) => `ein falscher Kopplungscode wurde versucht (${window.starlightTranslate(who)})`],
     [/^a device was removed: (.*)$/, "ein Gerät wurde entfernt: $1"],
+    // German that was missing (round 2, R1)
+    // a tool or a failure that the first patterns above do not know (a name with a hyphen or no dot)
+    [/^ran (\S+) \(you approved it\)(.*)$/, "$1 ausgeführt (von dir erlaubt)$2"],
+    [/^ran (\S+)( .*)?$/, "$1 ausgeführt$2"],
+    [/^(\S+) failed: (.+)$/, (m, tool, why) => `${tool} fehlgeschlagen: ${window.starlightTranslate(why)}`],
+    [/^(\S+) was stopped by the kill switch$/, "$1 wurde vom Not-Aus gestoppt"],
+    [/^timed out after (\d+)s$/, "Zeitlimit nach $1 s überschritten"],
+    [/^timed out: (.+)$/, "Zeitlimit überschritten: $1"],
+    [/^unknown tool '(.+)'$/, "unbekanntes Werkzeug '$1'"],
+    [/^invalid arguments: (.+)$/, "ungültige Argumente: $1"],
+    [/^configuration error: (.+)$/, "Konfigurationsfehler: $1"],
+    [/^hotkey (.+)$/, "Tastenkürzel $1"],
+    [/^kill switch ENGAGED:$/, "Not-Aus AUSGELÖST:"],
+    [/^a device was removed:$/, "ein Gerät wurde entfernt:"],
     // an automation, as the server describes it
     [/^(.+?): ((?:run|ask|tell you) .+)$/, (m, trigger, steps) => describeRule(trigger, steps) ?? m],
     [/^"(.+)" \(does not run until the schedule is fixed: (.+)\)$/, "„$1“ (läuft nicht, bis der Zeitplan korrigiert ist: $2)"],

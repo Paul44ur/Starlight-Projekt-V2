@@ -143,9 +143,11 @@ async function loadSkills() {
   data.skills.forEach(s => {
     const item = el("div", "skill");
     const head = el("div", "row");
-    head.append(el("b", "", s.name), el("span", "pill " + (s.status === "approved" ? "on" : s.status === "draft" ? "warn" : "off"), s.status), el("span", "dim small num", "v" + s.version));
+    const skillName = el("b", "", s.name); skillName.translate = false;  // (a name: a skill called "draft" stays)
+    head.append(skillName, el("span", "pill " + (s.status === "approved" ? "on" : s.status === "draft" ? "warn" : "off"), s.status), el("span", "dim small num", "v" + s.version));
     item.appendChild(head);
-    item.appendChild(el("div", "small", s.description));
+    const about = el("div", "small", s.description); about.translate = false;  // (written by the model or you)
+    item.appendChild(about);
     item.appendChild(el("pre", "", s.instructions));
     if (!remote) {
       const row = el("div", "row");

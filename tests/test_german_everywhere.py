@@ -199,6 +199,17 @@ ENGLISH = set(
         "answer",
         "question",
         "questions",
+        "approved",
+        "draft",
+        "rejected",
+        "refused",
+        "stopped",
+        "released",
+        "started",
+        "ran",
+        "described",
+        "tool",
+        "calls",
     ]
 )
 GERMAN = set(
@@ -340,35 +351,88 @@ SKILLS = {
     "skills": [
         {"name": "weekly-report", "status": "approved", "description": "Report",
          "instructions": "1. Read", "version": 3, "uses": 1},
-        {"name": "draft-note", "status": "pending", "description": "A draft",
+        {"name": "draft-note", "status": "draft", "description": "Sums up the week",
          "instructions": "1. Write", "version": 1, "uses": 0},
+        {"name": "old-habit", "status": "rejected", "description": "Not wanted",
+         "instructions": "1. Skip", "version": 2, "uses": 0},
     ]
+}  # fmt: skip
+# What the server's activity entries look like (starlight/core/activity.py), each with the German
+# the page must show: (kind, the server's text, the page's text). A tool's own message and a
+# name stay as they are.
+ACTIVITY_ROWS = [
+    ("action", 'ran mail.send (you approved it) {"to": "anna"}',
+     'mail.send ausgeführt (von dir erlaubt) {"to": "anna"}'),
+    ("action", "ran weather.forecast", "weather.forecast ausgeführt"),
+    ("action", 'ran fs-tools.read_file {"path": "a.txt"}',
+     'fs-tools.read_file ausgeführt {"path": "a.txt"}'),
+    ("action", "ran my-tool (you approved it)", "my-tool ausgeführt (von dir erlaubt)"),
+    ("denied", "did not run files.delete: not confirmed",
+     "files.delete nicht ausgeführt: nicht bestätigt"),
+    ("denied", "did not run files.delete: not confirmed (injection guard)",
+     "files.delete nicht ausgeführt: nicht bestätigt (Schutz vor untergeschobenen Anweisungen)"),
+    ("denied", "did not run mail.send: not confirmed (limit)",
+     "mail.send nicht ausgeführt: nicht bestätigt (Grenze für Aktionen ohne Nachfrage erreicht)"),
+    ("denied", "did not run shell.run: blocked", "shell.run nicht ausgeführt: gesperrt"),
+    ("practice", 'practice mode: described mail.send {"to": "anna"}',
+     'Übungsmodus: mail.send beschrieben {"to": "anna"}'),
+    ("failed", "web.search failed: no connection", "web.search fehlgeschlagen: no connection"),
+    ("failed", "web.search failed: unknown error", "web.search fehlgeschlagen: unbekannter Fehler"),
+    ("failed", "web.search failed: timed out after 30s",
+     "web.search fehlgeschlagen: Zeitlimit nach 30 s überschritten"),
+    ("failed", "web.search failed: timed out",
+     "web.search fehlgeschlagen: Zeitlimit überschritten"),
+    ("failed", "my-tool failed: unknown tool 'my-tool'",
+     "my-tool fehlgeschlagen: unbekanntes Werkzeug 'my-tool'"),
+    ("failed", "mail.send failed: not confirmed by user",
+     "mail.send fehlgeschlagen: von dir nicht bestätigt"),
+    ("failed", "mail.send failed: blocked by permissions",
+     "mail.send fehlgeschlagen: durch die Berechtigungen gesperrt"),
+    ("failed", "files.read failed: configuration error: no folder set",
+     "files.read fehlgeschlagen: Konfigurationsfehler: no folder set"),
+    ("kill switch", "web.search was stopped by the kill switch",
+     "web.search wurde vom Not-Aus gestoppt"),
+    ("kill switch", "my-tool was stopped by the kill switch", "my-tool wurde vom Not-Aus gestoppt"),
+    ("kill switch", "kill switch ENGAGED: web /kill", "Not-Aus AUSGELÖST: web /kill"),
+    ("kill switch", "kill switch ENGAGED: hotkey ctrl+alt+k",
+     "Not-Aus AUSGELÖST: Tastenkürzel ctrl+alt+k"),
+    ("kill switch", "kill switch ENGAGED: failsafe: mouse moved into a screen corner",
+     "Not-Aus AUSGELÖST: Notbremse: Maus in eine Bildschirmecke bewegt"),
+    ("kill switch", "kill switch ENGAGED: ", "Not-Aus AUSGELÖST: "),
+    ("kill switch", "kill switch released", "Not-Aus aufgehoben"),
+    ("kill switch", "a request was stopped", "eine Anfrage wurde gestoppt"),
+    ("answer", "answered a request (3 steps, 2 tool calls)",
+     "eine Anfrage beantwortet (3 Schritte, 2 Werkzeugaufrufe)"),
+    ("answer", "answered a request (2 steps, 1 tool call)",
+     "eine Anfrage beantwortet (2 Schritte, 1 Werkzeugaufruf)"),
+    ("answer", "answered a request (1 steps)", "eine Anfrage beantwortet (1 Schritt)"),
+    ("failed", "could not answer a request (the model did not respond)",
+     "konnte eine Anfrage nicht beantworten (das Modell hat nicht geantwortet)"),
+    ("setting", "rule changed: mail.* -> confirm", "Regel geändert: mail.* -> confirm"),
+    ("setting", "a device was paired (100.1.2.3)", "ein Gerät wurde gekoppelt (100.1.2.3)"),
+    ("setting", "a device was paired (unknown address)",
+     "ein Gerät wurde gekoppelt (unbekannte Adresse)"),
+    ("denied", "a wrong pairing code was tried (100.1.2.3)",
+     "ein falscher Kopplungscode wurde versucht (100.1.2.3)"),
+    ("denied", "a wrong pairing code was tried (unknown)",
+     "ein falscher Kopplungscode wurde versucht (unbekannt)"),
+    ("setting", "a device was removed: Pixel", "ein Gerät wurde entfernt: Pixel"),
+    ("practice", "practice mode on", "Übungsmodus an"),
+    ("practice", "practice mode off", "Übungsmodus aus"),
+    ("setting", "the paused model was resumed", "das pausierte Modell wurde fortgesetzt"),
+    ("starlight", "Starlight started", "Starlight gestartet"),
+    ("starlight", "Starlight stopped", "Starlight beendet"),
+]  # fmt: skip
+# What the pill of each kind says in German.
+ACTIVITY_KINDS = {
+    "action": "Aktion", "denied": "abgelehnt", "failed": "fehlgeschlagen", "practice": "Übung",
+    "kill switch": "Not-Aus", "setting": "Einstellung", "answer": "Antwort",
+    "starlight": "Starlight",
 }  # fmt: skip
 ACTIVITY = {
     "entries": [
         {"time": "2026-11-12T10:00:00", "kind": kind, "text": text}
-        for kind, text in [
-            ("action", 'ran mail.send (you approved it) {"to": "anna"}'),
-            ("action", "ran weather.forecast"),
-            ("denied", "did not run files.delete: it asks first and you said no"),
-            ("practice", 'practice mode: described mail.send {"to": "anna"}'),
-            ("failed", "web.search failed: no connection"),
-            ("kill switch", "web.search was stopped by the kill switch"),
-            ("kill switch", "kill switch ENGAGED: the button"),
-            ("kill switch", "kill switch released"),
-            ("kill switch", "a request was stopped"),
-            ("answer", "answered a request (3 steps, 2 tool calls)"),
-            ("answer", "answered a request (1 steps)"),
-            ("failed", "could not answer a request (the model did not respond)"),
-            ("setting", "rule changed: mail.* -> confirm"),
-            ("setting", "a device was paired (100.1.2.3)"),
-            ("denied", "a wrong pairing code was tried (100.1.2.3)"),
-            ("setting", "a device was removed: Pixel"),
-            ("practice", "practice mode on"),
-            ("setting", "the paused model was resumed"),
-            ("starlight", "Starlight started"),
-            ("starlight", "Starlight stopped"),
-        ]
+        for kind, text, _ in ACTIVITY_ROWS
     ]
 }
 APPROVALS = {
@@ -555,6 +619,7 @@ async def automations_form(page: Any) -> Scenario:
 async def memory_states(page: Any, site: str) -> Scenario:
     await page.goto(f"{site}/memory.html")
     await page.wait_for_selector("#memories > *:not(.skeleton)")
+    await page.wait_for_selector("#skills .skill")
     await settle(page)
     yield "memory"
     await open_all(page)
@@ -569,6 +634,7 @@ async def memory_states(page: Any, site: str) -> Scenario:
 
 async def activity_states(page: Any, site: str) -> Scenario:
     await page.goto(f"{site}/activity.html")
+    await page.wait_for_selector("#entries .entry")
     await settle(page)
     yield "activity"
 
@@ -735,6 +801,89 @@ async def test_no_page_shows_an_english_text_in_german(
             found += [(label, *row) for row in await english_left(page)]
         assert page.errors == []  # type: ignore[attr-defined]
     assert not found, "\n".join(map(str, found))
+
+
+async def test_activity_kinds_and_texts_are_german(static_site: str, full_app: Any) -> None:
+    """Every kind and every text shape the server builds shows in German; names stay."""
+    async with german_page(static_site, full_app, "activity") as page:
+        await page.goto(f"{static_site}/activity.html")
+        await page.wait_for_selector("#entries .entry")
+        await settle(page)
+        rows = await page.evaluate(
+            "() => [...document.querySelectorAll('#entries .entry')]"
+            ".map(r => [r.children[1].textContent, r.children[2].textContent])"
+        )
+        filters = await page.locator("#filters button").all_text_contents()
+    assert [text for _, text in rows] == [german for _, _, german in ACTIVITY_ROWS]
+    assert [pill for pill, _ in rows] == [ACTIVITY_KINDS[kind] for kind, _, _ in ACTIVITY_ROWS]
+    assert filters[:3] == ["Alles", "Aktionen", "Abgelehnt"]
+
+
+# The ready-made rules, as the server describes them (what each does), in German. A new template
+# must be added here and to i18n.js; the names stay (they become the rule's name).
+TEMPLATE_DOES = {
+    "morning-briefing": "werktags um 07:30: briefing.send ausführen",
+    "evening-todo": 'jeden Tag um 18:00: todo.due ausführen {"days": 1}; dann dir sagen '
+    "„Für heute und morgen noch offen: {result.count} Aufgabe(n)“ (nur wenn count > 0)",
+    "daily-flashcards": 'jeden Tag um 19:00: flashcards.due ausführen {"limit": 1}; dann dir sagen '
+    "„Heute warten {result.total} Karteikarte(n) auf dich. Sag 'frag mich ab' oder lerne sie in "
+    "den Notizen bei den Karteikarten.“ (nur wenn total > 0)",
+    "weekly-open-notes": "Freitag um 15:40: notes.query ausführen "
+    '{"where": "status is open or status is doing", "sort": "due", "limit": 20}; dann dir sagen '
+    "„{result.count} Notiz(en) haben noch den Status open oder doing. Sag 'zeig meine offenen "
+    "Notizen', um sie durchzugehen.“ (nur wenn count > 0)",
+    "nightly-backups": "jeden Tag um 03:00: Starlight fragen „Führe alle meine Sicherungen aus "
+    "(backup.list, dann backup.run für jede).“",
+    "memory-tidy": "monatlich am 1. um 10:00: memory.duplicates ausführen; dann dir sagen "
+    "„{result.count} Paare von Erinnerungen sagen fast dasselbe. Sag 'räum mein Gedächtnis auf', "
+    "um sie zusammenzuführen.“ (nur wenn count > 0)",
+    "weekly-cert-check": 'Montag um 09:00: certs.expiring ausführen {"days": 30}; dann dir sagen '
+    "„Zertifikate, die bald ablaufen: {result.expiring}“ (nur wenn expiring)",
+    "morning-briefing-aloud": "werktags um 07:30: briefing.read_aloud ausführen",
+    "overnight-mail": 'jeden Tag um 06:45: mail.overnight ausführen {"send": true}',
+    "weekly-pc-checkup": 'Sonntag um 18:00: system.health_report ausführen {"send": true}',
+    "monthly-review": 'monatlich am 1. um 09:00: journal.month ausführen {"month": "last"}; dann '
+    "dir sagen „Dein Monatsrückblick ist fertig: {result.saved}“",
+    "weekly-plan": "Montag um 08:00: Starlight fragen „Plane meine Woche: Lies meinen Kalender für "
+    "die nächsten 7 Tage (calendar.agenda) und meine offenen Aufgaben (todo.list_tasks) und "
+    "speichere dann einen kurzen Wochenplan als Notiz (notes.note) mit dem Titel 'Week plan' und "
+    "dem heutigen Datum.“",
+    "battery-low": "wenn sensors.battery_low passiert: dir sagen „Der Akku ist bei "
+    "{event.percent} %: Schließ das Ladegerät an.“",
+}
+
+
+async def test_automation_templates_are_german(static_site: str, full_app: Any) -> None:
+    async with german_page(static_site, full_app, "automations") as page:
+        await page.goto(f"{static_site}/automations.html")
+        await page.wait_for_selector("#templates > *")
+        await settle(page)
+        rows = await page.evaluate(
+            "() => [...document.querySelectorAll('#templates .template')]"
+            ".map(r => [r.querySelector('b').textContent, r.querySelector('.dim').textContent])"
+        )
+        everything = await page.evaluate("() => document.body.innerText")
+    assert dict(rows) == TEMPLATE_DOES
+    # what you wrote yourself stays as you wrote it (the fixture's rule says "Plan the week")
+    assert "„Plan the week“" in everything
+
+
+async def test_skill_cards_are_german(static_site: str, full_app: Any) -> None:
+    async with german_page(static_site, full_app, "memory") as page:
+        await page.goto(f"{static_site}/memory.html")
+        await page.wait_for_selector("#skills .skill")
+        await settle(page)
+        cards = await page.evaluate(
+            "() => [...document.querySelectorAll('#skills .skill')].map(c => ["
+            "c.querySelector('b').textContent, c.querySelector('.pill').textContent,"
+            "[...c.querySelectorAll('button, a.button-link')].map(b => b.textContent)])"
+        )
+    undo, export, delete = "Letzte Änderung rückgängig", "Exportieren", "Löschen"
+    assert cards == [
+        ["weekly-report", "erlaubt", ["Ablehnen", undo, export, delete]],
+        ["draft-note", "Entwurf", ["Erlauben", "Ablehnen", undo, export, delete]],
+        ["old-habit", "abgelehnt", ["Erlauben", undo, export, delete]],
+    ]
 
 
 # What a page says in a toast, a dialog or a tooltip that it sets later: one sample of each.
