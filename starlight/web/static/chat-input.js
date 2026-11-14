@@ -79,10 +79,10 @@ document.getElementById("form").onsubmit = (e) => {
   const text = input.value.trim();
   if (!text) return;
   if (text.startsWith("/") && runCommand(text)) { input.value = ""; input.oninput(); return; }
-  if (editing) { input.value = ""; input.style.height = INPUT_HEIGHT + "px"; sendEdit(text); return; }
+  if (editing) { input.value = ""; input.style.height = INPUT_HEIGHT + "px"; saveDraft(); sendEdit(text); return; }
   const files = attached; attached = []; showFiles();
   document.getElementById("photo-actions").hidden = true;
-  input.value = ""; input.style.height = INPUT_HEIGHT + "px";
+  input.value = ""; input.style.height = INPUT_HEIGHT + "px"; saveDraft();  // (sent: no draft)
   ask(text, files);
 };
 input.onkeydown = (e) => {
@@ -114,12 +114,66 @@ input.onkeydown = (e) => {
     input.setSelectionRange(last.length, last.length);
   }
 };
-input.oninput = () => {
+function sizeInput() {
   input.style.height = INPUT_HEIGHT + "px";  // shrink first, then grow with the text
   input.style.height = Math.min(input.scrollHeight, INPUT_MAX_HEIGHT) + "px";
+}
+input.oninput = () => {
+  sizeInput();
   if (!input.value.startsWith("/")) slashSel = 0;
   slashMenu();
+  clearTimeout(draftTimer); draftTimer = setTimeout(saveDraft, 300);
 };
+
+// -- drafts: what you typed and did not send stays with its conversation -----------------------
+// In localStorage, one key each (nothing goes to the server). A private conversation's draft
+// stays in this Map and never on disk. Attached files are not part of a draft.
+const DRAFT = "starlight-draft:";
+const privateDrafts = new Map();
+let draftFor = null, draftPrivate = false, draftTimer = null;  // draftFor: the conversation the box belongs to
+function saveDraft() {
+  clearTimeout(draftTimer);
+  if (!draftFor) return;
+  const text = input.value;
+  if (draftPrivate) { if (text) privateDrafts.set(draftFor, text); else privateDrafts.delete(draftFor); return; }
+  try { if (text) localStorage.setItem(DRAFT + draftFor, text); else localStorage.removeItem(DRAFT + draftFor); } catch (e) { /* full or off: no drafts */ }
+}
+// Another conversation is opened: keep this box's text for the old one, show the new one's draft.
+function switchDraft(id, isPrivate) {
+  if (id === draftFor) { draftPrivate = isPrivate; return; }  // (the same one shown again: the box stays)
+  if (editing) { cancelEdit(); input.value = ""; }  // (an edit belongs to the old conversation)
+  saveDraft();
+  const first = draftFor === null;
+  draftFor = id; draftPrivate = isPrivate;
+  if (first && input.value) { saveDraft(); return; }  // (text put there by a shared link: it stays)
+  let text = "";
+  if (isPrivate) text = privateDrafts.get(id) || "";
+  else { try { text = localStorage.getItem(DRAFT + id) || ""; } catch (e) { /* */ } }
+  input.value = text;
+  sizeInput();  // (not oninput: a draft starting with / must not open the command menu)
+  if (openMenu && openMenu.slash) closeMenu();
+}
+// A conversation is deleted: its draft goes too.
+function dropDraft(id) {
+  privateDrafts.delete(id);
+  try { localStorage.removeItem(DRAFT + id); } catch (e) { /* */ }
+  if (id === draftFor) { clearTimeout(draftTimer); draftFor = null; input.value = ""; sizeInput(); }
+}
+// Drafts of conversations that are gone: looked at once when the page opens, with the whole
+// list (the open ones and the archived ones, neither filtered nor cut at 200); otherwise skipped.
+async function cleanDrafts() {
+  try {
+    const [open, archived] = await Promise.all([api("/api/conversations"), api("/api/conversations?archived=true")]);
+    if (open.conversations.length >= 200 || archived.conversations.length >= 200) return;
+    const known = new Set([...open.conversations, ...archived.conversations].map(c => c.id));
+    if (draftFor) known.add(draftFor);
+    for (let i = localStorage.length - 1; i >= 0; i--) {
+      const key = localStorage.key(i);
+      if (key && key.startsWith(DRAFT) && !known.has(key.slice(DRAFT.length))) localStorage.removeItem(key);
+    }
+  } catch (e) { /* */ }
+}
+window.addEventListener("pagehide", saveDraft);
 
 // Esc stops the answer that is being written (as the Stop button does).
 document.addEventListener("keydown", (e) => {

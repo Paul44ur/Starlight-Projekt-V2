@@ -183,6 +183,7 @@ function takeJump() {
     try { await api("/api/conversations/" + encodeURIComponent(jump.id)); conversation = jump.id; } catch (e) { /* none: as usual */ }
   }
   if (conversation) await openConversation(conversation);
+  cleanDrafts();
   if (jump.start) input.focus();
   connect(); refresh(); setInterval(refresh, 4000);
   if ("serviceWorker" in navigator) navigator.serviceWorker.register("/sw.js").catch(() => { /* http on a phone: no offline page */ });

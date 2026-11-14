@@ -536,7 +536,9 @@ Word, Excel, text) onto the chat, or press the paperclip, to send them with your
 Answers show their formatting: headings, lists, tables, links and code blocks (each with its own
 **Copy**). Until the first word arrives, the answer shows that Starlight is working, and for how
 long. While it writes, **Send** turns into **Stop** (or press **Esc**); **Up** in the empty box
-brings back your last question. Every answer has **Copy** (the text as written, Markdown
+brings back your last question. What you typed and did not send stays with its conversation
+(in this browser only), and comes back when you open it again; a private conversation's draft
+only lives until you close the page. Every answer has **Copy** (the text as written, Markdown
 included), and the latest one **Regenerate** (asks the same question again and replaces that
 answer); under it you see how fast it was written (tokens per second) and how long it took. With
 a mouse, older answers show **Copy** and **Branch** when you point at them. Scrolled up to read?

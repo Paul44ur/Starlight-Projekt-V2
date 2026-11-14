@@ -264,6 +264,15 @@ commands, files, voice) and `chat-page.js` (the ready sign, the status, start-up
 serves only the names in `CHAT_SCRIPTS` (as for the Notes page), and `sw.js` keeps them for
 the phone's offline page.
 
+**Drafts.** `chat-input.js` keeps what is in the message box for the open conversation: about
+300 ms after typing, at once when another conversation opens (`switchDraft`, called by
+`openConversation`) and on `pagehide`. One `localStorage` key each, `starlight-draft:<id>`;
+nothing goes to the server. A private conversation's draft is only in a `Map`, never in any
+storage. Sending, emptying the box or deleting the conversation (`dropDraft`) removes it. Every
+storage call is in `try/catch`. At start-up `cleanDrafts` removes drafts of conversations that
+are gone, but only when it can read the whole list (open and archived, each under the 200 the
+server returns); otherwise it does nothing.
+
 **The chat page's layout** (after the Claude app's, in Starlight's look): the sidebar holds
 the actions, the pages (`.side-nav`, the same links the phone's drawer shows) and the
 conversations; the bar shows the open one's name (`showTitle`, its menu is the list's
