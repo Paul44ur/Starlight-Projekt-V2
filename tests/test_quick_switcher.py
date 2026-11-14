@@ -108,9 +108,9 @@ async def test_ctrl_k_opens_it_with_the_focus_in_the_box_and_lists_the_groups(
             # at most six conversations, the newest first (the pinned old one is not first)
             assert rows[:6] == ["Plan the week", "Server check", "Recipe for Sunday", "Memory",
                                 "Secret plan", "Holiday"]  # fmt: skip
-            assert rows[6:] == ["Chat", "Notes", "Memory", "Activity", "Automations", "Settings",
-                                "New conversation", "Private conversation", "Change the theme",
-                                "Keyboard shortcuts"]  # fmt: skip
+            assert rows[6:] == ["Chat", "Today", "Notes", "Memory", "Activity", "Automations",
+                                "Settings", "New conversation", "Private conversation",
+                                "Change the theme", "Keyboard shortcuts"]  # fmt: skip
             lock = page.locator("#quick .quick-row", has_text="Secret plan").locator("svg")
             assert 'y="11"' in await lock.inner_html()  # (the lock icon)
             assert await page.locator("#quick .quick-row svg").count() == len(rows)
@@ -407,9 +407,9 @@ async def test_in_german_headings_and_rows_speak_german_but_titles_stay(
             assert await page.evaluate(HEADS) == ["Gespräche", "Seiten", "Befehle"]
             rows = await page.evaluate(ROWS)
             assert "Memory" in rows[:6]  # a conversation called Memory stays as it is
-            assert rows[6:] == ["Chat", "Notizen", "Gedächtnis", "Aktivität", "Automationen",
-                                "Einstellungen", "Neues Gespräch", "Privates Gespräch",
-                                "Farben wechseln", "Tastenkürzel"]  # fmt: skip
+            assert rows[6:] == ["Chat", "Heute", "Notizen", "Gedächtnis", "Aktivität",
+                                "Automationen", "Einstellungen", "Neues Gespräch",
+                                "Privates Gespräch", "Farben wechseln", "Tastenkürzel"]  # fmt: skip
             placeholder = await page.locator("#quick input").get_attribute("placeholder")
             assert placeholder == "Suchen oder springen zu ..."
             await page.keyboard.type("gedä")  # filtered on the text as shown
@@ -457,7 +457,7 @@ async def test_on_the_notes_page_ctrl_k_stays_the_notes_finder(
 
 
 def test_every_page_loads_the_switcher_and_the_app_serves_it(tmp_path: Path) -> None:
-    for name in ("chat", "notes", "memory", "activity", "automations", "settings"):
+    for name in ("chat", "notes", "memory", "activity", "automations", "settings", "today"):
         html = (STATIC / f"{name}.html").read_text("utf-8")
         scripts = re.findall(r'<script src="/([^"]+)"></script>', html)
         assert scripts.index("quick.js") == scripts.index("common.js") + 1, name

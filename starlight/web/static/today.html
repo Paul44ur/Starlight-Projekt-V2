@@ -1,0 +1,222 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)" />
+<meta name="theme-color" content="#12162a" media="(prefers-color-scheme: dark)" />
+<title>Starlight today</title>
+<link rel="icon" href="/icon.svg" type="image/svg+xml" />
+<link rel="apple-touch-icon" href="/icons/icon-180.png" />
+<link rel="stylesheet" href="/style.css" />
+<script src="/i18n.js"></script>
+<style>
+  /* the Night Sky look: one centred column of cards, titles in the display font */
+  .page { max-width: 760px; }
+  .card { margin: var(--s-4) 0; }
+  .card h2 { font-size: var(--fs-xl); font-weight: 600; margin: 0 0 var(--s-2); }
+  header.top h1 { font-size: var(--fs-xl); font-weight: 600; }
+  header.top h1 svg.ico { width: 22px; height: 22px; margin-right: 0; vertical-align: 0; }
+  body.remote .local-only { display: none; }
+  .intro { margin: var(--s-5) 0 var(--s-2); }
+  .date { font-family: var(--font-display); font-size: var(--fs-xl); font-weight: 600; margin: 0 0 var(--s-3); }
+  .intro .row { gap: var(--s-2); }
+  /* a line of a card: a time (or nothing) and the words; the times line up in one column */
+  .item { display: grid; grid-template-columns: 6.5em 1fr; gap: var(--s-3); align-items: baseline;
+          padding: var(--s-2) 0; border-bottom: 1px solid var(--border); }
+  .item:last-of-type { border-bottom: none; }
+  .item.plain { grid-template-columns: 1fr; }
+  .item .num { font-size: var(--fs-sm); color: var(--dim); }
+  .item .words { overflow-wrap: anywhere; min-width: 0; }
+  .item .place, .item .late { font-size: var(--fs-sm); display: block; }
+  .item .place { color: var(--dim); }
+  .item .late { color: var(--bad); }
+  .links { margin: var(--s-3) 0 0; }
+  .weather .where { font-family: var(--font-display); font-size: var(--fs-lg); font-weight: 600; }
+  .weather .sky { display: inline-block; }
+  .weather .sky::first-letter { text-transform: uppercase; }
+  .weather p { margin: var(--s-1) 0; }
+  .fail .why { overflow-wrap: anywhere; }
+  /* a touch screen: lines and links with room for a finger */
+  @media (pointer: coarse) {
+    .item { min-height: 44px; padding-block: var(--s-3); }
+    .links a { display: inline-block; padding-block: 12px; margin-block: -12px; }
+  }
+</style>
+</head>
+<body>
+<header class="top">
+  <h1 data-icon="star">Today</h1><span class="spacer"></span>
+  <nav><a href="/">Chat</a><a href="/notes">Notes</a><a href="/memory">Memory</a><a href="/activity">Activity</a><a href="/automations">Automations</a><a href="/settings">Settings</a></nav>
+  <button id="theme" class="icon" onclick="cycleTheme()" aria-label="Theme" data-icon="system"></button>
+</header>
+<div class="page">
+  <div class="intro">
+    <p class="date" id="date" translate="no"></p>
+    <div class="row">
+      <button type="button" class="primary" id="ask">Ask about my day</button>
+      <button type="button" class="icon" id="refresh" data-icon="refresh" title="Refresh" aria-label="Refresh"></button>
+    </div>
+  </div>
+  <div id="cards"><div class="card" id="booting"><div class="skeleton" aria-hidden="true"><i></i><i></i><i></i></div></div></div>
+  <div class="card" id="none" hidden>
+    <p class="dim">Switch on the calendar, to-do, reminders or weather module in Settings to see your day here.</p>
+    <p class="links"><a href="/settings">Settings</a></p>
+  </div>
+</div>
+<script src="/common.js"></script>
+<script src="/quick.js"></script>
+<script>
+// Each card has its own route (/api/today/<card>), asked side by side: a slow card (the weather)
+// never holds back the others. What comes back is data; the fixed words are written here, so
+// i18n.js can make them German. A title, place or text is the user's (or a calendar's from
+// outside): it goes in as text and is never translated.
+const german = window.starlightLanguage === "de";
+const tr = (text) => window.starlightTranslate ? window.starlightTranslate(text) : text;
+const cards = document.getElementById("cards");
+let round = 0;  // a newer load (Refresh) makes the answers of an older one obsolete
+
+function yours(tag, cls, text) {  // (the user's words: text only, never translated)
+  const node = el(tag, cls, text);
+  node.translate = false;
+  return node;
+}
+function dayOf(iso) {  // "2026-11-14" as that day (no clock, so no time zone shifts it)
+  const [y, m, d] = iso.split("-").map(Number);
+  return new Date(y, m - 1, d);
+}
+function dateLine(iso) {
+  const lang = german ? "de" : "en-GB";
+  const day = dayOf(iso);
+  const weekday = new Intl.DateTimeFormat(lang, { weekday: "long" }).format(day);
+  const rest = new Intl.DateTimeFormat(lang, { day: "numeric", month: "long" }).format(day);
+  return weekday + ", " + rest;
+}
+function shortDate(iso) {
+  return new Intl.DateTimeFormat(german ? "de" : "en-GB", { day: "numeric", month: "short" }).format(dayOf(iso));
+}
+
+const TITLES = { approvals: "Waiting for your OK", agenda: "Agenda", todo: "To-dos", reminders: "Reminders", weather: "Weather" };
+const SHOWN = {
+  approvals(data, body, card) {
+    if (!data.count) { card.remove(); return; }
+    body.appendChild(el("p", "", data.count === 1 ? "1 thing waits for your OK" : data.count + " things wait for your OK"));
+    body.appendChild(el("p", "links")).appendChild(el("a", "", "Open Activity")).href = "/activity#approvals";
+  },
+  agenda(data, body) {
+    if (!data.events.length) { body.appendChild(el("p", "dim", "Nothing planned today.")); return; }
+    data.events.forEach(event => {
+      const row = el("div", "item");
+      row.appendChild(el("span", "num", event.all_day ? "all day" : event.time));
+      const words = el("div", "words");
+      words.appendChild(yours("span", "", event.title));
+      if (event.location) words.appendChild(yours("span", "place", event.location));
+      row.appendChild(words);
+      body.appendChild(row);
+    });
+  },
+  todo(data, body) {
+    const tasks = data.overdue.length + data.due.length;
+    if (!tasks) body.appendChild(el("p", "dim", "Nothing due today."));
+    data.overdue.forEach(task => {
+      const row = el("div", "item plain"), words = el("div", "words");
+      words.appendChild(yours("span", "", task.text));
+      const late = el("span", "late", "overdue since " + shortDate(task.due));
+      words.appendChild(late);
+      row.appendChild(words);
+      body.appendChild(row);
+    });
+    data.due.forEach(task => {
+      const row = el("div", "item plain"), words = el("div", "words");
+      words.appendChild(yours("span", "", task.text));
+      if (task.time) words.append(" ", el("span", "num", task.time));
+      row.appendChild(words);
+      body.appendChild(row);
+    });
+    const links = el("p", "links local-only");  // (the Notes page is at the PC only)
+    const open = el("a", "", "Open tasks");
+    open.href = "/notes?view=tasks";
+    links.appendChild(open);
+    body.appendChild(links);
+  },
+  reminders(data, body) {
+    if (!data.reminders.length) { body.appendChild(el("p", "dim", "No reminders today.")); return; }
+    data.reminders.forEach(reminder => {
+      const row = el("div", "item");
+      row.appendChild(el("span", "num", reminder.time));
+      const words = el("div", "words");
+      words.appendChild(yours("span", "", reminder.text));
+      row.appendChild(words);
+      body.appendChild(row);
+    });
+  },
+  weather(data, body) {
+    body.appendChild(yours("p", "where", data.place));
+    const sky = el("p");
+    if (data.conditions) sky.append(el("span", "sky", data.conditions), " ");
+    sky.appendChild(el("span", "num", data.temperature));
+    body.appendChild(sky);
+    if (data.feels_like) body.appendChild(el("p", "dim small", "feels like " + data.feels_like));
+    if (data.high !== null && data.low !== null) {
+      body.appendChild(el("p", "", "today " + data.low + " to " + data.high + ", " + data.rain_chance + " chance of rain"));
+    }
+  },
+};
+
+function failed(body, message) {
+  body.parentElement.classList.add("fail");
+  if (message === "Starlight is stopped") { body.appendChild(el("p", "dim", message)); return; }
+  body.appendChild(el("p", "dim", "Could not load"));
+  body.appendChild(yours("p", "dim small why", message));  // (the reason, as text)
+}
+
+async function fill(name, card, body, fresh, mine) {
+  let data = null, message = "";
+  try { data = await api("/api/today/" + name + (fresh ? "?fresh=1" : "")); }
+  catch (e) { message = String(e.message || e); }
+  if (mine !== round) return;
+  body.replaceChildren();
+  if (data) SHOWN[name](data, body, card); else failed(body, message);
+}
+
+async function load(fresh) {
+  const mine = ++round;
+  let info;
+  try { info = await api("/api/today"); }
+  catch (e) {
+    if (mine !== round) return;
+    cards.replaceChildren();
+    const card = el("div", "card"), body = el("div");
+    card.appendChild(body);
+    cards.appendChild(card);
+    failed(body, String(e.message || e));
+    document.getElementById("none").hidden = true;
+    return;
+  }
+  if (mine !== round) return;
+  document.getElementById("date").textContent = dateLine(info.date);
+  cards.replaceChildren();
+  document.getElementById("none").hidden = info.cards.length > 0;
+  info.cards.forEach(name => {
+    const card = el("div", "card " + name);
+    card.appendChild(el("h2", "", TITLES[name]));
+    const body = el("div");
+    body.appendChild(el("div", "skeleton")).setAttribute("aria-hidden", "true");
+    body.firstChild.append(el("i"), el("i"), el("i"));
+    card.appendChild(body);
+    cards.appendChild(card);
+    fill(name, card, body, fresh, mine);
+  });
+}
+
+// "Ask about my day": the question waits in the message box of a new conversation (chat-page.js,
+// ?ask=); nothing is sent until you press Send.
+document.getElementById("ask").onclick = () => {
+  location.href = "/?" + new URLSearchParams({ ask: tr("How does my day look?") });
+};
+document.getElementById("refresh").onclick = () => load(true);
+document.getElementById("date").textContent = dateLine(new Date().toLocaleDateString("sv"));
+load(false);
+</script>
+</body>
+</html>

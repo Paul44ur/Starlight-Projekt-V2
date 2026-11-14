@@ -111,13 +111,14 @@ async def test_the_sidebar_holds_the_actions_the_pages_and_the_conversations(
             assert await page.locator("#newprivate").inner_text() == "Private conversation"
             pages = side.locator(".side-nav a")
             assert await pages.all_inner_texts() == [
+                "Today",
                 "Notes",
                 "Memory",
                 "Activity",
                 "Automations",
                 "Settings",
             ]
-            assert await side.locator(".side-nav a > svg.ico").count() == 5
+            assert await side.locator(".side-nav a > svg.ico").count() == 6
             assert await page.locator("header.top a[href='/notes']").count() == 0  # (moved)
             labels = await page.locator("#list .folder, #list .conv .t").all_inner_texts()
             assert labels[:5] == [

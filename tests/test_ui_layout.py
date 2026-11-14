@@ -20,13 +20,13 @@ def read(name: str) -> str:
     return (STATIC / name).read_text(encoding="utf-8")
 
 
-NIGHT_SKY = ("settings.html", "memory.html", "pair.html", "activity.html", "automations.html",
-             "kill.html", "notes.html")  # fmt: skip
+NIGHT_SKY = ("settings.html", "memory.html", "today.html", "pair.html", "activity.html",
+             "automations.html", "kill.html", "notes.html")  # fmt: skip
 
 
 def test_every_page_shows_the_real_logo_not_an_emoji() -> None:
     for name in ("chat.html", "memory.html", "settings.html", "pair.html", "notes.html",
-                 "activity.html", "automations.html", "kill.html"):  # fmt: skip
+                 "activity.html", "automations.html", "kill.html", "today.html"):  # fmt: skip
         page = read(name)
         assert "⭐" not in page, name
         if name in NIGHT_SKY:  # (the Night Sky look: the gold star icon is its mark)

@@ -15,7 +15,7 @@ window.SHORTCUTS = window.SHORTCUTS || [
 (function () {
   const MAX_ROWS = 6, WAIT = 150;
   const PAGES = [  // [address, icon, name, only at the PC]
-    ["/", "talk", "Chat", false], ["/notes", "notes", "Notes", true], ["/memory", "memory", "Memory", false],
+    ["/", "talk", "Chat", false], ["/today", "today", "Today", false], ["/notes", "notes", "Notes", true], ["/memory", "memory", "Memory", false],
     ["/activity", "activity", "Activity", false], ["/automations", "automations", "Automations", false],
     ["/settings", "settings", "Settings", false],
   ];
@@ -75,7 +75,7 @@ window.SHORTCUTS = window.SHORTCUTS || [
       })]);
     }
     out.push(["Pages", PAGES.filter(p => !p[3] || local)
-      .filter(p => fits(query, shown(p[2]))).slice(0, MAX_ROWS)
+      .filter(p => fits(query, shown(p[2])))  // (all of them: there are seven now)
       .map(([address, ico, name]) => ({ icon: ico, label: name, run: () => go(address) }))]);
     out.push(["Commands", COMMANDS.filter(c => fits(query, shown(c[1])))
       .slice(0, MAX_ROWS).map(([ico, name, run]) => ({ icon: ico, label: name, run }))]);

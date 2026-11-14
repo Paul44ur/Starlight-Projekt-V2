@@ -16,7 +16,7 @@ from tests.test_chat_page import FAKE_SERVER, SEND
 
 static_site = test_chat_page.static_site  # (a fixture: a server for the page's files)
 PAGES = ["chat.html", "settings.html", "activity.html", "automations.html", "memory.html",
-         "kill.html", "pair.html"]  # fmt: skip
+         "kill.html", "pair.html", "today.html"]  # fmt: skip
 
 
 async def browser(playwright: Any) -> Any:

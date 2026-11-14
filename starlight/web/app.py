@@ -59,6 +59,7 @@ from starlight.web.export import export_html
 from starlight.web.model_api import add_model_api
 from starlight.web.notes_api import add_notes_api
 from starlight.web.suggestions import pick_suggestions
+from starlight.web.today_api import add_today_api
 
 STATIC = Path(__file__).with_name("static")
 # The Notes page's scripts, loaded in this order by notes.html (notes-editor.js: on the first
@@ -529,6 +530,11 @@ def create_app(paths: Paths | None = None) -> Any:
     def activity_page(request: Request) -> str:
         viewer(request)
         return page("activity.html")
+
+    @app.get("/today", response_class=HTMLResponse)
+    def today_page(request: Request) -> str:
+        viewer(request)
+        return page("today.html")
 
     @app.get("/automations", response_class=HTMLResponse)
     def automations_page(request: Request) -> str:
@@ -1204,6 +1210,7 @@ def create_app(paths: Paths | None = None) -> Any:
 
     add_notes_api(app, kernel, local_only, body)
     add_backup_api(app, kernel, local_only, body)
+    add_today_api(app, kernel, viewer)
     add_model_api(app, paths, kernel, viewer, local_only, body, lambda: ANSWERING.count > 0)
 
     # -- settings: safety limits (starlight/core/safety.py) ---------------------------------

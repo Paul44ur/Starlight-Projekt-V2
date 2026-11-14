@@ -226,6 +226,29 @@
     "Last ran": "Zuletzt gelaufen", "Has not run yet": "Noch nicht gelaufen", "History": "Verlauf",
     "waiting for your OK": "wartet auf dein OK", "skipped": "übersprungen",
     "stopped by the kill switch": "vom Not-Aus gestoppt",
+    // the Today page (today.html)
+    "Ask about my day": "Frag zu meinem Tag", "Refresh": "Aktualisieren",
+    "Agenda": "Termine", "To-dos": "Aufgaben", "Reminders": "Erinnerungen", "Weather": "Wetter",
+    "Open Activity": "Aktivität öffnen", "Open tasks": "Aufgaben öffnen", "all day": "ganztägig",
+    "Nothing planned today.": "Heute ist nichts geplant.", "Nothing due today.": "Heute ist nichts fällig.",
+    "No reminders today.": "Heute keine Erinnerungen.",
+    "Could not load": "Konnte nicht geladen werden", "Starlight is stopped": "Starlight ist angehalten",
+    "Switch on the calendar, to-do, reminders or weather module in Settings to see your day here.":
+      "Schalte in den Einstellungen das Kalender-, Aufgaben-, Erinnerungs- oder Wetter-Modul ein, um hier deinen Tag zu sehen.",
+    "1 thing waits for your OK": "1 Sache wartet auf dein OK",
+    // the weather's words (modules/weather/module.py, CODES)
+    "clear sky": "klarer Himmel", "mainly clear": "überwiegend klar", "partly cloudy": "teils bewölkt",
+    "overcast": "bedeckt", "fog": "Nebel", "freezing fog": "gefrierender Nebel",
+    "light drizzle": "leichter Nieselregen", "drizzle": "Nieselregen", "heavy drizzle": "starker Nieselregen",
+    "freezing drizzle": "gefrierender Nieselregen", "heavy freezing drizzle": "starker gefrierender Nieselregen",
+    "light rain": "leichter Regen", "rain": "Regen", "heavy rain": "starker Regen",
+    "freezing rain": "gefrierender Regen", "heavy freezing rain": "starker gefrierender Regen",
+    "light snow": "leichter Schneefall", "snow": "Schneefall", "heavy snow": "starker Schneefall",
+    "snow grains": "Schneegriesel", "light rain showers": "leichte Regenschauer",
+    "rain showers": "Regenschauer", "violent rain showers": "heftige Regenschauer",
+    "light snow showers": "leichte Schneeschauer", "snow showers": "Schneeschauer",
+    "thunderstorm": "Gewitter", "thunderstorm with hail": "Gewitter mit Hagel",
+    "thunderstorm with heavy hail": "Gewitter mit starkem Hagel",
     // the kill switch page
     "STOP": "STOPP", "everything": "alles",
     "One press stops everything Starlight is doing on the PC, until you resume there.": "Ein Druck hält alles an, was Starlight auf dem PC tut, bis du dort fortsetzt.",
@@ -787,6 +810,11 @@
     [/^cap (\d+)\/s$/, "Obergrenze $1/s"],
     [/^tool ([\w.*-]+) failed$/, "Werkzeug $1 fehlgeschlagen"],
     [/^(?!(?:no|an|any|the) )([a-z_][\w.-]*) error$/, "Fehler in $1"],
+    // the Today page (today.html)
+    [/^(\d+) things wait for your OK$/, "$1 Dinge warten auf dein OK"],
+    [/^overdue since (.+)$/, "überfällig seit $1"],
+    [/^feels like (.+)$/, "gefühlt $1"],
+    [/^today (.+) to (.+), (.+) chance of rain$/, "heute $1 bis $2, $3 Regenwahrscheinlichkeit"],
   ];
   // Never translated: the conversation, code, and what you type.
   const KEEP = ".msg .body, pre, code, textarea, [translate=no], .notranslate";

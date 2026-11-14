@@ -105,7 +105,7 @@ async def test_one_centred_column_of_cards_with_display_titles(
             title = page.locator("header.top h1")
             assert "Space Grotesk" in await title.evaluate("h => getComputedStyle(h).fontFamily")
             links = await page.locator("header.top nav a").all_inner_texts()
-            assert links == ["Chat", "Notes", "Memory", "Activity", "Automations"]
+            assert links == ["Chat", "Today", "Notes", "Memory", "Activity", "Automations"]
         finally:
             await browser.close()
 

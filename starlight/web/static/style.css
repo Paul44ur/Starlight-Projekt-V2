@@ -245,6 +245,9 @@ dialog#quick::backdrop { background: var(--scrim, rgb(0 0 0 / .5)); }
                   font-size: var(--fs-sm); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .quick-none { margin: var(--s-3) var(--s-2); color: var(--dim); }
 @media (max-width: 760px) { header.top nav { gap: 8px; font-size: 13px; } }
+/* A phone: the links get their own row(s) under the title, so the theme button stays beside the
+   title and is not left alone on a row of its own (the bar has one link more with Today). */
+@media (max-width: 560px) { header.top nav { order: 1; flex: 1 0 100%; } }
 /* A touch screen (a phone, a tablet): every control at least 44 px, so a finger hits it; the
    mouse look (40 px: 8 px of padding around a line of text) stays as it is. At no weight
    (:where), so a page can make a small control, such as a chip's button, a little smaller on

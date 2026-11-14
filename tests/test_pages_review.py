@@ -15,7 +15,7 @@ from tests.test_german_everywhere import APP, DEVICES, german_page, settle
 from tests.test_german_everywhere import full_app as full_app  # (the fixture)
 from tests.test_notes_page import notebook as notebook  # (the fixture it needs)
 
-PAGES = ("chat", "notes", "settings", "memory", "activity", "automations", "kill", "pair")
+PAGES = ("chat", "notes", "settings", "memory", "activity", "automations", "kill", "pair", "today")
 LOOKS = ("dark", "light")
 READY = {
     "chat": ".conv",
@@ -26,6 +26,7 @@ READY = {
     "automations": ".rule",
     "kill": "button",
     "pair": "#go",
+    "today": "#cards .card h2",
 }
 
 

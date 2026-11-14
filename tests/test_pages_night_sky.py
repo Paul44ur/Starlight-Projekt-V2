@@ -19,7 +19,7 @@ from tests.test_chat_page import CHROMIUM, static_site  # noqa: F401  (a fixture
 from tests.test_pages_look import DATA
 
 STATIC = REPO / "starlight" / "web" / "static"
-PAGES = ("memory", "activity", "automations", "kill", "pair")
+PAGES = ("memory", "activity", "automations", "kill", "pair", "today")
 COLOUR = re.compile(r"#[0-9a-fA-F]{3,8}\b|\brgba?\(|\bhsla?\(")
 
 

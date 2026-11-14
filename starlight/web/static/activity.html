@@ -48,7 +48,7 @@
 <body>
 <header class="top">
   <h1 data-icon="star">Activity</h1><span class="spacer"></span>
-  <nav><a href="/">Chat</a><a href="/notes">Notes</a><a href="/memory">Memory</a><a href="/automations">Automations</a><a href="/settings">Settings</a></nav>
+  <nav><a href="/">Chat</a><a href="/today">Today</a><a href="/notes">Notes</a><a href="/memory">Memory</a><a href="/automations">Automations</a><a href="/settings">Settings</a></nav>
   <button id="theme" class="icon" onclick="cycleTheme()" aria-label="Theme" data-icon="system"></button>
 </header>
 <div class="page">
@@ -100,12 +100,15 @@ async function load() {
   if (!data.entries.length) box.appendChild(el("p", "dim", "Nothing yet."));
   document.getElementById("count").textContent = data.entries.length + " shown";
 }
+let jumped = false;
 async function loadQueue() {
   let data;
   try { data = await api("/api/approvals"); } catch (e) { return; }
   const card = document.getElementById("approvals");
   const box = document.getElementById("queue");
   card.hidden = !data.items.length;
+  // /activity#approvals (the Today page's link): the card was hidden when the page loaded
+  if (!card.hidden && location.hash === "#approvals" && !jumped) { jumped = true; card.scrollIntoView(); }
   box.replaceChildren();
   data.items.forEach(item => {
     const row = el("div", "waiting");

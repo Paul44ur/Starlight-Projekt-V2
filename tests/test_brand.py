@@ -20,7 +20,7 @@ from tests.test_notes_page import notebook as notebook  # (a fixture)
 from tests.test_notes_page import notes_page, opened
 from tests.test_remote import LOCAL, client, home
 
-PAGES = ("chat", "notes", "settings", "memory", "activity", "automations", "pair")
+PAGES = ("chat", "notes", "settings", "memory", "activity", "automations", "pair", "today")
 # Emoji and the symbol glyphs the pages used before (a button without words shows an icon).
 GLYPH = re.compile("[\u2190-\u2bff\U0001f300-\U0001faff\uff0b]")
 

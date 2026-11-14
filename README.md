@@ -54,6 +54,7 @@ and answer you on WhatsApp. It will ask you before it does anything risky. And o
 | **To-do lists** | "Add 'file taxes' for Friday, high priority" — lists, due dates and priorities; shows what's due and overdue. Tasks written in your notes count too (`- [ ] Call Tom due: friday priority: high`): they show up with their note, and "done: call Tom" ticks them in the note. A date you type in words becomes a date like 2026-11-06 when Starlight or the Notes page saves. German works too (`fällig: Freitag`, `priorität: hoch`, `wiederholen: jeden Montag`). |
 | **Calendar** | Add events, see your agenda and free time, get an alert before something starts. Subscribe to your Google/Outlook/Nextcloud calendar's iCal link (read-only). Ten minutes before a meeting it sends what you have on it: your notes, mail and documents that mention it (`prepare_minutes` in `config\modules\calendar.yaml`; 0 turns it off). |
 | **Daily briefing** | "How does my day look?" — events, to-dos, reminders, weather, headlines, new mail and alerts in one short message. "Read me my briefing" says it out loud on the PC's speakers (with the voice installed). |
+| **Today page** | **Today** shows your day as cards: what waits for your OK, the agenda, to-dos that are due or overdue, today's reminders and the weather. A card is only there if its module is on. Nothing on the page changes anything. **Ask about my day** puts "How does my day look?" in the chat's message box (not sent). |
 | **Automations** | "Send me the briefing every weekday at 7:30", "when the NAS goes down, tell me" — rules that run on a schedule or when something happens. Anything that normally asks first runs only if you approved it for that rule: approving a rule's own step covers exactly that step; for the model to use a tool in an "ask" step, allow it with `automations.allow`. The **Automations** page in the web chat builds rules with *When* (a schedule or an event), *If* (a condition on the event) and *Then* (steps), checks them and shows what they may run without asking; ready-made ones include the briefing read aloud, overnight mail, a weekly PC check-up and a low-battery warning. A condition can combine several with and, or, not and brackets (also und, oder, nicht), for example "when a server goes down, if `server is nas or server is router`, tell me", or after a step `count > 0 and items has milk`; words with "and" or "or" in them go in quotes (`subject has "rock and roll"`). A weekly schedule names its day ("every Monday at 9:00"). A saved rule whose schedule Starlight does not understand (one made as "every week at 9:00" before it asked for the day, or a typo in `automations.yaml`) is kept but does not run until it gets a new one: "reschedule review to every Monday at 9:00" (`automations.reschedule`); the Automations page marks it. Under each rule the page says when it last ran and how it went (done, failed with the reason, waiting for your OK, skipped); **History** opens its last ten runs. **Use** on a ready-made rule fills its messages in German on a German page. |
 | **Notices what happens on the PC** | A new file in a folder you watch ("watch my Downloads folder"), a USB stick or drive plugged in or out, the battery running low, a program starting, you leaving the PC and coming back — automations can react to each. Coming back after 10 minutes or more brings one message with what came in meanwhile. |
 | **Approval queue** | What Starlight prepared for you — a drafted reply, an automation step it may not take by itself — waits on the **Activity** page (and "N waiting" in the chat header). **Approve** runs exactly what is shown (if that fails, say because the mail server is away, it waits again with the reason); **Dismiss** drops it. |
@@ -553,8 +554,18 @@ conversation, a note (on the PC), a page or a command such as *New conversation*
 narrow the list, use the arrow keys and Enter. On the Notes page Ctrl+K stays the note finder;
 **Ctrl+Shift+K** opens the quick switcher there.
 
+**The Today page.** **Today** (in the sidebar and in every page's top bar) shows your day in
+cards: *Waiting for your OK* (only when something waits; **Open Activity** goes to it), *Agenda*
+(today's events), *To-dos* (overdue first, then due today), *Reminders* (today's) and *Weather*
+(the place of the daily briefing). A card whose module is off is not shown; if none can be
+shown, the page says which modules to switch on. **Ask about my day** opens the chat with the
+question in the message box; nothing is sent until you press Send. **Refresh** (the round arrow)
+loads every card again. The page does not refresh by itself. A card that fails says "Could not
+load" and gives the reason; the other cards still show. With the kill switch on, the agenda and
+the weather say that Starlight is stopped.
+
 **How it is laid out.** On the left: **New conversation**, **Private conversation**, the
-search, the pages (Notes, Memory, Activity, Automations, Settings), your conversations
+search, the pages (Today, Notes, Memory, Activity, Automations, Settings), your conversations
 and, at the bottom, the model. **Pinned** conversations come first. The others, those without a
 folder, are grouped by the day you last used them: **Today**, **Yesterday**, **Last 7 days**
 and **Older**. A group with nothing in it is not shown. Folders keep their own names. The

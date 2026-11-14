@@ -1030,6 +1030,21 @@ indexes so they rebuild, and writes `data/restore-result.json`, which Settings s
 A damaged pending file is recorded and never stops the start. If another Starlight holds
 `data/core.lock`, the restore stays staged.
 
+**The Today page** (`starlight/web/static/today.html`, routes in `starlight/web/today_api.py`).
+`GET /api/today` gives today's date and the cards that exist now (the module is on; the
+approvals card only while something waits). `GET /api/today/{card}` gives one card: `approvals`,
+`agenda`, `todo`, `reminders`, `weather` (`?fresh=1` skips the kept answer). The page asks for
+the cards side by side, so a slow card never holds back the others. All routes are read only
+(`viewer`, so a paired phone may read; POST gives 405). An unknown card or a module that is off is
+404; a failing card is 503 with a short reason. Approvals, to-dos and reminders only read local
+files, so the module's own method is called. The agenda (a subscribed calendar is fetched from the
+network) and the weather go through `kernel.dispatcher.call`, like the daily briefing does, so the
+kill switch, the safety limits and the activity log apply. Their answers are kept in memory: the
+agenda for 5 minutes, the weather for 30 (a new day or place is a new answer; failures are not
+kept). With the kill switch on, no tool runs and the card answers "Starlight is stopped". The
+weather's place is the briefing's `place`, else the weather module's own. The routes give data,
+not sentences: the page writes the fixed words, so `i18n.js` can make them German.
+
 ## Build plan status
 
 | Step | | Status |

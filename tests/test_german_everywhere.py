@@ -650,6 +650,36 @@ async def memory_states(page: Any, site: str) -> Scenario:
         yield label
 
 
+# the Today page (R9): one answer per card, the weather failing (the reason is outside content)
+TODAY_ANSWERS: dict[str, Any] = {
+    "/api/today": {
+        "date": "2026-11-14",
+        "cards": ["approvals", "agenda", "todo", "reminders", "weather"],
+    },
+    "/api/today/approvals": {"count": 2},
+    "/api/today/agenda": {"events": [
+        {"time": "", "all_day": True, "title": "Mum's birthday", "location": ""},
+        {"time": "10:00", "all_day": False, "title": "Dentist", "location": "Dr. Weiss"},
+    ]},
+    "/api/today/todo": {
+        "overdue": [{"text": "file taxes", "due": "2026-11-12", "time": ""}],
+        "due": [{"text": "pay rent", "due": "2026-11-14", "time": "18:00"}],
+    },
+    "/api/today/reminders": {"reminders": [{"time": "07:30", "text": "water plants"}]},
+    "/api/today/weather": {
+        "place": "Bremen", "conditions": "partly cloudy", "temperature": "12°C",
+        "feels_like": "10°C", "low": "8°C", "high": "14°C", "rain_chance": "30%",
+    },
+}  # fmt: skip
+
+
+async def today_states(page: Any, site: str) -> Scenario:
+    await page.goto(f"{site}/today.html")
+    await page.wait_for_function("() => document.querySelectorAll('.card .skeleton').length === 0")
+    await settle(page)
+    yield "today"
+
+
 async def activity_states(page: Any, site: str) -> Scenario:
     await page.goto(f"{site}/activity.html")
     await page.wait_for_selector("#entries .entry")
@@ -822,6 +852,7 @@ SCENARIOS: dict[str, tuple[Any, dict[str, Any], str]] = {
     "settings-remote-off": (settings_devices, {"/api/devices": REMOTE_OFF}, ""),
     "memory": (memory_states, {}, ""),
     "activity": (activity_states, {}, ""),
+    "today": (today_states, TODAY_ANSWERS, ""),
     "automations": (automations_states, {}, ""),
     "kill": (kill_states, {}, ""),
     "pair": (pair_states, {}, ""),
