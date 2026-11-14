@@ -4,6 +4,8 @@ stays readable (WCAG AA: 4.5:1 for text)."""
 
 from __future__ import annotations
 
+import base64
+import io
 import re
 import time
 from typing import Any
@@ -27,6 +29,21 @@ def contrast(a: str, b: str) -> float:
 
     high, low = sorted((lum(a), lum(b)), reverse=True)
     return (high + 0.05) / (low + 0.05)
+
+
+def test_the_window_icon_is_the_flat_logo() -> None:
+    """The 64 px picture kept in the launcher's code: a gold star on the night colour, with
+    no purple and no rays. bundles/icons/make_icons.py writes it from the logo."""
+    image = pytest.importorskip("PIL.Image")
+    picture = image.open(io.BytesIO(base64.b64decode(load_gui().ICON_PNG))).convert("RGBA")
+    assert picture.size == (64, 64)
+
+    def near(colour: tuple[int, ...], wanted: tuple[int, int, int]) -> bool:
+        return all(abs(a - b) <= 6 for a, b in zip(colour[:3], wanted, strict=True))
+
+    assert near(picture.getpixel((32, 32)), (0xF2, 0xC1, 0x4E))  # the star: --primary
+    for spot in ((19, 19), (45, 19), (19, 45), (45, 45)):  # between its arms: --panel (night)
+        assert near(picture.getpixel(spot), (0x12, 0x16, 0x2A)), spot
 
 
 def make_app(monkeypatch: pytest.MonkeyPatch, language: str = "en") -> Any:

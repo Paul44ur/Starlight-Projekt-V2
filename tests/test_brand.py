@@ -5,6 +5,7 @@ no words."""
 from __future__ import annotations
 
 import hashlib
+import io
 import re
 from pathlib import Path
 from typing import Any
@@ -54,6 +55,61 @@ def test_the_app_icons_were_drawn_from_the_logos_as_they_are() -> None:
         assert logo_digest(data.replace(b"\n", b"\r\n")) == logo_digest(data)  # (Windows)
     script = (STATIC.parents[2] / "bundles" / "icons" / "make_icons.py").read_text("utf-8")
     assert 'replace(b"\\r\\n", b"\\n")' in script  # it counts them the same way
+
+
+REPO = STATIC.parents[2]
+NIGHT, GOLD = (0x12, 0x16, 0x2A), (0xF2, 0xC1, 0x4E)  # --panel (night) and --primary
+
+
+def test_the_logo_is_flat_a_gold_star_on_the_night_colour() -> None:
+    """No gradients and no shine: one flat ground and one flat star, in the look's own colours."""
+    style = (STATIC / "style.css").read_text("utf-8")
+    assert "--panel: #12162a" in style.lower() and "--primary: #f2c14e" in style.lower()
+    logo = (STATIC / "icon.svg").read_text("utf-8")
+    logos = {
+        "icon.svg": logo,
+        "kill-icon.svg": (STATIC / "kill-icon.svg").read_text("utf-8"),
+        "starlight.svg": (REPO / "assets" / "logo" / "starlight.svg").read_text("utf-8"),
+        "starlight-light.svg": (REPO / "assets" / "logo" / "starlight-light.svg").read_text(
+            "utf-8"
+        ),
+    }
+    for name, svg in logos.items():
+        for effect in ("Gradient", "url(#", "<defs", "opacity", "filter", "blur"):
+            assert effect not in svg, (name, effect)
+    assert logos["starlight.svg"] == logo  # (the logo file is the page's icon)
+    assert '<rect width="512" height="512" rx="112" fill="#12162a"/>' in logo
+    assert logo.count("<path") == 1 and 'fill="#f2c14e"' in logo  # the star, nothing else
+    assert 'rx="112" fill="#12162a"/>' in logos["kill-icon.svg"]  # (the same ground)
+
+
+def test_everything_made_from_the_logo_shows_the_flat_one() -> None:
+    image = pytest.importorskip("PIL.Image")
+
+    def near(colour: tuple[int, ...], wanted: tuple[int, int, int]) -> bool:
+        return all(abs(a - b) <= 6 for a, b in zip(colour[:3], wanted, strict=True))
+
+    def flat(picture: Any, name: str) -> None:
+        picture = picture.convert("RGBA")
+        size = picture.size[0]
+        assert near(picture.getpixel((size // 2, size // 2)), GOLD), name  # the star
+        # between the star's arms the ground shows, and it is one colour everywhere
+        for x, y in ((0.3, 0.3), (0.7, 0.3), (0.3, 0.7), (0.7, 0.7), (0.2, 0.2), (0.8, 0.8)):
+            assert near(picture.getpixel((int(size * x), int(size * y))), NIGHT), (name, x, y)
+
+    for name in ("icon-180.png", "icon-192.png", "icon-512.png", "icon-maskable-512.png"):
+        flat(image.open(STATIC / "icons" / name), name)
+    flat(image.open(REPO / "assets" / "logo" / "starlight.png"), "starlight.png")
+    # the icon of Starlight.exe and of its windows: every size
+    ico = (REPO / "launcher" / "starlight.ico").read_bytes()
+    assert (STATIC / "icons" / "starlight.ico").read_bytes() == ico
+    sizes = sorted(image.open(io.BytesIO(ico)).info["sizes"])
+    assert sizes == [(s, s) for s in (16, 24, 32, 48, 64, 128, 256)]
+    for size in (32, 48, 64, 128, 256):  # (at 16 and 24 px a sample point is a mixed pixel)
+        frame = image.open(io.BytesIO(ico))
+        frame.size = (size, size)
+        frame.load()
+        flat(frame, f"starlight.ico {size}")
 
 
 def test_the_manifests_and_pages_name_the_app_icons(tmp_path: Path) -> None:

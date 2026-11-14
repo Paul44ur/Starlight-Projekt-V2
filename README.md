@@ -1,7 +1,7 @@
 <p align="center">
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset="assets/logo/starlight.svg">
-    <img src="assets/logo/starlight-light.svg" alt="Starlight logo: a gold sparkle with purple rays" width="128">
+    <img src="assets/logo/starlight-light.svg" alt="Starlight logo: a gold star on a night-blue square" width="128">
   </picture>
 </p>
 

@@ -53,6 +53,8 @@ The default model needs 16 GB of video memory; smaller models are offered during
   restore replaces what you have; a copy of it is saved first, and it is applied when
   Starlight starts next.
 
+- **The logo is flat now:** a gold star on the night colour, without the purple gradient and
+  the light rays. Starlight.exe, the windows, the tray and a phone's home screen show it.
 - **A Today page** shows your day as cards: what waits for your OK, the agenda, to-dos that
   are due, today's reminders and the weather. Nothing on it changes anything.
 - **Automations:** each rule shows when it last ran and how it went, and **History** opens its

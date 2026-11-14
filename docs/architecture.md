@@ -34,7 +34,8 @@ starlight/web/      the local web chat (FastAPI + a WebSocket chat page); client
                     terminal that joins the same backend, so --both shares one brain
 launcher/           the source of Starlight.exe (standard library only; the window is launcher_gui.py,
                     the tray icon launcher_tray.py)
-assets/logo/        the logo (SVG, PNG); launcher/starlight.ico and web/static/icon.svg are made from it
+assets/logo/        the logo (SVG, PNG); it and launcher/starlight.ico are drawn from
+                    web/static/icon.svg by bundles/icons/make_icons.py
 bundles/            builds of the web pages' third-party code (editor, graph, mermaid) and
                     the app icons (icons/: PNGs drawn from web/static/icon.svg)
 starlight/browser.py, text.py   headless browser and HTML-to-text helpers for modules
@@ -478,6 +479,10 @@ meta marked `data-fixed`, on the Kill page, keeps its colour). The app icons a p
 `static/icons`, drawn from `icon.svg` and `kill-icon.svg` by `bundles/icons/make_icons.py`
 and served from `/icons/{name}` (only the names in `APP_ICONS`); `icons.sha256` records
 the logos they came from, and a test fails when a logo changes without them.
+The logo is flat: a gold star (`--primary`) on the night colour (`--panel`), no gradient and
+no shine. The same script draws what else is made from it: `launcher/starlight.ico` (Starlight.exe,
+the windows and the tray), the files in `assets/logo` and the window icon kept inside
+`launcher/launcher_gui.py`.
 
 **Home and devices.** `home` talks to Home Assistant's REST API with a long-lived token
 from the vault; `free_domains` (lights, switches, fans, media players, scenes) switch
