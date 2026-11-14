@@ -179,6 +179,15 @@ the kill switch) and are enabled by default. Free or local, no API keys except w
   numbers, dates as dates, text without case; `==` and `~` are its aliases of is and has).
   A new rule whose condition or `only_if` cannot be read is refused; one already saved just
   never holds. Template `weekly-open-notes` runs `notes.query` on Fridays.
+  Every run is a line in `history.jsonl`. The page shows it: `GET /api/automations` gives
+  each rule a `last_run` (`{time, outcome, text}`, or `null`), read from the file once for all
+  rules, and `GET /api/automations/{name}/history` gives that rule's last ten runs. The outcome
+  is one word taken from the entry: `done`, `failed` (with the tool's reason), `waiting` (a
+  step was refused and went to the approval queue), `skipped` (every step's `only_if` was
+  false) or `stopped` (the kill switch). Practice mode is not told apart: the entry does not
+  keep it, so such a run reads `done`. A reason may come from a tool or a website, so the page
+  shows it as text and never translates it. "Use" on a ready-made rule on a German page fills
+  the texts of its `say` and `ask` steps in German through `window.starlightTranslate`.
 
 - *Your PC and tech:* `apps` (Start-menu programs via `os.startfile`, windows via the Win32
   API through ctypes - no extra packages; with `ask_first_open: true` the first start of

@@ -239,6 +239,33 @@ async def test_the_kill_switch_stops_a_rule(project: Paths) -> None:
     assert not entry["ok"] and "KillSwitch" in entry["steps"][0]["error"]
 
 
+async def test_real_runs_are_summed_up_as_done_waiting_skipped_failed_and_stopped(
+    project: Paths,
+) -> None:
+    # The page's "last ran" reads what run() really records: the words must match it.
+    async with Kernel(project, ui=User(True)) as k:
+        auto = module(k)
+        await call(k, "automations.add", name="good", when="daily 9:00", tool="probe.count")
+        await call(k, "automations.add", name="asks", when="daily 9:00", tool="probe.wipe")
+        await call(k, "automations.add", name="bad", when="daily 9:00", tool="probe.count")
+        await call(k, "automations.add", name="maybe", when="daily 9:00", say="hi")
+        auto._rule("asks").allow = []
+        auto._rule("bad").actions[0].tool = "probe.nothing"  # (gone since it was saved)
+        auto._rule("maybe").actions[0].only_if = "count > 0"
+        for name in ("good", "asks", "bad", "maybe"):
+            await auto.run(auto._rule(name), {})
+        k.kill_switch.trigger("stop it")
+        await auto.run(auto._rule("good"), {})
+        k.kill_switch.reset()
+        last = auto.last_runs()
+        assert {n: last[n]["outcome"] for n in last} == {
+            "good": "stopped", "asks": "waiting", "bad": "failed", "maybe": "skipped"
+        }  # fmt: skip
+        assert "unknown tool" in last["bad"]["text"] and last["good"]["text"] == "stop it"
+        runs = auto.rule_runs("good")
+        assert [r["outcome"] for r in runs] == ["stopped", "done"]
+
+
 async def test_a_saved_rule_whose_schedule_is_no_longer_taken_does_not_stop_the_others(
     project: Paths,
 ) -> None:

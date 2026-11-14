@@ -448,20 +448,37 @@ def with_rules(real: dict[str, Any]) -> dict[str, Any]:
     """The real automations answer, with four rules of the user's in it."""
     rules = [
         {"name": "morning-weather", "enabled": True, "next": "2026-11-13 07:30",
-         "does": "every day at 07:30: run weather.forecast", "may_run_without_asking": []},
+         "does": "every day at 07:30: run weather.forecast", "may_run_without_asking": [],
+         "last_run": {"time": "2026-11-12 07:30", "outcome": "done", "text": ""}},
         {"name": "usb-backup", "enabled": True, "may_run_without_asking": ["backup.run"],
-         "does": "when usb.inserted happens: run backup.run"},
+         "does": "when usb.inserted happens: run backup.run",
+         "last_run": {"time": "2026-11-12 09:10", "outcome": "failed",
+                      "text": "timed out after 30s"}},
         {"name": "old-one", "enabled": False,
-         "does": 'Monday at 09:00: tell you "Plan the week"', "may_run_without_asking": []},
+         "does": 'Monday at 09:00: tell you "Plan the week"', "may_run_without_asking": [],
+         "last_run": {"time": "2026-11-09 09:00", "outcome": "waiting", "text": ""}},
         {"name": "broken", "enabled": True, "problem": "no schedule",
          "does": '"every week at 9:00" (does not run until the schedule is fixed: no schedule)',
-         "may_run_without_asking": []},
+         "may_run_without_asking": [], "last_run": None},
+        {"name": "skipper", "enabled": True, "does": 'every day at 08:00: tell you "hi"',
+         "may_run_without_asking": [],
+         "last_run": {"time": "2026-11-12 08:00", "outcome": "skipped", "text": ""}},
+        {"name": "halted", "enabled": True, "does": 'every day at 08:30: tell you "hi"',
+         "may_run_without_asking": [],
+         "last_run": {"time": "2026-11-12 08:30", "outcome": "stopped", "text": "panic"}},
     ]  # fmt: skip
     return real | {"rules": rules}
 
 
 OVERRIDES: dict[str, Any] = {
     "/api/automations": with_rules,
+    "/api/automations/usb-backup/history": {
+        "rule": "usb-backup",
+        "runs": [
+            {"time": "2026-11-12 09:10", "outcome": "failed", "text": "timed out after 30s"},
+            {"time": "2026-11-11 09:10", "outcome": "done", "text": ""},
+        ],
+    },
     "/api/memory": MEMORIES,
     "/api/skills": SKILLS,
     "/api/activity": ACTIVITY,
@@ -647,6 +664,10 @@ async def automations_states(page: Any, site: str) -> Scenario:
     await page.wait_for_selector("#on option", state="attached")
     await settle(page)
     yield "automations"
+    await page.locator(".rule", has_text="usb-backup").get_by_role("button").nth(1).click()
+    await page.wait_for_selector(".runs li")
+    await settle(page)
+    yield "automations history"
     await open_all(page)
     yield "automations open"
     async for label in automations_form(page):

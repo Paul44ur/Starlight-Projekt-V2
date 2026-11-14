@@ -766,8 +766,62 @@ class AutomationsModule(Module):
                 break
         return {"count": len(entries), "runs": entries}
 
+    # -- how the runs went, for the Automations page -------------------------------------------
+
+    def _entries(self) -> list[dict[str, Any]]:
+        """Every run in the history file, oldest first. A missing file, an empty one and
+        lines that are not JSON give fewer entries, never an error."""
+        try:
+            lines = self.history_file.read_text("utf-8", errors="replace").splitlines()
+        except OSError:
+            return []
+        entries: list[dict[str, Any]] = []
+        for line in lines:
+            with contextlib.suppress(json.JSONDecodeError):
+                entry = json.loads(line)
+                if isinstance(entry, dict) and isinstance(entry.get("rule"), str):
+                    entries.append(entry)
+        return entries
+
+    def last_runs(self) -> dict[str, dict[str, str]]:
+        """The newest run of every rule that ran, as run_summary() (one read of the file)."""
+        newest: dict[str, dict[str, Any]] = {}
+        for entry in self._entries():
+            newest[entry["rule"]] = entry  # later lines are newer
+        return {name: run_summary(entry) for name, entry in newest.items()}
+
+    def rule_runs(self, name: str, limit: int = 10) -> list[dict[str, str]]:
+        """The last runs of one rule, newest first. Raises ToolError for an unknown rule."""
+        self._rule(name)
+        mine = [e for e in self._entries() if e["rule"] == name.strip().lower()]
+        return [run_summary(entry) for entry in reversed(mine[-max(1, min(limit, 100)) :])]
+
 
 # -- helpers (pure) ------------------------------------------------------------------------
+
+_RUN_TEXT = 300  # a reason can be long (a tool's own message): the page needs a short one
+
+
+def run_summary(entry: dict[str, Any]) -> dict[str, str]:
+    """One history entry as {time, outcome, text}. The outcome is one fixed word: done,
+    failed, waiting (a tool needed your OK and went to the approval queue), skipped (every
+    step's condition was false) or stopped (the kill switch). text is the reason, if any."""
+    raw = str(entry.get("time") or "")
+    when = _parse_time(raw)
+    shown = when.strftime("%Y-%m-%d %H:%M") if when else raw[:16].replace("T", " ")
+    steps = [s for s in entry.get("steps") or [] if isinstance(s, dict)]
+    error = next((str(s.get("error")) for s in reversed(steps) if s.get("error")), "")
+    if entry.get("ok"):
+        done = [s for s in steps if not s.get("skipped")]
+        return {"time": shown, "outcome": "done" if done or not steps else "skipped", "text": ""}
+    if error.startswith("KillSwitchEngaged"):
+        reason = error.partition(": ")[2]
+        return {"time": shown, "outcome": "stopped", "text": reason[:_RUN_TEXT]}
+    if not error or error == "not confirmed by user":
+        # (a refused step, or a refusal inside an "ask" step: it waits for your OK)
+        return {"time": shown, "outcome": "waiting", "text": ""}
+    return {"time": shown, "outcome": "failed", "text": error[:_RUN_TEXT]}
+
 
 _OPS = ("<=", ">=", "==", "!=", "<", ">", "~")
 

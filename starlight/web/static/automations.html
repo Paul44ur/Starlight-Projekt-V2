@@ -49,6 +49,15 @@
   input.wide, select.wide { width: 100%; }
   .gap-top { margin-top: 8px; }
   .rule .pill { margin-left: 8px; }
+  /* when a rule last ran and how it went: the word's colour says it, the reason wraps */
+  .rule .last { grid-column: 1 / -1; overflow-wrap: anywhere; }
+  .run-done { color: var(--ok); }
+  .run-failed, .run-stopped { color: var(--bad); }
+  .run-waiting { color: var(--warn); }
+  .run-skipped { color: var(--dim); }  /* (its condition was false: nothing is wrong) */
+  .rule .runs { grid-column: 1 / -1; margin: 0; padding: var(--s-2) var(--s-3); list-style: none;
+                background: var(--panel2); border-radius: var(--r-2); }
+  .rule .runs li { padding: var(--s-1) 0; font-size: var(--fs-sm); overflow-wrap: anywhere; }
 </style>
 </head>
 <body>
@@ -369,6 +378,68 @@ async function act(name, action) {
   } catch (e) { toast(e.message); }
 }
 
+// -- when a rule last ran, and its history. A reason can come from a tool or a website:
+// it is text only (never HTML) and is not translated.
+const RUN_WORDS = { done: "done", failed: "failed", waiting: "waiting for your OK",
+  skipped: "skipped", stopped: "stopped by the kill switch" };
+const openRuns = new Set();  // the rules whose history is open (it stays open when the list reloads)
+
+function runParts(run) {
+  const word = el("span", "run-" + run.outcome, RUN_WORDS[run.outcome] || run.outcome);
+  const parts = [el("span", "num", run.time), el("span", "", " · "), word];
+  if (run.text) {
+    const why = el("span", "", run.text); why.translate = false;
+    parts.push(el("span", "", " · "), why);
+  }
+  return parts;
+}
+
+function lastLine(run) {
+  const line = el("div", "last dim small");
+  if (!run) { line.textContent = "Has not run yet"; return line; }
+  line.append(el("span", "", "Last ran "), ...runParts(run));
+  return line;
+}
+
+// The History button of a rule: opens its last ten runs under it, fetched when it opens.
+function historyButton(name, row) {
+  const button = el("button", "", "History");
+  button.setAttribute("aria-expanded", "false");
+  let box = null, open = false;
+  const fill = async () => {
+    let got;
+    try { got = await api(`/api/automations/${encodeURIComponent(name)}/history`); }
+    catch (e) { toast(e.message); return; }
+    if (!open) return;  // (closed while it was loading)
+    if (!box) { box = el("ul", "runs"); row.appendChild(box); }
+    box.replaceChildren(...(got.runs.length
+      ? got.runs.map(run => { const li = el("li"); li.append(...runParts(run)); return li; })
+      : [el("li", "dim", "Has not run yet")]));
+  };
+  const set = (on) => {
+    open = on;
+    button.setAttribute("aria-expanded", String(on));
+    if (on) { openRuns.add(name); fill(); }
+    else { openRuns.delete(name); if (box) box.remove(); box = null; }
+  };
+  button.onclick = () => set(!open);
+  if (openRuns.has(name)) set(true);
+  return button;
+}
+
+// "Use" on a German page: the texts of the ready-made rule's tell and ask steps in German, so
+// that the rule is saved in German and its messages arrive in German (tool names, arguments
+// and {result.count}-style parts stay: the German texts keep them).
+function readyMade(rule) {
+  const copy = JSON.parse(JSON.stringify(rule));
+  if (window.starlightLanguage === "de") {
+    (copy.actions || []).forEach(step => {
+      for (const key of ["say", "ask"]) if (step[key]) step[key] = window.starlightTranslate(step[key]);
+    });
+  }
+  return copy;
+}
+
 async function load() {
   try { data = await api("/api/automations"); } catch (e) { toast(e.message); return; }
   const rules = document.getElementById("rules");
@@ -385,6 +456,8 @@ async function load() {
       .forEach(([a, label]) => { const b = el("button", a === "remove" ? "danger-outline" : "", label); b.onclick = () => act(r.name, a); actions.appendChild(b); });
     row.append(head, actions, el("div", "does", r.does));
     if (r.may_run_without_asking.length) row.appendChild(el("div", "does dim small", "Runs without asking: " + r.may_run_without_asking.join(", ")));
+    row.appendChild(lastLine(r.last_run));  // (its own line, as wide as the rule: a reason can be long)
+    actions.insertBefore(historyButton(r.name, row), actions.children[1]);
     rules.appendChild(row);
   });
   if (!data.rules.length) rules.appendChild(el("p", "dim", "None yet. Make one below, or start from a ready-made one."));
@@ -406,7 +479,7 @@ async function load() {
     const row = el("div", "template");
     const text = el("div", "text"); const nm = el("b", "", name); nm.translate = false;  // (a template's name)
     text.append(nm, el("div", "dim small", t.does));
-    const use = el("button", "", "Use"); use.onclick = () => { fillForm(t.rule); window.scrollTo({ top: document.getElementById("editor-title").offsetTop - 10, behavior: "smooth" }); };
+    const use = el("button", "", "Use"); use.onclick = () => { fillForm(readyMade(t.rule)); window.scrollTo({ top: document.getElementById("editor-title").offsetTop - 10, behavior: "smooth" }); };
     row.append(text, use);
     templates.appendChild(row);
   });

@@ -1033,8 +1033,12 @@ def create_app(paths: Paths | None = None) -> Any:
     def automations(request: Request) -> dict[str, Any]:
         viewer(request)
         rules = module_instance("automations", "automations")
+        last = rules.last_runs()  # (the history file is read once for all rules)
         return {
-            "rules": rules.list_rules()["automations"],
+            "rules": [
+                {**rule, "last_run": last.get(rule["name"])}
+                for rule in rules.list_rules()["automations"]
+            ],
             "templates": rules.template_rules(),
             "events": rules.events(),
             "tools": sorted(
@@ -1049,6 +1053,17 @@ def create_app(paths: Paths | None = None) -> Any:
                 key=lambda t: t["name"],
             ),
         }
+
+    @app.get("/api/automations/{name}/history")
+    def automation_history(name: str, request: Request) -> dict[str, Any]:
+        viewer(request)
+        try:
+            runs: list[dict[str, str]] = module_instance("automations", "automations").rule_runs(
+                name
+            )
+        except ToolError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+        return {"rule": name, "runs": runs}
 
     @app.post("/api/automations/check")
     async def check_automation(request: Request) -> dict[str, Any]:

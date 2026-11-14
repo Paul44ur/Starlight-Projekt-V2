@@ -220,6 +220,12 @@
     "needs a new schedule": "braucht einen neuen Zeitplan",
     "Delete": "Löschen", "on": "an", "off": "aus",
     "None yet. Make one below, or start from a ready-made one.": "Noch keine. Leg unten eine an oder beginne mit einer Vorlage.",
+    // automations: when a rule last ran, and its history
+    // ("Last ran", the time and the word are separate text nodes, so no pattern is needed;
+    // "done" and "failed" already have entries)
+    "Last ran": "Zuletzt gelaufen", "Has not run yet": "Noch nicht gelaufen", "History": "Verlauf",
+    "waiting for your OK": "wartet auf dein OK", "skipped": "übersprungen",
+    "stopped by the kill switch": "vom Not-Aus gestoppt",
     // the kill switch page
     "STOP": "STOPP", "everything": "alles",
     "One press stops everything Starlight is doing on the PC, until you resume there.": "Ein Druck hält alles an, was Starlight auf dem PC tut, bis du dort fortsetzt.",
