@@ -10,6 +10,8 @@ body { display: flex; flex-direction: column; }
 .side, .info { background: var(--panel); overflow-y: auto; border: 1px solid var(--border);
                border-radius: var(--r-4); padding: var(--s-3) var(--s-2) 40px; }
 .info { padding: var(--s-4) var(--s-3) 40px; }
+/* (the part of the list that scrolls on a phone; on a wide screen the card itself scrolls) */
+.side-scroll { display: contents; }
 .side h3, .info h3 { margin: 16px 6px 6px; }  /* (.section-label draws them) */
 .info h3:first-child { margin-top: 0; }
 /* a section with nothing in it has no heading either (graph, boards and tasks views) */
@@ -362,8 +364,30 @@ body.editing .info .prop-value, body.editing .info .prop-x, body.editing .info .
   .notes { grid-template-columns: 1fr; grid-template-rows: auto 1fr; }
   /* the list is a short card above the note; its star row goes (the top bar names the page),
      so the note starts high on a phone */
-  .side { max-height: 24vh; }
   .side .brand { display: none; }
+  /* The search row stays; under it the views and the lists scroll inside the card, and the
+     card shows WHOLE rows (2 of the 2-column views: --side-rows), so the cut never goes
+     through a row. A soft fade over the lower part of the last row says there is more, and
+     goes at the end.
+     The height (of the whole padding box, its bottom padding is only there at the end of the
+     scroll) is the gap above the rows, then the 44 px rows with their 2 px gaps. */
+  /* (the card itself does not clip: the new-note menu opens over its edge) */
+  .side { --side-rows: 2; display: flex; flex-direction: column; overflow: visible;
+          padding-bottom: var(--s-2); }
+  .side-scroll { display: block; overflow-y: auto; overscroll-behavior: contain;
+                 padding: var(--s-3) 0 var(--s-5);
+                 height: calc(var(--s-3) + var(--side-rows) * 44px + (var(--side-rows) - 1) * 2px);
+                 box-sizing: border-box; flex: none; }
+  .side-scroll .quick { margin-top: 0; }
+  /* (a sticky box keeps to the inside of the padding, so it is pushed out by the padding) */
+  .side-scroll::after { content: ""; display: block; position: sticky; height: var(--s-6);
+                        bottom: calc(-1 * var(--s-5)); pointer-events: none;
+                        background: linear-gradient(to bottom, transparent, var(--panel)); }
+  @supports (animation-timeline: scroll()) {
+    .side-scroll::after { animation: side-fade linear both; animation-timeline: scroll(nearest block);
+                          animation-range: calc(100% - 64px) 100%; }
+    @keyframes side-fade { from { opacity: 1; } to { opacity: 0; } }
+  }
   /* the note's toolbar wraps inside the column, never cut at the right */
   .crumbs .actions { flex-wrap: wrap; margin-left: 0; max-width: 100%; }
   .notes { gap: var(--s-2); padding: var(--s-2); }

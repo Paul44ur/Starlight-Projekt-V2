@@ -83,7 +83,8 @@
            color: var(--accent); }
   .reset:hover { text-decoration: underline; background: none; }
   /* An on/off switch */
-  .switch { position: relative; display: inline-block; width: 38px; height: 22px; flex: none; }
+  :root { --switch-h: 22px; }  /* (the switch's height; a touch screen has a taller one) */
+  .switch { position: relative; display: inline-block; width: 38px; height: var(--switch-h); flex: none; }
   .switch input { opacity: 0; width: 0; height: 0; position: absolute; }
   .switch span { position: absolute; inset: 0; border-radius: 999px; background: var(--panel2);
                  border: 1px solid var(--border); transition: background .15s; }
@@ -137,6 +138,7 @@
   .always { margin-top: 14px; border-top: 1px solid var(--border); padding-top: 10px; }
   /* a touch screen: a bigger switch, 44 px to tap; the Advanced line easy to open */
   @media (pointer: coarse) {
+    :root { --switch-h: 30px; }
     .switch { width: 50px; height: 30px; }
     .switch span::before { width: 24px; height: 24px; }
     .switch input:checked + span::before { transform: translateX(20px); }
@@ -151,6 +153,18 @@
     .trow { flex-wrap: wrap; row-gap: 4px; }
     .tinfo { flex-basis: 100%; }
     .mtools { padding-left: 4px; }
+    /* Every row with a switch: the label on the left (a long explanation wraps under it), the
+       switch on the right at one edge, level with the label's first line. */
+    .practice, .plain .practice { display: flex; gap: var(--s-3); align-items: flex-start;
+                                  margin-top: 12px; }
+    .practice > span:not(.switch) { flex: 1; min-width: 0; }
+    .practice > .switch, .srow.sbool .switch, details.mod > summary > .switch {
+      margin-top: calc((1lh - var(--switch-h)) / 2); }
+    .practice > .switch { order: 2; }
+    .srow.sbool { flex-wrap: nowrap; }
+    .srow.sbool .sctl { width: auto; align-items: flex-start; }
+    details.mod > summary { align-items: start; }
+    details.mod > summary::before { line-height: 1.5; }
   }
 </style>
 </head>
@@ -518,6 +532,7 @@ function safetyRow(sw, words) {
   }
   const control = el("div", "sctl");
   if (sw.kind === "bool") {
+    row.classList.add("sbool");  // (the phone layout keeps its switch on the row's right)
     const label = el("label", "switch");
     const box = el("input"); box.type = "checkbox"; box.checked = !!sw.value;
     box.setAttribute("aria-label", words.title);

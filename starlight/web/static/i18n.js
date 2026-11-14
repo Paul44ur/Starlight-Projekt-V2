@@ -273,6 +273,15 @@
     "Search memories": "Erinnerungen durchsuchen", "Export": "Exportieren",
     "No skills yet. Starlight drafts one when the same kind of task works twice.": "Noch keine Fähigkeiten. Starlight entwirft eine, wenn dieselbe Art Aufgabe zweimal klappt.",
     "Timeline": "Zeitleiste", "People & places": "Personen & Orte", "Undo": "Rückgängig",
+    // phone width fixes (round 2, R2)
+    "e.g. usb-backup": "z. B. usb-backup", "Lowercase letters, - or _ (e.g. usb-backup).": "Kleinbuchstaben, - oder _ (z. B. usb-backup).",
+    "e.g. weekdays 7:30": "z. B. weekdays 7:30",
+    "More: weekdays 7:30 · every 2 hours · monday 9am · every month on the 1st at 10:00":
+      "Mehr: weekdays 7:30 · every 2 hours · monday 9am · every month on the 1st at 10:00 (englisch)",
+    "e.g. server is nas": "z. B. server ist nas",
+    "Example: server is nas or (server is router and status is down)": "Beispiel: server ist nas oder (server ist router und status ist down)",
+    "only if, e.g. count > 0": "nur wenn, z. B. count > 0",
+    "Optional: the step runs only if what the step before gave matches, e.g. count > 0.": "Optional: Der Schritt läuft nur, wenn das, was der Schritt davor ergab, passt, z. B. count > 0.",
     // pairing
     "This device isn't paired yet. On your PC, open Starlight's": "Dieses Gerät ist noch nicht gekoppelt. Öffne am PC Starlights",
     "and press": "und drücke", "Show a pairing code": "Kopplungscode zeigen", "(or run": "(oder führe", "), then enter the code here.": "\u00a0aus) und gib den Code hier ein.",

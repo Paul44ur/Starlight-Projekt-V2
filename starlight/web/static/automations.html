@@ -41,6 +41,10 @@
   .step textarea { width: 100%; min-height: 2.6em; font-family: var(--font-mono); font-size: var(--fs-sm); }
   .step .what { display: grid; gap: 6px; }
   .hint { font-size: 12px; color: var(--dim); }
+  /* the full example sits under its field; the placeholder in it is short enough to fit */
+  .field-hint { margin: var(--s-1) 0 0; }
+  /* a condition: field and comparison on a row, the value on its own row when it has no room */
+  .if-row .if-value { flex: 1 1 10em; }
   .preview { background: var(--panel2); border-radius: var(--r-2); padding: var(--s-2) var(--s-3); margin-top: 10px; }
   .template { display: flex; gap: 10px; align-items: baseline; padding: var(--s-3) 0;
               border-bottom: 1px solid var(--border); }
@@ -77,15 +81,17 @@
     <h2 id="editor-title">New automation</h2>
     <form id="editor" onsubmit="return false">
       <div class="row"><label for="name">Name</label>
-        <input id="name" type="text" class="grow" placeholder="e.g. usb-backup (lowercase, - or _)" maxlength="41" required /></div>
+        <input id="name" type="text" class="grow" placeholder="e.g. usb-backup" maxlength="41" required /></div>
+      <p class="hint field-hint">Lowercase letters, - or _ (e.g. usb-backup).</p>
 
       <fieldset>
         <legend>When</legend>
         <label class="choice"><input type="radio" name="trigger" value="when" checked /> On a schedule</label>
         <label class="choice"><input type="radio" name="trigger" value="on" /> When something happens</label>
         <div id="when-box" class="row gap-top">
-          <input id="when" type="text" class="grow" aria-label="Schedule" placeholder="weekdays 7:30 · every 2 hours · monday 9am · every month on the 1st at 10:00" />
+          <input id="when" type="text" class="grow" aria-label="Schedule" placeholder="e.g. weekdays 7:30" />
         </div>
+        <p id="when-hint" class="hint field-hint">More: weekdays 7:30 · every 2 hours · monday 9am · every month on the 1st at 10:00</p>
         <div id="on-box" class="gap-top" hidden>
           <select id="on" class="wide" aria-label="Event"></select>
           <div id="on-hint" class="hint"></div>
@@ -103,7 +109,8 @@
         <div id="if-rows"></div>
         <div id="if-written-box" hidden>
           <input id="if-written" type="text" class="wide" aria-label="The condition, written out"
-                 placeholder="e.g. server is nas or (server is router and status is down)" />
+                 placeholder="e.g. server is nas" />
+          <p class="hint field-hint">Example: server is nas or (server is router and status is down)</p>
           <p class="hint">Written out: and, or, not and brackets; is, is not, has, &lt;, &gt;. Words with "and" or "or" in them go in quotes.</p>
         </div>
         <div class="row">
@@ -145,6 +152,7 @@ function triggerKind() { return document.querySelector('input[name="trigger"]:ch
 function showTrigger() {
   const kind = triggerKind();
   document.getElementById("when-box").hidden = kind !== "when";
+  document.getElementById("when-hint").hidden = kind !== "when";
   document.getElementById("on-box").hidden = kind !== "on";
   document.getElementById("if-box").hidden = kind !== "on";
   showEvent();
@@ -292,9 +300,10 @@ function addStep(step = {}) {
   args.value = step.args && Object.keys(step.args).length ? JSON.stringify(step.args) : ""; args.setAttribute("aria-label", "Arguments");
   const text = el("textarea"); text.placeholder = "what to ask, or the message"; text.value = step.ask || step.say || "";
   text.setAttribute("aria-label", "Text");
-  const onlyIf = el("input"); onlyIf.type = "text"; onlyIf.placeholder = "only if the step before gave, e.g. count > 0 (optional)";
+  const onlyIf = el("input"); onlyIf.type = "text"; onlyIf.placeholder = "only if, e.g. count > 0";
   onlyIf.value = step.only_if || ""; onlyIf.setAttribute("aria-label", "Only if");
-  what.append(tool, args, text, onlyIf);
+  const onlyIfHint = el("div", "hint", "Optional: the step runs only if what the step before gave matches, e.g. count > 0.");
+  what.append(tool, args, text, onlyIf, onlyIfHint);
   const remove = el("button", "icon"); setIcon(remove, "close"); remove.type = "button"; remove.title = "Remove this step"; remove.setAttribute("aria-label", "Remove this step");
   remove.onclick = () => row.remove();
   const show = () => { const t = kind.value === "tool"; tool.hidden = !t; args.hidden = !t; text.hidden = t; };

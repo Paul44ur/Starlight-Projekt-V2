@@ -28,6 +28,7 @@
       <input id="search" type="search" placeholder="Search notes" aria-label="Search notes" />
       <button type="button" id="new-note" title="New note (Ctrl+N)" aria-label="New note (Ctrl+N)" data-icon="plus"></button>
     </div>
+    <div class="side-scroll">
     <div class="quick" role="group" aria-label="Views">
       <button data-view="today" data-icon="today">Today</button>
       <button data-view="inbox" data-icon="inbox">Inbox</button>
@@ -41,6 +42,7 @@
     <h3 class="section-label">Folders</h3>
     <div id="folders" translate="no"></div>
     <div id="tags-section" hidden><h3 class="section-label">Tags</h3><ul class="plain" id="tags-box" translate="no"></ul></div>
+    </div>
   </aside>
   <main id="note" class="reading" tabindex="-1"><div class="column" id="column"></div></main>
   <aside class="info" id="info" aria-label="About this note">
