@@ -14,9 +14,9 @@ writes each brief, reviews the diff, runs the full suite and merges.
 | R3 | The statistics page in the Night Sky look, and in German | – | **done** (dc6c9dd) |
 | R4 | Drafts: the message box keeps what you typed, per conversation | – | **done** (61bb42c) |
 | R5 | Search shows where it found your words, and jumps there | – | **done** (fc126ca) |
-| R6 | The conversation list grouped by time (Today, Yesterday, …) | R5 | open |
-| R7 | Starter suggestions on a new conversation | R4 | open |
-| R8 | Automations page: when each rule last ran, and how it went | R1 | open |
+| R6 | The conversation list grouped by time (Today, Yesterday, …) | R5 | **done** (658978f) |
+| R7 | Starter suggestions on a new conversation | R4 | **done** (6ed95a6) |
+| R8 | Automations page: when each rule last ran, and how it went | R1 | **done** (e8ec17c) |
 | R9 | A Today page: your day at a glance | R1-R8 | open |
 | R10 | Review: full suite, screenshots, README, release notes | R1-R9 | open |
 
@@ -75,11 +75,14 @@ can be changed first. With German chosen, the suggestions are German.
 went (done, failed with the reason, or waiting for your OK). **History** on a rule opens its
 last ten runs. The module already keeps this (`history.jsonl`); the page does not show it yet.
 
-**R9. A Today page.** A new page, **Today**, shows your day as cards: agenda, to-dos that
-are due, reminders, the weather, new mail, and what waits for your OK. It uses the same
-sources as the daily briefing, so a module that is off has no card. Nothing on it changes
-anything; each card links to where the thing lives. One gold button asks Starlight about the
-day in the chat. The page is linked from every page and from the quick switcher.
+**R9. A Today page.** A new page, **Today**, shows your day as cards: what waits for your
+OK, the agenda, to-dos that are due or overdue, today's reminders and the weather. A module
+that is off has no card. Nothing on it changes anything; a card links to where the thing
+lives. One gold button puts "How does my day look?" in the chat's message box (not sent).
+The page is linked from every page and from the quick switcher. New mail is left out:
+opening a page should not log in to the mail server (the briefing still reads it). A card
+that needs the network (the weather) goes through the dispatcher, so the kill switch, the
+limits and the activity log apply, and is kept for half an hour.
 
 ## 3. Rules for every block
 
