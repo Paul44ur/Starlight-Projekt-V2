@@ -27,8 +27,12 @@ The default model needs 16 GB of video memory; smaller models are offered during
   So far it has been tested with stand-ins only, not on many real PCs. You can turn it off in
   the launcher's settings.
 - The chat is laid out like a desktop app. The sidebar on the left has **New conversation**, the
-  pages (Notes, Memory, Activity, Automations, Settings) and your conversations (Pinned, Recent).
-  You can hide the sidebar.
+  pages (Today, Notes, Memory, Activity, Automations, Settings) and your conversations: pinned
+  ones first, then by day (Today, Yesterday, Last 7 days, Older). You can hide the sidebar.
+- What you typed and did not send stays with its conversation and is there when you come back.
+  A new conversation offers a few things to ask; pressing one puts it in the message box.
+- A search also looks into what was said. It shows the line with your words and jumps to that
+  message.
 - The top bar shows the name of the open conversation. Its menu renames, pins, files, archives,
   downloads or deletes the conversation.
 - The **Context** meter shows how full the model's context is for the conversation.
@@ -48,6 +52,16 @@ The default model needs 16 GB of video memory; smaller models are offered during
   into one file. Passwords and paired devices are not in it, and the file is not encrypted. A
   restore replaces what you have; a copy of it is saved first, and it is applied when
   Starlight starts next.
+
+- **A Today page** shows your day as cards: what waits for your OK, the agenda, to-dos that
+  are due, today's reminders and the weather. Nothing on it changes anything.
+- **Automations:** each rule shows when it last ran and how it went, and **History** opens its
+  last ten runs. A ready-made rule you add on a German page is saved in German.
+- **Statistics** has the same look as the other pages and is in German too.
+- **German:** the Activity page, the ready-made automations and the skill cards no longer show
+  English.
+- **On a phone:** the Notes card shows whole rows, the Automations form's hints can be read,
+  and the switches in Settings line up.
 
 ### Good to know
 - It asks before risky actions. Some, such as sending mail or clicking on the desktop, run

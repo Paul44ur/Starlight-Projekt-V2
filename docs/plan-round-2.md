@@ -18,7 +18,7 @@ writes each brief, reviews the diff, runs the full suite and merges.
 | R7 | Starter suggestions on a new conversation | R4 | **done** (6ed95a6) |
 | R8 | Automations page: when each rule last ran, and how it went | R1 | **done** (e8ec17c) |
 | R9 | A Today page: your day at a glance | R1-R8 | **done** (2f4e07f) |
-| R10 | Review: full suite, screenshots, README, release notes | R1-R9 | open |
+| R10 | Review: full suite, screenshots, README, release notes | R1-R9 | **done** (release notes and review, 2026-11-14) |
 
 Blocks without an open "Needs" run side by side: first R1, R3, R4, R5; then R2, R6, R7, R8;
 then R9 alone (it adds a link to every page); then R10.

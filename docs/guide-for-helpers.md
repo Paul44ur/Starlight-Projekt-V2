@@ -153,7 +153,7 @@ write a second Markdown renderer.
 |---|---|
 | Chat | `chat.html` (markup only), `chat.css`, then in this order `chat-core.js` (state, the socket, the message flow), `chat-messages.js` (drawing messages), `chat-list.js` (the conversation list, its menu, the bar's title), `chat-input.js` (the message box, files, voice, `/` commands, keys), `chat-page.js` (status, the context meter, start-up) |
 | Notes | `notes.html`, `notes.css`, `notes-page.js`, `notes-edit.js`, `notes-editor.js`, `notes-find.js`, `notes-info.js`, `notes-tasks.js`, `notes-views.js`, `board.js` |
-| Others | `settings.html`, `memory.html`, `activity.html`, `automations.html`, `kill.html`, `pair.html` |
+| Others | `today.html`, `settings.html`, `memory.html`, `activity.html`, `automations.html`, `kill.html`, `pair.html` |
 | Shared | `style.css`, `common.js`, `i18n.js`, `quick.js`, `markdown.js`, `render.js`, `sw.js` |
 
 The chat's scripts are classic scripts that share their top-level names. A `const` in a
@@ -212,9 +212,12 @@ if your brief says so. Do not run `uv sync` or `uv run`.
 **Wait, do not sleep.** Use `page.wait_for_selector` and `page.wait_for_function`. A dialog
 closes a moment after the key, and a list arrives a moment after the click.
 
-**Show the new tests fail on the old code:** `git stash push -- <the non-test files you
-changed>`, run the new tests (they must fail), then `git stash pop`. Say in your report what
-failed. Never weaken a test to make it pass: no `skip`, no `xfail`, no removed assertion.
+**Show the new tests fail on the old code,** in a scratch copy of the base commit:
+`git worktree add --detach <scratch folder> <base commit>`, copy your new test files into
+its `tests/`, run them there with that folder on `PYTHONPATH` (they must fail), then
+`git worktree remove --force <scratch folder>`. Never use `git stash`: the stash list is
+shared by all worktrees, and one helper once popped another helper's stash. Say in your
+report what failed. Never weaken a test to make it pass: no `skip`, no `xfail`, no removed assertion.
 
 **Static checks** (all must pass):
 
@@ -271,7 +274,7 @@ not, low contrast, an empty area, German that does not fit.
   but works in the static test site. Add the route and the test.
 - **Editing while tests run.** A test run reads the files as they are. Do not change files
   in the folder a run is using.
-- **A stash left behind.** Pop your stash. Report it if you could not.
+- **`git stash`.** Do not use it (see section 7). A scratch worktree left behind: remove it.
 
 ## 11. Your report
 
