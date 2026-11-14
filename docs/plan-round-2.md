@@ -10,7 +10,7 @@ writes each brief, reviews the diff, runs the full suite and merges.
 | Block | What | Needs | State |
 |---|---|---|---|
 | R1 | German for what is still English: Activity entries, automation templates, skill cards | – | **done** (ce2bd7a) |
-| R2 | Phone width (360 px): three layout faults | R1 | open |
+| R2 | Phone width (360 px): three layout faults | R1 | **done** (744b925) |
 | R3 | The statistics page in the Night Sky look, and in German | – | **done** (dc6c9dd) |
 | R4 | Drafts: the message box keeps what you typed, per conversation | – | **done** (61bb42c) |
 | R5 | Search shows where it found your words, and jumps there | – | **done** (fc126ca) |
