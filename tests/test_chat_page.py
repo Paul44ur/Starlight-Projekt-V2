@@ -200,12 +200,17 @@ async def test_an_answer_on_its_way_shows_that_starlight_is_working(
             await page.evaluate("() => { if (!window.sockets.length) connect(); }")
             await page.wait_for_function("() => window.sockets.length > 0")
 
-            await page.evaluate(SEND, {"type": "start", "conversation": "c1"})
-            assert await page.evaluate(WAITING) == '"…"'
+            # (sent and read in one step: on a busy machine a second look can come after the
+            # three seconds, when the sign already says for how long)
+            first = await page.evaluate(
+                f"m => {{ ({SEND})(m); return ({WAITING})(); }}",
+                {"type": "start", "conversation": "c1"},
+            )
+            assert first == '"…"'
             await page.wait_for_function(
                 "() => (document.querySelector('.body.waiting') || {}).dataset?.wait"
                 "?.startsWith('Working on it')",
-                timeout=6000,
+                timeout=30000,
             )  # a model that thinks first: after a few seconds, for how long
             await page.evaluate(SEND, {"type": "token", "text": "Hello"})
             assert await page.evaluate(WAITING) is None  # the first word ends the waiting
