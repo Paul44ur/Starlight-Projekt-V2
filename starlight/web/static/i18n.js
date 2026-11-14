@@ -3,6 +3,12 @@
 // messages and Starlight's answers - is never touched; the model answers in your language.
 (function () {
   function pick() {
+    // ?lang=de or ?lang=en in the address wins (the statistics page on its own port does not
+    // share the chat's stored choice). It is never stored.
+    try {
+      const asked = new URLSearchParams(location.search).get("lang");
+      if (asked === "en" || asked === "de") return asked;
+    } catch (e) { /* no address to read */ }
     try {
       const chosen = localStorage.getItem("starlight-lang");
       if (chosen === "en" || chosen === "de") return chosen;
@@ -202,6 +208,36 @@
     "Add this page to your home screen for a one-tap kill switch.": "Leg diese Seite auf den Startbildschirm: ein Tipp, und alles hält an.",
     "Back to the chat": "Zurück zum Chat", "Stopped": "Angehalten",
     "Starlight is stopped. Press Resume on the PC to let it go on.": "Starlight ist angehalten. Drücke am PC auf Fortsetzen, damit es weitergeht.",
+    // the statistics page (starlight/viewer)
+    "Starlight statistics": "Starlight-Statistik", "Statistics": "Statistik",
+    "Time range": "Zeitraum", "Last hour": "Letzte Stunde", "Last 24 hours": "Letzte 24 Stunden",
+    "Last 7 days": "Letzte 7 Tage", "Key figures": "Kennzahlen",
+    "Core running": "Kern läuft", "AI stopped by the kill switch": "KI per Not-Aus angehalten",
+    "Core not running": "Kern läuft nicht",
+    "Viewer cannot read the statistics": "Die Statistik kann nicht gelesen werden",
+    "Tasks completed": "Erledigte Aufgaben", "Tool calls": "Werkzeugaufrufe", "Errors": "Fehler",
+    "Web requests": "Web-Anfragen", "Tokens per second": "Token pro Sekunde", "GPU use": "GPU-Auslastung",
+    "Skills learned": "Gelernte Fähigkeiten", "files in the Memory folder": "Dateien im Ordner „Memory“",
+    "Web requests per second": "Web-Anfragen pro Sekunde", "VRAM in use": "VRAM in Benutzung",
+    "Tool calls per module": "Werkzeugaufrufe pro Modul", "Models compared": "Modelle im Vergleich",
+    "Recent errors": "Letzte Fehler", "Model generation speed": "Geschwindigkeit des Modells",
+    "Busiest second in each interval; the cap is": "Geschäftigste Sekunde je Abschnitt; die Obergrenze ist",
+    "Percent busy": "Prozent ausgelastet", "Gigabytes": "Gigabyte", "Per interval": "Pro Abschnitt",
+    "In the selected range": "Im gewählten Zeitraum",
+    "Each model used in the selected range: speed, time per answer, and how well it uses tools (its last":
+      "Jedes im gewählten Zeitraum genutzte Modell: Tempo, Zeit pro Antwort und wie gut es Werkzeuge nutzt (auch sein letzter",
+    "too)": ")", "Failed tool calls and other errors": "Fehlgeschlagene Werkzeugaufrufe und andere Fehler",
+    "Show data": "Daten anzeigen", "Busiest second": "Geschäftigste Sekunde", "Module": "Modul",
+    "Calls": "Aufrufe", "Seconds per answer": "Sekunden pro Antwort", "Tools failed": "Werkzeuge fehlgeschlagen",
+    "Exam": "Prüfung", "No data yet": "Noch keine Daten", "No data yet.": "Noch keine Daten.",
+    "No errors in this range.": "Keine Fehler in diesem Zeitraum.",
+    "Tokens per second over time": "Token pro Sekunde im Zeitverlauf",
+    "Web requests in the busiest second per interval": "Web-Anfragen in der geschäftigsten Sekunde je Abschnitt",
+    "GPU use over time": "GPU-Auslastung im Zeitverlauf", "VRAM in use over time": "VRAM-Nutzung im Zeitverlauf",
+    "Tasks completed per interval": "Erledigte Aufgaben je Abschnitt",
+    "request in the busiest second": "Anfrage in der geschäftigsten Sekunde",
+    "requests in the busiest second": "Anfragen in der geschäftigsten Sekunde",
+    "tasks": "Aufgaben", "tool calls": "Werkzeugaufrufe",
     // memory
     "Memory & skills": "Gedächtnis & Fähigkeiten", "What Starlight remembers about you": "Was Starlight über dich weiß",
     "Each memory is a plain text file in the": "Jede Erinnerung ist eine einfache Textdatei im Ordner", "memory": "memory",
@@ -708,6 +744,16 @@
     [/^the arguments of (.+) are not valid JSON$/, "die Argumente von $1 sind kein gültiges JSON"],
     [/^([a-z]+\.[a-z_]+) — (.+)$/, (m, event, when) => `${event} — ${window.starlightTranslate(when)}`],
     [/^(.+) · fields: (.+)$/, (m, when, fields) => `${window.starlightTranslate(when)} · Felder: ${fields}`],
+    // the statistics page (starlight/viewer)
+    [/^(\d+) from WhatsApp$/, "$1 von WhatsApp"],
+    [/^peak (\d+) in one second \(cap (\d+)\)$/, "Spitze $1 in einer Sekunde (Obergrenze $2)"],
+    [/^benchmark ([\d.,]+[KMB]?) tok\/s(?:, (\d+)% on GPU)?$/,
+      (m, speed, gpu) => `Benchmark ${speed} Tok/s` + (gpu ? `, ${gpu} % auf der GPU` : "")],
+    [/^VRAM ([\d.,]+ GB)(?: of ([\d.,]+ GB))?$/, (m, used, total) => `VRAM ${used}` + (total ? ` von ${total}` : "")],
+    [/^(\d+) drafts waiting$/, "$1 Entwürfe warten"],
+    [/^cap (\d+)\/s$/, "Obergrenze $1/s"],
+    [/^tool ([\w.*-]+) failed$/, "Werkzeug $1 fehlgeschlagen"],
+    [/^(?!(?:no|an|any|the) )([a-z_][\w.-]*) error$/, "Fehler in $1"],
   ];
   // Never translated: the conversation, code, and what you type.
   const KEEP = ".msg .body, pre, code, textarea, [translate=no], .notranslate";

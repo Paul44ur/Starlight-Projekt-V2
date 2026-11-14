@@ -125,6 +125,14 @@ and skills, plus Prometheus metrics at `/metrics`. Hardening: end-to-end tests p
 module, a test that the kill switch stops every tool of every module, a load test of the
 requests-per-second cap, vault values masked in every log line, and `starlight logs scan`.
 
+**The viewer's look.** The viewer (port 8765) has its own page but shares the look's files
+with the chat: it serves `style.css`, `i18n.js`, `common.js`, `icon.svg` and the two heading
+font files from `starlight/web/static`, each by its own route (the `SHARED` list in
+`starlight/viewer/app.py`). Nothing else of that folder is served there. The page has no
+colour of its own. Its charts take their colours from the tokens. Because the viewer is
+another origin, it does not see the chat's stored language: `i18n.js` follows the browser's
+language, and `?lang=de` or `?lang=en` in the address wins.
+
 **Add-on modules.** Beyond the build plan, a set of everyday, security and productivity
 modules follow the same pattern (config, `@tool`, confirmations, the shared HTTP client,
 the kill switch) and are enabled by default. Free or local, no API keys except where noted:

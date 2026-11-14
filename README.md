@@ -846,6 +846,9 @@ plain text as before.
 
 **Statistics.** Open http://127.0.0.1:8765 while Starlight runs. It shows tasks, errors,
 model speed, GPU use and memory size.
+The page looks like the rest of Starlight: night by default, a day look, and "like your
+system" (the button at the top right). It speaks German when your browser does. Add `?lang=de`
+or `?lang=en` to the address to choose.
 
 **Memory.** Everything Starlight remembers is a text file in the `memory` folder. Open,
 correct or delete any of them; Starlight picks up the change. `memory/profile.md` is your

@@ -27,6 +27,17 @@ from starlight.core.config import load_config
 from starlight.core.paths import Paths
 
 STATIC = Path(__file__).with_name("static")
+# The look's files are the chat's own (one source): the viewer serves only these, each by its
+# own route, and nothing else of that folder.
+WEB_STATIC = Path(__file__).resolve().parents[1] / "web" / "static"
+SHARED = {
+    "style.css": "text/css; charset=utf-8",
+    "i18n.js": "text/javascript; charset=utf-8",
+    "common.js": "text/javascript; charset=utf-8",
+    "icon.svg": "image/svg+xml",  # the tab's icon
+    "vendor/space-grotesk-latin.woff2": "font/woff2",  # the heading font (style.css loads it)
+    "vendor/space-grotesk-latin-ext.woff2": "font/woff2",
+}
 HEARTBEAT_STALE = 120  # seconds without a heartbeat = the core is not running
 
 
@@ -299,7 +310,7 @@ class StatsReader:
 
 
 def create_app(paths: Paths | None = None) -> Any:
-    from fastapi import FastAPI, Query
+    from fastapi import FastAPI, Query, Response
     from fastapi.responses import HTMLResponse, PlainTextResponse
 
     paths = paths or Paths.discover()
@@ -313,6 +324,14 @@ def create_app(paths: Paths | None = None) -> Any:
         html = (STATIC / "index.html").read_text(encoding="utf-8")
         html = html.replace("__REFRESH__", str(config.viewer.refresh_seconds * 1000))
         return html.replace("__WEB_CAP__", str(config.http.max_requests_per_second))
+
+    def shared_file(name: str, media_type: str) -> None:
+        @app.get("/" + name, name="shared " + name)
+        def serve() -> Response:
+            return Response((WEB_STATIC / name).read_bytes(), media_type=media_type)
+
+    for shared_name, shared_type in SHARED.items():
+        shared_file(shared_name, shared_type)
 
     @app.get("/api/summary")
     def summary(minutes: int = Query(60, ge=5, le=60 * 24 * 30)) -> dict[str, Any]:
