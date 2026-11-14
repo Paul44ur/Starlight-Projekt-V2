@@ -26,6 +26,7 @@ import unicodedata
 import uuid
 from collections.abc import Awaitable, Callable, Iterable
 from dataclasses import dataclass
+from datetime import date
 from email.parser import BytesParser
 from pathlib import Path
 from typing import Any
@@ -41,7 +42,7 @@ from starlight.core.config import ConfigError, RemoteConfig, WebConfig, load_con
 from starlight.core.dispatcher import tool_sink
 from starlight.core.model import thought_sink
 from starlight.core.modelpause import read_pause, resume_model
-from starlight.core.modules import outside_warning
+from starlight.core.modules import ModuleStatus, outside_warning
 from starlight.core.output import describe_output_folder
 from starlight.core.permissions import (
     Permission,
@@ -57,6 +58,7 @@ from starlight.web.backup_api import add_backup_api
 from starlight.web.export import export_html
 from starlight.web.model_api import add_model_api
 from starlight.web.notes_api import add_notes_api
+from starlight.web.suggestions import pick_suggestions
 
 STATIC = Path(__file__).with_name("static")
 # The Notes page's scripts, loaded in this order by notes.html (notes-editor.js: on the first
@@ -1256,6 +1258,14 @@ def create_app(paths: Paths | None = None) -> Any:
                 for n, r in sorted(records.items())
             ]
         }
+
+    @app.get("/api/suggestions")
+    def suggestions(request: Request) -> dict[str, Any]:
+        """Things to ask in a new conversation, from the modules that are on."""
+        viewer(request)
+        records = kernel().modules.records
+        on = [n for n, r in records.items() if r.status is ModuleStatus.LOADED]
+        return {"suggestions": pick_suggestions(on, date.today())}
 
     @app.post("/api/modules/{name}")
     async def toggle_module(name: str, request: Request) -> dict[str, Any]:

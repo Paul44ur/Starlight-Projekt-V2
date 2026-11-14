@@ -16,6 +16,7 @@ from typing import Any
 
 import pytest
 
+from starlight.web.suggestions import FALLBACK, TABLE
 from tests.conftest import REPO
 from tests.test_chat_app_look import APP
 from tests.test_chat_page import CHROMIUM, SEND
@@ -682,6 +683,15 @@ async def chat_states(page: Any, site: str) -> Scenario:
     await page.evaluate("() => { if (!window.sockets.length) connect(); }")
     await page.wait_for_function("() => window.sockets.length > 0")
     yield "chat"
+    # the starter suggestions of a new conversation: every text of the table, four at a time
+    for n in range(0, len(SUGGESTIONS), 4):
+        await page.evaluate(
+            f"() => {{ window.suggestionSet = {json.dumps(SUGGESTIONS[n : n + 4])};"
+            " log.innerHTML = ''; showEmpty(false); }"
+        )
+        await page.wait_for_selector(".suggest")
+        yield "chat suggestions"
+    await page.evaluate("() => { log.innerHTML = ''; }")
     await page.evaluate("() => addMsg('you', 'Hello')")
     await page.evaluate(SEND, {"type": "start", "conversation": "c1"})
     await page.evaluate(SEND, {"type": "tool", "tool": "mail.read", "state": "running"})
@@ -775,6 +785,16 @@ BUSY = APP.replace('"kill": {"engaged": false}', '"kill": {"engaged": true}').re
     '"access": {"servers": ["nas"], "login_sites": ["a.example"], "secrets": ["key"]},'
     ' "practice": true, "paused": "the game", "waiting": 2, "saves_files": "C:/Docs/Starlight"',
 )
+SUGGESTIONS = [
+    {"text": text, "module": module} for module, text in (*TABLE, FALLBACK)
+]  # (starter suggestions on a new conversation)
+SUGGEST = (
+    "window.suggestionSet = [];\n"
+    "const appFetch = window.fetch; window.fetch = async (url, ...rest) => {"
+    " if (!String(url).includes('/api/suggestions')) return appFetch(url, ...rest);"
+    " return new Response(JSON.stringify({suggestions: window.suggestionSet}),"
+    " {headers: {'content-type': 'application/json'}}); };\n"
+)
 SCENARIOS: dict[str, tuple[Any, dict[str, Any], str]] = {
     "settings": (settings_states, {}, ""),
     "settings-devices": (settings_devices, {"/api/devices": DEVICES}, ""),
@@ -784,7 +804,7 @@ SCENARIOS: dict[str, tuple[Any, dict[str, Any], str]] = {
     "automations": (automations_states, {}, ""),
     "kill": (kill_states, {}, ""),
     "pair": (pair_states, {}, ""),
-    "chat": (chat_states, {}, APP),
+    "chat": (chat_states, {}, APP + SUGGEST),
     "chat-status": (chat_status_states, {}, BUSY),
     "notes": (notes_states, {}, ""),
 }

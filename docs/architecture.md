@@ -281,6 +281,17 @@ storage call is in `try/catch`. At start-up `cleanDrafts` removes drafts of conv
 are gone, but only when it can read the whole list (open and archived, each under the 200 the
 server returns); otherwise it does nothing.
 
+**Starter suggestions.** A new, empty conversation shows up to four things to ask.
+`GET /api/suggestions` (`viewer` access) answers from `starlight/web/suggestions.py`: a fixed
+table of (module, English text) and the pure `pick_suggestions(on, today)`, which keeps the
+lines of the modules that are loaded, turns the start with the day (`date.toordinal()`, no
+random numbers) and fills up with "What can you do?" when fewer than four modules give a line.
+No user data goes into the texts. `showEmpty` in `chat-page.js` adds them as plain buttons
+(`.suggest`, inside `.empty`, so they go with the first message) once the answer is there; if
+the request fails there are none and no message. A press puts the shown (translated) text in
+the box, calls `input.oninput()` (sizing and draft), and selects a "…" so typing replaces it.
+It never sends.
+
 **The chat page's layout** (after the Claude app's, in Starlight's look): the sidebar holds
 the actions, the pages (`.side-nav`, the same links the phone's drawer shows) and the
 conversations; the bar shows the open one's name (`showTitle`, its menu is the list's

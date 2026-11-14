@@ -533,8 +533,10 @@ and deletes them (the terminal continues the most recent one). A search also loo
 was said: a conversation found that way shows the line with your words under its title, and
 opening it jumps to that message and marks it for a moment. Drop pictures or documents (PDF,
 Word, Excel, text) onto the chat, or press the paperclip, to send them with your message.
-Answers show their formatting: headings, lists, tables, links and code blocks (each with its own
-**Copy**). Until the first word arrives, the answer shows that Starlight is working, and for how
+A new, empty conversation offers up to four things to ask, taken from the modules that are on
+("How does my day look?"); pressing one puts it in the message box, and it is not sent, so you
+can change it first. Answers show their formatting: headings, lists, tables, links and code
+blocks (each with its own **Copy**). Until the first word arrives, the answer shows that Starlight is working, and for how
 long. While it writes, **Send** turns into **Stop** (or press **Esc**); **Up** in the empty box
 brings back your last question. What you typed and did not send stays with its conversation
 (in this browser only), and comes back when you open it again; a private conversation's draft

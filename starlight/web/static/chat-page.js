@@ -49,6 +49,32 @@ function showEmpty(isPrivate) {
     el("div", "empty-hint", "Type / for commands. Drop pictures or documents here to add them."),
     el("div", "empty-keys", "Press Ctrl+/ for the keyboard shortcuts."));
   log.appendChild(box);
+  showSuggestions(box);
+}
+// Things to ask, from the modules that are on. Pressing one only fills the message box (it is
+// not sent). They come with the answer of /api/suggestions; if that fails there are none.
+async function showSuggestions(box) {
+  let list;
+  try { list = (await api("/api/suggestions")).suggestions; } catch (e) { return; }
+  if (!box.isConnected || !Array.isArray(list) || !list.length) return;  // (a message went first)
+  const group = el("div", "suggestions");
+  group.setAttribute("role", "group");
+  group.setAttribute("aria-label", "Suggestions");
+  for (const item of list.slice(0, 4)) {
+    const button = el("button", "suggest", String(item.text));
+    button.type = "button";
+    button.onclick = () => useSuggestion(button.textContent);
+    group.appendChild(button);
+  }
+  box.appendChild(group);
+}
+function useSuggestion(text) {
+  input.value = text;
+  input.focus();
+  input.oninput();  // (as typed: the box is sized and the draft is kept)
+  const gap = text.indexOf("…");  // (the part to fill in: typing replaces it)
+  if (gap >= 0) input.setSelectionRange(gap, gap + 1);
+  else input.setSelectionRange(text.length, text.length);
 }
 // How full the model's context is for this conversation: what it read and wrote for the last
 // answer, of what it can take (older turns are summarized beyond it).
