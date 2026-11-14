@@ -109,6 +109,8 @@
     "Used 1 tool": "1 Werkzeug benutzt",
     "How full the model's context is": "Wie voll der Kontext des Modells ist",
     "Ctrl K": "Strg K", "Ctrl Alt J": "Strg Alt J", "Enter": "Eingabe",
+    // the conversation list's time groups
+    "Yesterday": "Gestern", "Older": "Älter",
     // the chat
     "Starlight is not answering: the PC may be off or asleep.": "Starlight antwortet nicht: Der PC ist vielleicht aus oder im Ruhezustand.",
     "Wake the PC": "PC aufwecken", "connecting…": "verbinde…", "connected": "verbunden", "offline": "offline",

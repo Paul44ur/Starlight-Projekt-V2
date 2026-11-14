@@ -1,5 +1,5 @@
 """The chat page as a desktop app (after the Claude app's layout, in Starlight's own look): a
-sidebar with the actions, the pages and the conversations (Pinned, Recent) and the model at
+sidebar with the actions, the pages and the conversations (Pinned, then by time) and the model at
 its foot; the open conversation's name in the bar with its menu; a sidebar that can be hidden;
 and a meter of how full the model's context is."""
 
@@ -30,6 +30,13 @@ STATUS = {
     "local": True, "kill": {"engaged": False}, "access": {}, "model": "lmstudio",
     "model_name": "qwen3-14b", "context_window": 32768,
 }  # fmt: skip
+# the page's "now": Date is replaced, `window.__now` moves the clock
+CLOCK = (
+    "window.__now = new Date(2026, 10, 14, 12, 0, 0).getTime();\n"
+    "const RealDate = Date;\n"
+    "Date = class extends RealDate { constructor(...a) { if (a.length) super(...a);"
+    " else super(window.__now); } static now() { return window.__now; } };\n"
+)
 NONE = "\u2013"  # (the meter before an answer: a dash)
 APP = (
     "window.sockets = []; window.WebSocket = class { constructor() { this.readyState = 1;"
@@ -97,7 +104,7 @@ async def test_the_sidebar_holds_the_actions_the_pages_and_the_conversations(
     async_api = pytest.importorskip("playwright.async_api")
     monkeypatch.setenv("NO_PROXY", "127.0.0.1")
     async with async_api.async_playwright() as playwright:
-        browser, page = await open_app(playwright, static_site)
+        browser, page = await open_app(playwright, static_site, CLOCK)
         try:
             side = page.locator("#convs")
             assert await page.locator("#new").inner_text() == "New conversation"
@@ -117,7 +124,7 @@ async def test_the_sidebar_holds_the_actions_the_pages_and_the_conversations(
                 "PINNED",
                 "Plan the week",
                 "Server check",
-                "RECENT",
+                "OLDER",
                 "Recipe for Sunday",
             ]  # fmt: skip  (.section-label: upper case)
             await page.wait_for_function(

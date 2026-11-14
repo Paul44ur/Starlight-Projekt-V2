@@ -294,7 +294,10 @@ It never sends.
 
 **The chat page's layout** (after the Claude app's, in Starlight's look): the sidebar holds
 the actions, the pages (`.side-nav`, the same links the phone's drawer shows) and the
-conversations; the bar shows the open one's name (`showTitle`, its menu is the list's
+conversations (`loadList` in `chat-list.js`: pinned ones first; then, in the normal view only,
+those without a folder under **Today**, **Yesterday**, **Last 7 days** and **Older**, by
+`updated` read as local time on the device and drawn anew every time; a missing or unreadable
+date is **Older**; the archive and a search keep the old plain list); the bar shows the open one's name (`showTitle`, its menu is the list's
 `conversationMenu`, both in `chat-list.js`); on a wide screen the menu button hides the sidebar (`body.no-sidebar`,
 kept in localStorage). The context meter comes from `answer_stats`: `context_tokens` is what
 the model read plus wrote in the answer's last step, out of `/api/status`'s `context_window`.

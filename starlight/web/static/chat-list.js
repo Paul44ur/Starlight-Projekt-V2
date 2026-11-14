@@ -15,6 +15,22 @@ function labelled(name, text, own) {
   label.append(words);
   return label;
 }
+// The time groups of the list (the normal view only): the day a conversation last changed, by
+// the borders of the day on this device. The server writes `updated` without a zone (its own
+// local time), so it is read as local time here. A missing or unreadable date is "Older".
+const TIME_GROUPS = ["Today", "Yesterday", "Last 7 days", "Older"];
+function timeGroup(updated, now) {
+  const m = /^(\d{4})-(\d\d)-(\d\d)[T ](\d\d):(\d\d)(?::(\d\d))?(?:\.\d+)?$/.exec(String(updated || "").trim());
+  if (!m) return 3;
+  const [y, mo, d, h, mi, sec] = [+m[1], +m[2] - 1, +m[3], +m[4], +m[5], +(m[6] || 0)];
+  const at = new Date(y, mo, d, h, mi, sec);
+  if (at.getFullYear() !== y || at.getMonth() !== mo || at.getDate() !== d || h > 23 || mi > 59) return 3;
+  const day = (back) => new Date(now.getFullYear(), now.getMonth(), now.getDate() - back);
+  if (at >= day(0)) return 0;
+  if (at >= day(1)) return 1;
+  if (at >= day(7)) return 2;
+  return 3;
+}
 async function loadList() {
   const search = document.getElementById("search").value;
   let data;
@@ -29,16 +45,27 @@ async function loadList() {
   const pinned = data.conversations.filter(c => c.pinned);
   const rest = data.conversations.filter(c => !c.pinned)
     .sort((a, b) => (a.folder || "").localeCompare(b.folder || ""));
-  let folder = null;
+  // In the normal view the conversations without a folder go under time labels, newest first.
+  const timed = !showArchived && !search.trim(), now = new Date(), groupOf = new Map();
+  if (timed) {
+    rest.forEach(c => { if (!c.folder) groupOf.set(c, timeGroup(c.updated, now)); });
+    rest.sort((a, b) => (a.folder || "").localeCompare(b.folder || "")
+      || (groupOf.get(a) ?? 0) - (groupOf.get(b) ?? 0));  // (stable: the server's order stays inside a group)
+  }
+  let folder = null, group = -1;
   if (pinned.length && !showArchived) list.appendChild(el("div", "folder section-label", "Pinned"));
   [...pinned, ...rest].forEach(c => {
+    if (timed && !c.pinned && !c.folder && groupOf.get(c) !== group) {
+      group = groupOf.get(c);
+      list.appendChild(el("div", "folder section-label", TIME_GROUPS[group]));
+    }
     if (!c.pinned && (c.folder || "") !== folder) {
       folder = c.folder || "";
       if (folder) list.appendChild(labelled("folder", folder, true));
-      else if (pinned.length && !showArchived) list.appendChild(el("div", "folder section-label", "Recent"));
+      else if (pinned.length && !timed && !showArchived) list.appendChild(el("div", "folder section-label", "Recent"));
     }
     const row = el("div", "conv" + (c.id === conversation ? " active" : ""));
-    const t = el("span", "t", c.title); t.translate = false; t.title = c.title + " — " + c.updated.replace("T", " ").slice(0, 16);
+    const t = el("span", "t", c.title); t.translate = false; t.title = c.title + " — " + String(c.updated || "").replace("T", " ").slice(0, 16);
     const acts = el("span", "acts");
     const more = el("button", "icon"); setIcon(more, "more"); more.title = "Rename, pin, folder, archive, download, delete"; more.setAttribute("aria-label", "More for this conversation");
     more.onclick = (e) => { e.stopPropagation(); conversationMenu(c, more); };

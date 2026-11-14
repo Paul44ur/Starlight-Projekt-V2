@@ -555,7 +555,10 @@ narrow the list, use the arrow keys and Enter. On the Notes page Ctrl+K stays th
 
 **How it is laid out.** On the left: **New conversation**, **Private conversation**, the
 search, the pages (Notes, Memory, Activity, Automations, Settings), your conversations
-(**Pinned** first, then **Recent**) and, at the bottom, the model. The menu button at the top
+and, at the bottom, the model. **Pinned** conversations come first. The others, those without a
+folder, are grouped by the day you last used them: **Today**, **Yesterday**, **Last 7 days**
+and **Older**. A group with nothing in it is not shown. Folders keep their own names. The
+archive and a search show a plain list, without these groups. The menu button at the top
 left hides this sidebar on a wide screen and shows it again (it is remembered); on a phone it
 opens the drawer. The bar at the top shows the open conversation's name: click it to rename,
 pin, file, archive, download or delete it. On the right, **Context** shows after each answer
