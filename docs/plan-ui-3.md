@@ -10,10 +10,10 @@ stays: tokens in `style.css`, shared blocks, German, screenshots, one block per 
 | Block | What | Needs | State |
 |---|---|---|---|
 | P1 | Foundation: tokens (light and dark), fonts, buttons, fields, lines, the logo and app icons | – | **done** (56553e5) |
-| P2 | The chat page: messages as a document, a plain start, a calmer side pane | P1 | open |
-| P3 | The Settings page | P1 | open |
+| P2 | The chat page: messages as a document, a plain start, a calmer side pane | P1 | **done** (4c6db2e) |
+| P3 | The Settings page | P1 | **done** (c84eeca) |
 | P4 | The Notes page (editor, graph, boards) | P1 | open |
-| P5 | Today, Memory, Activity, Automations, Kill, Pair, Statistics | P1 | open |
+| P5 | Today, Memory, Activity, Automations, Kill, Pair, Statistics | P1 | **done** (fe2448a) |
 | P6 | The launcher window, the tray, the terminal's colours | P1 | open |
 | F1 | Find in the open conversation (Ctrl F) | P2 | open |
 | F2 | Undo instead of a question: delete and archive a conversation | P2 | open |
