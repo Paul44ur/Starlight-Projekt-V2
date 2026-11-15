@@ -31,11 +31,18 @@ function timeGroup(updated, now) {
   if (at >= day(7)) return 2;
   return 3;
 }
+let recentList = [];
 async function loadList() {
   const search = document.getElementById("search").value;
   let data;
   try { data = await api("/api/conversations?search=" + encodeURIComponent(search) + (showArchived ? "&archived=true" : "")); } catch (e) { return; }
   if (!conversation) conversation = data.current;
+  // (the plain list, not a search or the archive: the start of a new conversation shows the newest)
+  if (!search.trim() && !showArchived) {
+    recentList = data.conversations.filter(c => !c.private && !c.archived)
+      .sort((a, b) => String(b.updated || "").localeCompare(String(a.updated || "")));
+    fillRecent();
+  }
   // The list is drawn anew: the keyboard's place in it (a row, or its ⋯) comes back after.
   const had = document.activeElement && document.activeElement.closest && document.activeElement.closest(".conv");
   const keep = had ? { id: had.dataset.id, more: document.activeElement !== had } : null;
@@ -112,12 +119,13 @@ function showTitle(c) {
   titled = c || null;
   button.hidden = !c;
   document.querySelector(".bar-sep").hidden = !c;
-  if (!c) return;
+  if (!c) { updateBarMeta(); return; }
   const lock = document.getElementById("title-lock");
   lock.hidden = !c.private;
   lock.innerHTML = c.private ? icon("lock") : "";
   document.getElementById("title-text").textContent = c.title;
   button.onclick = (e) => { e.stopPropagation(); conversationMenu(c, button); };
+  updateBarMeta();
 }
 
 // Conversations: pinned first, then by folder; the archive is a list of its own.
@@ -231,6 +239,7 @@ async function openConversation(id, hit) {
   document.getElementById("privacy").hidden = !data.private;
   data.messages.forEach((m, n) => {
     const body = addMsg(m.role === "user" ? "you" : "bot", m.content);
+    body.parentElement.querySelector(".when").textContent = "";  // (a stored message has no time here)
     body.parentElement.dataset.n = n;  // (which message: a search hit names it)
     if (m.role !== "user") body.parentElement.dataset.kept = "1";
     (m.tools || []).forEach(t => toolStep(body, t.tool, t.ok ? "done" : "failed"));

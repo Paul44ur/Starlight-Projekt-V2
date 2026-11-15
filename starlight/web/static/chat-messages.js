@@ -10,8 +10,12 @@ function addMsg(who, text, files, plain) {
   const stick = atBottom();
   log.querySelector(".empty")?.remove();  // (the start of a new conversation)
   const m = el("div", "msg " + (who === "you" ? "you" : "bot"));
+  // above the text: who, and when (a message of this visit; stored ones carry no time)
+  const head = el("div", "msghead");
   const name = el("div", "who", who === "you" ? "you" : "starlight");
-  m.appendChild(name);
+  const when = el("span", "when num", new Date().toLocaleTimeString(window.starlightLanguage === "de" ? "de-DE" : [], { hour: "2-digit", minute: "2-digit" }));
+  head.append(name, when);
+  m.appendChild(head);
   const body = el("div", "body", who === "you" || plain ? text || "" : undefined);
   if (who !== "you" && !plain) setAnswer(body, text || "");
   m.appendChild(body);
@@ -44,6 +48,14 @@ function markLatest() {
     const all = log.querySelectorAll(kind);
     all.forEach((a, i) => a.classList.toggle("latest", i === all.length - 1));
   }
+  updateBarMeta();
+}
+// "12 messages" in the bar, after the conversation's name (nothing while there are none).
+function updateBarMeta() {
+  const meta = document.getElementById("bar-meta");
+  const n = log.querySelectorAll(".msg.you, .msg.bot").length;
+  meta.hidden = !n || !titled;
+  meta.textContent = n === 1 ? "1 message" : n + " messages";
 }
 
 // -- the tools an answer used ------------------------------------------------------------------
@@ -142,15 +154,17 @@ function addToAnswer(body, text) {
 }
 function addStats(body, stats) {
   if (!stats || !stats.seconds) return;
-  const parts = [];
-  if (stats.tokens_per_second) parts.push(stats.tokens_per_second + " tok/s");
-  parts.push(stats.seconds + " s");
-  body.parentElement.appendChild(el("div", "att num", parts.join(" · ")));
+  // the seconds go in the line above the answer; the speed stays under it
+  const point = document.documentElement.lang === "de" ? "," : ".";
+  const when = body.parentElement.querySelector(".when");
+  if (when) when.textContent = (when.textContent ? when.textContent + " · " : "") + String(stats.seconds).replace(".", point) + " s";
+  if (stats.tokens_per_second) body.parentElement.appendChild(el("div", "att num", stats.tokens_per_second + " tok/s"));
   showAnswerStats(body, stats);
 }
 // "This answer" in the details pane: the tools it used, how long it took, how many tokens.
 function showAnswerStats(body, stats) {
   const set = (id, text) => { document.getElementById(id).textContent = text; };
+  document.getElementById("sec-answer").hidden = !body || !stats;  // (nothing to say before an answer)
   if (!body || !stats) { set("answer-tools", "–"); set("answer-time", "–"); set("answer-tokens", "–"); return; }
   set("answer-tools", String(body.toolRow ? body.toolRow.children.length : 0));
   set("answer-time", stats.seconds + " s");

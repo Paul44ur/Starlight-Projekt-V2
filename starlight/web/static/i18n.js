@@ -103,6 +103,11 @@
     "When is the next train to …?": "Wann fährt der nächste Zug nach …?",
     "Translate this into English: …": "Übersetze das ins Englische: …",
     "What can you do?": "Was kannst du?",
+    // the chat in the Paper look (P2)
+    "Recently": "Zuletzt", "You can ask:": "Du kannst fragen:",
+    "Access in the settings": "Zugänge in den Einstellungen",
+    "Enter to send · Shift+Enter for a new line": "Enter senden · Umschalt+Enter neue Zeile",
+    "1 message": "1 Nachricht",
     // the chat in the Night Sky look
     "Search or jump to…": "Suchen oder springen zu …",
     "This answer": "Diese Antwort", "Tools": "Werkzeuge", "Time": "Zeit", "Tokens": "Token",
@@ -664,6 +669,7 @@
     return when === null || done.includes(null) ? null : `${when}: ${done.join("; dann ")}`;
   }
   const PATTERNS = [
+    [/^(\d+) messages$/, "$1 Nachrichten"],  // (the bar of the chat, P2)
     [/^Delete "(.+)"\?$/, "„$1“ löschen?"],
     [/^Forget the memories Starlight learned in "(.+)"\?$/, "Die Erinnerungen vergessen, die Starlight in „$1“ gelernt hat?"],
     [/^Folder: (.+)$/, "Ordner: $1"],

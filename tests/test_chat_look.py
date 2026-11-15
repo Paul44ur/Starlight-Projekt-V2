@@ -43,9 +43,8 @@ async def test_a_new_conversation_starts_calm_and_the_first_answer_clears_it(
             await page.evaluate("() => openConversation('c1')")
             empty = page.locator("#log .empty")
             await empty.wait_for()
-            assert await empty.locator(".empty-title").text_content() == (
-                "New conversation. Ask anything."
-            )
+            # (Paper: a heading, no "Ask anything." and no logo)
+            assert await empty.locator(".empty-title").text_content() == "New conversation"
             assert "nothing you say leaves it" in (await empty.text_content() or "")
             assert "Type / for commands" in (await empty.text_content() or "")
             await page.evaluate(SEND, {"type": "start", "conversation": "c1"})
@@ -137,15 +136,16 @@ async def test_older_answers_keep_their_tools_out_of_the_way(
                     arg=want,
                 )
 
-            # the older one's bar takes no room and shows when pointed at; the latest's stays
-            await settled([["0", "absolute"], ["1", "static"]])
+            # the older one's links are faint and show when pointed at (Paper: they keep their
+            # place in the text, no floating bar); the latest's stay
+            await settled([["0", "static"], ["1", "static"]])
             await page.locator(".msg.bot").first.hover()
-            await settled([["1", "absolute"], ["1", "static"]])
+            await settled([["1", "static"], ["1", "static"]])
             # and Tab reaches it too
             await page.mouse.move(0, 0)
-            await settled([["0", "absolute"], ["1", "static"]])
+            await settled([["0", "static"], ["1", "static"]])
             await page.locator(".msg.bot").first.locator(".tools button").first.focus()
-            await settled([["1", "absolute"], ["1", "static"]])
+            await settled([["1", "static"], ["1", "static"]])
             assert len(await tools.all()) == 2
         finally:
             await browser.close()
@@ -161,10 +161,12 @@ async def test_the_message_box_is_one_line_and_send_is_the_main_button(
         browser, page = await chat(playwright, static_site)
         try:
             box, send = page.locator("#input"), page.locator("#send")
-            assert await box.evaluate("i => i.offsetHeight") == 44  # one line at rest
+            assert await box.evaluate("i => i.offsetHeight") == 56  # one box at rest (Paper)
             await box.fill("one\ntwo\nthree\nfour")
             await box.dispatch_event("input")
-            assert await box.evaluate("i => i.offsetHeight") > 44  # it grows with the text
+            assert await box.evaluate("i => i.offsetHeight") > 56  # it grows with the text
+            # (and it grows enough: no scrollbar for the lines it holds)
+            assert await box.evaluate("i => i.scrollHeight <= i.clientHeight")
             assert await send.get_attribute("class") == "primary"
             await page.evaluate(SEND, {"type": "start", "conversation": "c1"})
             assert await send.get_attribute("class") == "stop"
@@ -193,9 +195,7 @@ async def test_the_new_chat_texts_are_in_german(
             await page.wait_for_function(
                 "() => document.querySelector('.empty-title').textContent.startsWith('Neues')"
             )
-            assert await page.locator(".empty-title").text_content() == (
-                "Neues Gespräch. Frag einfach."
-            )
+            assert await page.locator(".empty-title").text_content() == "Neues Gespräch"
             text = await page.locator(".empty").text_content() or ""
             assert "Nichts, was du sagst" in text and "Tippe / für Befehle" in text
             label = await page.locator("#tolatest").get_attribute("aria-label")

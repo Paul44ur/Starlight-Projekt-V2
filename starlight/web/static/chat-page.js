@@ -37,17 +37,41 @@ document.addEventListener("visibilitychange", () => { if (!document.hidden) clea
 
 // -- status ----------------------------------------------------------------------------------
 // A new conversation: a calm start instead of an empty page. It goes with the first message.
+// Paper look: no logo and nothing in the middle; a heading, a line, the last three
+// conversations as links, the things to ask as links, then the hints.
 function showEmpty(isPrivate) {
   const box = el("div", "empty");
+  const recent = el("div", "recent");
+  recent.hidden = true;  // (fillRecent shows it when there is something to open)
   box.append(
-    el("div", "empty-title", isPrivate ? "Private conversation" : "New conversation. Ask anything."),
+    el("h2", "empty-title", isPrivate ? "Private conversation" : "New conversation"),
     el("div", "empty-text", isPrivate
       ? "It is never saved and nothing is learned from it. It is gone when Starlight stops."
       : "Starlight runs on this PC: nothing you say leaves it."),
+    recent,
     el("div", "empty-hint", "Type / for commands. Drop pictures or documents here to add them."),
     el("div", "empty-keys", "Press Ctrl+/ for the keyboard shortcuts."));
   log.appendChild(box);
+  fillRecent();
   showSuggestions(box);
+}
+// "Recently": the last three conversations (not this one), each a link that opens it. Their
+// titles are the user's own words: set as text, never translated.
+function fillRecent() {
+  const recent = log.querySelector(".empty .recent");
+  if (!recent) return;
+  const rows = recentList.filter(c => c.id !== conversation).slice(0, 3);
+  recent.hidden = !rows.length;
+  recent.replaceChildren();
+  if (!rows.length) return;
+  recent.append(el("h3", "section-label", "Recently"));
+  for (const c of rows) {
+    const link = el("a", "recent-link", c.title);
+    link.translate = false;
+    link.href = "/?c=" + encodeURIComponent(c.id);
+    link.onclick = (e) => { e.preventDefault(); openConversation(c.id); };
+    recent.append(link);
+  }
 }
 // Things to ask, from the modules that are on. Pressing one only fills the message box (it is
 // not sent). They come with the answer of /api/suggestions; if that fails there are none.
@@ -58,13 +82,14 @@ async function showSuggestions(box) {
   const group = el("div", "suggestions");
   group.setAttribute("role", "group");
   group.setAttribute("aria-label", "Suggestions");
+  group.append(el("h3", "section-label", "You can ask:"));
   for (const item of list.slice(0, 4)) {
-    const button = el("button", "suggest", String(item.text));
+    const button = el("button", "suggest", String(item.text));  // (a plain text link)
     button.type = "button";
     button.onclick = () => useSuggestion(button.textContent);
     group.appendChild(button);
   }
-  box.appendChild(group);
+  box.insertBefore(group, box.querySelector(".empty-hint"));  // (above the hints)
 }
 function useSuggestion(text) {
   input.value = text;
@@ -84,6 +109,7 @@ function showContext(tokens) {
   const line = document.getElementById("meta-context");
   const top = document.getElementById("bar-context");  // (the thin meter in the bar)
   top.hidden = !tokens || !contextWindow;
+  document.getElementById("sec-context").hidden = !tokens || !contextWindow;  // (only when known)
   if (!tokens || !contextWindow) {
     used.textContent = "–"; of.textContent = ""; bar.className = "context-bar";
     bar.firstElementChild.style.width = "0";
@@ -133,6 +159,10 @@ async function refresh() {
     // the access module's status tool (modules/access/module.py), read by /api/status
     fill("servers", s.access.servers || []); fill("logins", s.access.login_sites || []); fill("secrets", s.access.secrets || []);
     document.getElementById("saves").textContent = s.saves_files || "";
+    document.getElementById("sec-saves").hidden = !s.saves_files;
+    // all four empty: one quiet link to where they are set (at the PC only)
+    const access = ["sec-servers", "sec-logins", "sec-secrets", "sec-saves"];
+    document.getElementById("side-access").hidden = !s.local || access.some(id => !document.getElementById(id).hidden);
     const waiting = document.getElementById("waiting");
     waiting.hidden = !s.waiting;
     waiting.querySelector(".wide").textContent = `${s.waiting} waiting for your OK`;
@@ -158,6 +188,7 @@ function showOffline() {
 }
 function fill(id, items) {
   const box = document.getElementById(id); box.innerHTML = "";
+  box.parentElement.hidden = !items.length;  // (its section: nothing to show, nothing shown)
   if (!items.length) { box.className = "dim small"; box.textContent = "none"; return; }
   box.className = ""; items.forEach(x => box.appendChild(el("div", "item", x)));
 }

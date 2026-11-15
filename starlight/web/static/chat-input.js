@@ -116,7 +116,8 @@ input.onkeydown = (e) => {
 };
 function sizeInput() {
   input.style.height = INPUT_HEIGHT + "px";  // shrink first, then grow with the text
-  input.style.height = Math.min(input.scrollHeight, INPUT_MAX_HEIGHT) + "px";
+  const border = input.offsetHeight - input.clientHeight;  // (the box has a line round it)
+  input.style.height = Math.min(input.scrollHeight + border, INPUT_MAX_HEIGHT) + "px";
 }
 input.oninput = () => {
   sizeInput();

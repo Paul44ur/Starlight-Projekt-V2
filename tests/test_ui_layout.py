@@ -40,7 +40,7 @@ def test_hidden_wins_over_a_class_that_sets_display() -> None:
 
 def test_message_bubbles_never_wider_than_their_column() -> None:
     chat = read("chat.css")  # (the page's look moved out of chat.html)
-    assert "max-width: min(780px, 100%)" in chat
+    assert "max-width: 100%" in chat  # (Paper: a message is a block of the column, no bubble)
     assert "overflow-wrap: anywhere" in chat
 
 

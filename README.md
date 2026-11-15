@@ -536,9 +536,10 @@ and deletes them (the terminal continues the most recent one). A search also loo
 was said: a conversation found that way shows the line with your words under its title, and
 opening it jumps to that message and marks it for a moment. Drop pictures or documents (PDF,
 Word, Excel, text) onto the chat, or press the paperclip, to send them with your message.
-A new, empty conversation offers up to four things to ask, taken from the modules that are on
-("How does my day look?"); pressing one puts it in the message box, and it is not sent, so you
-can change it first. Answers show their formatting: headings, lists, tables, links and code
+A new, empty conversation starts plain, at the top: a heading, the last three conversations as
+links, and up to four things to ask, taken from the modules that are on ("How does my day
+look?"); pressing one puts it in the message box, and it is not sent, so you can change it
+first. Answers show their formatting: headings, lists, tables, links and code
 blocks (each with its own **Copy**). Until the first word arrives, the answer shows that Starlight is working, and for how
 long. While it writes, **Send** turns into **Stop** (or press **Esc**); **Up** in the empty box
 brings back your last question. What you typed and did not send stays with its conversation
@@ -566,17 +567,26 @@ loads every card again. The page does not refresh by itself. A card that fails s
 load" and gives the reason; the other cards still show. With the kill switch on, the agenda and
 the weather say that Starlight is stopped.
 
-**How it is laid out.** On the left: **New conversation**, **Private conversation**, the
-search, the pages (Today, Notes, Memory, Activity, Automations, Settings), your conversations
-and, at the bottom, the model. **Pinned** conversations come first. The others, those without a
-folder, are grouped by the day you last used them: **Today**, **Yesterday**, **Last 7 days**
-and **Older**. A group with nothing in it is not shown. Folders keep their own names. The
-archive and a search show a plain list, without these groups. The menu button at the top
-left hides this sidebar on a wide screen and shows it again (it is remembered); on a phone it
-opens the drawer. The bar at the top shows the open conversation's name: click it to rename,
-pin, file, archive, download or delete it. On the right, **Context** shows after each answer
-how full the model's memory is for this conversation (older turns are summarized when it is
-full; `/new` starts afresh); the line under the message box says it too.
+**How it is laid out.** The look is "Paper": warm paper and dark ink, one green for what you
+can do, no boxes and no round corners. On the left: **New conversation**, **Private
+conversation**, the search, the pages (Today, Notes, Memory, Activity, Automations, Settings),
+your conversations and, at the bottom, the model. The open conversation has a green line at its
+left. **Pinned** conversations come first. The others, those without a folder, are grouped by
+the day you last used them: **Today**, **Yesterday**, **Last 7 days** and **Older**. A group
+with nothing in it is not shown. Folders keep their own names. The archive and a search show a
+plain list, without these groups. The menu button at the top left hides this sidebar on a wide
+screen and shows it again (it is remembered); on a phone it opens the drawer. The bar at the
+top shows the open conversation's name, and under it how many messages there are and how full
+the context is: click the name to rename, pin, file, archive, download or delete the
+conversation. The conversation reads like a document: above each message a small line says who
+wrote it and when (and how long an answer took), your words are plain text, and Starlight's
+answers are set in a serif. The tools an answer used are one italic line that opens the list.
+Under the message box are the small controls (file, photo, speak, talk), the keys, and
+**Send**. On the right, the details pane shows only what has a value: **This answer**,
+**Context** (how full the model's memory is for this conversation; older turns are summarized
+when it is full; `/new` starts afresh) and **This PC**. Allowed servers, logins, secrets and
+saved files show up there when there are any; if there are none, one link leads to the
+settings.
 
 - **Edit** under your last question puts it back in the box: change it and press Enter,
   and that exchange is asked again (if that fails, the earlier one stays).

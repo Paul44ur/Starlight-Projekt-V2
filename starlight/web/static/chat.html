@@ -38,6 +38,7 @@
       <h1>Starlight</h1>
       <span class="bar-sep" aria-hidden="true" hidden>/</span>
       <button id="title" class="title-btn" type="button" hidden aria-haspopup="menu" title="This conversation: rename, pin, folder, archive, download, delete" data-icon="chevron"><span id="title-lock" hidden></span><span id="title-text" translate="no"></span></button>
+      <span id="bar-meta" class="bar-meta" hidden></span>
       <span id="conn" class="pill off">connecting…</span>
       <span id="where" class="pill off" hidden></span>
       <button id="practice" class="pill warn" hidden title="Practice mode: actions that change something are described, not done. Press to turn it off"><span class="wide">practice mode · Off</span><span class="narrow">Practice</span></button>
@@ -56,34 +57,45 @@
       <div id="photo-actions" hidden></div>
       <div id="files"></div>
       <form id="form">
-        <button id="attach" type="button" class="icon" title="Add a picture or document" aria-label="Add a picture or document" data-icon="clip"></button>
-        <input id="picker" type="file" multiple hidden />
-        <button id="camera" type="button" class="icon" title="Take a photo: read the text in it, translate it or describe it" aria-label="Take a photo" data-icon="camera"></button>
-        <input id="shot" type="file" accept="image/*" capture="environment" hidden />
-        <button id="mic" type="button" class="icon" title="Speak (press again to stop)" aria-label="Speak" data-icon="mic"></button>
-        <button id="talk" type="button" class="icon" title="Conversation: just talk, and hear the answers; speaking interrupts an answer" aria-label="Conversation mode" aria-pressed="false" data-icon="talk"></button>
-        <textarea id="input" rows="1" aria-label="Your message" placeholder="Ask Starlight…  (Enter to send, Shift+Enter for a new line)"></textarea>
-        <kbd id="send-key" class="key-wide">Enter</kbd>
-        <button id="send" class="primary" type="submit" data-icon="send"><span class="label">Send</span></button>
+        <textarea id="input" rows="1" aria-label="Your message" placeholder="Ask Starlight…"></textarea>
+        <div class="form-row">
+          <div class="form-tools">
+            <button id="attach" type="button" class="icon" title="Add a picture or document" aria-label="Add a picture or document" data-icon="clip"></button>
+            <input id="picker" type="file" multiple hidden />
+            <button id="camera" type="button" class="icon" title="Take a photo: read the text in it, translate it or describe it" aria-label="Take a photo" data-icon="camera"></button>
+            <input id="shot" type="file" accept="image/*" capture="environment" hidden />
+            <button id="mic" type="button" class="icon" title="Speak (press again to stop)" aria-label="Speak" data-icon="mic"></button>
+            <button id="talk" type="button" class="icon" title="Conversation: just talk, and hear the answers; speaking interrupts an answer" aria-label="Conversation mode" aria-pressed="false" data-icon="talk"></button>
+          </div>
+          <span id="send-key" class="send-hint">Enter to send · Shift+Enter for a new line</span>
+          <button id="send" class="primary" type="submit" data-icon="send"><span class="label">Send</span></button>
+        </div>
       </form>
       <div class="meta" aria-live="off"><span id="meta-context"></span></div>
     </footer>
   </div>
   <aside id="side">
-    <h2 class="section-label">This PC</h2>
-    <div class="kv"><span>Model</span><span id="model" translate="no">…</span></div>
-    <h2 class="section-label">Context</h2>
-    <div class="context-top"><span id="context-used">–</span><span id="context-of" class="dim num"></span></div>
-    <div class="context-bar" id="context-bar"><i></i></div>
-    <div id="context-note" class="dim small">Shows after the next answer.</div>
-    <h2 class="section-label">This answer</h2>
-    <div class="kv"><span>Tools</span><span id="answer-tools" class="num">–</span></div>
-    <div class="kv"><span>Time</span><span id="answer-time" class="num">–</span></div>
-    <div class="kv"><span>Tokens</span><span id="answer-tokens" class="num">–</span></div>
-    <h2 class="section-label">Allowed servers</h2><div id="servers" class="dim small">none</div>
-    <h2 class="section-label">Logins</h2><div id="logins" class="dim small">none</div>
-    <h2 class="section-label">Secrets</h2><div id="secrets" class="dim small">none</div>
-    <h2 class="section-label">Saved files</h2><div id="saves" class="item"></div>
+    <section id="sec-answer" hidden>
+      <h2 class="section-label">This answer</h2>
+      <div class="kv"><span>Tools</span><span id="answer-tools" class="num">–</span></div>
+      <div class="kv"><span>Time</span><span id="answer-time" class="num">–</span></div>
+      <div class="kv"><span>Tokens</span><span id="answer-tokens" class="num">–</span></div>
+    </section>
+    <section id="sec-context" hidden>
+      <h2 class="section-label">Context</h2>
+      <div class="context-top"><span id="context-used">–</span><span id="context-of" class="dim num"></span></div>
+      <div class="context-bar" id="context-bar"><i></i></div>
+      <div id="context-note" class="dim small">Shows after the next answer.</div>
+    </section>
+    <section id="sec-pc">
+      <h2 class="section-label">This PC</h2>
+      <div class="kv"><span>Model</span><span id="model" translate="no">…</span></div>
+    </section>
+    <section id="sec-servers" hidden><h2 class="section-label">Allowed servers</h2><div id="servers" class="dim small">none</div></section>
+    <section id="sec-logins" hidden><h2 class="section-label">Logins</h2><div id="logins" class="dim small">none</div></section>
+    <section id="sec-secrets" hidden><h2 class="section-label">Secrets</h2><div id="secrets" class="dim small">none</div></section>
+    <section id="sec-saves" hidden><h2 class="section-label">Saved files</h2><div id="saves" class="item"></div></section>
+    <a id="side-access" class="small" href="/settings" hidden>Access in the settings</a>
   </aside>
   <div id="drop">Drop pictures or documents to add them to your message</div>
 

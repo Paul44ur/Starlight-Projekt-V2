@@ -1,6 +1,6 @@
 """The pages on a phone (UI block U7), with a touch screen emulated: nothing scrolls sideways,
 every control is big enough for a finger (44 px; a few small ones on purpose), the chat's bar
-stays one row, and on a narrow phone Send is an arrow."""
+stays one row, and on a narrow phone Send shows its word."""
 
 from __future__ import annotations
 
@@ -81,7 +81,7 @@ async def test_every_page_fits_a_phone_and_a_finger(
                 await browser.close()
 
 
-async def test_on_a_narrow_phone_the_bar_is_one_row_and_send_is_an_arrow(
+async def test_on_a_narrow_phone_the_bar_is_one_row_and_send_shows_its_word(
     static_site: str,  # noqa: F811
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -104,16 +104,16 @@ async def test_on_a_narrow_phone_the_bar_is_one_row_and_send_is_an_arrow(
             assert one_row
             send = page.locator("#send")
             assert await send.get_attribute("data-icon") == "send"
-            assert await send.locator("svg.ico").is_visible()  # an arrow
-            assert await send.text_content() == "Send"  # (for a screen reader, and tests)
-            hidden = "l => l.getBoundingClientRect().width <= 1"
-            assert await send.locator(".label").evaluate(hidden)
+            # (Paper: Send is a filled button with its word, no arrow)
+            assert not await send.locator("svg.ico").is_visible()
+            assert await send.text_content() == "Send"
+            assert await send.locator(".label").is_visible()
             await page.evaluate(SEND, {"type": "start", "conversation": "c1"})
-            assert await send.get_attribute("data-icon") == "stop"  # a square
+            assert await send.get_attribute("data-icon") == "stop"  # a square and "Stop"
             assert await send.locator("svg.ico").is_visible()
-            # the message box keeps room for its hint on one line
+            assert await send.text_content() == "Stop"
             box = page.locator("#input")
-            assert await box.evaluate("i => i.offsetHeight") == 44
+            assert await box.evaluate("i => i.offsetHeight") == 56
         finally:
             await browser.close()
 

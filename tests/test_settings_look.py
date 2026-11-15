@@ -168,6 +168,13 @@ async def test_settings_is_german_in_every_sentence_and_count(
             assert inside
             # a key with two spaces in it still matches as it is (the chat's message box)
             await page.goto(f"{static_site}/chat.html")
+            await page.wait_for_function("() => window.starlightTranslate")
+            # (the chat's own placeholder is short now, the keys sit under the box: the old
+            # long text is set by hand)
+            await page.evaluate(
+                "() => { document.getElementById('input').placeholder = 'Ask Starlight…  (Enter to"
+                " send, Shift+Enter for a new line)'; }"
+            )
             await page.wait_for_function(
                 "() => !document.getElementById('input').placeholder.startsWith('Ask')"
             )

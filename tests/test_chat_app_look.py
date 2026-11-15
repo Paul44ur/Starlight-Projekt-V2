@@ -220,8 +220,9 @@ async def test_the_context_meter(
             )
             words = await page.evaluate(text)
             assert words[:2] == ["92 % belegt", "30k von 32,8k"]  # (a German comma)
-            first = await page.locator("#side h2").first.inner_text()
-            assert first == "Dieser PC"  # (.section-label: normal case)
+            # (Paper: the pane shows only what has a value: this answer, the context, this PC)
+            shown = await page.locator("#side section:not([hidden]) h2").all_inner_texts()
+            assert shown == ["Diese Antwort", "Kontext", "Dieser PC"]  # (normal case)
             assert await page.locator(".side-nav").get_attribute("aria-label") == "Seiten"
         finally:
             await browser.close()
@@ -282,7 +283,8 @@ async def test_the_name_in_the_bar_stays_and_names_are_never_translated(
             title, slash = page.locator("#title"), page.locator(".bar-sep")
             await page.locator("#search").fill("recipe")  # the open one is not in the list
             await page.wait_for_function("() => document.querySelectorAll('.conv').length === 1")
-            assert await title.is_visible() and await slash.is_visible()
+            # (Paper: the name is the heading of the bar; no slash between "Starlight" and it)
+            assert await title.is_visible() and not await slash.is_visible()
             assert await title.inner_text() == "Plan the week"
             # renamed from the bar while the list leaves it out; a name is never translated
             await title.click()

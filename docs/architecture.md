@@ -330,19 +330,28 @@ In `chat-list.js` the row shows the line (`withHit`: nodes and `textContent`, th
 `<mark>`), `openConversation(id, hit)` puts the number on each message (`data-n`) and
 `showFound` scrolls to it and sets `.found` for two seconds.
 
-**The chat page in the Night Sky look.** The sidebar and the details pane are cards inset 12 px
-on the ground (`body` has the padding; a phone has none and keeps its drawer). The sidebar has
-a brand row with the star, New conversation as `button.primary`, a "Search or jump to…" button
-(`#quick-open`) that calls `window.openQuick` from `quick.js` (the same as Ctrl+K), and rows of
-44 px; the open conversation has `--panel2` and a violet dot (`.conv::before`). The bar has no
-panel: the name in the display font, a thin context bar with its percentage (`#bar-context`,
-filled by `showContext`; the old meter in `#side` stays) and the Kill switch with its key. A
-key (`.key-wide`: Kill switch, Enter beside Send) shows from 1200 px, never on a touch screen.
-Your messages are a card, Starlight's answers have a gold star and no card. The tool steps of an
-answer fold into one chip, a button with `aria-expanded` (`toolFold`, `toolSummary` in
-`chat-messages.js`); the timeline (`.toolrow`, as before) opens behind it. `#side` shows from
-1200 px, with "This answer" (tools, time, tokens, set by `addStats` through `showAnswerStats`).
-The message box is a pill; Send is round and shows its icon at every width.
+**The chat page in the Paper look.** (`docs/plan-ui-3.md`, block P2.) The sidebar and the
+details pane sit on the ground (`--bg`) with a thin line, not as cards; the conversation is on
+`--panel`. New conversation is the one `button.primary`; the other sidebar buttons and the page
+links are plain rows (36 px, 44 on a phone or a touch screen), without icons. The open row has
+`--panel2` and a 2 px `--accent` line at its left (`border-left`, no dot). The bar shows the
+name in the display font, a dim line "12 messages" (`#bar-meta`, set by `updateBarMeta` in
+`chat-messages.js`), the context as a thin line with its percentage (`#bar-context`, filled by
+`showContext`) and the Kill switch, an outlined `--bad` rectangle with its key (`.key-wide`,
+from 1200 px, never on a touch screen). A message is a block of a 680 px column: a head line
+(`.msghead`: `.who` in upper case by CSS, `.when` with the time, and for an answer the seconds
+it took, added by `addStats`), then the text. Your text is plain; answers are in
+`--font-display`. A stored message has no time (the store keeps only role and text), so its
+`.when` is empty. The tool steps are one italic dim line, still a button with `aria-expanded`
+(`toolFold`, `toolSummary`), that opens the `.toolrow` timeline. Copy, Regenerate, Branch and
+Edit are buttons drawn as text links. The message box is a plain bordered `#input` with the
+row of small controls, the keys (`#send-key`) and Send under it. The start of a new
+conversation (`showEmpty` in `chat-page.js`) is a heading, a line, "Recently" (the last three
+other conversations from the last plain `loadList`, kept in `recentList`, drawn by
+`fillRecent`), "You can ask:" (the suggestions, plain buttons) and the hints. `#side` shows from
+1200 px and only what has a value: "This answer" (`showAnswerStats`), "Context" (`showContext`)
+and "This PC"; the sections for servers, logins, secrets and saved files are hidden while they
+are empty, and when all four are, one link to `/settings` shows (at the PC only: `refresh`).
 
 **The launcher window's error page.** `error_hints()` (starlight_launcher.py) matches the
 words of a problem's message and details against `ERROR_HINTS` (video memory, disk space,

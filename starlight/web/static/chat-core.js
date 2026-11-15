@@ -7,10 +7,10 @@
 
 const log = document.getElementById("log");
 const input = document.getElementById("input");
-// The full hint is too long for a phone: the placeholder would be cut off.
-const HINT = "Ask Starlight…  (Enter to send, Shift+Enter for a new line)";
+// The keys are shown under the box (#send-key), so the placeholder is short everywhere.
+const HINT = "Ask Starlight…";
 const narrow = matchMedia("(max-width: 760px)");
-const idleHint = () => (narrow.matches ? "Ask Starlight…" : HINT);
+const idleHint = () => HINT;
 input.placeholder = idleHint();
 narrow.addEventListener("change", () => { if (!recorder) input.placeholder = idleHint(); });
 const connPill = document.getElementById("conn");
@@ -18,7 +18,7 @@ const connPill = document.getElementById("conn");
 // answering: the id of the conversation that answer belongs to (null when none).
 let ws, current = null, conversation = null, lastQuestion = null, attached = [];
 let answering = null, regenPending = false, resync = false;  // see handle() and connect()
-const INPUT_HEIGHT = 44, INPUT_MAX_HEIGHT = 180;  // px: #input's min- and max-height above
+const INPUT_HEIGHT = 56, INPUT_MAX_HEIGHT = 180;  // px: #input's min- and max-height above
 
 // Pinned: you are at the newest message and want to stay there. Only scrolling up yourself
 // unpins (scrolling back down pins again): when the conversation's area gets shorter (the
