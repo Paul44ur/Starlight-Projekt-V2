@@ -12,12 +12,12 @@ stays: tokens in `style.css`, shared blocks, German, screenshots, one block per 
 | P1 | Foundation: tokens (light and dark), fonts, buttons, fields, lines, the logo and app icons | – | **done** (56553e5) |
 | P2 | The chat page: messages as a document, a plain start, a calmer side pane | P1 | **done** (4c6db2e) |
 | P3 | The Settings page | P1 | **done** (c84eeca) |
-| P4 | The Notes page (editor, graph, boards) | P1 | open |
+| P4 | The Notes page (editor, graph, boards) | P1 | **done** (0a85eae) |
 | P5 | Today, Memory, Activity, Automations, Kill, Pair, Statistics | P1 | **done** (fe2448a) |
-| P6 | The launcher window, the tray, the terminal's colours | P1 | open |
+| P6 | The launcher window, the tray, the terminal's colours | P1 | **done** (525b165) |
 | F1 | Find in the open conversation (Ctrl F) | P2 | open |
 | F2 | Undo instead of a question: delete and archive a conversation | P2 | open |
-| F3 | Text size and density, per device | P1 | open |
+| F3 | Text size and density, per device | P1 | **done** (7cc3bdb) |
 | P7 | Review: phone, German, contrast, screenshots of every page, docs | all | open |
 
 Order: P1 alone; then P2, P3, P5; then P4, P6, F3; then F1, F2; then P7.
