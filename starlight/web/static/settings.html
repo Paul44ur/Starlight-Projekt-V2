@@ -79,10 +79,9 @@
   .seg button.sel.safe { background: var(--ok); color: var(--on-accent); }
   .seg button.sel.confirm { background: var(--warn); color: var(--on-accent); }
   .seg button.sel.blocked { background: var(--danger); color: var(--on-danger); }
-  /* Display: the chosen one is lit in the accent. The labels line up in one column. */
+  /* Display: the chosen one has the shared look (style.css). The labels line up in one column. */
   .seg.display button { font-size: var(--fs-sm); padding: var(--s-1) var(--s-3); border: 1px solid transparent; }
   .seg.display button + button { border-left-color: var(--border); }
-  .seg.display button[aria-pressed="true"] { background: var(--accent); color: var(--on-accent); }
   .display-label { flex: 0 0 7em; }
   /* wide enough for "Zurücksetzen"; the column stays when there is nothing to reset */
   .reset { flex: none; width: 7.5em; text-align: right; font-size: 12px; padding: 0; background: none; border: 0;

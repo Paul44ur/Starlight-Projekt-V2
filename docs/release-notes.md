@@ -42,8 +42,10 @@ The default model needs 16 GB of video memory; smaller models are offered during
 ### Also new
 - **A new look for every page:** Paper. Light by default, with an equal dark look; serif
   headings and answers; one green for actions; square buttons and thin lines; keys shown next
-  to their buttons; a plain "S" for the logo and the app icons. Nothing about how the pages
-  work has changed.
+  to their buttons; a plain "S" for the logo and the app icons. In the chat, **Ctrl+F** finds
+  words in the open conversation, and deleting or archiving a conversation asks nothing: a
+  message offers **Undo** for 10 seconds. **Settings, Display** sets the text size and the
+  density of the lists for each device.
 - **When an answer is ready** and Starlight is in the background, its taskbar button lights up
   and a notification shows. Settings has the switch.
 - **Ctrl+K** opens a box to jump to a conversation, a note, a page or a command.

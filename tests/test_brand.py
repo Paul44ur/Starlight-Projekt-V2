@@ -26,6 +26,12 @@ PAGES = ("chat", "notes", "settings", "memory", "activity", "automations", "pair
 GLYPH = re.compile("[\u2190-\u2bff\U0001f300-\U0001faff\uff0b]")
 
 
+def all_pixels(picture: Any) -> list[Any]:
+    """Every pixel; Pillow 14 removes getdata(), and older ones lack get_flattened_data()."""
+    flat = getattr(picture, "get_flattened_data", None) or picture.getdata
+    return list(flat())
+
+
 def test_the_app_icons_are_pictures_a_phone_takes() -> None:
     image = pytest.importorskip("PIL.Image")  # (Pillow comes with the desktop extra)
     for name, size in web.APP_ICONS.items():
@@ -101,7 +107,7 @@ def test_everything_made_from_the_logo_shows_the_flat_one() -> None:
         for x, y in ((0.2, 0.2), (0.8, 0.2), (0.2, 0.8), (0.8, 0.8), (0.1, 0.5), (0.9, 0.5)):
             assert near(picture.getpixel((int(size * x), int(size * y))), ground), (name, x, y)
         # and the S is there: a few percent of the picture has the ink colour
-        pixels = list(picture.getdata())
+        pixels = all_pixels(picture)
         share = sum(near(pixel, ink) for pixel in pixels) / len(pixels)
         assert share >= 0.03, (name, share)
 
@@ -124,7 +130,7 @@ def test_everything_made_from_the_logo_shows_the_flat_one() -> None:
         frame.size = (size, size)
         frame.load()
         picture = frame.convert("RGBA")
-        pixels = list(picture.getdata())
+        pixels = all_pixels(picture)
         share = sum(near(pixel, PAPER) for pixel in pixels) / len(pixels)
         assert share >= 0.03, (f"starlight.ico {size}", share)  # (the S reads even at 16 px)
         if size >= 32:

@@ -12,7 +12,7 @@
 <script src="/i18n.js"></script>
 <style>
   /* the Paper look: sections in one column, the log as a table-like list with thin rules */
-  .page { max-width: 760px; }
+  .page { max-width: 720px; }
   .card { margin: var(--s-5) 0 0; }
   .card h2 { font-size: var(--fs-xl); font-weight: 600; margin: 0 0 var(--s-2); }
   header.top h1 { font-size: var(--fs-xl); font-weight: 600; }
@@ -20,15 +20,13 @@
   /* what waits for you: a 2 px amber line on the left of each item */
   #approvals .waiting { border-left: 2px solid var(--warn); padding-left: var(--s-3); }
   .filters button { padding: 4px 12px; }
-  .filters button.on { border-color: var(--accent); color: var(--accent); font-weight: 600;
-                       background: var(--panel2); }
   .entry { display: grid; grid-template-columns: 11em 7em 1fr; gap: var(--s-3); padding: var(--s-2) 0;
            border-bottom: 1px solid var(--border); align-items: baseline; }
   .entry:last-child { border-bottom: none; }
   .entry .when { color: var(--dim); font-size: var(--fs-xs); }
   .entry .text { overflow-wrap: anywhere; }
   /* a kind is a small rectangle: a thin line in its colour, no fill */
-  .kind { font-size: var(--fs-xs); justify-self: start; background: none; color: var(--dim); }
+  .kind { font-size: var(--fs-xs); justify-self: start; color: var(--dim); }
   .kind.action, .kind.answer { color: var(--ok); border-color: var(--ok); }
   .kind.denied, .kind.failed { color: var(--bad); border-color: var(--bad); }
   .kind.kill-switch { color: var(--bad); border-color: var(--bad); font-weight: 700; }
@@ -85,7 +83,7 @@ KINDS.forEach(([value, label]) => {
 });
 function whenText(stamp) {
   const d = new Date(stamp);
-  return isNaN(d) ? stamp : d.toLocaleString([], { dateStyle: "short", timeStyle: "medium" });
+  return isNaN(d) ? stamp : d.toLocaleString(window.starlightLanguage === "de" ? "de-DE" : [], { dateStyle: "short", timeStyle: "medium" });
 }
 async function load() {
   const search = document.getElementById("search").value;

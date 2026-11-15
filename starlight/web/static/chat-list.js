@@ -153,18 +153,29 @@ const shortName = (title) => { const t = String(title || ""); return t.length > 
 async function deleteConversation(c) {
   const base = "/api/conversations/" + c.id, wasOpen = c.id === conversation;
   try { await api(base, { method: "DELETE" }); } catch (e) { toast(e.message); return; }
-  if (wasOpen) { const d = await api("/api/conversations", { method: "POST" }); await openConversation(d.id); } else loadList();
+  let fresh = null;  // the empty conversation that opens in place of the deleted open one
+  if (wasOpen) { const d = await api("/api/conversations", { method: "POST" }); fresh = d.id; await openConversation(d.id); } else loadList();
   // The draft stays until the time is over, so Undo brings it back too (leaving the open
   // conversation has saved it).
   toast(`Deleted "${shortName(c.title)}".`, {
     action: "Undo", ms: undoMs(),
     onClose: (why) => { if (why !== "undo") dropDraft(c.id); },
     onAction: async () => {
-      try { await api(base + "/restore", { method: "POST" }); } catch (e) { toast(e.message); return; }
+      try { await api(base + "/restore" + (wasOpen ? "?current=true" : ""), { method: "POST" }); } catch (e) { toast(e.message); return; }
       await loadList();
       if (wasOpen) await openConversation(c.id);
+      if (fresh) await discardFresh(fresh);
     },
   });
+}
+// After Undo: the empty conversation that opened in its place is of no use. Gone for good, quietly,
+// but only when it still has no messages and no draft (the server refuses one with messages).
+async function discardFresh(id) {
+  let draft = privateDrafts.get(id) || "";
+  try { draft = draft || localStorage.getItem(DRAFT + id) || ""; } catch (e) { /* */ }
+  if (draft || id === conversation) return;
+  try { await api("/api/conversations/" + id + "?empty=true", { method: "DELETE" }); } catch (e) { return; }
+  loadList();
 }
 async function archiveConversation(c) {
   if (!(await changeConversation(c.id, { archived: true }))) return;

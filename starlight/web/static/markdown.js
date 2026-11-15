@@ -112,7 +112,8 @@ function mdCells(line) {
 function mdCodeBlock(code, lang) {
   const box = el("div", "md-code");
   const bar = el("div", "md-code-bar", lang || "code");
-  const copy = el("button", "icon", "Copy");
+  // (the answer's body is never translated, so the button's word is translated here, not the code)
+  const copy = el("button", "icon", window.starlightTranslate ? window.starlightTranslate("Copy") : "Copy");
   copy.onclick = (event) => {
     event.stopPropagation();
     navigator.clipboard.writeText(code).then(() => toast("Copied"));

@@ -15,7 +15,8 @@ from tests.test_chat_page import static_site  # noqa: F401  (a fixture)
 
 # A server in the page: it keeps the list, moves a deleted conversation aside and brings it
 # back, records every call that changes something, and answers a new conversation with "c9".
-SERVER = """(list) => { window.calls = []; window.waste = {};
+SERVER = """(list) => { window.calls = []; window.waste = {}; window.gone = [];
+  window.messages = {};
   const real = window.fetch, rows = list.conversations;
   const type = {'content-type': 'application/json'};
   const json = (body) => new Response(JSON.stringify(body), {headers: type});
@@ -23,12 +24,18 @@ SERVER = """(list) => { window.calls = []; window.waste = {};
     const u = new URL(String(url), location.href), method = (init && init.method) || 'GET';
     const id = u.pathname.split('/')[3], body = init && init.body ? JSON.parse(init.body) : null;
     if (method !== 'GET') window.calls.push([method, u.pathname, body]);
+    if (method === 'DELETE' && u.searchParams.get('empty')) {  // for good, only an empty one
+      const at = rows.findIndex(c => c.id === id);
+      if (at < 0 || (window.messages[id] || []).length) return new Response('{}', {status: 404});
+      rows.splice(at, 1); window.gone.push(id); return json({deleted: id}); }
     if (method === 'DELETE') {
       window.waste[id] = rows.splice(rows.findIndex(c => c.id === id), 1)[0];
       return json({deleted: id}); }
     if (method === 'POST' && u.pathname.endsWith('/restore')) { rows.push(window.waste[id]);
       return json({id}); }
-    if (method === 'POST' && u.pathname === '/api/conversations') return json({id: 'c9'});
+    if (method === 'POST' && u.pathname === '/api/conversations') {
+      rows.push({id: 'c9', title: 'New conversation', updated: '', count: 0});
+      return json({id: 'c9'}); }
     if (method === 'PATCH') {
       Object.assign(rows.find(c => c.id === id), body);
       return json({id, ...body}); }
@@ -114,6 +121,43 @@ async def test_undo_reopens_the_open_conversation_and_keeps_its_draft(
         await page.wait_for_selector(".conv.active:has-text('Plan the week')")
         assert await page.input_value("#input") == "half a sentence"
         assert await page.evaluate("() => conversation") == "c1"
+
+
+async def test_undo_removes_the_empty_conversation_that_opened_in_its_place(
+    static_site: str,  # noqa: F811
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    async with chat(static_site, monkeypatch) as page:
+        await pick(page, "Plan the week", "Delete")
+        await page.wait_for_selector(".toast")
+        await page.wait_for_selector(".conv:has-text('New conversation')")
+        await page.locator(".toast button").click()
+        await page.wait_for_selector(".conv.active:has-text('Plan the week')")
+        await page.wait_for_function("() => window.gone.length === 1")
+        assert await page.evaluate("() => window.gone") == ["c9"]
+        assert await page.locator(".conv", has_text="New conversation").count() == 0
+        assert await page.evaluate("() => conversation") == "c1"
+        assert await page.locator(".toast").count() == 0  # (quietly)
+        got = await calls(page)
+        assert got[2] == ["POST", "/api/conversations/c1/restore", None]
+        assert got[3] == ["DELETE", "/api/conversations/c9", None]
+        assert await page.evaluate("() => Object.keys(window.waste)") == ["c1"]  # c9 not in it
+
+
+async def test_undo_keeps_the_new_conversation_when_it_has_a_draft(
+    static_site: str,  # noqa: F811
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    async with chat(static_site, monkeypatch) as page:
+        await pick(page, "Plan the week", "Delete")
+        await page.wait_for_selector(".toast")
+        await page.wait_for_selector(".conv:has-text('New conversation')")
+        await page.fill("#input", "something new")
+        await page.locator(".toast button").click()
+        await page.wait_for_selector(".conv.active:has-text('Plan the week')")
+        await page.wait_for_timeout(300)
+        assert await page.evaluate("() => window.gone") == []
+        assert await page.locator(".conv", has_text="New conversation").count() == 1
 
 
 async def test_when_the_time_is_over_the_toast_goes_and_the_draft_is_dropped(

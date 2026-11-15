@@ -680,10 +680,23 @@ class Kernel:
         self._taken_back.pop(conversation, None)
         self._conversation_locks.pop(conversation, None)
 
-    def restore_conversation(self, conversation: str) -> None:
+    def restore_conversation(self, conversation: str, make_current: bool = False) -> None:
         """Undo ``forget_conversation`` while the store still has it (it reads the file
-        again when it is next opened)."""
+        again when it is next opened). ``make_current``: the terminal and a fresh page
+        continue it again (it was the open one when it was deleted)."""
         self.conversations.restore(conversation)
+        if make_current:
+            self.conversations.set_current(conversation)
+
+    def discard_empty_conversation(self, conversation: str) -> bool:
+        """Remove an empty conversation for good; False when it has messages."""
+        if not self.conversations.discard_empty(conversation):
+            return False
+        self._histories.pop(conversation, None)
+        self._stamps.pop(conversation, None)
+        self._taken_back.pop(conversation, None)
+        self._conversation_locks.pop(conversation, None)
+        return True
 
     async def _run_request(self, text: str) -> str:
         return (await self.ask(text)).answer

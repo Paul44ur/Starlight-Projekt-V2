@@ -193,7 +193,7 @@ presses the highlighted button and **Esc** leaves Settings. There is a light and
 following Windows.
 
 **The chat opens in Starlight's own window**, not in your browser: a window with Starlight's
-name and star in the taskbar, with every page of the chat in it (Chat, Notes, Memory,
+name and its S icon in the taskbar, with every page of the chat in it (Chat, Notes, Memory,
 Activity, Automations, Settings). It uses WebView2, the part of Microsoft Edge that Windows
 11 already has. Links to other websites open in your browser; printing or exporting a
 conversation opens a second Starlight window; a download asks where to save. The window
@@ -206,7 +206,7 @@ browser? Untick **Open the chat in Starlight's own window** in Settings, or star
 `Starlight.exe --browser`. If the window cannot open (no WebView2), the browser opens the
 chat and the Starlight window says why.
 
-**A tray icon keeps Starlight next to the clock.** While Starlight runs, its star sits by the
+**A tray icon keeps Starlight next to the clock.** While Starlight runs, its S icon sits by the
 clock (maybe under the little arrow). Closing the Starlight launcher window then only hides it;
 Starlight keeps running, and the first time a note says so. Click the icon to open the chat.
 Right-click it for the menu: **Open Starlight**, **Show launcher window** (while it is
@@ -880,7 +880,7 @@ plain text as before.
 
 **Statistics.** Open http://127.0.0.1:8765 while Starlight runs. It shows tasks, errors,
 model speed, GPU use and memory size.
-The page looks like the rest of Starlight: night by default, a day look, and "like your
+The page looks like the rest of Starlight (Paper): light by default, a dark look, and "like your
 system" (the button at the top right). It speaks German when your browser does. Add `?lang=de`
 or `?lang=en` to the address to choose.
 
@@ -945,7 +945,7 @@ once with a code shown on your PC.
    `https://my-pc.tail1234.ts.net/`. Restart Starlight.
 3. On the PC, open **Settings → Show a pairing code** (or run `starlight remote pair`).
 4. On the phone, open that address and enter the code. Add the page to your home screen
-   to use it like an app (with Starlight's star as its icon).
+   to use it like an app (with Starlight's S as its icon).
 
 What is different on the phone:
 - Actions ask on the phone exactly when they would ask at the PC. To make some always ask

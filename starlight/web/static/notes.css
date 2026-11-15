@@ -64,8 +64,6 @@ main.reading { background: var(--panel); overflow-y: auto; padding: 36px 48px 96
 .chip { font-size: 12.5px; border: 1px solid var(--border); border-radius: var(--r-2); padding: 0 8px;
         background: none; color: var(--dim); }
 .chip b { color: var(--text); font-weight: 600; }
-.notes .md .tag, .notes .md .tag:hover { background: none; border-radius: var(--r-2); padding: 0; }
-.notes .md .tag:hover { text-decoration: underline; }
 .chips .tag, .chips .tag:hover { border: 1px solid var(--border); padding: 0 8px; font-size: 12.5px; }
 .reading .note-body, .reading .embed, .reading .study-q, .reading .study-a { font-family: var(--font-display); }
 .reading .md { font-size: calc(17px * var(--text-scale, 1)); line-height: 1.7; }
@@ -101,8 +99,7 @@ main.reading { background: var(--panel); overflow-y: auto; padding: 36px 48px 96
                  vertical-align: top; }
 .md th { background: none; color: var(--text); font-size: 14px; font-weight: 600; text-transform: none;
          letter-spacing: normal; border-bottom-color: var(--text); }
-/* callouts: a thin rule at the side, no tint */
-.notes .md .callout { background: none; border-radius: 0; border-left-width: 2px; padding: 4px 0 4px 14px; }
+/* (callouts and tags have the Paper rule in style.css: a rule at the side, plain accent text) */
 .notes .md .callout-title { font-family: var(--font-body); font-size: 14px; }
 
 /* Lists of notes (a search, a tag, a folder) and the start page. */

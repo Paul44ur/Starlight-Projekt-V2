@@ -29,18 +29,12 @@
                padding: var(--s-2) var(--s-3); border-radius: var(--r-2);
                font-size: var(--fs-sm); max-height: 240px; overflow: auto; }
   body.remote .local-only { display: none; }
-  /* a skill's state: a small rectangle with a thin line in its colour, no fill */
-  .skill .pill { background: none; color: var(--dim); }
-  .skill .pill.on { color: var(--ok); border-color: var(--ok); }
-  .skill .pill.warn { color: var(--warn); border-color: var(--warn); }
   /* Export: a link that looks and sizes like the buttons beside it */
   a.button-link { display: inline-block; padding: 8px 16px; border: 1px solid var(--text);
                   border-radius: var(--r-2); color: var(--text); }
   a.button-link:hover { border-color: var(--accent); color: var(--accent); background: var(--accent-tint);
                         text-decoration: none; }
   .views { display: flex; gap: var(--s-2); margin: var(--s-2) 0 2px; flex-wrap: wrap; }
-  .views button.on { border-color: var(--accent); color: var(--accent); font-weight: 600;
-                     background: var(--panel2); }
   .month { margin: var(--s-4) 0 0; padding-bottom: var(--s-1); border-bottom: 1px solid var(--border); }
   /* an expired memory is quieter by its colour (opacity would lower the contrast of the text) */
   .mem.expired .topic, .mem.expired .text { color: var(--dim); }
@@ -137,7 +131,7 @@ VIEWS.forEach(([value, label]) => {
 });
 function monthName(date) {
   const d = new Date((date || "") + "T12:00:00");
-  return isNaN(d) ? "Undated" : d.toLocaleDateString([], { year: "numeric", month: "long" });
+  return isNaN(d) ? "Undated" : d.toLocaleDateString(window.starlightLanguage === "de" ? "de-DE" : [], { year: "numeric", month: "long" });
 }
 // A memory id is a file path such as "people/sister"; "#", "?" and "%" in a name you gave
 // a file by hand must not end the address.

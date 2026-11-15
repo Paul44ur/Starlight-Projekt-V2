@@ -20,9 +20,7 @@
   .bar h1 { font-size: var(--fs-xl); font-weight: 600; margin: 0; color: var(--dim); }
   /* the core's state: a small rectangle with a thin line in its colour, no fill */
   .status { font-size: var(--fs-sm); padding: var(--s-1) var(--s-3); display: inline-flex;
-            align-items: center; gap: var(--s-2); white-space: normal; background: none; color: var(--dim); }
-  .status.on { color: var(--ok); border-color: var(--ok); background: none; }
-  .status.warn { color: var(--warn); border-color: var(--warn); background: none; }
+            align-items: center; gap: var(--s-2); white-space: normal; color: var(--dim); }
   .status svg { width: 14px; height: 14px; flex: none; fill: none; stroke: currentColor;
                 stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
   .status.stopped { color: var(--bad); border-color: var(--bad); }
@@ -31,8 +29,6 @@
   .filters { display: flex; gap: var(--s-2); flex-wrap: wrap; }
   /* the chosen range is marked with the accent: this page has no main action */
   .filters button { padding: 6px 12px; }
-  .filters button[aria-pressed="true"] { border-color: var(--accent); color: var(--accent); font-weight: 600;
-                                         background: var(--panel2); }
   /* the key figures: a row of figures with their labels, no boxes, a thin rule above */
   .tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 170px), 1fr));
            gap: var(--s-4) var(--s-5); margin-bottom: var(--s-5); padding-top: var(--s-4);

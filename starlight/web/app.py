@@ -870,8 +870,17 @@ def create_app(paths: Paths | None = None) -> Any:
         return changed
 
     @app.delete("/api/conversations/{conversation}")
-    def delete_conversation(conversation: str, request: Request) -> dict[str, Any]:
+    def delete_conversation(
+        conversation: str, request: Request, empty: bool = False
+    ) -> dict[str, Any]:
+        """Delete it (into the waste folder, Undo brings it back). ``empty=true``: only a
+        conversation with no messages, and for good: the page asks for it after Undo, for the
+        empty one that opened in place of the deleted one."""
         viewer(request)
+        if empty:
+            if not kernel().discard_empty_conversation(conversation):
+                raise HTTPException(status_code=404, detail="no such empty conversation")
+            return {"deleted": conversation}
         try:
             kernel().forget_conversation(conversation)
         except (KeyError, OSError) as exc:
@@ -879,11 +888,14 @@ def create_app(paths: Paths | None = None) -> Any:
         return {"deleted": conversation}
 
     @app.post("/api/conversations/{conversation}/restore")
-    def restore_conversation(conversation: str, request: Request) -> dict[str, Any]:
-        """Undo a delete: it comes back as it was, while the waste folder still has it."""
+    def restore_conversation(
+        conversation: str, request: Request, current: bool = False
+    ) -> dict[str, Any]:
+        """Undo a delete: it comes back as it was, while the waste folder still has it.
+        ``current=true``: it was the open one, so it is the one a fresh page continues."""
         viewer(request)
         try:
-            kernel().restore_conversation(conversation)
+            kernel().restore_conversation(conversation, make_current=current)
         except (KeyError, OSError) as exc:
             raise HTTPException(status_code=404, detail="nothing to bring back") from exc
         return {"id": conversation}

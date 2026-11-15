@@ -234,6 +234,26 @@ class ConversationStore:
             source.replace(target)  # (same folder tree: one rename, nothing half-copied)
         self._summaries.pop(source, None)
 
+    def discard_empty(self, conversation: str) -> bool:
+        """Remove a conversation for good (no waste folder) when it has no messages at all: the
+        empty one that opened in place of a deleted one, after Undo. False, and nothing is
+        removed, when it has messages or is not there."""
+        try:
+            data = self._read(conversation)
+        except KeyError:
+            return False
+        if data.get("messages"):
+            return False
+        if self._private.pop(conversation, None) is not None:
+            self._private_changes.pop(conversation, None)
+            return True
+        with self._lock:
+            try:
+                self._file(conversation).unlink()
+            except OSError:
+                return False
+        return True
+
     def restore(self, conversation: str) -> None:
         """Bring a deleted conversation back exactly as it was. KeyError when the waste no
         longer has it (it was emptied, or it never was deleted)."""

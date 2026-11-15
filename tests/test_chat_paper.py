@@ -550,7 +550,7 @@ async def test_the_new_chat_texts_are_in_german(
             # the time as German writes it: 24 hours, never "PM" (the browser here is en-US)
             when = await page.locator(".msg.bot .when").inner_text()
             assert re.fullmatch(r"\d\d:\d\d · 4,1 s", when), when
-            assert "Suchen oder springen" in await page.locator("#quick-open").inner_text()
+            assert "Springen zu" in await page.locator("#quick-open").inner_text()
             assert await page.locator("#quick-open kbd").inner_text() == "Strg K"
             assert await page.locator("#kill kbd").inner_text() == "Strg Alt J"
             shown = await page.locator("#side section:not([hidden]) h2").all_inner_texts()

@@ -216,7 +216,11 @@ the current one. `delete` moves the file to `data/conversations/.deleted/<id>.<t
 and `restore` (`POST /api/conversations/<id>/restore`) moves it back; the store empties what
 is older than a day at its start and at most once an hour in `list`. A private conversation
 is kept in memory for two minutes instead. The page offers Undo for 10 seconds
-(`deleteConversation` in `chat-list.js`). The dot in the name keeps the waste out of lists,
+(`deleteConversation` in `chat-list.js`). Deleting the open one opens a new, empty
+conversation; after Undo the page removes that empty one for good with
+`DELETE /api/conversations/<id>?empty=true` (the store's `discard_empty`: it refuses one with
+messages, and nothing goes to the waste), and `restore?current=true` makes the restored one
+the current one again. The dot in the name keeps the waste out of lists,
 search and backups. The web app (`web/app.py`) adds the conversation list, file uploads
 (images go to the model as pictures, documents as text), the settings page (permission
 rules through `save_rule`, modules, devices) and the memory & skills page. A `Gate` decides
@@ -263,10 +267,15 @@ only redefine the `--fs-*` tokens (whole pixels), and compact lowers list rows t
 fine pointer only: a touch screen keeps 44 px. A page with a fixed px size in its own CSS
 does not follow (see `tests/test_text_size.py`).
 
+The Paper review (P7) moved the rules the pages used to repeat into `style.css`: `button.ok` is an
+outlined rectangle, `.pill` has no fill (only the chat's connection light is filled), the
+chosen one of a group (`.filters`, `.views`, Settings' `.seg.display`) has one look, and `.md
+.tag` and `.md .callout` have no tint. A page's own CSS keeps only what is its own.
+
 One review checks all the pages together. `tests/test_pages_review.py` opens each page in both
 looks and checks: nothing scrolls sideways at 360 px, touch targets of 44 px, a focus ring in
 `--accent`, every control visible in forced colours and high contrast, no animation with reduced
-motion, the title in the display font, and one gold button at most. `tests/test_german_everywhere.py`
+motion, the title in the display font, and one filled main button at most. `tests/test_german_everywhere.py`
 opens each page in German (with menus, dialogs and every view open) and fails on an English
 text. The texts that stay English on purpose are listed there with the reason: module and tool
 descriptions (the modules' own docstrings), a tool's question to you, and the reason a tool

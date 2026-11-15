@@ -110,13 +110,14 @@
     "Next match (Enter)": "Nächster Treffer (Enter)", "Next match": "Nächster Treffer",
     "Close (Esc)": "Schließen (Esc)", "Close the find bar": "Suchleiste schließen",
     "No matches": "Keine Treffer",
+    // the Paper look: review (P7)
+    "Search or jump to…": "Springen zu …",  // (one line in the sidebar: "Suchen oder springen zu …" did not fit)
     // the chat in the Paper look (P2)
     "Recently": "Zuletzt", "You can ask:": "Du kannst fragen:",
     "Access in the settings": "Zugänge in den Einstellungen",
     "Enter to send · Shift+Enter for a new line": "Enter senden · Umschalt+Enter neue Zeile",
     "1 message": "1 Nachricht",
     // the chat in the Night Sky look
-    "Search or jump to…": "Suchen oder springen zu …",
     "This answer": "Diese Antwort", "Tools": "Werkzeuge", "Time": "Zeit", "Tokens": "Token",
     "Used 1 tool": "1 Werkzeug benutzt",
     "How full the model's context is": "Wie voll der Kontext des Modells ist",

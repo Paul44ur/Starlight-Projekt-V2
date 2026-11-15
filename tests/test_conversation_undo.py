@@ -154,3 +154,32 @@ def test_a_backup_leaves_the_waste_out(paths: Paths, tmp_path: Path) -> None:
     assert f"data/conversations/{keep}.json" in names
     assert not any(WASTE in n or gone in n for n in names)
     assert (paths.data / "conversations" / WASTE).is_dir()
+
+
+def test_an_empty_conversation_is_discarded_for_good_but_not_one_with_messages(
+    tmp_path: Path,
+) -> None:
+    store = ConversationStore(tmp_path / "c")
+    empty, used = store.create(), made(store)
+    assert store.discard_empty(used) is False and (tmp_path / "c" / f"{used}.json").exists()
+    assert store.discard_empty(empty) is True
+    assert not (tmp_path / "c" / f"{empty}.json").exists()
+    assert not list((tmp_path / "c" / WASTE).glob(f"{empty}.*"))  # (not in the waste)
+    assert store.discard_empty(empty) is False  # (gone)
+    private = store.create(private=True)
+    assert store.discard_empty(private) is True and not store.is_private(private)
+
+
+def test_the_routes_discard_an_empty_one_and_restore_can_make_it_current(tmp_path: Path) -> None:
+    with client(home(tmp_path / "h")) as c:
+        old = c.post("/api/conversations", headers=LOCAL).json()["id"]
+        new = c.post("/api/conversations", headers=LOCAL).json()["id"]
+        c.delete(f"/api/conversations/{old}", headers=LOCAL)
+        c.post(f"/api/conversations/{old}/restore?current=true", headers=LOCAL)
+        assert c.get("/api/conversations", headers=LOCAL).json()["current"] == old
+        gone = c.delete(f"/api/conversations/{new}?empty=true", headers=LOCAL)
+        assert gone.json() == {"deleted": new}
+        listing = c.get("/api/conversations", headers=LOCAL).json()
+        assert listing["current"] == old and [x["id"] for x in listing["conversations"]] == [old]
+        assert c.delete(f"/api/conversations/{new}?empty=true", headers=LOCAL).status_code == 404
+        assert c.post(f"/api/conversations/{old}/restore", headers=PHONE).status_code == 403
