@@ -414,11 +414,13 @@ control characters). The launcher's status poll reads it, and a new id shows a b
 own, as `modelpause.py` and the launcher do for the pause file; `app_window.py` does not import
 the launcher. The text comes from a web page, so it is only ever shown as plain text.
 
-**The Settings page in the Night Sky look.** `settings.html` is one centred column (760 px at
-most) of cards with titles in the display font. The safety level is three choice cards: real
-buttons with `aria-pressed`, still found as `#levels button.<level>`; the chosen one has a 2px
-`--accent` line. Switches are `--accent`, and a card has at most one gold (`primary`) button.
-The look is all in the page's own `<style>`.
+**The Settings page in the Paper look.** `settings.html` is one column (760 px at most) of
+sections: a serif heading and a thin rule, no boxes, no shadows. The safety level is three
+square choices: real buttons with `aria-pressed`, still found as `#levels button.<level>`; the
+chosen one has a 2px `--accent` line. Switches are `--accent` with a rectangular track and a
+square knob, a section has at most one filled `primary` button, and the names under "In plain
+words" are plain mono text with a thin line. A new section (text size, F3) is one more `.card`
+after "Language". The look is all in the page's own `<style>`, with tokens only.
 
 **Memory, Activity, Automations, Kill and Pair in the Night Sky look.** The first three have the
 Settings page's header (the gold star, the title in the display font) and one centred column of

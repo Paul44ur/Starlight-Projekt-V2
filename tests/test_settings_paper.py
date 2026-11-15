@@ -1,6 +1,7 @@
-"""The Settings page in the Night Sky look (plan UI 2, block V3) in a real browser: one centred
-column of cards, the safety level as three choice cards, switches in the accent colour, one gold
-button at most per card, nothing sideways at 360 px, and a phone sees what it saw before."""
+"""The Settings page in the Paper look (plan UI 3, block P3) in a real browser: one column of
+sections (no boxes, serif headings, nothing rounder than 2 px), the safety level as three square
+choices, square switches in the accent colour, names as plain mono text, one filled primary
+button at most per section, nothing sideways at 360 px, and a phone sees what it saw before."""
 
 from __future__ import annotations
 
@@ -81,36 +82,63 @@ TOKEN = """name => {
   return c; }"""
 
 
-async def test_one_centred_column_of_cards_with_display_titles(
+async def test_sections_not_boxes_serif_headings_and_a_square_page(
     static_site: str, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     async_api = pytest.importorskip("playwright.async_api")
     monkeypatch.setenv("NO_PROXY", "127.0.0.1")
     async with async_api.async_playwright() as playwright:
-        browser, page = await open_page(playwright, static_site)
-        try:
-            box = await page.locator(".page").bounding_box()
-            assert box["width"] <= 760.5
-            assert abs((box["x"] + box["width"] / 2) - 1280 / 2) <= 1  # centred
-            widths = await page.locator(".card:visible").evaluate_all(
-                "cards => cards.map(c => Math.round(c.getBoundingClientRect().width))"
-            )
-            assert widths and max(widths) <= 760 and max(widths) - min(widths) <= 1
-            fonts = await page.locator(".card:visible h2").evaluate_all(
-                "hs => hs.map(h => getComputedStyle(h).fontFamily)"
-            )
-            assert fonts and all("Charter" in f for f in fonts)
-            # the header: the title in the display font, no mark before it
-            assert await page.locator("header.top h1 svg.ico").count() == 0
-            title = page.locator("header.top h1")
-            assert "Charter" in await title.evaluate("h => getComputedStyle(h).fontFamily")
-            links = await page.locator("header.top nav a").all_inner_texts()
-            assert links == ["Chat", "Today", "Notes", "Memory", "Activity", "Automations"]
-        finally:
-            await browser.close()
+        for scheme in ("light", "dark"):
+            browser, page = await open_page(playwright, static_site, scheme=scheme)
+            try:
+                box = await page.locator(".page").bounding_box()
+                assert box["width"] <= 760.5
+                assert abs((box["x"] + box["width"] / 2) - 1280 / 2) <= 1  # centred
+                # a section is not a box: the page's own ground, no shadow, a rule above it
+                sections = await page.locator(".card:visible").evaluate_all(
+                    "cs => cs.map(c => { const s = getComputedStyle(c);"
+                    " return [s.backgroundColor, s.boxShadow, s.borderTopWidth,"
+                    " s.borderLeftWidth, s.borderTopLeftRadius]; })"
+                )
+                assert len(sections) >= 6
+                for background, shadow, top, left, radius in sections:
+                    assert background == "rgba(0, 0, 0, 0)"
+                    assert shadow == "none"
+                    assert top == "1px" and left == "0px" and radius == "0px"
+                fonts = await page.locator(".card:visible h2").evaluate_all(
+                    "hs => hs.map(h => getComputedStyle(h).fontFamily)"
+                )
+                assert fonts and all("Charter" in f for f in fonts)
+                # nothing on the page is rounder than 2px (a dot or a circle is allowed)
+                round_ones = await page.evaluate(
+                    "() => [...document.querySelectorAll('body *')].filter(e => {"
+                    " const s = getComputedStyle(e); if (!e.getClientRects().length) return false;"
+                    " const r = e.getBoundingClientRect();"
+                    " const circle = s.borderTopLeftRadius.includes('%')"
+                    "   || (r.width === r.height "
+                    "&& parseFloat(s.borderTopLeftRadius) >= r.width / 2);"
+                    " return !circle && ['TopLeft','TopRight','BottomLeft','BottomRight'].some("
+                    "   k => parseFloat(s['border' + k + 'Radius']) > 2); })"
+                    ".map(e => e.tagName + '.' + e.className)"
+                )
+                assert round_ones == []
+                shadows = await page.evaluate(
+                    "() => [...document.querySelectorAll('body *')].filter(e =>"
+                    " e.getClientRects().length && getComputedStyle(e).boxShadow !== 'none')"
+                    ".map(e => e.tagName + '.' + e.className)"
+                )
+                assert shadows == []
+                # the header: the title in the display font, no mark before it
+                assert await page.locator("header.top h1 svg.ico").count() == 0
+                title = page.locator("header.top h1")
+                assert "Charter" in await title.evaluate("h => getComputedStyle(h).fontFamily")
+                links = await page.locator("header.top nav a").all_inner_texts()
+                assert links == ["Chat", "Today", "Notes", "Memory", "Activity", "Automations"]
+            finally:
+                await browser.close()
 
 
-async def test_the_level_is_three_choice_cards_and_relaxed_still_asks_first(
+async def test_the_level_is_three_square_choices_and_relaxed_still_asks_first(
     static_site: str, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     async_api = pytest.importorskip("playwright.async_api")
@@ -130,17 +158,14 @@ async def test_the_level_is_three_choice_cards_and_relaxed_still_asks_first(
                 "Relaxed",
             ]
             for line in await page.locator("#levels .lhelp").all_inner_texts():
-                assert len(line) > 20  # each card carries its level's help line
-            # the chosen one: a 2px accent line and --panel2 behind it; the others a 1px border
+                assert len(line) > 20  # each choice carries its level's help line
+            # the chosen one: a 2px accent line (radius 2); the others a 1px line
             chosen = await page.locator("#levels button.balanced").evaluate(
                 "b => { const s = getComputedStyle(b);"
-                " return [s.borderTopWidth, s.borderTopColor, s.backgroundColor]; }"
+                " return [s.borderTopWidth, s.borderTopColor, s.borderTopLeftRadius]; }"
             )
-            accent, panel2 = (
-                await page.evaluate(TOKEN, "--accent"),
-                await page.evaluate(TOKEN, "--panel2"),
-            )
-            assert chosen == ["2px", accent, panel2]
+            accent = await page.evaluate(TOKEN, "--accent")
+            assert chosen == ["2px", accent, "2px"]
             other = page.locator("#levels button.strict")
             assert await other.evaluate("b => getComputedStyle(b).borderTopWidth") == "1px"
             # Relaxed asks first (the existing question); "no" sends nothing
@@ -159,7 +184,7 @@ async def test_the_level_is_three_choice_cards_and_relaxed_still_asks_first(
             await browser.close()
 
 
-async def test_switches_use_the_accent_and_a_card_has_one_gold_button_at_most(
+async def test_switches_are_square_accent_and_a_section_has_one_primary_button_at_most(
     static_site: str, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     async_api = pytest.importorskip("playwright.async_api")
@@ -173,14 +198,19 @@ async def test_switches_use_the_accent_and_a_card_has_one_gold_button_at_most(
                 # "Tell me when an answer is ready" is on by default
                 assert await page.locator("#ready-sign").is_checked()
                 track = page.locator("#ready-sign + span")
-                # (the switch fades to its colour: on a busy machine the page is read in the
-                # middle of the fade, so wait until it is over; the check below still decides)
+                # (the switch fades to its colour: wait until the fade is over)
                 await page.wait_for_function(
                     "sel => { const t = document.querySelector(sel);"
                     " return getComputedStyle(t).backgroundColor && !t.getAnimations().length; }",
                     arg="#ready-sign + span",
                 )
                 assert await track.evaluate("t => getComputedStyle(t).backgroundColor") == accent
+                # the track is a rectangle (radius 2 at most), the knob a small square
+                radii = await page.locator(".switch span").evaluate_all(
+                    "ts => ts.map(t => [parseFloat(getComputedStyle(t).borderTopLeftRadius),"
+                    " parseFloat(getComputedStyle(t, '::before').borderTopLeftRadius)])"
+                )
+                assert radii and all(rt <= 2 and rk <= 2 for rt, rk in radii)
                 # a switch that is off is not lit
                 off = page.locator("#practice + span")
                 assert await off.evaluate("t => getComputedStyle(t).backgroundColor") != accent
@@ -188,9 +218,42 @@ async def test_switches_use_the_accent_and_a_card_has_one_gold_button_at_most(
                     "cards => cards.map(c => c.querySelectorAll('button.primary').length)"
                 )
                 assert counts and max(counts) <= 1 and sum(counts) >= 3
-                # the one main action of the cards that have one
+                # the one filled main action of the sections that have one
                 for ident in ("#pair", "#model-save", "#backup-save"):
                     assert await page.locator(ident).get_attribute("class") == "primary"
+                primary = await page.evaluate(TOKEN, "--primary")
+                filled = await page.locator("#pair").evaluate(
+                    "b => getComputedStyle(b).backgroundColor"
+                )
+                assert filled == primary
+            finally:
+                await browser.close()
+
+
+async def test_the_names_are_plain_text_with_a_thin_line_not_tinted_pills(
+    static_site: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    async_api = pytest.importorskip("playwright.async_api")
+    monkeypatch.setenv("NO_PROXY", "127.0.0.1")
+    async with async_api.async_playwright() as playwright:
+        for scheme in ("light", "dark"):
+            browser, page = await open_page(playwright, static_site, scheme=scheme)
+            try:
+                looks = await page.locator(".plain .names code").evaluate_all(
+                    "cs => cs.map(c => { const s = getComputedStyle(c);"
+                    " return [s.backgroundColor, parseFloat(s.borderTopLeftRadius),"
+                    " s.fontFamily]; })"
+                )
+                assert len(looks) >= 4
+                for background, radius, family in looks:
+                    assert background == "rgba(0, 0, 0, 0)"  # no tint, in any group
+                    assert radius <= 2
+                    assert "mono" in family.lower() or "consol" in family.lower()
+                # still separate items that wrap
+                wrap = await page.locator(".plain .names").first.evaluate(
+                    "n => getComputedStyle(n).flexWrap"
+                )
+                assert wrap == "wrap"
             finally:
                 await browser.close()
 
