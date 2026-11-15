@@ -29,10 +29,8 @@ def test_every_page_shows_the_real_logo_not_an_emoji() -> None:
                  "activity.html", "automations.html", "kill.html", "today.html"):  # fmt: skip
         page = read(name)
         assert "⭐" not in page, name
-        if name in NIGHT_SKY:  # (the Night Sky look: the gold star icon is its mark)
-            assert 'data-icon="star"' in page, name
-            continue
-        assert '<img class="logo" src="/icon.svg"' in page, name
+        # the Paper look: the brand is the word only, no mark and no picture
+        assert 'data-icon="star"' not in page and '<img class="logo"' not in page, name
 
 
 def test_hidden_wins_over_a_class_that_sets_display() -> None:

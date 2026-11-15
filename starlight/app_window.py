@@ -44,15 +44,16 @@ ATTENTION_TEXT = 200  # letters of what a page may say when it asks for your att
 ATTENTION_FILE = "attention.json"  # in data/app-window; the launcher's tray icon reads it
 FLASH_UNTIL_FRONT = 0x2 | 0xC  # FLASHW_TRAY | FLASHW_TIMERNOFG: the button, until in front
 MIN_SIZE = (420, 560)
-BACKGROUND = {"dark": "#0b0e1a", "light": "#f5f6fb"}  # style.css --bg, until the page paints
+BACKGROUND = {"dark": "#1d1b18", "light": "#f6f3ec"}  # style.css --bg, until the page paints
 
 STARTING_PAGE = """<!doctype html><html><head><meta charset="utf-8"><style>
 :root { color-scheme: dark light; }
 body { margin: 0; height: 100vh; display: flex; flex-direction: column; align-items: center;
        justify-content: center; gap: 14px; font: 15px/1.5 "Segoe UI", sans-serif;
-       background: #0b0e1a; color: #9aa1c4; }
-@media (prefers-color-scheme: light) { body { background: #f5f6fb; color: #4e5578; } }
-.star { font-size: 44px; color: #f5c542; animation: glow 1.6s ease-in-out infinite; }
+       background: #1d1b18; color: #a99f8f; }
+@media (prefers-color-scheme: light) {
+  body { background: #f6f3ec; color: #665e53; } .star { color: #2f5d50; } }
+.star { font-size: 44px; color: #8dbdaa; animation: glow 1.6s ease-in-out infinite; }
 @keyframes glow { 50% { opacity: .45; } }
 @media (prefers-reduced-motion: reduce) { .star { animation: none; } }
 </style></head><body><div class="star">✦</div><div id="text">MESSAGE</div>

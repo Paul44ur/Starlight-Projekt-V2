@@ -36,34 +36,46 @@ The user is German and uses Windows 11. Everything runs on their own PC.
 All shared styles are in `starlight/web/static/style.css`. A page adds only what is its own
 (`chat.css`, `notes.css`, or a `<style>` block in a small page).
 
-**Tokens** (defined on `:root`, with a night and a day value each; night is the default; values are in `docs/plan-ui-2.md` section 2):
+**The look is Paper** (`docs/plan-ui-3.md`): warm paper and dark ink, one deep green for what
+you can do, serif headings and answers, square buttons, thin lines instead of boxes, no
+shadows at rest. Light is the default; dark is its equal twin.
+
+**Tokens** (defined on `:root`, with a light and a dark value each; light is the default; values are in `docs/plan-ui-3.md` section 2):
 
 | Kind | Tokens |
 |---|---|
-| Surfaces | `--bg` (page), `--panel` (cards, bars), `--panel2` (hover, fields) |
+| Surfaces | `--bg` (sidebars, page ground), `--panel` (the reading surface), `--panel2` (fields, the selected row) |
 | Lines and text | `--border`, `--text`, `--dim` (secondary text) |
-| Accent (violet: links, focus, switches) | `--accent`, `--accent-tint` (soft hover wash), `--on-accent` (text on a filled accent, ok or warn) |
-| Primary (gold: the star and ONE main action) | `--primary`, `--on-primary`, `--primary-edge` (the border on a day page) |
+| Accent (green: links, focus, switches) | `--accent`, `--accent-tint` (soft hover wash), `--on-accent` (text on a filled accent, ok or warn) |
+| Primary (the ONE main action: the accent, filled) | `--primary`, `--on-primary`, `--primary-edge` (transparent) |
 | Status | `--ok`, `--warn`, `--bad` (red text), `--danger` (filled red behind `--on-danger` text) |
 | Space | `--s-1` 4px, `--s-2` 8px, `--s-3` 12px, `--s-4` 16px, `--s-5` 24px, `--s-6` 32px |
-| Radius | `--r-1` 6px, `--r-2` 8px, `--r-3` 12px, `--r-4` 16px (cards), `--r-pill` |
-| Fonts | `--font-display` (Space Grotesk, headings), `--font-body`, `--font-mono` |
+| Radius | `--r-1` to `--r-4` and `--r-pill`: all 2px (a dot or a status light uses `50%`) |
+| Fonts | `--font-display` (a serif: headings and answers), `--font-body` (a plain sans: controls and lists), `--font-mono` (no font is bundled) |
 | Type | `--fs-xs` 12px, `--fs-sm` 13px, `--fs-md` 15px, `--fs-lg` 16px, `--fs-xl` 20px |
-| Shadow | `--shadow-1` (resting), `--shadow-2` (lifted: toasts, dialogs, menus) |
+| Shadow | `--shadow-1` (none: nothing has a shadow at rest), `--shadow-2` (faint: toasts, dialogs, menus) |
 | Motion | `--ease`, `--dur-fast`, `--dur` |
 
 **Building blocks** already in `style.css`. Use them before you write new CSS:
 
-- Layout: `.page`, `.card`, `.row`, `.stack`, `.cluster`, `.grow`
-- Text: `.dim`, `.muted`, `.small`, `.truncate`, `.sr-only`, `.num` (mono numbers), `.section-label`, `kbd`
+- Layout: `.page`, `.card` (a section: a thin rule above it, no box, no shadow), `.row`,
+  `.stack`, `.cluster`, `.grow`
+- Text: `.dim`, `.muted`, `.small`, `.truncate`, `.sr-only`, `.num` (mono numbers),
+  `.section-label` (a small italic serif, in the usual case, never upper case), `kbd`
 - Status: `.pill` (with `.on`, `.warn`, `.off`), `.toast`, `.skeleton` (loading bars)
-- Buttons: plain `button`, `button.primary` (the one main action), `button.ok`,
+- Buttons: plain `button` (a rectangle with a thin line in the ink colour),
+  `button.primary` (the one main action, filled green), `button.ok`,
   `button.danger` (filled red), `button.danger-outline`, `button.icon`, `button.quiet`
 - Dialogs: `.ask` (questions), `#quick` (the quick switcher), `#shortcuts`
 
 **What a good page looks like here**
 
-- One main action per view is `primary`. The rest are plain buttons.
+- One main action per view is `primary`. The rest are plain buttons. Text on a button where
+  there is room ("Senden"), an icon only where there is none.
+- No box where a line will do: a section is a heading and a thin rule. A box (`--panel`, a 1px
+  `--border` line) is for what floats: a dialog, a menu.
+- No shadow at rest, no round corners, no pill shapes, no gold. The brand is the word
+  "Starlight" in the display font; there is no star mark and no logo picture in a page.
 - A destructive button is red, and never the one the keyboard starts on.
 - Secondary text is `--dim`, not a smaller grey of your own.
 - Things line up: icons 18px in rows, text on one baseline, the same gap between rows.
@@ -87,7 +99,7 @@ Every page loads `common.js`. Use these; do not write your own version.
 | `askText(label, value, {yes, placeholder})` | One line of text. Resolves the text, or `null`. |
 | `icon(name, alone)`, `setIcon(node, name)` | A drawn line icon (see below). |
 | `showShortcuts()` | The page's keyboard shortcuts (`window.SHORTCUTS`). |
-| `cycleTheme()` | Light, dark, like the system. |
+| `cycleTheme()` | Like the system, light, dark. |
 | `readySignOn()` | Whether this device wants the "answer is ready" sign. |
 
 **Questions.** A text with a blank line in it shows as the question and its details:
@@ -99,7 +111,7 @@ a click beside the window mean "no". Functions that ask must be `async`.
 colour): menu, plus, lock, sun, moon, speaker, mute, clip, camera, mic, stop, send, down,
 more, search, info, history, download, link, trash, eye, close, today, inbox, tasks, graph,
 cards, minus, fit, talk, refresh, picture, notes, memory, activity, automations, settings,
-edit, pin, folder, archive, forget, print, back, chevron, boards. In markup write
+edit, pin, folder, archive, forget, print, back, chevron, boards. (The `star` icon is gone.) In markup write
 `data-icon="trash"`; in code call `setIcon(button, "trash")`. Do not use emoji as icons.
 A new icon is drawn in the same weight as the others and added to `ICONS`; a button that
 has only an icon needs a `title` and an `aria-label`.

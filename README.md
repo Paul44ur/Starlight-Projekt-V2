@@ -1,7 +1,7 @@
 <p align="center">
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset="assets/logo/starlight.svg">
-    <img src="assets/logo/starlight-light.svg" alt="Starlight logo: a gold star on a night-blue square" width="128">
+    <img src="assets/logo/starlight-light.svg" alt="Starlight logo: a serif S in paper white on a deep green square" width="128">
   </picture>
 </p>
 
@@ -517,12 +517,14 @@ you need to approve appear with **Approve / Deny** buttons, and a sidebar shows 
 allowed. Prefer the keyboard? Start it with `--terminal` (or run `starlight run`) for a
 colored terminal chat. Both use the same assistant, settings and safeguards.
 
-**How Starlight looks.** Every page has the same look, called Night Sky. It is dark by
-default and has a day look that is just as careful: press the moon or sun button in the top
-bar (or choose "like your system"). The gold star and the one gold button of a page mark the
-main action: New conversation, Send, Save. Everything else is quiet, and links, switches and
-the focus ring are violet. Cards have room to breathe, and times, sizes and counts are
-written in a fixed-width font so they line up. A key you can press is shown next to its
+**How Starlight looks.** Every page has the same look, called Paper. It is light by
+default, warm paper with dark ink, and it has a dark look that is just as careful: press the
+sun or moon button in the top bar (or choose "like your system"). Headings and answers are in
+a serif; buttons and lists are in a plain sans. One deep green marks what you can do: the one
+main button of a page (New conversation, Send, Save), links, switches and the focus ring. The
+buttons are square, a section is set apart by a thin line and not by a box, and nothing has a
+shadow until it floats (a menu, a window). Times, sizes and counts are written in a
+fixed-width font so they line up. A key you can press is shown next to its
 button on a wide screen (Enter beside Send, Ctrl K beside search, Ctrl Alt J beside the kill
 switch). On a screen 1200 pixels wide or more, the chat also shows a details pane: this
 answer (tools, time, tokens), the context and this PC. On a phone the pages stack in one

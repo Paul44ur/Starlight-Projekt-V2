@@ -80,7 +80,7 @@ async def open_at(
     return browser, page
 
 
-async def test_each_page_shows_the_star_and_a_title_in_the_display_font(
+async def test_each_page_shows_a_title_in_the_display_font_and_no_star(
     static_site: str,  # noqa: F811
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -90,9 +90,10 @@ async def test_each_page_shows_the_star_and_a_title_in_the_display_font(
         for name in PAGES:
             browser, page = await open_at(playwright, static_site, name)
             try:
-                await page.wait_for_selector("h1 svg.ico .star", state="attached")
+                await page.wait_for_selector("h1")
+                assert await page.locator("h1 svg.ico").count() == 0, name  # (Paper: no mark)
                 font = await page.locator("h1").evaluate("h => getComputedStyle(h).fontFamily")
-                assert "Space Grotesk" in font, (name, font)
+                assert "Charter" in font, (name, font)
             finally:
                 await browser.close()
 
@@ -160,7 +161,7 @@ async def test_the_kill_button_and_the_stopped_state_look_apart(
             finally:
                 await browser.close()
         # the red does not change with the look
-        assert seen["dark"] == seen["light"] == ["rgb(180, 35, 24)", "rgb(255, 255, 255)"]
+        assert seen["dark"] == seen["light"] == ["rgb(163, 54, 30)", "rgb(255, 255, 255)"]
         browser, page = await open_at(playwright, static_site, "kill", kill_engaged=True)
         try:
             await page.wait_for_selector("#stop.done")

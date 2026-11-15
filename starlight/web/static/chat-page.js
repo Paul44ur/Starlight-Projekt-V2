@@ -39,9 +39,7 @@ document.addEventListener("visibilitychange", () => { if (!document.hidden) clea
 // A new conversation: a calm start instead of an empty page. It goes with the first message.
 function showEmpty(isPrivate) {
   const box = el("div", "empty");
-  const logo = el("img", "empty-logo");
-  logo.src = "/icon.svg"; logo.alt = "";
-  box.append(logo,
+  box.append(
     el("div", "empty-title", isPrivate ? "Private conversation" : "New conversation. Ask anything."),
     el("div", "empty-text", isPrivate
       ? "It is never saved and nothing is learned from it. It is gone when Starlight stops."

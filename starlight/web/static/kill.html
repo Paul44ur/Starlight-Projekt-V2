@@ -25,12 +25,11 @@
   #state { font-size: var(--fs-lg); min-height: 2.6em; max-width: 30em; }
   /* the logo and the name, small above the button: whose switch this is */
   .lockup { display: flex; align-items: center; gap: var(--s-2); margin: 0; font-size: var(--fs-xl); font-weight: 600; }
-  .lockup svg.ico { width: 22px; height: 22px; margin-right: 0; vertical-align: 0; }
   .lockup .dim { font-weight: 400; }
 </style>
 </head>
 <body>
-<h1 class="lockup" data-icon="star"><span>Starlight</span><span class="dim">Kill switch</span></h1>
+<h1 class="lockup"><span>Starlight</span><span class="dim">Kill switch</span></h1>
 <button id="stop" type="button">STOP<br />everything</button>
 <p id="state" role="status" aria-live="assertive">One press stops everything Starlight is doing on the PC, until you resume there.</p>
 <p class="small dim">Add this page to your home screen for a one-tap kill switch. <a href="/">Back to the chat</a></p>

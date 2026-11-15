@@ -44,7 +44,7 @@ async def test_the_sidebar_is_a_card_and_new_conversation_is_gold(
             side = page.locator("#convs")
             box = await side.bounding_box()
             assert box is not None and box["x"] == 12 and box["y"] == 12  # inset on the ground
-            assert await side.evaluate("s => getComputedStyle(s).borderRadius") == "16px"
+            assert await side.evaluate("s => getComputedStyle(s).borderRadius") == "2px"
             panel = await page.evaluate(TOKEN, "--panel")
             assert await side.evaluate("s => getComputedStyle(s).backgroundColor") == panel
             gold = await page.evaluate(TOKEN, "--primary")
@@ -116,12 +116,12 @@ async def test_the_tool_steps_fold_into_one_chip_that_opens_the_timeline(
             await chip.click()
             assert await chip.get_attribute("aria-expanded") == "false"
             assert not await timeline.is_visible()
-            # Starlight's answer has no card; a small gold star stands before it
+            # Starlight's answer has no card and no star before it (Paper)
             assert (
                 await page.locator(".msg.bot").evaluate("m => getComputedStyle(m).backgroundColor")
                 == "rgba(0, 0, 0, 0)"
             )
-            assert await page.locator(".msg.bot .who svg.ico .star").count() == 1
+            assert await page.locator(".msg.bot .who svg.ico").count() == 0
             assert await page.locator(".msg.bot .att").evaluate("a => a.classList.contains('num')")
         finally:
             await browser.close()
@@ -146,8 +146,8 @@ async def test_the_details_pane_shows_this_answer_from_1200_px(
                 values = page.locator("#answer-tools, #answer-time, #answer-tokens")
                 assert await values.all_inner_texts() == ["2", "4.1 s", "212"]
                 assert await page.locator("#side h2").all_inner_texts() == [
-                    "THIS PC", "CONTEXT", "THIS ANSWER", "ALLOWED SERVERS", "LOGINS", "SECRETS",
-                    "SAVED FILES",
+                    "This PC", "Context", "This answer", "Allowed servers", "Logins", "Secrets",
+                    "Saved files",
                 ]  # fmt: skip
                 assert await page.locator("#context-of").inner_text() == "8.8k of 32.8k"
                 assert await page.locator("#side h2.section-label").count() == 7
@@ -249,7 +249,7 @@ async def test_the_new_chat_texts_are_in_german(
             assert await page.locator("#quick-open kbd").inner_text() == "Strg K"
             assert await page.locator("#kill kbd").inner_text() == "Strg Alt J"
             labels = await page.locator("#side h2").all_inner_texts()
-            assert "DIESE ANTWORT" in labels
+            assert "Diese Antwort" in labels
             rows = await page.locator("#side .kv > :first-child").all_inner_texts()
             assert rows[1:] == ["Werkzeuge", "Zeit", "Token"]
             assert await page.locator("#bar-context").get_attribute("title") == (

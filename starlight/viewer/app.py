@@ -35,8 +35,6 @@ SHARED = {
     "i18n.js": "text/javascript; charset=utf-8",
     "common.js": "text/javascript; charset=utf-8",
     "icon.svg": "image/svg+xml",  # the tab's icon
-    "vendor/space-grotesk-latin.woff2": "font/woff2",  # the heading font (style.css loads it)
-    "vendor/space-grotesk-latin-ext.woff2": "font/woff2",
 }
 HEARTBEAT_STALE = 120  # seconds without a heartbeat = the core is not running
 

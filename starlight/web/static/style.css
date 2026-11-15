@@ -1,78 +1,65 @@
-/* Starlight web pages: one look for chat, settings, memory and pairing ("Night Sky", see
-   docs/plan-ui-2.md). The design system lives here: tokens (colour, spacing, radius, type,
+/* Starlight web pages: one look for chat, settings, memory and pairing ("Paper", see
+   docs/plan-ui-3.md). The design system lives here: tokens (colour, spacing, radius, type,
    elevation, motion), base element styles, and small building blocks (.card, .pill, .row,
    .toast, utilities). Pages share these instead of re-inventing them inline. A new shared
-   rule belongs here. The night look is the default; the day look is designed, not inverted. */
-/* The heading font (Space Grotesk, OFL): served by Starlight itself from /vendor, never from
-   the internet (bundles/fonts). The unicode-range of each file is the package's own. */
-@font-face {
-  font-family: "Space Grotesk"; font-style: normal; font-display: swap; font-weight: 300 700;
-  src: url(/vendor/space-grotesk-latin-ext.woff2) format("woff2-variations");
-  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
-}
-@font-face {
-  font-family: "Space Grotesk"; font-style: normal; font-display: swap; font-weight: 300 700;
-  src: url(/vendor/space-grotesk-latin.woff2) format("woff2-variations");
-  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
-}
+   rule belongs here. The light look (warm paper, dark ink, one green) is the default; the
+   dark look is its equal twin, designed and not inverted. No font is bundled: the serif is
+   what the PC has (Charter, Cambria, Georgia). */
 :root {
-  /* colour: night (the default) */
-  --bg: #0b0e1a; --panel: #12162a; --panel2: #1a1f38; --border: #262c4a;
-  --text: #e8eaf6; --dim: #9aa1c4; --accent: #a99bff; --you: #1a1f38;
-  --ok: #6ee7b7; --warn: #fdba74; --bad: #ff8a80;
-  --accent-tint: color-mix(in srgb, var(--accent) 16%, transparent);  /* soft accent wash for hovers */
-  --on-accent: #0b0e1a;   /* text on a filled accent (or ok, warn): dark on the light colours of the night look */
-  --danger: #b42318;      /* filled red behind --on-danger text (--bad is too light for that) */
+  /* colour: light (the default) */
+  color-scheme: light;
+  --bg: #f6f3ec; --panel: #fbf9f4; --panel2: #efeadf; --border: #ddd6c8;
+  --text: #26221d; --dim: #665e53; --accent: #2f5d50; --you: #efeadf;
+  --ok: #2e6b3f; --warn: #8a5a12; --bad: #a3361e;
+  --accent-tint: color-mix(in srgb, var(--accent) 10%, transparent);  /* soft accent wash for hovers */
+  --on-accent: #fbf9f4;   /* text on a filled accent (or ok, warn) */
+  --danger: #a3361e;      /* filled red behind --on-danger text */
   --on-danger: #ffffff;
-  /* the one light: the star and the one main action of a view (never links or switches) */
-  --primary: #f2c14e; --on-primary: #1a1404; --primary-edge: transparent;
-  --scrim: rgb(4 6 14 / .62);  /* behind a dialog */
+  /* the one main action of a view: the same green as the accent, filled */
+  --primary: var(--accent); --on-primary: var(--on-accent); --primary-edge: transparent;
+  --scrim: rgb(38 34 29 / .38);  /* behind a dialog */
   /* type */
   --font-body: "Segoe UI Variable Text", "Segoe UI", system-ui, -apple-system, Roboto, sans-serif;
-  --font-display: "Space Grotesk", var(--font-body);
+  --font-display: Charter, "Bitstream Charter", Cambria, Georgia, serif;
   --font-mono: ui-monospace, "Cascadia Mono", Consolas, monospace;
-  /* elevation (the rgb is the night ground, so a shadow is a darker night, not a grey) */
-  --shadow: 0 12px 32px rgb(2 4 12 / .55);            /* kept: the name other code already uses */
-  --shadow-1: 0 1px 2px rgb(2 4 12 / .4), 0 2px 8px rgb(2 4 12 / .3);   /* resting: cards, menus */
-  --shadow-2: 0 12px 32px rgb(2 4 12 / .55);          /* lifted: toasts, popovers, dialogs */
+  /* elevation: none at rest; only what floats (menus, toasts, dialogs) has a faint shadow */
+  --shadow: 0 6px 24px rgb(38 34 29 / .14);            /* kept: the name other code already uses */
+  --shadow-1: none;                                    /* resting */
+  --shadow-2: 0 6px 24px rgb(38 34 29 / .14);          /* lifted: toasts, popovers, dialogs */
   /* spacing scale (4-based) */
   --s-1: 4px; --s-2: 8px; --s-3: 12px; --s-4: 16px; --s-5: 24px; --s-6: 32px;
-  /* corner radius */
-  --r-1: 6px; --r-2: 8px; --r-3: 12px; --r-4: 16px; --r-pill: 999px;
+  /* corner radius: square-ish everywhere (a dot or a status light uses 50%) */
+  --r-1: 2px; --r-2: 2px; --r-3: 2px; --r-4: 2px; --r-pill: 2px;
   /* type scale */
   --fs-xs: 12px; --fs-sm: 13px; --fs-md: 15px; --fs-lg: 16px; --fs-xl: 20px;
   /* motion (durations are also capped by prefers-reduced-motion, below) */
   --ease: cubic-bezier(.2,.6,.2,1); --dur-fast: 90ms; --dur: 160ms;
   /* code: keywords, strings, numbers, comments, names called, variables (4.5:1 on --panel and --panel2) */
-  --hl-k: #c792ea; --hl-s: #a5d6a7; --hl-n: #f78c6c; --hl-c: #8c93b8; --hl-f: #82aaff; --hl-v: #ffcb6b;
+  --hl-k: #8b3a62; --hl-s: #2e6b3f; --hl-n: #8a4b12; --hl-c: #6b6358; --hl-f: #2a5a85; --hl-v: #7a5a00;
 }
-:root[data-theme="light"] {
-  /* colour: day */
-  --bg: #f5f6fb; --panel: #ffffff; --panel2: #ecedf7; --border: #d8dbea; --text: #14172b;
-  --dim: #4e5578; --you: #ecebfd;
-  --accent: #5543d1; --on-accent: #ffffff; --ok: #157a4b; --warn: #a3510b;
-  --bad: #c0262d;  /* (red text, readable on white) */
-  --primary-edge: #b8860b;  /* the gold button needs its edge on a day page (3:1 against white) */
-  --accent-tint: color-mix(in srgb, var(--accent) 10%, transparent);
-  --scrim: rgb(20 23 43 / .38);
-  --shadow: 0 12px 32px rgb(20 23 43 / .14);
-  --shadow-1: 0 1px 2px rgb(20 23 43 / .06), 0 2px 8px rgb(20 23 43 / .06);
-  --shadow-2: 0 12px 32px rgb(20 23 43 / .14);
-  --hl-k: #7141d1; --hl-s: #116329; --hl-n: #a14e00; --hl-c: #5c647e; --hl-f: #0550ae; --hl-v: #8a3b00;
+:root[data-theme="dark"] {
+  /* colour: dark */
+  color-scheme: dark;
+  --bg: #1d1b18; --panel: #23211d; --panel2: #2c2924; --border: #3a362f; --text: #ece6da;
+  --dim: #a99f8f; --you: #2c2924;
+  --accent: #8dbdaa; --on-accent: #1d1b18; --ok: #8fc79c; --warn: #e0b46a; --bad: #f0a08a;
+  --accent-tint: color-mix(in srgb, var(--accent) 16%, transparent);
+  --scrim: rgb(0 0 0 / .55);
+  --shadow: 0 6px 24px rgb(0 0 0 / .45);
+  --shadow-2: 0 6px 24px rgb(0 0 0 / .45);
+  --hl-k: #d6a0c8; --hl-s: #9ccb9f; --hl-n: #e8a774; --hl-c: #a0977f; --hl-f: #8db6de; --hl-v: #e0c070;
 }
-@media (prefers-color-scheme: light) {
-  :root:not([data-theme="dark"]) {
-    --bg: #f5f6fb; --panel: #ffffff; --panel2: #ecedf7; --border: #d8dbea; --text: #14172b;
-    --dim: #4e5578; --you: #ecebfd;
-    --accent: #5543d1; --on-accent: #ffffff; --ok: #157a4b; --warn: #a3510b;
-    --bad: #c0262d;  /* (red text, readable on white) */
-    --primary-edge: #b8860b;
-    --accent-tint: color-mix(in srgb, var(--accent) 10%, transparent);
-    --scrim: rgb(20 23 43 / .38);
-    --shadow: 0 12px 32px rgb(20 23 43 / .14);
-    --shadow-1: 0 1px 2px rgb(20 23 43 / .06), 0 2px 8px rgb(20 23 43 / .06);
-    --shadow-2: 0 12px 32px rgb(20 23 43 / .14);
-    --hl-k: #7141d1; --hl-s: #116329; --hl-n: #a14e00; --hl-c: #5c647e; --hl-f: #0550ae; --hl-v: #8a3b00;
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+    --bg: #1d1b18; --panel: #23211d; --panel2: #2c2924; --border: #3a362f; --text: #ece6da;
+    --dim: #a99f8f; --you: #2c2924;
+    --accent: #8dbdaa; --on-accent: #1d1b18; --ok: #8fc79c; --warn: #e0b46a; --bad: #f0a08a;
+    --accent-tint: color-mix(in srgb, var(--accent) 16%, transparent);
+    --scrim: rgb(0 0 0 / .55);
+    --shadow: 0 6px 24px rgb(0 0 0 / .45);
+    --shadow-2: 0 6px 24px rgb(0 0 0 / .45);
+    --hl-k: #d6a0c8; --hl-s: #9ccb9f; --hl-n: #e8a774; --hl-c: #a0977f; --hl-f: #8db6de; --hl-v: #e0c070;
   }
 }
 * { box-sizing: border-box; }
@@ -87,22 +74,24 @@ code, pre, samp { font-family: var(--font-mono); }
 a { color: var(--accent); text-decoration: none; }
 a:hover { text-decoration: underline; }
 button, select, input, textarea { font: inherit; color: var(--text); }
-button { background: var(--panel2); border: 1px solid var(--border); border-radius: var(--r-pill);
+/* Buttons are rectangles: a plain one has a thin line in the ink colour, the one main action is
+   filled green (button.primary). */
+button { background: none; border: 1px solid var(--text); border-radius: var(--r-pill);
          padding: 8px 16px; cursor: pointer;
          transition: border-color var(--dur) var(--ease), background var(--dur) var(--ease),
                      color var(--dur) var(--ease), box-shadow var(--dur) var(--ease); }
-button:hover { border-color: var(--accent); background: var(--accent-tint); }
+button:hover { border-color: var(--accent); color: var(--accent); background: var(--accent-tint); }
 button:active { transform: translateY(1px); }
 button:disabled { opacity: .5; cursor: default; transform: none; }
 button.danger { color: var(--on-danger); background: var(--danger); border-color: var(--danger); }
-button.danger:hover { background: color-mix(in srgb, var(--danger) 85%, var(--on-danger));
+button.danger:hover { color: var(--on-danger); background: color-mix(in srgb, var(--danger) 85%, var(--on-danger));
                       border-color: color-mix(in srgb, var(--danger) 85%, var(--on-danger)); }
 button.ok { color: var(--on-accent); background: var(--ok); border-color: var(--ok); }
-button.ok:hover { background: color-mix(in srgb, var(--ok) 88%, var(--text)); border-color: var(--ok); }
-/* The one main action of a view: gold, with the edge it needs on a day page. */
+button.ok:hover { color: var(--on-accent); background: color-mix(in srgb, var(--ok) 88%, var(--text)); border-color: var(--ok); }
+/* The one main action of a view: filled with the accent green. */
 button.primary { color: var(--on-primary); background: var(--primary); border-color: var(--primary-edge);
                  font-weight: 600; }
-button.primary:hover { background: color-mix(in srgb, var(--primary) 88%, var(--text));
+button.primary:hover { color: var(--on-primary); background: color-mix(in srgb, var(--primary) 88%, var(--text));
                        border-color: var(--primary-edge); }
 button.icon { padding: 4px 8px; font-size: var(--fs-sm); background: none; border-color: transparent; color: var(--dim); }
 button.icon:hover { color: var(--text); border-color: var(--border); background: none; }
@@ -111,13 +100,11 @@ button.icon:hover { color: var(--text); border-color: var(--border); background:
 svg.ico { width: 1.25em; height: 1.25em; flex: none; vertical-align: -.25em; fill: none;
           stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round;
           pointer-events: none; }
-/* The star is the one filled icon: solid gold, no outline (the brand mark). */
-svg.ico .star { fill: var(--primary); stroke: none; }
 /* setIcon marks an icon .alone when its button has no words */
 svg.ico:not(.alone) { margin-right: .4em; }
 button > svg.ico.alone { width: 18px; height: 18px; }
-button.quiet { background: none; border-color: transparent; color: var(--dim); padding: 6px 12px; }
-button.quiet:hover { color: var(--text); background: var(--accent-tint); border-color: transparent; }
+button.quiet { background: none; border-color: var(--border); color: var(--dim); padding: 6px 12px; }
+button.quiet:hover { color: var(--text); background: var(--accent-tint); border-color: var(--accent); }
 /* A dangerous action in a list (Remove): a red outline, filled only when pointed at. */
 button.danger-outline { color: var(--bad); background: none; border-color: var(--bad); }
 button.danger-outline:hover { color: var(--on-danger); background: var(--danger); border-color: var(--danger); }
@@ -125,14 +112,14 @@ input[type=text], input[type=search], input[type=password], input[type=number], 
 input[type=url], input[type=tel], input[type=date], input[type=time], input[type=datetime-local],
 textarea, select,
 :where(input:not([type])) {  /* (a box made without a type is a text box too; :where() lets a page's own style win) */
-  background: var(--panel2); border: 1px solid var(--border); border-radius: var(--r-3); padding: 8px 12px;
+  background: var(--panel2); border: 1px solid var(--border); border-radius: var(--r-2); padding: 8px 12px;
   transition: border-color var(--dur) var(--ease), box-shadow var(--dur) var(--ease); }
 input:focus, textarea:focus, select:focus { border-color: var(--accent); }
 input[type=checkbox], input[type=radio] { accent-color: var(--accent); }
-/* (a date or time box draws its picker icon dark; light it up in the night look) */
-:root:not([data-theme="light"]) input::-webkit-calendar-picker-indicator { filter: invert(.8); }
-@media (prefers-color-scheme: light) {
-  :root:not([data-theme="dark"]) input::-webkit-calendar-picker-indicator { filter: none; } }
+/* (a date or time box draws its picker icon dark; light it up in the dark look) */
+:root[data-theme="dark"] input::-webkit-calendar-picker-indicator { filter: invert(.8); }
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) input::-webkit-calendar-picker-indicator { filter: invert(.8); } }
 .pill { display: inline-block; font-size: var(--fs-xs); padding: 2px 8px; border-radius: var(--r-pill);
         border: 1px solid var(--border); white-space: nowrap; }
 .pill.on { color: var(--on-accent); background: var(--ok); border-color: var(--ok); }
@@ -143,9 +130,9 @@ input[type=checkbox], input[type=radio] { accent-color: var(--accent); }
 /* Numbers (times, tokens, sizes, percentages, counts): mono, with figures of one width, so
    they line up. */
 .num { font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
-/* A small heading above a group: 12 px, upper case, quiet. */
-.section-label { font-size: var(--fs-xs); font-weight: 600; text-transform: uppercase;
-                 letter-spacing: .8px; color: var(--dim); }
+/* A small heading above a group: small italic serif, in the usual case, quiet. */
+.section-label { font-family: var(--font-display); font-size: var(--fs-sm); font-style: italic;
+                 font-weight: 400; color: var(--dim); }
 /* A key, shown next to what it does (the shortcuts window, a hint on a button). */
 kbd { font-family: var(--font-mono); font-size: var(--fs-xs); padding: 2px 6px;
       border: 1px solid var(--border); border-bottom-width: 2px; border-radius: var(--r-1);
@@ -155,18 +142,19 @@ header.top { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; row
              padding: 10px 14px; border-bottom: 1px solid var(--border); background: var(--panel); }
 header.top h1 { display: flex; align-items: center; gap: var(--s-2); font-size: var(--fs-lg); margin: 0;
                 font-weight: 700; white-space: nowrap; }
-img.logo { width: 22px; height: 22px; flex: none; border-radius: var(--r-1); }
 header.top .spacer { flex: 1; }
 header.top nav { display: flex; flex-wrap: wrap; gap: var(--s-1) var(--s-3); font-size: 14px; }  /* (wraps: German names are longer) */
 body.remote a[href="/notes"] { display: none; }  /* PC only */
 .page { max-width: 980px; margin: 0 auto; padding: 18px 16px 60px; }
-/* A wide table scrolls inside its card instead of pushing the whole page sideways. */
-.card { background: var(--panel); border: 1px solid var(--border); border-radius: var(--r-4);
-        padding: 20px; margin: 14px 0; overflow-x: auto; box-shadow: var(--shadow-1); }
-.card h2 { font-size: var(--fs-lg); margin: 0 0 12px; }
+/* A card is a section: a thin rule above it and no box. A wide table scrolls inside it
+   instead of pushing the whole page sideways. */
+.card { background: none; border: 0; border-top: 1px solid var(--border); border-radius: 0;
+        padding: var(--s-4) 0; margin: var(--s-4) 0 0; overflow-x: auto; }
+.card h2 { font-size: var(--fs-xl); font-weight: 600; margin: 0 0 12px; }
 table { width: 100%; border-collapse: collapse; font-size: 14px; }
 td, th { text-align: left; padding: 6px 8px; border-bottom: 1px solid var(--border); vertical-align: top; }
-th { color: var(--dim); font-weight: 600; font-size: var(--fs-xs); text-transform: uppercase; letter-spacing: .04em; }
+th { color: var(--dim); font-weight: 400; font-family: var(--font-display); font-style: italic;
+     font-size: var(--fs-sm); }
 .row { display: flex; gap: var(--s-2); align-items: center; flex-wrap: wrap; }
 .grow { flex: 1; min-width: 0; }
 /* Small layout helpers, so pages stop re-declaring the same flexbox inline. */
@@ -192,11 +180,10 @@ th { color: var(--dim); font-weight: 600; font-size: var(--fs-xs); text-transfor
 .skeleton i:nth-child(2) { width: 82%; }
 .skeleton i:nth-child(3) { width: 64%; }
 @keyframes shimmer { from { background-position: 100% 0; } to { background-position: -100% 0; } }
-/* The three small windows below (shortcuts, questions, quick switcher) are one family: --panel2,
-   radius 18 (the plan's value for windows: between --r-4 and a pill), the lifted shadow, and
-   the scrim behind. (::backdrop may not see the page's tokens in an old browser: the fallback.) */
+/* The three small windows below (shortcuts, questions, quick switcher) are one family: --panel
+   with a thin line, radius 2, the faint lifted shadow, and the scrim behind. (::backdrop may not see the page's tokens in an old browser: the fallback.) */
 /* The keyboard shortcuts of a page (press ?): a small window (common.js). */
-dialog#shortcuts { border: 1px solid var(--border); border-radius: 18px; background: var(--panel2);
+dialog#shortcuts { border: 1px solid var(--border); border-radius: var(--r-2); background: var(--panel);
                    color: var(--text); box-shadow: var(--shadow-2); padding: var(--s-5);
                    width: min(480px, calc(100vw - 32px)); animation: toast-in var(--dur) var(--ease); }
 dialog#shortcuts::backdrop { background: var(--scrim, rgb(0 0 0 / .5)); }
@@ -209,7 +196,7 @@ dialog#shortcuts::backdrop { background: var(--scrim, rgb(0 0 0 / .5)); }
 /* Starlight's own questions (askYesNo, askText in common.js): a small window, not the
    browser's grey box. The padding is on the form, so a click on the window's edge counts as
    a click beside it only outside the window. */
-dialog.ask { border: 1px solid var(--border); border-radius: 18px; background: var(--panel2);
+dialog.ask { border: 1px solid var(--border); border-radius: var(--r-2); background: var(--panel);
              color: var(--text); box-shadow: var(--shadow-2); padding: 0;
              width: min(440px, calc(100vw - 32px)); animation: ask-in var(--dur) var(--ease); }
 @keyframes ask-in { from { opacity: 0; transform: translateY(8px); } }
@@ -219,25 +206,25 @@ dialog.ask::backdrop { background: var(--scrim, rgb(0 0 0 / .5)); }
          overflow-wrap: anywhere; }
 .ask-more { margin: 0 0 var(--s-3); color: var(--dim); white-space: pre-line; overflow-wrap: anywhere;
             max-height: 40vh; overflow-y: auto; }
-.ask input { width: 100%; padding: 8px 12px; margin: 0 0 var(--s-3); background: var(--bg);
-             border: 1px solid var(--border); border-radius: var(--r-3); }
+.ask input { width: 100%; padding: 8px 12px; margin: 0 0 var(--s-3); background: var(--panel2);
+             border: 1px solid var(--border); border-radius: var(--r-2); }
 .ask-buttons { display: flex; justify-content: flex-end; gap: var(--s-2); margin-top: var(--s-2); }
 .ask-buttons button { min-width: 88px; }
 /* The quick switcher (quick.js, every page): a box on top, a list of groups under it. The
    padding is on the inner box, so a click on the window's edge counts only outside it. */
-dialog#quick { border: 1px solid var(--border); border-radius: 18px; background: var(--panel2);
+dialog#quick { border: 1px solid var(--border); border-radius: var(--r-2); background: var(--panel);
                color: var(--text); box-shadow: var(--shadow-2); padding: 0; margin: 12vh auto auto;
                width: min(560px, calc(100vw - 32px)); animation: ask-in var(--dur) var(--ease); }
 dialog#quick::backdrop { background: var(--scrim, rgb(0 0 0 / .5)); }
 .quick-box { padding: var(--s-3); }
-.quick-box input { width: 100%; padding: 8px 12px; font-size: var(--fs-lg); background: var(--bg);
-                   border: 1px solid var(--border); border-radius: var(--r-3); }
+.quick-box input { width: 100%; padding: 8px 12px; font-size: var(--fs-lg); background: var(--panel2);
+                   border: 1px solid var(--border); border-radius: var(--r-2); }
 .quick-list { max-height: 55vh; overflow-y: auto; margin-top: var(--s-2); }
-.quick-head { margin: var(--s-2) var(--s-2) 2px; color: var(--dim); font-size: var(--fs-xs); font-weight: 600;
-              text-transform: uppercase; letter-spacing: .04em; }
+.quick-head { margin: var(--s-2) var(--s-2) 2px; color: var(--dim); font-size: var(--fs-sm); font-weight: 400;
+              font-family: var(--font-display); font-style: italic; }
 .quick-row { display: flex; align-items: center; gap: var(--s-2); padding: 7px 10px; border-radius: var(--r-2);
              cursor: pointer; }
-.quick-row[aria-selected="true"] { background: color-mix(in srgb, var(--accent) 18%, transparent);
+.quick-row[aria-selected="true"] { background: var(--panel2);
                                    box-shadow: inset 2px 0 0 var(--accent); }
 .quick-row > .ico { flex: none; color: var(--dim); }
 .quick-row .q-t { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -274,10 +261,10 @@ button:focus:not(:focus-visible), a:focus:not(:focus-visible) { outline: none; }
 .skip:focus { top: 8px; }
 /* More contrast when the system asks for it (Windows: Contrast themes, "increase contrast"). */
 @media (prefers-contrast: more) {
-  :root, :root[data-theme] { --dim: var(--text); --border: var(--text); --accent: #c9c0ff;
+  :root, :root[data-theme] { --dim: var(--text); --border: var(--text); --accent: #1e4137;
                              --primary-edge: var(--text); }
-  :root[data-theme="light"] { --accent: #3d2db0; }
-  @media (prefers-color-scheme: light) { :root:not([data-theme="dark"]) { --accent: #3d2db0; } }
+  :root[data-theme="dark"] { --accent: #b9e0cd; }
+  @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { --accent: #b9e0cd; } }
   .pill, button, input, select, textarea { border-width: 2px; }
 }
 @media (forced-colors: active) {
@@ -294,15 +281,15 @@ button:focus:not(:focus-visible), a:focus:not(:focus-visible) { outline: none; }
                  border-bottom: 1px dashed color-mix(in srgb, var(--accent) 55%, transparent); }
 .md .note-link:hover { border-bottom-style: solid; }
 .md .note-embed { display: inline-block; padding: 1px 8px; border: 1px solid var(--border);
-                  border-radius: 6px; background: var(--panel2); border-bottom-style: solid; }
+                  border-radius: var(--r-2); background: var(--panel2); border-bottom-style: solid; }
 .md .note-embed::before { content: "↳ "; color: var(--dim); }
 .md .note-picture { display: block; max-width: 100%; height: auto; margin: .3em 0 .6em;
-                    border-radius: 8px; border: 1px solid var(--border); }
-.md .tag { display: inline-block; padding: 0 7px; margin: 0 1px; border-radius: 999px;
+                    border-radius: var(--r-2); border: 1px solid var(--border); }
+.md .tag { display: inline-block; padding: 0 7px; margin: 0 1px; border-radius: var(--r-2);
            font-size: .88em; line-height: 1.55; text-decoration: none; color: var(--accent);
            background: color-mix(in srgb, var(--accent) 13%, transparent); }
 .md .tag:hover { background: color-mix(in srgb, var(--accent) 22%, transparent); }
-.md .callout { --c: var(--accent); margin: 0 0 .7em; padding: 8px 12px; border-radius: 8px;
+.md .callout { --c: var(--accent); margin: 0 0 .7em; padding: 8px 12px; border-radius: var(--r-2);
                border-left: 4px solid var(--c); background: color-mix(in srgb, var(--c) 9%, transparent); }
 .md .callout-tip { --c: var(--ok); }
 .md .callout-warning { --c: var(--warn); }
@@ -325,7 +312,7 @@ button:focus:not(:focus-visible), a:focus:not(:focus-visible) { outline: none; }
 .md li.task[data-status="cancelled"] { text-decoration: line-through; font-style: italic; }
 /* a task's fields as chips (render.js); inline-block, so a done task's line-through skips them */
 .md .task-chip { display: inline-block; margin-left: .4em; padding: 0 .5em; border: 1px solid var(--border);
-                 border-radius: 999px; font-size: .8em; line-height: 1.55; color: var(--dim); white-space: nowrap;
+                 border-radius: var(--r-2); font-size: .8em; line-height: 1.55; color: var(--dim); white-space: nowrap;
                  font-style: normal; vertical-align: .05em; }
 .md .task-chip.overdue { color: var(--on-danger); background: var(--danger); border-color: var(--danger); }
 .md .task-chip.today { color: var(--on-accent); background: var(--warn); border-color: var(--warn); }
@@ -335,7 +322,7 @@ button:focus:not(:focus-visible), a:focus:not(:focus-visible) { outline: none; }
 .md .diagram { margin: .6em 0 1em; }
 .md .diagram-picture { display: block; max-width: 100%; height: auto; margin: 0 auto; }
 .md .diagram-wait { color: var(--dim); font-size: .9em; padding: 10px 0; }
-.md .diagram-error { border: 1px solid var(--warn); border-radius: 8px; padding: 8px 12px; color: var(--text);
+.md .diagram-error { border: 1px solid var(--warn); border-radius: var(--r-2); padding: 8px 12px; color: var(--text);
                      background: color-mix(in srgb, var(--warn) 12%, transparent); font-size: .92em; }
 .md .diagram-code summary { cursor: pointer; color: var(--dim); font-size: .85em; margin-top: 4px; width: max-content; }
 .md .diagram-code[open] summary { margin-bottom: 4px; }
@@ -347,5 +334,5 @@ button:focus:not(:focus-visible), a:focus:not(:focus-visible) { outline: none; }
 .md .query-sort:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
 .md .query-foot { display: flex; align-items: center; gap: 8px; color: var(--dim); font-size: .85em; margin-top: 4px; }
 .md .query-again { padding: 0 8px; font-size: 1em; }
-.md .query-error { border: 1px solid var(--warn); border-radius: 8px; padding: 8px 12px; color: var(--text);
+.md .query-error { border: 1px solid var(--warn); border-radius: var(--r-2); padding: 8px 12px; color: var(--text);
                    background: color-mix(in srgb, var(--warn) 12%, transparent); font-size: .92em; }

@@ -99,11 +99,11 @@ async def test_one_centred_column_of_cards_with_display_titles(
             fonts = await page.locator(".card:visible h2").evaluate_all(
                 "hs => hs.map(h => getComputedStyle(h).fontFamily)"
             )
-            assert fonts and all("Space Grotesk" in f for f in fonts)
-            # the header: the gold star icon, then the title in the display font
-            assert await page.locator("header.top h1 svg.ico .star").count() == 1
+            assert fonts and all("Charter" in f for f in fonts)
+            # the header: the title in the display font, no mark before it
+            assert await page.locator("header.top h1 svg.ico").count() == 0
             title = page.locator("header.top h1")
-            assert "Space Grotesk" in await title.evaluate("h => getComputedStyle(h).fontFamily")
+            assert "Charter" in await title.evaluate("h => getComputedStyle(h).fontFamily")
             links = await page.locator("header.top nav a").all_inner_texts()
             assert links == ["Chat", "Today", "Notes", "Memory", "Activity", "Automations"]
         finally:

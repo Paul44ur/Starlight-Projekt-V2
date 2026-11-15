@@ -3,8 +3,8 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)">
-<meta name="theme-color" content="#12162a" media="(prefers-color-scheme: dark)">
+<meta name="theme-color" content="#fbf9f4" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#23211d" media="(prefers-color-scheme: dark)">
 <title>Starlight statistics</title>
 <link rel="icon" href="/icon.svg" type="image/svg+xml">
 <link rel="stylesheet" href="/style.css">
@@ -16,7 +16,6 @@
   .bar { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s-3) var(--s-4);
          margin-bottom: var(--s-4); }
   .brand { display: flex; align-items: center; gap: var(--s-2); }
-  .brand svg.ico { width: 26px; height: 26px; margin: 0; vertical-align: top; }
   .brand-name { font-family: var(--font-display); font-size: 19px; font-weight: 600; }
   .bar h1 { font-size: var(--fs-xl); font-weight: 600; margin: 0; color: var(--dim); }
   .status { font-size: var(--fs-sm); padding: var(--s-1) var(--s-3); display: inline-flex;
@@ -81,7 +80,7 @@
 <body>
 <div class="page">
   <div class="bar">
-    <div class="brand"><span data-icon="star" aria-hidden="true"></span><span class="brand-name">Starlight</span></div>
+    <div class="brand"><span class="brand-name">Starlight</span></div>
     <h1>Statistics</h1>
     <span class="pill status" id="status" role="status"></span>
     <div class="tools">

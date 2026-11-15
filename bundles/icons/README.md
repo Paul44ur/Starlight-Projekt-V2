@@ -12,9 +12,11 @@ folder only draws them again.
   and its copy `static/icons/starlight.ico`, the logo files in `assets/logo` (the SVG copy and
   the two PNGs), and the 64 px window icon inside `launcher/launcher_gui.py` (`ICON_PNG`).
 
-The logo is flat: a gold star (`--primary`) on the night colour (`--panel`), with no gradient
-and no shine. `assets/logo/starlight-light.svg` is the one for a light page (a light ground,
-the star with a thin darker edge); change it by hand, the script only draws its PNG.
+The logo is flat: a serif capital S in `--on-accent` (`#FBF9F4`) on a `--accent` (`#2F5D50`)
+square, with no gradient and no shine. The S is a `<path>`: the outline of the capital S of
+Liberation Serif Bold (SIL Open Font License 1.1), about 62 % of the square high, so no font
+is needed where it is drawn. `assets/logo/starlight-light.svg` is the one for a light page
+(the same S in the green on `#F6F3EC`); change it by hand, the script only draws its PNG.
 
 Each logo gives four pictures:
 

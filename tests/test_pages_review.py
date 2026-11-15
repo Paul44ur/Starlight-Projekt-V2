@@ -249,7 +249,7 @@ async def test_every_page_has_its_title_in_the_display_font(
     pytest.importorskip("playwright.async_api")
     context, page = await open_page(static_site, full_app, name)
     try:
-        assert "Space Grotesk" in await page.evaluate(HEADER), name
+        assert "Charter" in await page.evaluate(HEADER), name
     finally:
         await context.__aexit__(None, None, None)
 
@@ -318,7 +318,10 @@ async def test_an_expired_memory_keeps_a_readable_contrast(
                 return 0.2126 * r + 0.7152 * g + 0.0722 * b; };
               const row = document.querySelector('.mem.expired');
               const a = lum(getComputedStyle(row.querySelector('.text')).color);
-              const b = lum(getComputedStyle(row.closest('.card')).backgroundColor);
+              let ground = getComputedStyle(row.closest('.card')).backgroundColor;
+              if (ground === 'rgba(0, 0, 0, 0)')
+                ground = getComputedStyle(document.body).backgroundColor;
+              const b = lum(ground);
               const ratio = (Math.max(a, b) + .05) / (Math.min(a, b) + .05);
               return [ratio, getComputedStyle(row).opacity];
             }"""

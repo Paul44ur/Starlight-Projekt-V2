@@ -117,7 +117,7 @@ async def test_the_list_is_a_card_with_44_pixel_rows(
             "() => { const s = getComputedStyle(document.querySelector('.notes > .side'));"
             " return [s.backgroundColor, s.borderTopLeftRadius, s.borderTopWidth]; }"
         )
-        assert card == [await token(page, "--panel"), "16px", "1px"]
+        assert card == [await token(page, "--panel"), "2px", "1px"]
         inset = await page.evaluate(
             "() => document.querySelector('.notes > .side').getBoundingClientRect().left"
         )
@@ -126,7 +126,7 @@ async def test_the_list_is_a_card_with_44_pixel_rows(
             height = await page.locator(selector).first.evaluate(
                 "e => [e.getBoundingClientRect().height, getComputedStyle(e).borderTopLeftRadius]"
             )
-            assert height[0] >= 44 and height[1] == "12px", (selector, height)
+            assert height[0] >= 44 and height[1] == "2px", (selector, height)
         # the open note: --panel2 behind it and a small --accent dot
         here = page.locator('#folders .item[aria-current="page"]')
         # (the row's background fades in when it becomes the open one: wait until it is solid,
@@ -142,13 +142,12 @@ async def test_the_list_is_a_card_with_44_pixel_rows(
             " return [d.backgroundColor, d.width, d.borderTopLeftRadius]; }"
         )
         assert dot == [await token(page, "--accent"), "6px", "50%"]
-        # the section labels are the shared ones; the brand row has the gold star
+        # the section labels are the shared ones (italic serif, normal case); the brand row is
+        # the word only
         label = page.locator(".side h3.section-label").first
-        assert await label.evaluate("e => getComputedStyle(e).textTransform") == "uppercase"
-        star = page.locator(".brand svg.ico .star")
-        assert await star.evaluate("e => getComputedStyle(e).fill") == await token(
-            page, "--primary"
-        )
+        assert await label.evaluate("e => getComputedStyle(e).textTransform") == "none"
+        assert await label.evaluate("e => getComputedStyle(e).fontStyle") == "italic"
+        assert await page.locator(".brand svg.ico").count() == 0
 
 
 @pytest.mark.parametrize("scheme", ["dark", "light"])
@@ -159,17 +158,17 @@ async def test_titles_use_the_display_font_and_counts_are_mono(
     family = "e => getComputedStyle(e).fontFamily"
     async with notes_page(static_site, app, scheme=scheme) as page:
         await open_note(page, static_site)
-        assert "Space Grotesk" in await page.locator("h1.title").evaluate(family)
-        assert "Space Grotesk" in await page.locator(".brand-name").evaluate(family)
-        assert "Space Grotesk" in await page.locator(".note-body .md-h").first.evaluate(family)
+        assert "Charter" in await page.locator("h1.title").evaluate(family)
+        assert "Charter" in await page.locator(".brand-name").evaluate(family)
+        assert "Charter" in await page.locator(".note-body .md-h").first.evaluate(family)
         assert "monospace" in await page.locator("#folders summary .count").first.evaluate(family)
         await page.locator(".quick button[data-view=boards]").click()
         await page.wait_for_selector("h1.title")
-        assert "Space Grotesk" in await page.locator("h1.title").evaluate(family)
+        assert "Charter" in await page.locator("h1.title").evaluate(family)
         await page.locator(".quick button[data-view=tasks]").click()
         await page.wait_for_selector(".task-group h3 .count")
         assert "monospace" in await page.locator(".task-group h3 .count").first.evaluate(family)
-        assert "Space Grotesk" in await page.locator(".task-group h3").first.evaluate(family)
+        assert "Charter" in await page.locator(".task-group h3").first.evaluate(family)
 
 
 # -- one gold button per view ------------------------------------------------------------------

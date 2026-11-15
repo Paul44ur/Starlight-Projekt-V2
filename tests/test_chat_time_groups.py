@@ -57,7 +57,7 @@ async def open_list(playwright: Any, site: str, listing: dict[str, Any] = MINE, 
 
 
 async def shape(page: Any) -> list[str]:
-    """Labels (upper case: .section-label) and titles of the list, in order."""
+    """Labels (.section-label, normal case) and titles of the list, in order."""
     return await page.locator("#list .folder, #list .conv .t").all_inner_texts()
 
 
@@ -71,23 +71,23 @@ async def test_the_list_is_grouped_by_the_day_a_conversation_last_changed(
         browser, page = await open_list(playwright, static_site)
         try:
             assert await shape(page) == [
-                "PINNED",
+                "Pinned",
                 "Pinned one",
-                "TODAY",
+                "Today",
                 "Today late",
                 "Today early",  # (00:01 today)
-                "YESTERDAY",
+                "Yesterday",
                 "Yesterday late",  # (23:59 yesterday)
-                "LAST 7 DAYS",
+                "Last 7 days",
                 "Three days ago",
-                "OLDER",
+                "Older",
                 "Eight days ago",
                 "Broken date",
                 "No date",
                 "Work",  # (a folder keeps its place and its name)
                 "In a folder",
             ]  # fmt: skip
-            assert "RECENT" not in await shape(page)
+            assert "Recent" not in await shape(page)
             # a label is no row: it cannot be focused, and Tab and the arrows pass it by
             assert await page.locator("#list .section-label[tabindex]").count() == 0
             rows = await page.locator("#list .conv").count()
@@ -116,7 +116,7 @@ async def test_a_group_without_conversations_has_no_label(
     async with async_api.async_playwright() as playwright:
         browser, page = await open_list(playwright, static_site, only)
         try:
-            assert await shape(page) == ["LAST 7 DAYS", "Three days ago"]  # fmt: skip
+            assert await shape(page) == ["Last 7 days", "Three days ago"]  # fmt: skip
         finally:
             await browser.close()
 
@@ -131,7 +131,7 @@ async def test_the_groups_are_worked_out_again_at_every_drawing(
     async with async_api.async_playwright() as playwright:
         browser, page = await open_list(playwright, static_site, one)
         try:
-            assert (await shape(page))[0] == "YESTERDAY"
+            assert (await shape(page))[0] == "Yesterday"
             # two minutes later, the next day: the same conversation is in the next group
             await page.evaluate("() => { window.__now += 24 * 3600e3; return loadList(); }")
             await page.wait_for_function(
@@ -162,8 +162,8 @@ async def test_pinned_ones_and_folders_stay_as_they_were(
         try:
             # pinned: no time label inside; folders sorted by name, no time labels in them
             assert await shape(page) == [
-                "PINNED", "Pinned old", "Pinned in folder",
-                "TODAY", "Today",
+                "Pinned", "Pinned old", "Pinned in folder",
+                "Today", "Today",
                 "Alpha", "Folder A",
                 "Zed", "Folder Z",
             ]  # fmt: skip
@@ -219,8 +219,8 @@ async def test_a_search_keeps_the_recent_label_when_something_is_pinned(
             await page.fill("#search", "a")
             await page.wait_for_function("() => document.getElementById('search').value === 'a'")
             await page.wait_for_selector("#list .section-label:has-text('Recent')")
-            assert "TODAY" not in await shape(page)
-            assert (await shape(page))[:3] == ["PINNED", "Pinned one", "RECENT"]
+            assert "Today" not in await shape(page)
+            assert (await shape(page))[:3] == ["Pinned", "Pinned one", "Recent"]
         finally:
             await browser.close()
 
@@ -240,12 +240,12 @@ async def test_the_time_groups_are_in_german(
             assert (
                 labels[:1] + labels[1:]
                 == [
-                    "ANGEHEFTET",
-                    "HEUTE",
-                    "GESTERN",
-                    "LETZTE 7 TAGE",
-                    "ÄLTER",
-                    "ORDNER",
+                    "Angeheftet",
+                    "Heute",
+                    "Gestern",
+                    "Letzte 7 Tage",
+                    "Älter",
+                    "Ordner",
                 ][:5]
                 + labels[5:]
             )

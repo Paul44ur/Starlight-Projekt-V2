@@ -1,8 +1,8 @@
 """How the terminal chat looks: the web pages' colours, and light Markdown for answers while
 they stream in.
 
-The colours are the web's (``starlight/web/static/style.css``): the accent, the gold of the
-star, a softer grey, and green, amber and red. They are written as ANSI codes at the depth the
+The colours are the web's (``starlight/web/static/style.css``): the accent green, also used for
+the star, a softer grey, and green, amber and red. They are written as ANSI codes at the depth the
 terminal has (24-bit, 256 or the basic 16), for a dark terminal or, where it says so, a light
 one. ``NO_COLOR``, a dumb terminal or output that is not a terminal get no colour.
 
@@ -21,17 +21,16 @@ from dataclasses import dataclass
 
 ESC = "\x1b["
 
-# The web's colours (style.css, the Night Sky tokens), for a dark and a light terminal. "code"
-# is a code span's text (--text) and its background (--panel2). The star is --primary; on a
-# light terminal it takes --primary-edge, the darker gold, as plain gold is too faint on white.
+# The web's colours (style.css, the Paper tokens), for a dark and a light terminal. "code" is a
+# code span's text (--text) and its background (--panel2). The star is the accent green.
 COLOURS: dict[str, dict[str, str]] = {
     "dark": {
-        "accent": "#a99bff", "star": "#f2c14e", "dim": "#9aa1c4", "code": "#e8eaf6",
-        "code_bg": "#1a1f38", "ok": "#6ee7b7", "warn": "#fdba74", "bad": "#ff8a80",
+        "accent": "#8dbdaa", "star": "#8dbdaa", "dim": "#a99f8f", "code": "#ece6da",
+        "code_bg": "#2c2924", "ok": "#8fc79c", "warn": "#e0b46a", "bad": "#f0a08a",
     },
     "light": {
-        "accent": "#5543d1", "star": "#b8860b", "dim": "#4e5578", "code": "#14172b",
-        "code_bg": "#ecedf7", "ok": "#157a4b", "warn": "#a3510b", "bad": "#c0262d",
+        "accent": "#2f5d50", "star": "#2f5d50", "dim": "#665e53", "code": "#26221d",
+        "code_bg": "#efeadf", "ok": "#2e6b3f", "warn": "#8a5a12", "bad": "#a3361e",
     },
 }  # fmt: skip
 # The nearest of the basic 16 colours, for terminals that have no more (SGR codes). The dark

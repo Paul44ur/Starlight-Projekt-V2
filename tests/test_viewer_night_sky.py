@@ -1,6 +1,6 @@
 # ruff: noqa: E501  (the pages' scripts are written out as long strings)
 """Block R3 of the round 2 plan (docs/plan-round-2.md): the statistics page (starlight/viewer) in
-the Night Sky look and in German. It takes its look from the chat's own files (served by the
+the Night Sky look (now Paper) and in German. It takes its look from the chat's own files (served by the
 viewer, and only those), has no colour of its own, shows night, day and "like your system",
 keeps gold for the star, writes numbers in mono, stays inside 360 px, and has no English left
 in German. The tests start the real viewer app on a free port, on a stats.db with test data."""
@@ -127,13 +127,13 @@ def test_the_viewer_serves_the_looks_files_and_nothing_else(viewer: str) -> None
             ("i18n.js", "javascript"),
             ("common.js", "javascript"),
             ("icon.svg", "image/svg+xml"),
-            ("vendor/space-grotesk-latin.woff2", "font/woff2"),
-            ("vendor/space-grotesk-latin-ext.woff2", "font/woff2"),
         ):
             reply = client.get("/" + name)
             assert reply.status_code == 200 and kind in reply.headers["content-type"], name
             assert reply.content == (STATIC / name).read_bytes()  # (the chat's own file)
         for name in (
+            "vendor/space-grotesk-latin.woff2",  # (no font is bundled any more)
+            "vendor/space-grotesk-latin-ext.woff2",
             "chat.html",
             "settings.html",
             "notes.html",
@@ -222,18 +222,19 @@ async def test_page_and_cards_use_the_tokens(viewer: str, playwright_api: Any, s
                 " getComputedStyle(c).borderRadius, getComputedStyle(c).paddingLeft])"
             )
             assert len(cards) == 16  # 8 tiles and 8 cards
-            assert all(c == [panel, "16px", "20px"] or c[0] == panel for c in cards), cards
-            assert {c[1] for c in cards} == {"16px"}
+            # a card is a section now: no fill, no rounded box (a thin rule above it)
+            assert {c[0] for c in cards} == {"rgba(0, 0, 0, 0)"}, cards
+            assert {c[1] for c in cards} == {"0px"}
             assert problems == []  # (common.js asks for nothing that is not on this port)
         finally:
             await browser.close()
 
 
-async def test_night_by_default_day_as_a_twin_and_the_theme_button(
+async def test_light_by_default_dark_as_a_twin_and_the_theme_button(
     viewer: str, playwright_api: Any
 ) -> None:
     async with playwright_api.async_playwright() as playwright:
-        for scheme, bg in (("dark", "rgb(11, 14, 26)"), ("light", "rgb(245, 246, 251)")):
+        for scheme, bg in (("dark", "rgb(29, 27, 24)"), ("light", "rgb(246, 243, 236)")):
             browser, page, _ = await opened(playwright, viewer, scheme=scheme)  # like the system
             try:
                 assert await page.evaluate("document.documentElement.dataset.theme") is None
@@ -243,11 +244,11 @@ async def test_night_by_default_day_as_a_twin_and_the_theme_button(
                 await button.click()  # system -> light
                 assert await page.evaluate("document.documentElement.dataset.theme") == "light"
                 assert await page.evaluate("getComputedStyle(document.body).backgroundColor") == (
-                    "rgb(245, 246, 251)"
+                    "rgb(246, 243, 236)"
                 )
                 await button.click()  # light -> dark
                 assert await page.evaluate("getComputedStyle(document.body).backgroundColor") == (
-                    "rgb(11, 14, 26)"
+                    "rgb(29, 27, 24)"
                 )
                 await button.click()  # dark -> like the system
                 assert await page.evaluate("document.documentElement.dataset.theme") is None
@@ -259,16 +260,13 @@ async def test_the_brand_row_the_title_and_the_headings(viewer: str, playwright_
     async with playwright_api.async_playwright() as playwright:
         browser, page, _ = await opened(playwright, viewer)
         try:
-            assert await page.locator(".brand svg.ico .star").count() == 1
+            assert await page.locator(".brand svg.ico").count() == 0  # (the word only, no mark)
             for selector in (".brand-name", "h1", ".card h2"):
                 font = await page.locator(selector).first.evaluate(
                     "n => getComputedStyle(n).fontFamily"
                 )
-                assert "Space Grotesk" in font, (selector, font)
+                assert "Charter" in font, (selector, font)
             assert await page.locator("h1").inner_text() == "Statistics"
-            # the heading font is really loaded from the viewer itself
-            await page.evaluate("document.fonts.ready")
-            assert await page.evaluate("document.fonts.check('600 20px \"Space Grotesk\"')")
         finally:
             await browser.close()
 

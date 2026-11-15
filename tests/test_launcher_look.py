@@ -32,8 +32,8 @@ def contrast(a: str, b: str) -> float:
 
 
 def test_the_window_icon_is_the_flat_logo() -> None:
-    """The 64 px picture kept in the launcher's code: a gold star on the night colour, with
-    no purple and no rays. bundles/icons/make_icons.py writes it from the logo."""
+    """The 64 px picture kept in the launcher's code: a serif S in paper white on the green
+    ground, flat. bundles/icons/make_icons.py writes it from the logo."""
     image = pytest.importorskip("PIL.Image")
     picture = image.open(io.BytesIO(base64.b64decode(load_gui().ICON_PNG))).convert("RGBA")
     assert picture.size == (64, 64)
@@ -41,9 +41,11 @@ def test_the_window_icon_is_the_flat_logo() -> None:
     def near(colour: tuple[int, ...], wanted: tuple[int, int, int]) -> bool:
         return all(abs(a - b) <= 6 for a, b in zip(colour[:3], wanted, strict=True))
 
-    assert near(picture.getpixel((32, 32)), (0xF2, 0xC1, 0x4E))  # the star: --primary
-    for spot in ((19, 19), (45, 19), (19, 45), (45, 45)):  # between its arms: --panel (night)
-        assert near(picture.getpixel(spot), (0x12, 0x16, 0x2A)), spot
+    for spot in ((8, 8), (55, 8), (8, 55), (55, 55)):  # beside the S, inside the corners
+        assert near(picture.getpixel(spot), (0x2F, 0x5D, 0x50)), spot
+    pixels = list(picture.getdata())
+    paper = sum(near(pixel, (0xFB, 0xF9, 0xF4)) for pixel in pixels)
+    assert paper >= 0.04 * len(pixels)  # the S is there
 
 
 def make_app(monkeypatch: pytest.MonkeyPatch, language: str = "en") -> Any:
@@ -73,9 +75,9 @@ def test_the_window_and_the_pages_share_readable_colours() -> None:
         assert contrast(palette.dim, palette.panel) >= 4.5
         assert contrast(palette.bad, palette.panel) >= 4.5  # red text (the kill switch)
     css = (STATIC / "style.css").read_text(encoding="utf-8")
-    dark = css[css.index(":root {") : css.index("}", css.index(":root {"))]
-    light = css[css.index(':root[data-theme="light"]') :]
-    light = light[: light.index("}")]
+    light = css[css.index(":root {") : css.index("}", css.index(":root {"))]
+    dark = css[css.index(':root[data-theme="dark"]') :]
+    dark = dark[: dark.index("}")]
 
     def token(block: str, name: str) -> str:
         found = re.search(rf"--{name}:\s*(#[0-9a-f]{{6}})", block)
@@ -84,14 +86,14 @@ def test_the_window_and_the_pages_share_readable_colours() -> None:
 
     assert token(dark, "accent") == gui.DARK.accent
     assert token(dark, "on-accent") == gui.DARK.on_accent
-    assert token(dark, "danger") == gui.DARK.danger == gui.LIGHT.danger
+    assert token(light, "danger") == gui.DARK.danger == gui.LIGHT.danger
     assert token(light, "accent") == gui.LIGHT.accent
     assert token(light, "on-accent") == gui.LIGHT.on_accent
     assert token(light, "bad") == gui.LIGHT.bad
     assert token(dark, "bad") == gui.DARK.bad
-    # the light look chosen by the system (no data-theme) gets the same accent
-    system = css[css.index("@media (prefers-color-scheme: light)") :]
-    assert token(system[: system.index("}")], "accent") == gui.LIGHT.accent
+    # the dark look chosen by the system (no data-theme) gets the same accent
+    system = css[css.index("@media (prefers-color-scheme: dark)") :]
+    assert token(system[: system.index("}")], "accent") == gui.DARK.accent
 
 
 def test_no_page_puts_white_text_on_a_light_fill() -> None:

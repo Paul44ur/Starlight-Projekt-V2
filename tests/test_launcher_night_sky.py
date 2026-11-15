@@ -1,5 +1,6 @@
-"""The launcher window and the terminal in the Night Sky look (UI 2, block V6): the gold main
-button, the star, readable colours, and the terminal's colours as the web's tokens."""
+"""The launcher window and the terminal in the colours of the web (UI 2 block V6; since UI 3
+block P1 they take the Paper values): the green main button, readable colours, and the
+terminal's colours as the web's tokens."""
 
 from __future__ import annotations
 
@@ -19,29 +20,33 @@ CSS = (REPO / "starlight" / "web" / "static" / "style.css").read_text(encoding="
 
 
 def tokens(look: str) -> dict[str, str]:
-    """The colour tokens of the night (``:root``) or the day look of style.css."""
-    start = CSS.index(":root {" if look == "dark" else ':root[data-theme="light"] {')
-    block = CSS[start : CSS.index("}", start)]
-    found = dict(re.findall(r"--([a-z0-9-]+):\s*(#[0-9a-f]{6})", block))
-    if look == "light":  # (the day look only overrides what differs)
-        return {**tokens("dark"), **found}
+    """The colour tokens of the light (``:root``) or the dark look of style.css. The main
+    action (``--primary``) is the accent: style.css says ``var(--accent)``."""
+    pattern = r"--([a-z0-9-]+):\s*(#[0-9a-f]{6})"
+    start = CSS.index(":root {")
+    found = dict(re.findall(pattern, CSS[start : CSS.index("}", start)]))
+    if look == "dark":  # (the dark look only overrides what differs)
+        start = CSS.index(':root[data-theme="dark"] {')
+        found |= dict(re.findall(pattern, CSS[start : CSS.index("}", start)]))
+    found["primary"], found["on-primary"] = found["accent"], found["on-accent"]
     return found
 
 
-def test_the_palettes_have_the_gold_of_the_plan() -> None:
+def test_the_palettes_have_the_paper_colours() -> None:
     gui = load_gui()
     for palette in (gui.DARK, gui.LIGHT):
-        assert palette.primary == "#f2c14e" and palette.on_primary == "#1a1404"
+        assert palette.primary == palette.accent and palette.on_primary == palette.on_accent
         assert contrast(palette.on_primary, palette.primary) >= 4.5  # the main button's text
         for colour in (palette.text, palette.dim, palette.accent, palette.bad):
             assert contrast(colour, palette.bg) >= 4.5, colour
             assert contrast(colour, palette.panel) >= 4.5, colour
-    assert gui.DARK.primary_edge == gui.DARK.primary  # (Tk has no transparent: no edge shows)
-    assert gui.LIGHT.primary_edge == "#b8860b"  # the day look's gold button gets its edge
-    assert contrast(gui.LIGHT.primary_edge, gui.LIGHT.panel) >= 3  # (3:1 against white)
+    for palette in (gui.DARK, gui.LIGHT):  # (Tk has no transparent: no edge shows)
+        assert palette.primary_edge == palette.primary
     for look, palette in (("dark", gui.DARK), ("light", gui.LIGHT)):
         assert tokens(look)["primary"] == palette.primary
         assert tokens(look)["on-primary"] == palette.on_primary
+        for name in ("bg", "panel", "panel2", "border", "text", "dim", "ok", "warn", "bad"):
+            assert tokens(look)[name] == getattr(palette, name), (look, name)
 
 
 def buttons_of(widget: tk.Misc) -> list[ttk.Button]:
@@ -63,7 +68,7 @@ def gold_buttons(app: Any, page: str) -> list[Any]:
 
 @needs_display
 @pytest.mark.parametrize("light", [False, True])
-def test_one_gold_main_button_on_each_page(monkeypatch: pytest.MonkeyPatch, light: bool) -> None:
+def test_one_main_button_on_each_page(monkeypatch: pytest.MonkeyPatch, light: bool) -> None:
     gui = load_gui()
     monkeypatch.setattr(gui, "system_uses_light_theme", lambda: light)
     app = make_app(monkeypatch)
@@ -84,7 +89,7 @@ def test_one_gold_main_button_on_each_page(monkeypatch: pytest.MonkeyPatch, ligh
 
 
 @needs_display
-def test_the_brand_is_the_gold_star(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_the_brand_is_the_star_in_the_primary_colour(monkeypatch: pytest.MonkeyPatch) -> None:
     gui = load_gui()
     app = make_app(monkeypatch)
     try:
@@ -117,7 +122,7 @@ def test_the_terminal_colours_are_the_webs_tokens(look: str) -> None:
     for name in ("accent", "dim", "ok", "warn", "bad"):
         assert term[name] == web[name], name
     assert term["code"] == web["text"] and term["code_bg"] == web["panel2"]
-    assert term["star"] == (web["primary"] if look == "dark" else web["primary-edge"])
+    assert term["star"] == web["accent"]
     # every colour can be read on the page's ground (4.5:1; the star 3:1: it is a mark)
     for name in ("accent", "dim", "ok", "warn", "bad", "code"):
         assert contrast(term[name], web["bg"]) >= 4.5, name
@@ -129,8 +134,8 @@ def test_the_terminal_has_a_colour_at_every_depth_and_none_without() -> None:
         for depth in ("truecolor", "256", "standard"):
             look = termstyle.palette(depth, light=light)
             assert look.star.startswith("\x1b[") and look.warn.startswith("\x1b[")
-    assert termstyle.palette("truecolor").star == "\x1b[38;2;242;193;78m"  # --primary
-    assert termstyle.palette("256").star == "\x1b[38;5;215m"
+    assert termstyle.palette("truecolor").star == "\x1b[38;2;141;189;170m"  # --accent
+    assert termstyle.palette("256").star == "\x1b[38;5;109m"
     assert termstyle.palette("standard").ok == "\x1b[92m"
     plain = termstyle.palette("truecolor", no_color=True)
     assert plain.star == plain.ok == plain.warn == plain.bad == plain.dim == ""

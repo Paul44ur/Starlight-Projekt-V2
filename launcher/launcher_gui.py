@@ -41,32 +41,37 @@ if _HERE not in sys.path:
     sys.path.append(_HERE)
 import launcher_tray  # noqa: E402
 
-# The Starlight logo (a gold star on the night colour, flat), 64 x 64 PNG: the window icon.
+# The Starlight logo (a serif S on the green, flat), 64 x 64 PNG: the window icon.
 # The header draws the same star as vectors, so it is sharp at any scale. This block is
 # written by bundles/icons/make_icons.py from the logo (static/icon.svg).
 ICON_PNG = (
-    "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"
+    "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"
 )
 
 
@@ -140,25 +145,25 @@ class Palette:
     warn: str
     bad: str  # red for text and status dots
     danger: str  # red behind white text (the stop button): dark enough to read on
-    primary: str  # gold: the star and the ONE main button of a page
-    on_primary: str  # text on the gold button
-    primary_edge: str  # the gold button's border (Tk has no "transparent": the dark look
-    # uses the gold itself, so no edge shows)
+    primary: str  # the accent green: the star and the ONE main button of a page
+    on_primary: str  # text on the main button
+    primary_edge: str  # the main button's border (Tk has no "transparent": it is the
+    # button's own colour, so no edge shows)
 
 
 # The same colors as the web pages (starlight/web/static/style.css: --accent, --primary,
 # --on-primary, --primary-edge, --danger ...), so the window and the chat look like one program.
 DARK = Palette(
-    bg="#0b0e1a", panel="#12162a", panel2="#1a1f38", border="#262c4a", text="#e8eaf6",
-    dim="#9aa1c4", accent="#a99bff", on_accent="#0b0e1a", ok="#6ee7b7", warn="#fdba74",
-    bad="#ff8a80", danger="#b42318", primary="#f2c14e", on_primary="#1a1404",
-    primary_edge="#f2c14e",
+    bg="#1d1b18", panel="#23211d", panel2="#2c2924", border="#3a362f", text="#ece6da",
+    dim="#a99f8f", accent="#8dbdaa", on_accent="#1d1b18", ok="#8fc79c", warn="#e0b46a",
+    bad="#f0a08a", danger="#a3361e", primary="#8dbdaa", on_primary="#1d1b18",
+    primary_edge="#8dbdaa",
 )  # fmt: skip
 LIGHT = Palette(
-    bg="#f5f6fb", panel="#ffffff", panel2="#ecedf7", border="#d8dbea", text="#14172b",
-    dim="#4e5578", accent="#5543d1", on_accent="#ffffff", ok="#157a4b", warn="#a3510b",
-    bad="#c0262d", danger="#b42318", primary="#f2c14e", on_primary="#1a1404",
-    primary_edge="#b8860b",
+    bg="#f6f3ec", panel="#fbf9f4", panel2="#efeadf", border="#ddd6c8", text="#26221d",
+    dim="#665e53", accent="#2f5d50", on_accent="#fbf9f4", ok="#2e6b3f", warn="#8a5a12",
+    bad="#a3361e", danger="#a3361e", primary="#2f5d50", on_primary="#fbf9f4",
+    primary_edge="#2f5d50",
 )  # fmt: skip
 
 

@@ -52,9 +52,9 @@ async def test_a_question_is_a_window_in_the_pages_look(
             assert await page.evaluate("() => document.activeElement.textContent") == "Cancel"
             assert await box.get_attribute("role") == "alertdialog"
             panel = await box.evaluate("b => getComputedStyle(b).backgroundColor")
-            lifted = """() => {  // --panel2 as computed (a question lifts off the page)
+            lifted = """() => {  // --panel as computed (a question is a bordered box on the page)
                 const probe = document.body.appendChild(document.createElement("i"));
-                probe.style.background = "var(--panel2)";
+                probe.style.background = "var(--panel)";
                 const colour = getComputedStyle(probe).backgroundColor;
                 probe.remove();
                 return colour;

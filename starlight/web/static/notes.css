@@ -16,9 +16,8 @@ body { display: flex; flex-direction: column; }
 .info h3:first-child { margin-top: 0; }
 /* a section with nothing in it has no heading either (graph, boards and tasks views) */
 .info h3.section-label:has(+ :empty) { display: none; }
-/* The brand row: the gold star and the name, in the display font. */
+/* The brand row: the name, in the display font. */
 .brand { display: flex; align-items: center; gap: var(--s-2); padding: var(--s-1) var(--s-2) var(--s-3); }
-.brand svg.ico { width: 22px; height: 22px; margin: 0; }
 .brand-name { font-family: var(--font-display); font-size: var(--fs-xl); font-weight: 600; letter-spacing: -.01em; }
 #search { width: 100%; }
 .quick { display: grid; grid-template-columns: 1fr 1fr; gap: 2px; margin-top: var(--s-3); }

@@ -11,7 +11,6 @@ function addMsg(who, text, files, plain) {
   log.querySelector(".empty")?.remove();  // (the start of a new conversation)
   const m = el("div", "msg " + (who === "you" ? "you" : "bot"));
   const name = el("div", "who", who === "you" ? "you" : "starlight");
-  if (who !== "you") name.insertAdjacentHTML("afterbegin", icon("star"));  // (the gold star before an answer)
   m.appendChild(name);
   const body = el("div", "body", who === "you" || plain ? text || "" : undefined);
   if (who !== "you" && !plain) setAnswer(body, text || "");

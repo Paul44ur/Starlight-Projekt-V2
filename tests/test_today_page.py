@@ -331,8 +331,9 @@ async def test_night_and_day_use_the_page_and_card_tokens(
     for scheme in ("dark", "light"):
         async with today(playwright, static_site, scheme=scheme) as page:
             body, bg, card, panel = await page.evaluate(probe)
-            assert body == bg and card == panel, scheme
-            assert body != card  # (the card is on a different surface)
+            assert body == bg, scheme
+            # a card is a section now: no fill of its own, so it sits on the page ground
+            assert card == "rgba(0, 0, 0, 0)" and body != panel, scheme
 
 
 def luminance(rgb: tuple[int, ...]) -> float:

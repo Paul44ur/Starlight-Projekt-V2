@@ -58,13 +58,14 @@ def test_the_app_icons_were_drawn_from_the_logos_as_they_are() -> None:
 
 
 REPO = STATIC.parents[2]
-NIGHT, GOLD = (0x12, 0x16, 0x2A), (0xF2, 0xC1, 0x4E)  # --panel (night) and --primary
+GREEN, PAPER = (0x2F, 0x5D, 0x50), (0xFB, 0xF9, 0xF4)  # --accent and --on-accent (light)
 
 
-def test_the_logo_is_flat_a_gold_star_on_the_night_colour() -> None:
-    """No gradients and no shine: one flat ground and one flat star, in the look's own colours."""
+def test_the_logo_is_flat_a_serif_s_on_the_green() -> None:
+    """No gradients and no shine: one flat green ground and one flat S, drawn as a path (no
+    font is needed where it is shown), in the look's own colours."""
     style = (STATIC / "style.css").read_text("utf-8")
-    assert "--panel: #12162a" in style.lower() and "--primary: #f2c14e" in style.lower()
+    assert "--accent: #2f5d50" in style.lower() and "--on-accent: #fbf9f4" in style.lower()
     logo = (STATIC / "icon.svg").read_text("utf-8")
     logos = {
         "icon.svg": logo,
@@ -75,12 +76,16 @@ def test_the_logo_is_flat_a_gold_star_on_the_night_colour() -> None:
         ),
     }
     for name, svg in logos.items():
-        for effect in ("Gradient", "url(#", "<defs", "opacity", "filter", "blur"):
+        for effect in ("Gradient", "url(#", "<defs", "opacity", "filter", "blur", "<text"):
             assert effect not in svg, (name, effect)
     assert logos["starlight.svg"] == logo  # (the logo file is the page's icon)
-    assert '<rect width="512" height="512" rx="112" fill="#12162a"/>' in logo
-    assert logo.count("<path") == 1 and 'fill="#f2c14e"' in logo  # the star, nothing else
-    assert 'rx="112" fill="#12162a"/>' in logos["kill-icon.svg"]  # (the same ground)
+    assert '<rect width="512" height="512" rx="112" fill="#2f5d50"/>' in logo
+    assert logo.count("<path") == 1 and 'fill="#fbf9f4"' in logo  # the S, nothing else
+    assert "Liberation Serif" in logo and "Open Font License" in logo  # (where it comes from)
+    assert 'rx="112" fill="#2f5d50"/>' in logos["kill-icon.svg"]  # (the same ground)
+    assert "#d32f2f" in logos["kill-icon.svg"]  # (the red stop sign stays)
+    light = logos["starlight-light.svg"]
+    assert 'rx="112" fill="#f6f3ec"/>' in light and 'fill="#2f5d50"/><!--' in light
 
 
 def test_everything_made_from_the_logo_shows_the_flat_one() -> None:
@@ -89,27 +94,41 @@ def test_everything_made_from_the_logo_shows_the_flat_one() -> None:
     def near(colour: tuple[int, ...], wanted: tuple[int, int, int]) -> bool:
         return all(abs(a - b) <= 6 for a, b in zip(colour[:3], wanted, strict=True))
 
-    def flat(picture: Any, name: str) -> None:
+    def flat(picture: Any, name: str, ground: Any = GREEN, ink: Any = PAPER) -> None:
         picture = picture.convert("RGBA")
         size = picture.size[0]
-        assert near(picture.getpixel((size // 2, size // 2)), GOLD), name  # the star
-        # between the star's arms the ground shows, and it is one colour everywhere
-        for x, y in ((0.3, 0.3), (0.7, 0.3), (0.3, 0.7), (0.7, 0.7), (0.2, 0.2), (0.8, 0.8)):
-            assert near(picture.getpixel((int(size * x), int(size * y))), NIGHT), (name, x, y)
+        # beside the S the ground shows, and it is one colour everywhere
+        for x, y in ((0.2, 0.2), (0.8, 0.2), (0.2, 0.8), (0.8, 0.8), (0.1, 0.5), (0.9, 0.5)):
+            assert near(picture.getpixel((int(size * x), int(size * y))), ground), (name, x, y)
+        # and the S is there: a few percent of the picture has the ink colour
+        pixels = list(picture.getdata())
+        share = sum(near(pixel, ink) for pixel in pixels) / len(pixels)
+        assert share >= 0.03, (name, share)
 
     for name in ("icon-180.png", "icon-192.png", "icon-512.png", "icon-maskable-512.png"):
         flat(image.open(STATIC / "icons" / name), name)
     flat(image.open(REPO / "assets" / "logo" / "starlight.png"), "starlight.png")
+    flat(
+        image.open(REPO / "assets" / "logo" / "starlight-light.png"),
+        "starlight-light.png",
+        (0xF6, 0xF3, 0xEC),
+        GREEN,
+    )
     # the icon of Starlight.exe and of its windows: every size
     ico = (REPO / "launcher" / "starlight.ico").read_bytes()
     assert (STATIC / "icons" / "starlight.ico").read_bytes() == ico
     sizes = sorted(image.open(io.BytesIO(ico)).info["sizes"])
     assert sizes == [(s, s) for s in (16, 24, 32, 48, 64, 128, 256)]
-    for size in (32, 48, 64, 128, 256):  # (at 16 and 24 px a sample point is a mixed pixel)
+    for size in (16, 24, 32, 48, 64, 128, 256):
         frame = image.open(io.BytesIO(ico))
         frame.size = (size, size)
         frame.load()
-        flat(frame, f"starlight.ico {size}")
+        picture = frame.convert("RGBA")
+        pixels = list(picture.getdata())
+        share = sum(near(pixel, PAPER) for pixel in pixels) / len(pixels)
+        assert share >= 0.03, (f"starlight.ico {size}", share)  # (the S reads even at 16 px)
+        if size >= 32:
+            flat(frame, f"starlight.ico {size}")
 
 
 def test_the_manifests_and_pages_name_the_app_icons(tmp_path: Path) -> None:
@@ -132,7 +151,7 @@ def test_the_manifests_and_pages_name_the_app_icons(tmp_path: Path) -> None:
     for name in PAGES:
         page = (STATIC / f"{name}.html").read_text("utf-8")
         assert '<link rel="apple-touch-icon" href="/icons/icon-180.png" />' in page, name
-        for scheme, colour in (("light", "#ffffff"), ("dark", "#12162a")):
+        for scheme, colour in (("light", "#fbf9f4"), ("dark", "#23211d")):
             media = f"(prefers-color-scheme: {scheme})"
             meta = f'<meta name="theme-color" content="{colour}" media="{media}" />'
             assert meta in page, (name, scheme)  # (right before the scripts run)
@@ -157,11 +176,11 @@ async def test_the_browser_bar_takes_the_colour_of_the_page(
             )
             try:
                 await page.wait_for_load_state("load")
-                assert await page.evaluate(bar) == "#ffffff", url  # like the system: light
+                assert await page.evaluate(bar) == "#fbf9f4", url  # like the system: light
                 await page.evaluate("() => cycleTheme()")  # light
-                assert await page.evaluate(bar) == "#ffffff", url
+                assert await page.evaluate(bar) == "#fbf9f4", url
                 await page.evaluate("() => cycleTheme()")  # dark
-                assert await page.evaluate(bar) == "#12162a", url
+                assert await page.evaluate(bar) == "#23211d", url
             finally:
                 await browser.close()
         # the kill switch keeps its red, whatever the theme
@@ -170,9 +189,9 @@ async def test_the_browser_bar_takes_the_colour_of_the_page(
             await page.wait_for_load_state("load")
             await page.evaluate("() => cycleTheme()")
             assert await page.evaluate(bar) == "#b3231d"
-            # and it says whose switch it is
+            # and it says whose switch it is (the word, no mark)
             assert "Starlight" in await page.locator("h1").inner_text()
-            assert await page.locator("h1 svg.ico").is_visible()  # (the star)
+            assert await page.locator("h1 svg.ico").count() == 0
         finally:
             await browser.close()
 

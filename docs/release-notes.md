@@ -40,9 +40,10 @@ The default model needs 16 GB of video memory; smaller models are offered during
   boxes.
 
 ### Also new
-- **A new look for every page:** Night Sky. Dark by default, with an equal day look; gold
-  only for the star and the one main action; a details pane in the chat; keys shown next to
-  their buttons. Nothing about how the pages work has changed.
+- **A new look for every page:** Paper. Light by default, with an equal dark look; serif
+  headings and answers; one green for actions; square buttons and thin lines; keys shown next
+  to their buttons; a plain "S" for the logo and the app icons. Nothing about how the pages
+  work has changed.
 - **When an answer is ready** and Starlight is in the background, its taskbar button lights up
   and a notification shows. Settings has the switch.
 - **Ctrl+K** opens a box to jump to a conversation, a note, a page or a command.
@@ -53,8 +54,6 @@ The default model needs 16 GB of video memory; smaller models are offered during
   restore replaces what you have; a copy of it is saved first, and it is applied when
   Starlight starts next.
 
-- **The logo is flat now:** a gold star on the night colour, without the purple gradient and
-  the light rays. Starlight.exe, the windows, the tray and a phone's home screen show it.
 - **A Today page** shows your day as cards: what waits for your OK, the agenda, to-dos that
   are due, today's reminders and the weather. Nothing on it changes anything.
 - **Automations:** each rule shows when it last ran and how it went, and **History** opens its

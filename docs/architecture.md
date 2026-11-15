@@ -235,16 +235,20 @@ keeps the two in step and checks that text on every filled colour is readable (W
 4.5:1). Both show a focus ring only while the keyboard is used. The plan for the rest of this
 work is `docs/plan-ui.md`.
 
-**The Night Sky look.** `style.css` has two looks. Night is the default (`:root`); day is
-designed on its own and set twice (`:root[data-theme="light"]` and the system's light
-setting). Violet (`--accent`) is for links, focus, switches and progress. Gold (`--primary`,
-with `--on-primary` and, on a day page, `--primary-edge`) is only for the star and the one
-main action of a view. New tokens: `--font-display`, `--font-body`, `--font-mono`, `--r-4`,
-`--on-danger` and `--scrim`. Headings use Space Grotesk. It is bundled (`bundles/fonts`, files
-in `static/vendor/`, a hash file and the licence, all checked by
-`tests/test_night_sky_tokens.py`) and served by Starlight itself, so a page never loads a
-font from the internet and nothing leaves the PC. The service worker keeps the font files
-with the shell. The plan is `docs/plan-ui-2.md`.
+**The Paper look.** `style.css` has two looks. Light is the default (`:root`); dark is its
+equal twin, set twice (`:root[data-theme="dark"]` and the system's dark setting, unless the
+page says light). With no stored choice and no system preference a page is light. The green
+(`--accent`) is for links, focus, switches, progress and the one main action of a view
+(`--primary`, `--on-primary` and `--primary-edge` are the accent, the text on it and
+`transparent`). Every radius token (`--r-1` to `--r-4`, `--r-pill`) is 2 px; a dot or a
+status light uses `50%`. `--shadow-1` is `none`: only what floats (menus, toasts, dialogs)
+has the faint `--shadow-2`. A `.card` is a section with a thin rule above it and no box;
+`.section-label` is a small italic serif in the usual case. Headings and answers use
+`--font-display` (Charter, Cambria or Georgia, whichever the PC has), controls use
+`--font-body`. No font is bundled, so nothing is loaded and nothing leaves the PC. Each text
+colour is checked at 4.5:1 on `--bg`, `--panel` and `--panel2` in both looks by
+`tests/test_paper_tokens.py`. The brand is the word "Starlight" in the display font, with no
+mark. The plan is `docs/plan-ui-3.md`; the look it replaced is in `docs/plan-ui-2.md`.
 
 One review checks all the pages together. `tests/test_pages_review.py` opens each page in both
 looks and checks: nothing scrolls sideways at 360 px, touch targets of 44 px, a focus ring in
@@ -256,10 +260,10 @@ descriptions (the modules' own docstrings), a tool's question to you, and the re
 gives for a failure. What the server sends in English as a fixed sentence (the activity
 sentences, an automation's description) is turned into German by `PATTERNS` in `i18n.js`.
 
-The launcher window follows the same look: `Palette` has `primary`, `on_primary` and
-`primary_edge`, the one main button of each page is gold (the style is still called
-`Accent.TButton`), the brand is the gold star drawn on a canvas, and headings use "Segoe UI
-Semibold" (Tk cannot load the web font). The terminal chat's colours (`termstyle.COLOURS`)
+The launcher window takes the same colours: `Palette` has `primary`, `on_primary` and
+`primary_edge`, the one main button of each page is the accent green (the style is still
+called `Accent.TButton`), the brand is still drawn on a canvas and headings use "Segoe UI
+Semibold" (the rest of its Paper look is block P6 of `docs/plan-ui-3.md`). The terminal chat's colours (`termstyle.COLOURS`)
 are the same tokens, and `tests/test_launcher_night_sky.py` compares them with `style.css`.
 
 **The Notes page in the Night Sky look.** The list on the left and the info panel are cards
@@ -479,8 +483,9 @@ meta marked `data-fixed`, on the Kill page, keeps its colour). The app icons a p
 `static/icons`, drawn from `icon.svg` and `kill-icon.svg` by `bundles/icons/make_icons.py`
 and served from `/icons/{name}` (only the names in `APP_ICONS`); `icons.sha256` records
 the logos they came from, and a test fails when a logo changes without them.
-The logo is flat: a gold star (`--primary`) on the night colour (`--panel`), no gradient and
-no shine. The same script draws what else is made from it: `launcher/starlight.ico` (Starlight.exe,
+The logo is flat: a serif capital S in `--on-accent` on a `--accent` square, drawn as a path
+(the outline of Liberation Serif Bold, SIL Open Font License), so no font is needed where it
+is shown. No gradient and no shine. The same script draws what else is made from it: `launcher/starlight.ico` (Starlight.exe,
 the windows and the tray), the files in `assets/logo` and the window icon kept inside
 `launcher/launcher_gui.py`.
 
