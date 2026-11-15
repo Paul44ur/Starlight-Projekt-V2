@@ -147,12 +147,16 @@ async def test_the_approval_that_waits_for_you_stands_out(
         browser, page = await open_page(playwright, static_site, "activity")
         try:
             await page.wait_for_selector("#approvals:not([hidden]) .waiting")
-            edge = await page.locator("#approvals").evaluate("c => getComputedStyle(c).boxShadow")
+            # Paper: the amber edge is a 2 px line left of the waiting item, no shadow
+            edge = await page.locator("#approvals .waiting").evaluate(
+                "c => { const s = getComputedStyle(c);"
+                " return s.borderLeftWidth + ' ' + s.borderLeftColor; }"
+            )
             warn = await page.evaluate(
                 "() => { const p = document.body.appendChild(document.createElement('i'));"
                 " p.style.color = 'var(--warn)'; const c = getComputedStyle(p).color;"
                 " p.remove(); return c; }"
             )
-            assert warn in edge  # an amber edge (--warn)
+            assert edge == f"2px {warn}"  # an amber edge (--warn)
         finally:
             await browser.close()

@@ -13,19 +13,19 @@
 <style>
   /* The kill switch keeps its own fixed red identity in every look: the page's theme colour, the
      home-screen icon and this big button are one red that a person learns to find in a hurry.
-     The edge of the button is the only colour written out here; everything else is a token. */
-  body { --kill-edge: #ff8a80; }
+     Square (radius 2) and in the Paper type like the other pages; the red comes from --danger. */
   body { display: flex; flex-direction: column; align-items: center; justify-content: center;
-         min-height: 100%; padding: 24px; text-align: center; gap: 18px; }
-  #stop { width: min(78vw, 320px); height: min(78vw, 320px); border-radius: 50%; font-size: 30px;
-          font-weight: 800; font-family: var(--font-display); color: var(--on-danger); background: var(--danger);
-          border: 6px solid var(--kill-edge); box-shadow: var(--shadow-2); }
-  #stop:focus-visible { outline: 4px solid var(--accent); outline-offset: 6px; }
-  #stop.done { background: var(--panel2); color: var(--text); border-color: var(--border); }
+         min-height: 100%; padding: var(--s-5); text-align: center; gap: var(--s-4); }
+  #stop { width: min(86vw, 360px); height: min(60vw, 240px); border-radius: var(--r-2); font-size: 32px;
+          font-weight: 700; font-family: var(--font-display); color: var(--on-danger); background: var(--danger);
+          border: 6px solid color-mix(in srgb, var(--danger) 55%, var(--bg)); box-shadow: none; }
+  #stop:focus-visible { outline: 3px solid var(--accent); outline-offset: 6px; }
+  #stop.done { background: var(--panel2); color: var(--text); border: 1px solid var(--text); }
   #state { font-size: var(--fs-lg); min-height: 2.6em; max-width: 30em; }
-  /* the logo and the name, small above the button: whose switch this is */
-  .lockup { display: flex; align-items: center; gap: var(--s-2); margin: 0; font-size: var(--fs-xl); font-weight: 600; }
-  .lockup .dim { font-weight: 400; }
+  /* the name above the button: whose switch this is */
+  .lockup { display: flex; flex-wrap: wrap; justify-content: center; align-items: baseline; gap: var(--s-2);
+            margin: 0; font-size: var(--fs-xl); font-weight: 600; }
+  .lockup .dim { font-weight: 400; font-style: italic; }
 </style>
 </head>
 <body>

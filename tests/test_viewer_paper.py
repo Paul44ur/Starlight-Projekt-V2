@@ -1,8 +1,9 @@
 # ruff: noqa: E501  (the pages' scripts are written out as long strings)
-"""Block R3 of the round 2 plan (docs/plan-round-2.md): the statistics page (starlight/viewer) in
-the Night Sky look (now Paper) and in German. It takes its look from the chat's own files (served by the
-viewer, and only those), has no colour of its own, shows night, day and "like your system",
-keeps gold for the star, writes numbers in mono, stays inside 360 px, and has no English left
+"""Block R3 of the round 2 plan (docs/plan-round-2.md) and block P5 of the UI 3 plan: the
+statistics page (starlight/viewer) in the Paper look and in German. It takes its look from the
+chat's own files (served by the viewer, and only those), has no colour of its own, shows night,
+day and "like your system", has figures instead of boxes, no radius above 2 px and no shadow at
+rest, headings in the serif, writes numbers in mono, stays inside 360 px, and has no English left
 in German. The tests start the real viewer app on a free port, on a stats.db with test data."""
 
 from __future__ import annotations
@@ -29,7 +30,6 @@ from tests.test_german_everywhere import COLLECT, english_left, executable
 STATIC = REPO / "starlight" / "web" / "static"
 PAGE = REPO / "starlight" / "viewer" / "static" / "index.html"
 COLOUR = re.compile(r"#[0-9a-fA-F]{3,8}\b|\brgba?\(|\bhsla?\(")
-GOLD = "rgb(242, 193, 78)"  # --primary, the same in night and day
 
 
 def seed(db_path: Path) -> None:
@@ -221,7 +221,7 @@ async def test_page_and_cards_use_the_tokens(viewer: str, playwright_api: Any, s
                 "[...document.querySelectorAll('.card')].map(c => [getComputedStyle(c).backgroundColor,"
                 " getComputedStyle(c).borderRadius, getComputedStyle(c).paddingLeft])"
             )
-            assert len(cards) == 16  # 8 tiles and 8 cards
+            assert len(cards) == 8  # the 8 tiles are figures now, not cards
             # a card is a section now: no fill, no rounded box (a thin rule above it)
             assert {c[0] for c in cards} == {"rgba(0, 0, 0, 0)"}, cards
             assert {c[1] for c in cards} == {"0px"}
@@ -271,38 +271,41 @@ async def test_the_brand_row_the_title_and_the_headings(viewer: str, playwright_
             await browser.close()
 
 
+RADIUS = """() => {
+  const bad = [];
+  for (const n of document.querySelectorAll('body *')) {
+    if (n instanceof SVGElement && n.tagName !== 'svg') continue;
+    const r = n.getBoundingClientRect();
+    if (!r.width || !r.height) continue;
+    const s = getComputedStyle(n);
+    for (const k of ['borderTopLeftRadius', 'borderTopRightRadius', 'borderBottomLeftRadius',
+                     'borderBottomRightRadius'])
+      if (s[k] !== '50%' && parseFloat(s[k]) > 2) bad.push(n.tagName + '.' + n.className + ' ' + s[k]);
+    if (s.boxShadow !== 'none') bad.push(n.tagName + '.' + n.className + ' shadow');
+  }
+  return bad;
+}"""
+
+
 @pytest.mark.parametrize("scheme", ["dark", "light"])
-async def test_nothing_is_gold_but_the_star(viewer: str, playwright_api: Any, scheme: str) -> None:
+async def test_figures_without_boxes_square_corners_no_shadow(
+    viewer: str, playwright_api: Any, scheme: str
+) -> None:
     async with playwright_api.async_playwright() as playwright:
         browser, page, _ = await opened(playwright, viewer, scheme=scheme)
         try:
-            await page.locator("[data-minutes='1440']").click()  # (a filter chosen: still not gold)
-            gold = await page.evaluate(
-                """(gold) => {
-                  const found = [];
-                  for (const n of document.querySelectorAll('body *')) {
-                    if (n.closest('.brand')) continue;
-                    const s = getComputedStyle(n);
-                    for (const k of ['color', 'backgroundColor', 'borderTopColor', 'fill', 'stroke'])
-                      if (s[k] === gold) found.push(n.tagName + '.' + n.className + ' ' + k);
-                  }
-                  return found;
-                }""",
-                GOLD,
-            )
-            assert gold == []
+            await page.locator("[data-minutes='1440']").click()  # (a range chosen: still no shadow)
+            await page.mouse.move(0, 0)
+            assert await page.evaluate(RADIUS) == []
+            assert await page.locator(".tile.card").count() == 0
             assert await page.locator("button.primary").count() == 0  # no main action here
             chosen = page.locator(".filters button[aria-pressed=true]")
-            accent = await page.evaluate(
-                "getComputedStyle(document.documentElement).getPropertyValue('--accent')"
-            )
             probe = await page.evaluate(TOKEN, "accent")
-            await page.mouse.move(0, 0)  # (the colour glides for a moment after the click)
-            await page.wait_for_function(
-                "([s, c]) => getComputedStyle(document.querySelector(s)).backgroundColor === c",
+            await page.wait_for_function(  # (the colour glides for a moment after the click)
+                "([s, c]) => getComputedStyle(document.querySelector(s)).borderTopColor === c",
                 arg=[".filters button[aria-pressed=true]", probe],
             )
-            assert accent.strip() and await chosen.count() == 1
+            assert await chosen.count() == 1
         finally:
             await browser.close()
 

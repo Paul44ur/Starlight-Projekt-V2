@@ -11,18 +11,17 @@
 <link rel="stylesheet" href="/style.css" />
 <script src="/i18n.js"></script>
 <style>
-  /* the Night Sky look: one centred column of cards, titles in the display font */
-  .page { max-width: 760px; }
-  .card { margin: var(--s-4) 0; }
+  /* the Paper look: one column of sections (a serif heading, a thin rule, plain rows) */
+  .page { max-width: 720px; }
+  .card { margin: var(--s-5) 0 0; }
   .card h2 { font-size: var(--fs-xl); font-weight: 600; margin: 0 0 var(--s-2); }
   header.top h1 { font-size: var(--fs-xl); font-weight: 600; }
-  header.top h1 svg.ico { width: 22px; height: 22px; margin-right: 0; vertical-align: 0; }
   body.remote .local-only { display: none; }
   .intro { margin: var(--s-5) 0 var(--s-2); }
-  .date { font-family: var(--font-display); font-size: var(--fs-xl); font-weight: 600; margin: 0 0 var(--s-3); }
+  .date { font-family: var(--font-display); font-size: 26px; font-weight: 600; margin: 0 0 var(--s-3); }
   .intro .row { gap: var(--s-2); }
-  /* a line of a card: a time (or nothing) and the words; the times line up in one column */
-  .item { display: grid; grid-template-columns: 6.5em 1fr; gap: var(--s-3); align-items: baseline;
+  /* a line of a section: a time (or nothing) in a narrow left column and the words */
+  .item { display: grid; grid-template-columns: 5.5em 1fr; gap: var(--s-3); align-items: baseline;
           padding: var(--s-2) 0; border-bottom: 1px solid var(--border); }
   .item:last-of-type { border-bottom: none; }
   .item.plain { grid-template-columns: 1fr; }
@@ -42,6 +41,7 @@
     .item { min-height: 44px; padding-block: var(--s-3); }
     .links a { display: inline-block; padding-block: 12px; margin-block: -12px; }
   }
+  @media (max-width: 420px) { .item { grid-template-columns: 4.5em 1fr; gap: var(--s-2); } }
 </style>
 </head>
 <body>

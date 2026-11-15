@@ -11,36 +11,39 @@
 <link rel="stylesheet" href="/style.css" />
 <script src="/i18n.js"></script>
 <style>
-  /* the Night Sky look: one centred column of cards, titles in the display font */
+  /* the Paper look: sections in one column, the log as a table-like list with thin rules */
   .page { max-width: 760px; }
-  .card { margin: var(--s-4) 0; }
+  .card { margin: var(--s-5) 0 0; }
   .card h2 { font-size: var(--fs-xl); font-weight: 600; margin: 0 0 var(--s-2); }
   header.top h1 { font-size: var(--fs-xl); font-weight: 600; }
-  header.top h1 svg.ico { width: 22px; height: 22px; margin-right: 0; vertical-align: 0; }
-  .filters { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin-bottom: 10px; }
-  /* the one card that waits for you: an amber edge */
-  #approvals { border-color: color-mix(in srgb, var(--warn) 60%, var(--border));
-               box-shadow: inset 4px 0 0 var(--warn); }
-  .filters button.on { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
-  .entry { display: grid; grid-template-columns: 11em 7.5em 1fr; gap: 10px; padding: var(--s-2) 0;
+  .filters { display: flex; flex-wrap: wrap; gap: var(--s-2); align-items: center; margin-bottom: var(--s-3); }
+  /* what waits for you: a 2 px amber line on the left of each item */
+  #approvals .waiting { border-left: 2px solid var(--warn); padding-left: var(--s-3); }
+  .filters button { padding: 4px 12px; }
+  .filters button.on { border-color: var(--accent); color: var(--accent); font-weight: 600;
+                       background: var(--panel2); }
+  .entry { display: grid; grid-template-columns: 11em 7em 1fr; gap: var(--s-3); padding: var(--s-2) 0;
            border-bottom: 1px solid var(--border); align-items: baseline; }
   .entry:last-child { border-bottom: none; }
   .entry .when { color: var(--dim); font-size: var(--fs-xs); }
   .entry .text { overflow-wrap: anywhere; }
-  .kind { font-size: 12px; justify-self: start; }
+  /* a kind is a small rectangle: a thin line in its colour, no fill */
+  .kind { font-size: var(--fs-xs); justify-self: start; background: none; color: var(--dim); }
+  .kind.action, .kind.answer { color: var(--ok); border-color: var(--ok); }
   .kind.denied, .kind.failed { color: var(--bad); border-color: var(--bad); }
-  .kind.kill-switch { color: var(--on-danger); background: var(--danger); border-color: var(--danger); }
+  .kind.kill-switch { color: var(--bad); border-color: var(--bad); font-weight: 700; }
   .kind.practice, .kind.setting { color: var(--warn); border-color: var(--warn); }
   .waiting { border-bottom: 1px solid var(--border); padding: var(--s-3) 0; }
   .waiting:last-child { border-bottom: none; }
-  .waiting .runs { font-size: 12px; overflow-wrap: anywhere; }
+  .waiting .runs { font-size: var(--fs-xs); overflow-wrap: anywhere; }
   .waiting .bad { color: var(--bad); }
   .waiting pre { white-space: pre-wrap; overflow-wrap: anywhere; background: var(--panel2);
-                 border-radius: var(--r-2); padding: var(--s-2) var(--s-3); margin: var(--s-2) 0; font-size: var(--fs-sm); }
+                 border: 1px solid var(--border); border-radius: var(--r-2); padding: var(--s-2) var(--s-3);
+                 margin: var(--s-2) 0; font-size: var(--fs-sm); }
   /* a touch screen: rows with room for a finger */
   @media (pointer: coarse) { .entry { min-height: 44px; padding-block: var(--s-3); } }
   @media (max-width: 640px) {
-    .entry { grid-template-columns: 1fr auto; gap: 2px 8px; }
+    .entry { grid-template-columns: 1fr auto; gap: 2px var(--s-2); }
     .entry .text { grid-column: 1 / -1; }
   }
 </style>

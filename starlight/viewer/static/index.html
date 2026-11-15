@@ -10,35 +10,41 @@
 <link rel="stylesheet" href="/style.css">
 <script src="/i18n.js"></script>
 <style>
-  /* The Night Sky look (docs/plan-ui-2.md): every colour, space and radius comes from the
+  /* The Paper look (docs/plan-ui-3.md): every colour, space and radius comes from the
      tokens in /style.css, which this viewer serves from the chat's own files. */
   .page { max-width: 1180px; }
   .bar { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s-3) var(--s-4);
          margin-bottom: var(--s-4); }
   .brand { display: flex; align-items: center; gap: var(--s-2); }
-  .brand-name { font-family: var(--font-display); font-size: 19px; font-weight: 600; }
+  .brand-name { font-family: var(--font-display); font-size: 21px; font-weight: 600; }
   .bar h1 { font-size: var(--fs-xl); font-weight: 600; margin: 0; color: var(--dim); }
+  /* the core's state: a small rectangle with a thin line in its colour, no fill */
   .status { font-size: var(--fs-sm); padding: var(--s-1) var(--s-3); display: inline-flex;
-            align-items: center; gap: var(--s-2); white-space: normal; }
+            align-items: center; gap: var(--s-2); white-space: normal; background: none; color: var(--dim); }
+  .status.on { color: var(--ok); border-color: var(--ok); background: none; }
+  .status.warn { color: var(--warn); border-color: var(--warn); background: none; }
   .status svg { width: 14px; height: 14px; flex: none; fill: none; stroke: currentColor;
                 stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
-  .status.stopped { color: var(--on-danger); background: var(--danger); border-color: var(--danger); }
+  .status.stopped { color: var(--bad); border-color: var(--bad); }
   .status.error { color: var(--bad); border-color: var(--bad); }
   .tools { margin-left: auto; display: flex; flex-wrap: wrap; align-items: center; gap: var(--s-2); }
   .filters { display: flex; gap: var(--s-2); flex-wrap: wrap; }
-  /* the chosen range is violet: this page has no main action, so nothing here is gold */
-  .filters button[aria-pressed="true"] { background: var(--accent); border-color: var(--accent);
-                                         color: var(--on-accent); font-weight: 600; }
-  .tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 230px), 1fr));
-           gap: var(--s-3); margin-bottom: var(--s-4); }
-  @media (max-width: 600px) { .tiles { grid-template-columns: 1fr 1fr; } .tile { padding: var(--s-3) var(--s-4); } }
-  .tiles .card, .grid .card { margin: 0; }
-  .tile { padding: var(--s-4) 20px; }
-  .tile .label { color: var(--dim); font-size: var(--fs-sm); }
-  .tile .value { font-size: 26px; font-weight: 600; margin-top: var(--s-1); }
+  /* the chosen range is marked with the accent: this page has no main action */
+  .filters button { padding: 6px 12px; }
+  .filters button[aria-pressed="true"] { border-color: var(--accent); color: var(--accent); font-weight: 600;
+                                         background: var(--panel2); }
+  /* the key figures: a row of figures with their labels, no boxes, a thin rule above */
+  .tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 170px), 1fr));
+           gap: var(--s-4) var(--s-5); margin-bottom: var(--s-5); padding-top: var(--s-4);
+           border-top: 1px solid var(--border); }
+  @media (max-width: 600px) { .tiles { grid-template-columns: 1fr 1fr; gap: var(--s-4) var(--s-3); } }
+  .grid .card { margin: 0; }
+  .tile { min-width: 0; }
+  .tile .label { color: var(--dim); font-family: var(--font-display); font-style: italic; font-size: var(--fs-sm); }
+  .tile .value { font-size: 26px; font-weight: 500; margin-top: var(--s-1); }
   .tile .note { color: var(--dim); font-size: var(--fs-xs); overflow-wrap: anywhere; }
   .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 340px), 1fr));
-          gap: var(--s-3); }
+          gap: var(--s-2) var(--s-5); }
   .card { min-width: 0; }
   .card h2 { font-size: var(--fs-lg); font-weight: 600; margin: 0; }
   .card .sub { color: var(--dim); font-size: var(--fs-xs); margin: var(--s-1) 0 var(--s-2); }
@@ -46,13 +52,13 @@
   .chart svg { display: block; width: 100%; height: 100%; overflow: visible; }
   .empty { height: 100%; display: grid; place-items: center; color: var(--dim); }
   /* chart parts: all from the tokens, so night and day each get their own */
-  .grid-line { stroke: var(--border); stroke-width: 1; }
+  .grid-line { stroke: var(--border); stroke-width: 1; opacity: .7; }
   .axis-line { stroke: var(--dim); stroke-width: 1; opacity: .6; }
   .series-line { fill: none; stroke: var(--accent); stroke-width: 2; stroke-linejoin: round;
                  stroke-linecap: round; }
   .series-area { fill: color-mix(in srgb, var(--accent) 14%, transparent); stroke: none; }
   .series-fill { fill: var(--accent); }
-  .series-dot { fill: var(--accent); stroke: var(--panel); stroke-width: 2; }
+  .series-dot { fill: var(--accent); stroke: var(--bg); stroke-width: 2; }
   .ref-line { stroke: var(--warn); stroke-width: 1; stroke-dasharray: 4 3; }
   .cross { stroke: var(--dim); stroke-width: 1; }
   .hit { fill: transparent; }
@@ -62,7 +68,7 @@
   summary { cursor: pointer; }
   details table, .wide table { font-size: var(--fs-xs); margin-top: var(--s-2); }
   td.num, th.num { text-align: right; }
-  .tooltip { position: fixed; pointer-events: none; z-index: 10; background: var(--panel2);
+  .tooltip { position: fixed; pointer-events: none; z-index: 10; background: var(--panel);
              color: var(--text); border: 1px solid var(--border); border-radius: var(--r-2);
              padding: var(--s-2) var(--s-3); font-size: var(--fs-xs); box-shadow: var(--shadow-2);
              display: none; white-space: nowrap; }
@@ -133,7 +139,7 @@ document.title = window.starlightTranslate ? window.starlightTranslate(document.
 // Small status glyphs, drawn in the colour of the text around them.
 const GLYPHS = {
   running: '<svg viewBox="0 0 14 14" aria-hidden="true"><path d="M3.5 7.4l2.4 2.4 4.6-5"/></svg>',
-  stopped: '<svg viewBox="0 0 14 14" aria-hidden="true"><rect x="3.5" y="3.5" width="7" height="7" rx="1.5"/></svg>',
+  stopped: '<svg viewBox="0 0 14 14" aria-hidden="true"><rect x="3.5" y="3.5" width="7" height="7" rx="1"/></svg>',
   offline: '<svg viewBox="0 0 14 14" aria-hidden="true"><path d="M7 3v5M7 10.8v.2"/></svg>',
   error: '<svg viewBox="0 0 14 14" aria-hidden="true"><path d="M4 4l6 6M10 4l-6 6"/></svg>',
 };
@@ -261,7 +267,7 @@ function columnChart(id, points, opts) {
   const y = v => f.m.t + f.ih - f.ih * v / yMax;
   for (const p of points) {
     const xc = f.m.l + f.iw * (p[0] + bucket / 2 - t0) / (t1 - t0);
-    const h = Math.max(1, f.ih * p[1] / yMax), r = Math.min(4, bw / 2, h);
+    const h = Math.max(1, f.ih * p[1] / yMax), r = Math.min(2, bw / 2, h);
     const x0 = xc - bw / 2, yTop = y(p[1]), yb = f.m.t + f.ih;
     svg("path", {d: `M${x0} ${yb} V${yTop + r} Q${x0} ${yTop} ${x0 + r} ${yTop} H${x0 + bw - r} Q${x0 + bw} ${yTop} ${x0 + bw} ${yTop + r} V${yb} Z`, class: "series-fill"}, f.svg);
     const hit = svg("rect", {x: xc - Math.max(band, 10) / 2, y: f.m.t, width: Math.max(band, 10), height: f.ih, class: "hit"}, f.svg);
@@ -291,7 +297,7 @@ function barList(id, items) {
     const name = svg("text", {x: 0, y: yc + 4, class: "tick"}, root);
     name.textContent = item.module;
     name.setAttribute("translate", "no");  // a module's name
-    const w = Math.max(2, (W - labelW - valueW) * item.calls / max), bh = 14, x0 = labelW, r = Math.min(4, w / 2);
+    const w = Math.max(2, (W - labelW - valueW) * item.calls / max), bh = 14, x0 = labelW, r = Math.min(2, w / 2);
     svg("path", {d: `M${x0} ${yc - bh / 2} H${x0 + w - r} Q${x0 + w} ${yc - bh / 2} ${x0 + w} ${yc - bh / 2 + r} V${yc + bh / 2 - r} Q${x0 + w} ${yc + bh / 2} ${x0 + w - r} ${yc + bh / 2} H${x0} Z`, class: "series-fill"}, root);
     const v = svg("text", {x: x0 + w + 6, y: yc + 4, class: "tick num"}, root);
     v.textContent = compact(item.calls);
@@ -303,7 +309,7 @@ function barList(id, items) {
 }
 
 function tile(label, value, note = "") {
-  return `<div class="card tile"><div class="label">${label}</div><div class="value num">${value}</div>${note ? `<div class="note">${note}</div>` : ""}</div>`;
+  return `<div class="tile"><div class="label">${label}</div><div class="value num">${value}</div>${note ? `<div class="note">${note}</div>` : ""}</div>`;
 }
 function gb(bytes) { return bytes == null ? "–" : plain(bytes / 2 ** 30, 1) + " GB"; }
 

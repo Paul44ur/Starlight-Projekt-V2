@@ -11,29 +11,36 @@
 <link rel="stylesheet" href="/style.css" />
 <script src="/i18n.js"></script>
 <style>
-  /* the Night Sky look: one centred column of cards, titles in the display font */
-  .page { max-width: 760px; }
-  .card { margin: var(--s-4) 0; }
+  /* the Paper look: sections in one column; memories and skills as plain rows with thin rules */
+  .page { max-width: 720px; }
+  .card { margin: var(--s-5) 0 0; }
   /* the search keeps room for its whole hint; the count wraps below it on a phone */
   #search.grow { flex: 1 1 14em; }
   .card h2 { font-size: var(--fs-xl); font-weight: 600; margin: 0 0 var(--s-2); }
   header.top h1 { font-size: var(--fs-xl); font-weight: 600; }
-  header.top h1 svg.ico { width: 22px; height: 22px; margin-right: 0; vertical-align: 0; }
   .mem { border-bottom: 1px solid var(--border); padding: var(--s-3) 0; }
   .mem:last-child { border-bottom: none; }
-  .mem .topic { font-weight: 600; }
+  .mem .topic { font-family: var(--font-display); font-weight: 600; font-size: var(--fs-lg); }
   .mem .text { white-space: pre-wrap; margin: 4px 0; }
   .mem textarea { width: 100%; min-height: 80px; }
   .skill { border-bottom: 1px solid var(--border); padding: var(--s-3) 0; }
-  .skill pre { white-space: pre-wrap; background: var(--panel2); padding: var(--s-2) var(--s-3); border-radius: var(--r-2);
+  .skill .row > b { font-family: var(--font-display); font-size: var(--fs-lg); }
+  .skill pre { white-space: pre-wrap; background: var(--panel2); border: 1px solid var(--border);
+               padding: var(--s-2) var(--s-3); border-radius: var(--r-2);
                font-size: var(--fs-sm); max-height: 240px; overflow: auto; }
   body.remote .local-only { display: none; }
+  /* a skill's state: a small rectangle with a thin line in its colour, no fill */
+  .skill .pill { background: none; color: var(--dim); }
+  .skill .pill.on { color: var(--ok); border-color: var(--ok); }
+  .skill .pill.warn { color: var(--warn); border-color: var(--warn); }
   /* Export: a link that looks and sizes like the buttons beside it */
-  a.button-link { display: inline-block; padding: 8px 16px; border: 1px solid var(--border);
-                  border-radius: var(--r-pill); background: var(--panel2); color: var(--text); }
-  a.button-link:hover { border-color: var(--accent); text-decoration: none; }
-  .views { display: flex; gap: 6px; margin: 8px 0 2px; flex-wrap: wrap; }
-  .views button.on { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
+  a.button-link { display: inline-block; padding: 8px 16px; border: 1px solid var(--text);
+                  border-radius: var(--r-2); color: var(--text); }
+  a.button-link:hover { border-color: var(--accent); color: var(--accent); background: var(--accent-tint);
+                        text-decoration: none; }
+  .views { display: flex; gap: var(--s-2); margin: var(--s-2) 0 2px; flex-wrap: wrap; }
+  .views button.on { border-color: var(--accent); color: var(--accent); font-weight: 600;
+                     background: var(--panel2); }
   .month { margin: var(--s-4) 0 0; padding-bottom: var(--s-1); border-bottom: 1px solid var(--border); }
   /* an expired memory is quieter by its colour (opacity would lower the contrast of the text) */
   .mem.expired .topic, .mem.expired .text { color: var(--dim); }

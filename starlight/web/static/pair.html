@@ -12,13 +12,12 @@
 <link rel="stylesheet" href="/style.css" />
 <script src="/i18n.js"></script>
 <style>
-  /* the Paper look: one card on the page ground, the name above it; it is made for
-     a phone first, so everything is full width and 44 px high */
+  /* the Paper look: a plain centred section on the page ground, the name above it; it is made
+     for a phone first, so everything is full width and 44 px high */
   body { display: flex; align-items: flex-start; justify-content: center; padding: 12vh var(--s-4) var(--s-5); }
-  .box { width: 100%; max-width: 400px; text-align: center; background: var(--panel); border: 1px solid var(--border);
-         border-radius: var(--r-4); box-shadow: var(--shadow-1); padding: var(--s-5); }
-  .box h1 { display: flex; align-items: center; justify-content: center; gap: var(--s-2); font-size: var(--fs-xl);
-            font-weight: 600; margin: 0 0 var(--s-3); }
+  .box { width: 100%; max-width: 400px; text-align: center; border-top: 1px solid var(--border);
+         padding: var(--s-5) 0 0; }
+  .box h1 { font-size: 26px; font-weight: 600; margin: 0 0 var(--s-3); }
   input { width: 100%; margin: var(--s-2) 0; text-align: center; min-height: 44px; }
   #code { font-size: 28px; letter-spacing: .3em; padding: 10px 8px 10px calc(8px + .3em);
           font-family: var(--font-mono); font-variant-numeric: tabular-nums; }

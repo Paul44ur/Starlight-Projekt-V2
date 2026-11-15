@@ -11,12 +11,11 @@
 <link rel="stylesheet" href="/style.css" />
 <script src="/i18n.js"></script>
 <style>
-  /* the Night Sky look: one centred column of cards, titles in the display font */
-  .page { max-width: 760px; }
-  .card { margin: var(--s-4) 0; }
+  /* the Paper look: one column of sections; rules as rows with thin rules, the form as plain fields */
+  .page { max-width: 720px; }
+  .card { margin: var(--s-5) 0 0; }
   .card h2 { font-size: var(--fs-xl); font-weight: 600; margin: 0 0 var(--s-2); }
   header.top h1 { font-size: var(--fs-xl); font-weight: 600; }
-  header.top h1 svg.ico { width: 22px; height: 22px; margin-right: 0; vertical-align: 0; }
   .rule { display: grid; grid-template-columns: 1fr auto; gap: var(--s-1) var(--s-3); padding: var(--s-3) 0; min-height: 44px;
           border-bottom: 1px solid var(--border); align-items: center; }
   .rule:last-child { border-bottom: none; }
@@ -28,8 +27,9 @@
   .rule .num { white-space: nowrap; }  /* "next 2026-11-13 07:30" stays in one piece, in German too */
   .rule .does { grid-column: 1 / -1; font-size: 14px; overflow-wrap: anywhere; }
   .rule .actions { display: flex; gap: 6px; flex-wrap: wrap; justify-content: flex-end; }
-  fieldset { border: 1px solid var(--border); border-radius: var(--r-3); margin: var(--s-3) 0; padding: var(--s-3); }
-  legend { font-weight: 700; padding: 0 6px; }
+  fieldset { border: 0; border-top: 1px solid var(--border); margin: var(--s-4) 0 0; padding: var(--s-3) 0 0; min-width: 0; }
+  legend { font-family: var(--font-display); font-style: italic; font-weight: 400; color: var(--dim);
+           font-size: var(--fs-sm); padding: 0 var(--s-2) 0 0; }
   label.choice { display: inline-flex; gap: 6px; align-items: center; margin-right: 14px; }
   /* the kind select and the remove button share the first row; the fields have the whole width
      below (a long German placeholder fits) */
@@ -45,14 +45,17 @@
   .field-hint { margin: var(--s-1) 0 0; }
   /* a condition: field and comparison on a row, the value on its own row when it has no room */
   .if-row .if-value { flex: 1 1 10em; }
-  .preview { background: var(--panel2); border-radius: var(--r-2); padding: var(--s-2) var(--s-3); margin-top: 10px; }
+  .preview { background: var(--panel2); border: 1px solid var(--border); border-radius: var(--r-2);
+             padding: var(--s-2) var(--s-3); margin-top: var(--s-3); }
   .template { display: flex; gap: 10px; align-items: baseline; padding: var(--s-3) 0;
               border-bottom: 1px solid var(--border); }
   .template:last-child { border-bottom: none; }
   .template .text { flex: 1; overflow-wrap: anywhere; }
   input.wide, select.wide { width: 100%; }
   .gap-top { margin-top: 8px; }
-  .rule .pill { margin-left: 8px; }
+  /* on / off: a small rectangle with a thin line in its colour, no fill */
+  .rule .pill { margin-left: var(--s-2); background: none; color: var(--dim); }
+  .rule .pill.on { color: var(--ok); border-color: var(--ok); }
   /* when a rule last ran and how it went: the word's colour says it, the reason wraps */
   .rule .last { grid-column: 1 / -1; overflow-wrap: anywhere; }
   .run-done { color: var(--ok); }
@@ -60,7 +63,7 @@
   .run-waiting { color: var(--warn); }
   .run-skipped { color: var(--dim); }  /* (its condition was false: nothing is wrong) */
   .rule .runs { grid-column: 1 / -1; margin: 0; padding: var(--s-2) var(--s-3); list-style: none;
-                background: var(--panel2); border-radius: var(--r-2); }
+                background: var(--panel2); border: 1px solid var(--border); border-radius: var(--r-2); }
   .rule .runs li { padding: var(--s-1) 0; font-size: var(--fs-sm); overflow-wrap: anywhere; }
 </style>
 </head>

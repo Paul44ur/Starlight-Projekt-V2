@@ -422,11 +422,17 @@ square knob, a section has at most one filled `primary` button, and the names un
 words" are plain mono text with a thin line. A new section (text size, F3) is one more `.card`
 after "Language". The look is all in the page's own `<style>`, with tokens only.
 
-**Memory, Activity, Automations, Kill and Pair in the Night Sky look.** The first three have the
-Settings page's header (the gold star, the title in the display font) and one centred column of
-cards; dates and counts are `.num`. Only Save on Automations and Pair on the pairing page are
-gold. `kill.html` keeps its own fixed red (the button's edge is the one colour written out in
-these pages, in `--kill-edge`); everything else on the five pages is a token.
+**Today, Memory, Activity, Automations, Kill, Pair and Statistics in the Paper look.** Each of
+these pages is one column of sections: a serif heading, a thin rule, plain rows with thin rules
+(no boxes, no shadows, no radius above 2 px). Times and counts are `.num`. The one main action
+is filled `--primary`: "Frag zu meinem Tag" on Today, Save on Automations, Pair on the pairing
+page. The kinds in the log, the on/off of a rule, a skill's state and the core's state in the
+statistics are small rectangles with a thin line in their colour and no fill. A waiting approval
+has a 2 px `--warn` line on its left. A chosen filter has the accent colour and a wash. The
+statistics page shows its key figures as a row with labels (no tiles); its charts sit on the
+page ground and use `--accent` and `--dim`. `kill.html` keeps its own red (`--danger`, a big
+square stop control, and a quiet outlined one for "Stopped"). No colour is written out in these
+pages' styles. `tests/test_pages_paper.py` and `tests/test_viewer_paper.py` check this.
 
 **Choosing the model on the Settings page.** `starlight/core/modelchoice.py` and
 `starlight/web/model_api.py` (`GET /api/model`, `POST /api/model`, `POST /api/model/restart`).
