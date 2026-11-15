@@ -52,7 +52,9 @@ async def test_the_sidebar_is_a_card_and_new_conversation_is_gold(
             assert await new.evaluate("b => getComputedStyle(b).backgroundColor") == gold
             private = page.locator("#newprivate")
             assert await private.evaluate("b => getComputedStyle(b).backgroundColor") != gold
-            assert await page.locator(".side-brand .brand-star svg.ico .star").count() == 1
+            # (Paper: the brand is the word only, no star mark)
+            assert await page.locator(".side-brand svg.ico").count() == 0
+            assert (await page.locator(".side-brand").inner_text()).strip() == "Starlight"
             assert await page.locator(".brand-name").inner_text() == "Starlight"
             # the open conversation: --panel2 behind it and a violet dot, no bar at its edge
             row = page.locator(".conv.active")
