@@ -5,12 +5,11 @@ A local AI assistant: Python core (`starlight/`), modules (`modules/`), a FastAP
 on Windows 11; the pages have German translations (`starlight/web/static/i18n.js`).
 
 ## Plans
-**Open: `docs/plan-ui-3.md`**, the Paper look for every page and the launcher, plus find in
-a conversation, undo for delete and archive, and text size (blocks P1-P7, F1-F3). Read it
-before changing how any page looks; mark a block done there (with its commit) when pushed.
-
-Four plans are finished (every block done) and are kept as a reference for
+No plan is open. Five plans are finished (every block done) and are kept as a reference for
 why things are the way they are:
+- `docs/plan-ui-3.md`: the Paper look of every page and the launcher (P1-P7), the current
+  look, with find in a conversation, undo for delete and archive, and text size (F1-F3).
+  Read it before changing how any page or the launcher window looks.
 - `docs/plan-round-2.md`: improvements and additions after Night Sky (R1-R10): German
   leftovers, phone width, the statistics page, drafts, search hits, time groups, starter
   suggestions, automation runs, the Today page.

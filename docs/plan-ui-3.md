@@ -18,7 +18,7 @@ stays: tokens in `style.css`, shared blocks, German, screenshots, one block per 
 | F1 | Find in the open conversation (Ctrl F) | P2 | **done** (fa21f06) |
 | F2 | Undo instead of a question: delete and archive a conversation | P2 | **done** (6b1c37c) |
 | F3 | Text size and density, per device | P1 | **done** (7cc3bdb) |
-| P7 | Review: phone, German, contrast, screenshots of every page, docs | all | open |
+| P7 | Review: phone, German, contrast, screenshots of every page, docs | all | **done** (f362cfe) |
 
 Order: P1 alone; then P2, P3, P5; then P4, P6, F3; then F1, F2; then P7.
 
