@@ -105,5 +105,5 @@ def test_rich_chat_session_over_a_real_terminal(tmp_path: Path, no_color: bool) 
     assert "echo" in output
     seen = re.sub(r"\x1b\[[0-9;]*m", "", output)  # (as it looks)
     assert "kill switch off" in seen and "practice off" in seen  # the status line
-    assert "✦ " in seen  # the answer, after the star
+    assert "\u203a " in seen  # the answer, after a plain mark
     assert bool(COLOUR.search(output)) is not no_color  # NO_COLOR: the layout, no colours

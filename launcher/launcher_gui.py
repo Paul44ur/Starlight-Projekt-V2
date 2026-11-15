@@ -16,7 +16,6 @@ poll thread).
 from __future__ import annotations
 
 import contextlib
-import math
 import os
 import queue
 import shutil
@@ -42,8 +41,7 @@ if _HERE not in sys.path:
 import launcher_tray  # noqa: E402
 
 # The Starlight logo (a serif S on the green, flat), 64 x 64 PNG: the window icon.
-# The header draws the same star as vectors, so it is sharp at any scale. This block is
-# written by bundles/icons/make_icons.py from the logo (static/icon.svg).
+# This block is written by bundles/icons/make_icons.py from the logo (static/icon.svg).
 ICON_PNG = (
     "iVBORw0KGgoAAAANSUhEUgAAAEAAAABACAYAAACqaXHeAAAHiklEQVR4nOSbCVDU1x3Hv+/PIoeCGnFZuQSUQ45dUWLBYqsxUiMp"
     "UIuaVMlMqs3ETsdeM53JtJ1EbTuTtpnadjrTmaa5REJMTAiJJubCIzGjiXKJEYKIgJyCK4ccu/xffm8TnI0sh7vvr8h+mIX3f+//"
@@ -75,62 +73,6 @@ ICON_PNG = (
 )
 
 
-def bezier(
-    p0: tuple[float, float],
-    p1: tuple[float, float],
-    p2: tuple[float, float],
-    p3: tuple[float, float],
-    steps: int = 14,
-) -> list[float]:
-    """Points along a cubic curve, as a flat list (x1, y1, x2, y2, ...), without the first."""
-    out: list[float] = []
-    for i in range(1, steps + 1):
-        t = i / steps
-        u = 1 - t
-        for axis in (0, 1):
-            out.append(
-                u**3 * p0[axis]
-                + 3 * u * u * t * p1[axis]
-                + 3 * u * t * t * p2[axis]
-                + t**3 * p3[axis]
-            )
-    return out
-
-
-def sparkle(cx: float, cy: float, r: float, pinch: float = 0.22) -> list[float]:
-    """The four-pointed star of the logo (concave sides) as polygon points."""
-    p = r * pinch
-    corners = [(cx, cy - r), (cx + r, cy), (cx, cy + r), (cx - r, cy)]
-    points: list[float] = [cx, cy - r]
-    for i, start in enumerate(corners):
-        end = corners[(i + 1) % 4]
-        sx, sy = start[0] - cx, start[1] - cy
-        ex, ey = end[0] - cx, end[1] - cy
-        # control points: along the start direction, pinched towards the middle
-        c1 = (cx + (sx * p / r) + (ex * p / r) * 0.45, cy + (sy * p / r) + (ey * p / r) * 0.45)
-        c2 = (cx + (ex * p / r) + (sx * p / r) * 0.45, cy + (ey * p / r) + (sy * p / r) * 0.45)
-        points += bezier(start, c1, c2, end)
-    return points
-
-
-# The web's star icon (common.js: M12 2 L14.2 9.8 L22 12 L14.2 14.2 L12 22 L9.8 14.2 L2 12
-# L9.8 9.8 Z) on a 24 x 24 grid.
-STAR = [12, 2, 14.2, 9.8, 22, 12, 14.2, 14.2, 12, 22, 9.8, 14.2, 2, 12, 9.8, 9.8]
-
-
-def rounded_square(size: float, radius: float, steps: int = 8) -> list[float]:
-    """A square with rounded corners as polygon points."""
-    points: list[float] = []
-    for cx, cy, start in (
-        (size - radius, radius, -90), (size - radius, size - radius, 0),
-        (radius, size - radius, 90), (radius, radius, 180),
-    ):  # fmt: skip
-        for i in range(steps + 1):
-            angle = math.radians(start + 90 * i / steps)
-            points += [cx + radius * math.cos(angle), cy + radius * math.sin(angle)]
-    return points
-
-
 @dataclass(frozen=True)
 class Palette:
     bg: str
@@ -145,7 +87,7 @@ class Palette:
     warn: str
     bad: str  # red for text and status dots
     danger: str  # red behind white text (the stop button): dark enough to read on
-    primary: str  # the accent green: the star and the ONE main button of a page
+    primary: str  # the accent green: the ONE main button of a page
     on_primary: str  # text on the main button
     primary_edge: str  # the main button's border (Tk has no "transparent": it is the
     # button's own colour, so no edge shows)
@@ -176,9 +118,10 @@ def mix(colour: str, other: str, amount: float) -> str:
 
 
 def system_uses_light_theme() -> bool:
-    """Whether Windows is set to light apps. Dark everywhere else (and when unknown)."""
+    """Whether the window is light (paper): Windows' light apps setting, and light whenever the
+    setting cannot be read (as the web pages are light by default)."""
     if sys.platform != "win32":
-        return False
+        return True
     try:
         import winreg
 
@@ -186,7 +129,18 @@ def system_uses_light_theme() -> bool:
         with winreg.OpenKey(winreg.HKEY_CURRENT_USER, key) as handle:
             return bool(winreg.QueryValueEx(handle, "AppsUseLightTheme")[0])
     except OSError:
-        return False
+        return True
+
+
+SERIFS = ("Cambria", "Georgia")
+
+
+def serif_family(available: set[str]) -> str:
+    """The heading font: Cambria, else Georgia, else Tk's own serif ("Times")."""
+    for name in SERIFS:
+        if name in available:
+            return name
+    return "Times"
 
 
 def flash_window(root: tk.Tk) -> None:
@@ -609,14 +563,6 @@ class GuiUi:
         return default  # the setup page asked everything: no second question in a box
 
 
-def rounded_rect(canvas: tk.Canvas, x0: float, y0: float, x1: float, y1: float, r: float,
-                 **options: Any) -> int:  # fmt: skip
-    """A rectangle with rounded corners on a canvas (a smoothed polygon)."""
-    points = [x0 + r, y0, x1 - r, y0, x1, y0, x1, y0 + r, x1, y1 - r, x1, y1, x1 - r, y1,
-              x0 + r, y1, x0, y1, x0, y1 - r, x0, y0 + r, x0, y0]  # fmt: skip
-    return canvas.create_polygon(points, smooth=True, **options)
-
-
 class Tooltip:
     """A short note that appears when the pointer rests on a widget for a moment."""
 
@@ -655,7 +601,7 @@ class Tooltip:
 
 class CheckRow(tk.Frame):
     """A check box drawn like the rest of the window (the model cards' round marks): a
-    rounded square that fills with a check mark, and its text. A click or Space toggles it."""
+    square that fills with a check mark, and its text. A click or Space toggles it."""
 
     def __init__(
         self,
@@ -694,17 +640,17 @@ class CheckRow(tk.Frame):
         c, canvas = self.app.c, self.mark
         canvas.delete("all")
         size = int(canvas.cget("width"))
-        pad, radius = size * 0.08, size * 0.24
+        pad = size * 0.08
         colour = c.dim if self.disabled else c.accent
         if self.variable.get():
-            rounded_rect(canvas, pad, pad, size - pad, size - pad, radius, fill=colour, outline="")
+            canvas.create_rectangle(pad, pad, size - pad, size - pad, fill=colour, outline="")
             points = [0.27, 0.52, 0.43, 0.68, 0.74, 0.34]
             width = max(2, size // 8)
             canvas.create_line(*[p * size for p in points], fill=c.on_accent, width=width,
-                               capstyle="round", joinstyle="round")  # fmt: skip
+                               capstyle="butt", joinstyle="miter")  # fmt: skip
         else:
-            rounded_rect(canvas, pad, pad, size - pad, size - pad, radius, fill=c.panel,
-                         outline=c.dim, width=2)  # fmt: skip
+            canvas.create_rectangle(pad, pad, size - pad, size - pad, fill=c.bg,
+                                    outline=c.dim, width=2)  # fmt: skip
         self.label.configure(fg=c.dim if self.disabled else c.text)
         self.configure(cursor="arrow" if self.disabled else "hand2")
 
@@ -905,10 +851,9 @@ class App:
         self.f_bold = tkfont.Font(family=family, size=10, weight="bold")
         self.f_small = tkfont.Font(family=family, size=9)
         self.f_link = tkfont.Font(family=family, size=9, underline=True)
-        # Headings: Segoe UI Semibold (Tk cannot load the web's Space Grotesk), a little
-        # larger than the body text. Elsewhere the default family in bold.
-        head = "Segoe UI Semibold" if sys.platform == "win32" else family
-        weight: Literal["normal", "bold"] = "normal" if sys.platform == "win32" else "bold"
+        # Headings: a serif, as on the web pages, a little larger than the body text.
+        head = serif_family(set(tkfont.families(self.root)))
+        weight: Literal["normal", "bold"] = "normal" if head in SERIFS else "bold"
         self.f_big = tkfont.Font(family=head, size=20, weight=weight)
         self.f_head = tkfont.Font(family=head, size=13, weight=weight)
         self.f_title = tkfont.Font(family=head, size=11, weight=weight)
@@ -936,20 +881,23 @@ class App:
         style.configure("Card.TLabel", background=c.panel, foreground=c.text)  # (on a card)
         style.configure("CardTitle.TLabel", background=c.panel, foreground=c.text,
                         font=self.f_title)  # fmt: skip
-        style.configure("TButton", background=c.panel2, foreground=c.text, borderwidth=1,
-                        padding=(self.px(14), self.px(7)), relief="flat")  # fmt: skip
-        # Pointed at: a light accent tint and an accent border (as the web pages' buttons).
-        style.map("TButton", background=[("active", mix(c.panel2, c.accent, 0.14)),
-                                         ("disabled", c.panel)],
-                  foreground=[("disabled", c.dim)], bordercolor=[("active", c.accent)])  # fmt: skip
-        # The ONE main button of a page is gold (the web's button.primary); the style keeps
-        # its old name. Its edge shows only in the day look.
-        gold_hover = mix(c.primary, "#ffffff" if c is DARK else "#000000", 0.14)
+        # Flat rectangles: a line on the window's ground (clam draws it 2 px wide), no fill.
+        style.configure("TButton", background=c.bg, foreground=c.text, borderwidth=1,
+                        bordercolor=c.dim, lightcolor=c.bg, darkcolor=c.bg, relief="solid",
+                        padding=(self.px(14), self.px(7)))  # fmt: skip
+        # Pointed at: a light green tint and a green line.
+        style.map("TButton", background=[("active", mix(c.bg, c.accent, 0.10)),
+                                         ("disabled", c.bg)],
+                  foreground=[("disabled", c.dim)],
+                  bordercolor=[("active", c.accent), ("disabled", c.border)])  # fmt: skip
+        # The ONE main button of a page is filled with the green (the web's button.primary); the
+        # style keeps its old name.
+        primary_hover = mix(c.primary, "#ffffff" if c is DARK else "#000000", 0.14)
         style.configure("Accent.TButton", background=c.primary, foreground=c.on_primary,
                         bordercolor=c.primary_edge, focuscolor=c.on_primary,
                         font=self.f_bold)  # fmt: skip
-        style.map("Accent.TButton", background=[("active", gold_hover), ("disabled", c.panel2)],
-                  bordercolor=[("active", gold_hover if c is DARK else c.primary_edge)],
+        style.map("Accent.TButton", background=[("active", primary_hover), ("disabled", c.panel2)],
+                  bordercolor=[("active", primary_hover if c is DARK else c.primary_edge)],
                   foreground=[("disabled", c.dim)])  # fmt: skip
         # c.danger, not c.bad: white text on the bright red of the dark look was too faint
         danger_hover = mix(c.danger, "#ffffff", 0.12)
@@ -1018,28 +966,16 @@ class App:
 
     def _build_header(self) -> None:
         c = self.c
-        bar = tk.Frame(self.root, bg=c.panel, highlightthickness=0)
+        bar = tk.Frame(self.root, bg=c.bg, highlightthickness=0)
         bar.pack(fill="x")
-        inner = tk.Frame(bar, bg=c.panel)
+        inner = tk.Frame(bar, bg=c.bg)
         inner.pack(fill="x", padx=self.px(28), pady=self.px(12))
-        self._draw_star(inner)
-        tk.Label(inner, text="Starlight", font=self.f_head, bg=c.panel, fg=c.text).pack(
-            side="left", padx=(self.px(10), 0)
-        )
+        # The word in the serif heading font, no mark (the web pages have none either).
+        tk.Label(inner, text="Starlight", font=self.f_head, bg=c.bg, fg=c.text).pack(side="left")
         tk.Label(
-            inner, text=f"launcher {self.L.VERSION}", font=self.f_small, bg=c.panel, fg=c.dim
+            inner, text=f"launcher {self.L.VERSION}", font=self.f_small, bg=c.bg, fg=c.dim
         ).pack(side="right")
         tk.Frame(self.root, bg=c.border, height=1).pack(fill="x")
-
-    def _draw_star(self, parent: tk.Misc) -> None:
-        """The brand mark: the gold four-point star (the web pages' ``star`` icon)."""
-        size = self.px(26)
-        canvas = tk.Canvas(parent, width=size, height=size, bg=self.c.panel, highlightthickness=0)
-        scale = size / 24
-        canvas.create_polygon([v * scale for v in STAR], fill=self.c.primary, outline="",
-                              tags="star")  # fmt: skip
-        canvas.pack(side="left")
-        self.star_canvas = canvas
 
     # -- pages ----------------------------------------------------------------------------------
 

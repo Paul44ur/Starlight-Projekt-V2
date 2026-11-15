@@ -260,11 +260,14 @@ descriptions (the modules' own docstrings), a tool's question to you, and the re
 gives for a failure. What the server sends in English as a fixed sentence (the activity
 sentences, an automation's description) is turned into German by `PATTERNS` in `i18n.js`.
 
-The launcher window takes the same colours: `Palette` has `primary`, `on_primary` and
-`primary_edge`, the one main button of each page is the accent green (the style is still
-called `Accent.TButton`), the brand is still drawn on a canvas and headings use "Segoe UI
-Semibold" (the rest of its Paper look is block P6 of `docs/plan-ui-3.md`). The terminal chat's colours (`termstyle.COLOURS`)
-are the same tokens, and `tests/test_launcher_night_sky.py` compares them with `style.css`.
+The launcher window takes the same colours (the Paper look, block P6 of `docs/plan-ui-3.md`):
+`Palette` has `primary`, `on_primary` and `primary_edge`, and the one main button of each page
+is the accent green (the style is still called `Accent.TButton`). The other buttons are flat
+rectangles with a thin line on the window's ground. The header is the word "Starlight" in a
+serif (Cambria, else Georgia, else Tk's own serif); no star is drawn. The window is light when
+Windows says so and also when the setting cannot be read. The terminal chat's colours
+(`termstyle.COLOURS`) are the same tokens, and answers start with a plain "›" mark.
+`tests/test_launcher_paper.py` checks all of this and compares the colours with `style.css`.
 
 **The Notes page in the Night Sky look.** The list on the left and the info panel are cards
 (radius `--r-4`) inset on the night ground. Their rows are 44 px high with a radius of 12;

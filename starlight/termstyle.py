@@ -2,9 +2,10 @@
 they stream in.
 
 The colours are the web's (``starlight/web/static/style.css``): the accent green, also used for
-the star, a softer grey, and green, amber and red. They are written as ANSI codes at the depth the
-terminal has (24-bit, 256 or the basic 16), for a dark terminal or, where it says so, a light
-one. ``NO_COLOR``, a dumb terminal or output that is not a terminal get no colour.
+the mark before an answer, a softer grey, and green, amber and red. They are written as ANSI
+codes at the depth the terminal has (24-bit, 256 or the basic 16), for a dark terminal or,
+where it says so, a light one. ``NO_COLOR``, a dumb terminal or output that is not a
+terminal get no colour.
 
 ``MarkdownStream`` turns an answer's Markdown into terminal text a piece at a time, so it shows
 while the model writes: headings, **bold**, *italic*, ``code``, lists, quotes, rules, code
@@ -22,7 +23,8 @@ from dataclasses import dataclass
 ESC = "\x1b["
 
 # The web's colours (style.css, the Paper tokens), for a dark and a light terminal. "code" is a
-# code span's text (--text) and its background (--panel2). The star is the accent green.
+# code span's text (--text) and its background (--panel2). The answer mark (key "star", kept
+# for its name) is the accent green.
 COLOURS: dict[str, dict[str, str]] = {
     "dark": {
         "accent": "#8dbdaa", "star": "#8dbdaa", "dim": "#a99f8f", "code": "#ece6da",

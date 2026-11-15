@@ -1,11 +1,13 @@
-"""The launcher window and the terminal in the colours of the web (UI 2 block V6; since UI 3
-block P1 they take the Paper values): the green main button, readable colours, and the
-terminal's colours as the web's tokens."""
+"""The launcher window and the terminal in the Paper look (UI 3 blocks P1 and P6): the green
+main button and flat others, no star, serif headings, light by default, readable colours, and
+the terminal's colours as the web's tokens."""
 
 from __future__ import annotations
 
 import re
+import sys
 import tkinter as tk
+import types
 from tkinter import ttk
 from typing import Any
 
@@ -83,26 +85,88 @@ def test_one_main_button_on_each_page(monkeypatch: pytest.MonkeyPatch, light: bo
         # the kill switch turns into "Resume", the main button then; the chat button is quiet
         app.on_status(app.L.Status("ready", "", True, True, True, 5.0))
         assert gold_buttons(app, "running") == [app.btn_kill]
-        assert style.lookup(str(app.btn_chat.cget("style")), "background") == c.panel2
+        assert style.lookup(str(app.btn_chat.cget("style")), "background") == c.bg  # (flat)
+    finally:
+        app.root.destroy()
+
+
+def canvases_of(widget: tk.Misc) -> list[tk.Canvas]:
+    found: list[tk.Canvas] = [widget] if isinstance(widget, tk.Canvas) else []
+    for child in widget.winfo_children():
+        found += canvases_of(child)
+    return found
+
+
+@needs_display
+@pytest.mark.parametrize("page", ["running", "setup", "error"])
+def test_no_star_and_no_rounded_shapes(monkeypatch: pytest.MonkeyPatch, page: str) -> None:
+    """The header is the word "Starlight" (no mark), and nothing is drawn as a polygon (so
+    nothing is a smoothed, rounded shape): the status lights and model marks are circles."""
+    app = make_app(monkeypatch)
+    try:
+        if page == "setup":
+            app.open_settings()
+        elif page == "error":
+            app.on_error("It broke.", "")
+        app.root.update_idletasks()
+        header = app.root.winfo_children()[0]
+        assert canvases_of(header) == []  # the word only, no drawn mark
+        assert not hasattr(app, "star_canvas")
+        for canvas in canvases_of(app.root):
+            for item in canvas.find_all():
+                assert canvas.type(item) != "polygon", canvas.coords(item)
+        gui = load_gui()
+        assert not hasattr(gui, "STAR") and not hasattr(gui, "rounded_rect")
     finally:
         app.root.destroy()
 
 
 @needs_display
-def test_the_brand_is_the_star_in_the_primary_colour(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_headings_use_a_serif_family(monkeypatch: pytest.MonkeyPatch) -> None:
     gui = load_gui()
     app = make_app(monkeypatch)
     try:
-        canvas = app.star_canvas
-        assert [canvas.type(item) for item in canvas.find_all()] == ["polygon"]  # one star
-        item = canvas.find_all()[0]
-        assert canvas.itemcget(item, "fill") == app.c.primary
-        size = int(canvas.cget("width"))
-        points = [float(v) for v in canvas.coords(item)]
-        assert points == pytest.approx([v * size / 24 for v in gui.STAR])
-        assert gui.STAR[:4] == [12, 2, 14.2, 9.8] and len(gui.STAR) == 16  # the web's path
+        for font in (app.f_big, app.f_head, app.f_title):
+            assert font.cget("family") in (*gui.SERIFS, "Times"), font.cget("family")
+        assert app.f.cget("family") not in gui.SERIFS  # the body stays sans
     finally:
         app.root.destroy()
+
+
+def test_the_serif_is_cambria_then_georgia_then_the_default() -> None:
+    gui = load_gui()
+    assert gui.serif_family({"Segoe UI", "Georgia", "Cambria"}) == "Cambria"
+    assert gui.serif_family({"Segoe UI", "Georgia"}) == "Georgia"
+    assert gui.serif_family({"Segoe UI"}) == "Times"
+
+
+@needs_display
+def test_only_the_main_button_is_filled(monkeypatch: pytest.MonkeyPatch) -> None:
+    app = make_app(monkeypatch)
+    try:
+        c, style = app.c, ttk.Style(app.root)
+        assert style.lookup("Accent.TButton", "background") == c.primary
+        for name in ("TButton", "Tool.TButton"):
+            assert style.lookup(name, "background") == c.bg, name  # the window's own ground
+            assert style.lookup(name, "bordercolor") in (c.dim, c.border, c.text), name
+            assert str(style.lookup(name, "relief")) == "solid", name  # a thin line, flat
+    finally:
+        app.root.destroy()
+
+
+@pytest.mark.parametrize("platform", ["linux", "win32"])
+def test_the_window_is_light_when_the_setting_cannot_be_read(
+    monkeypatch: pytest.MonkeyPatch, platform: str
+) -> None:
+    gui = load_gui()
+    monkeypatch.setattr(gui.sys, "platform", platform)
+
+    def broken(*args: object) -> None:
+        raise OSError("no such key")
+
+    monkeypatch.setitem(sys.modules, "winreg", types.SimpleNamespace(
+        HKEY_CURRENT_USER=0, OpenKey=broken, QueryValueEx=broken))  # fmt: skip
+    assert gui.system_uses_light_theme() is True
 
 
 @needs_display

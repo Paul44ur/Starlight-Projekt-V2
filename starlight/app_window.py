@@ -49,14 +49,12 @@ BACKGROUND = {"dark": "#1d1b18", "light": "#f6f3ec"}  # style.css --bg, until th
 STARTING_PAGE = """<!doctype html><html><head><meta charset="utf-8"><style>
 :root { color-scheme: dark light; }
 body { margin: 0; height: 100vh; display: flex; flex-direction: column; align-items: center;
-       justify-content: center; gap: 14px; font: 15px/1.5 "Segoe UI", sans-serif;
+       justify-content: center; gap: 10px; font: 15px/1.5 "Segoe UI", sans-serif;
        background: #1d1b18; color: #a99f8f; }
 @media (prefers-color-scheme: light) {
-  body { background: #f6f3ec; color: #665e53; } .star { color: #2f5d50; } }
-.star { font-size: 44px; color: #8dbdaa; animation: glow 1.6s ease-in-out infinite; }
-@keyframes glow { 50% { opacity: .45; } }
-@media (prefers-reduced-motion: reduce) { .star { animation: none; } }
-</style></head><body><div class="star">✦</div><div id="text">MESSAGE</div>
+  body { background: #f6f3ec; color: #665e53; } .name { color: #26221d; } }
+.name { font: 28px/1.2 Charter, Cambria, Georgia, serif; color: #ece6da; }
+</style></head><body><div class="name">Starlight</div><div id="text">MESSAGE</div>
 <script>if (/^de/i.test(navigator.language || "")) document.getElementById("text").textContent =
 "GERMAN";</script></body></html>"""
 STARTING = ("Starlight is starting …", "Starlight startet …")

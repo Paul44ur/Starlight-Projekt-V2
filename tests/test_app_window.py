@@ -585,3 +585,11 @@ async def test_no_page_script_replaces_what_the_browser_has() -> None:
             if name in names:
                 clashes.append(f"{path.name}: {name}")
     assert clashes == []
+
+
+def test_the_starting_page_shows_the_word_not_a_star() -> None:
+    """Paper: the brand is the word "Starlight" in the serif; no sparkle while it starts."""
+    page = app_window.STARTING_PAGE
+    assert "✦" not in page and 'class="star"' not in page
+    assert '<div class="name">Starlight</div>' in page
+    assert ".name { font: 28px/1.2 Charter, Cambria, Georgia, serif;" in page

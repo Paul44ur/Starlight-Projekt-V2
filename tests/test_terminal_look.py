@@ -121,7 +121,7 @@ async def test_a_spinner_shows_until_the_first_word(monkeypatch: pytest.MonkeyPa
     after = text[len(waited) :]
     assert after.startswith("\r\x1b[K")  # the spinner went away before the answer
     assert "working" not in after  # and did not come back
-    assert shown(after.removeprefix("\r\x1b[K")) == ["✦ Hello there, friend.", ""]
+    assert shown(after.removeprefix("\r\x1b[K")) == ["\u203a Hello there, friend.", ""]
     assert view.palette.bold + "there" in after
 
 

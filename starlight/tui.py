@@ -53,7 +53,7 @@ def colour_codes_work() -> bool:
         return False
 
 
-STAR = "✦"  # the logo's four-pointed star, in its gold
+MARK = "\u203a"  # before an answer, in the accent green (a plain mark, no star)
 SPINNER = "⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏"
 SPIN_AFTER = 0.2  # seconds: a quick answer needs no spinner
 MAX_WIDTH = 100  # answers wrap at the terminal's width, but no wider than this (to read well)
@@ -181,7 +181,7 @@ class ChatView:
         self._console.print(
             Panel(
                 grid,
-                title=f"[{c['star']}]{STAR}[/] [bold]Starlight {version}[/bold]",
+                title=f"[bold]Starlight {version}[/bold]",
                 subtitle=f"[{c['dim']}]/help for commands · /status · /quit to leave[/]",
                 border_style=c["accent"],
             )
@@ -246,7 +246,7 @@ class ChatView:
         return (await console.lines.read(console.read_request, self.prompt())).strip()
 
     def on_token(self) -> Callable[[str], None]:
-        """A callback that streams the answer live, after the star; until its first word a
+        """A callback that streams the answer live, after a plain mark; until its first word a
         spinner shows that Starlight is at work (and which tool runs)."""
         self._stream = None
         started = [False]
@@ -258,7 +258,7 @@ class ChatView:
                 self._waiting = False
                 self._quiet()
                 if self.rich:
-                    sys.stdout.write(self.palette.paint(STAR, self.palette.star) + " ")
+                    sys.stdout.write(self.palette.paint(MARK, self.palette.star) + " ")
                     self._stream = termstyle.MarkdownStream(
                         self.palette, _width(), indent=2, column=2
                     )
@@ -288,7 +288,7 @@ class ChatView:
         self._quiet()
         if self.rich:
             stream = termstyle.MarkdownStream(self.palette, _width(), indent=2, column=2)
-            star = self.palette.paint(STAR, self.palette.star) + " "
+            star = self.palette.paint(MARK, self.palette.star) + " "
             sys.stdout.write(star + stream.feed(text) + stream.close() + "\n")
             sys.stdout.flush()
         else:
