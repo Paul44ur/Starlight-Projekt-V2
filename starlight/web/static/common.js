@@ -153,18 +153,33 @@ function readySignOn() {
 }
 
 // One message at a time (a new one replaces the last, instead of covering it), and a longer
-// one stays longer, so it can be read.
+// one stays longer, so it can be read. With {action, onAction, ms, onClose} it also has a quiet
+// button (Undo): it stays ``ms`` long; onClose(why) runs when it goes, "undo" or "gone".
 let toastShown = null;
-function toast(text) {
-  if (toastShown) { clearTimeout(toastShown.timer); toastShown.remove(); }
-  const t = toastShown = el("div", "toast", text);
+function closeToast(t, why, quick) {
+  if (t.closed) return;
+  t.closed = true;
+  clearTimeout(t.timer);
+  const end = () => { t.remove(); if (toastShown === t) toastShown = null; };
+  if (quick) end(); else { t.classList.add("leaving"); setTimeout(end, 200); }
+  if (t.onClose) t.onClose(why);
+}
+function toast(text, opts) {
+  if (toastShown) closeToast(toastShown, "gone", true);
+  const t = toastShown = el("div", "toast", "");
   t.setAttribute("role", "status");  // read out by screen readers too
+  t.appendChild(el("span", "", text));
+  if (opts && opts.action) {
+    t.classList.add("has-action");
+    const b = el("button", "toast-action", opts.action);
+    b.type = "button";
+    b.onclick = () => { closeToast(t, "undo", true); if (opts.onAction) opts.onAction(); };
+    t.appendChild(b);
+    t.onClose = opts.onClose;
+  }
   document.body.appendChild(t);
-  const ms = Math.min(8000, 2600 + Math.max(0, String(text).length - 40) * 45);
-  t.timer = setTimeout(() => {
-    t.classList.add("leaving");
-    setTimeout(() => { t.remove(); if (toastShown === t) toastShown = null; }, 200);
-  }, ms);
+  const ms = opts && opts.ms ? opts.ms : Math.min(8000, 2600 + Math.max(0, String(text).length - 40) * 45);
+  t.timer = setTimeout(() => closeToast(t, "gone"), ms);
 }
 
 // -- Starlight's own questions -------------------------------------------------------------------

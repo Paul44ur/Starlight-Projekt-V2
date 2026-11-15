@@ -183,6 +183,11 @@ th { color: var(--dim); font-weight: 400; font-family: var(--font-display); font
 .toast.leaving { opacity: 0; transform: translate(-50%, 6px);
                  transition: opacity var(--dur) var(--ease), transform var(--dur) var(--ease); }
 @keyframes toast-in { from { opacity: 0; transform: translate(-50%, 8px); } }
+/* A toast with an action (Undo): the text, then a quiet text button in the accent. */
+.toast.has-action { width: max-content; display: flex; align-items: center; gap: var(--s-3); text-align: left; }
+.toast .toast-action { background: none; border: 0; color: var(--accent); padding: 2px var(--s-2);
+                       font-weight: 600; flex: none; }
+.toast .toast-action:hover { background: var(--accent-tint); }
 /* While a list loads: a few faint bars instead of an empty card. The list replaces them; if it
    never comes, common.js takes them away after a while, so nothing shimmers for ever. */
 .skeleton { display: grid; gap: 10px; padding: 6px 0; }

@@ -141,9 +141,46 @@ async function changeConversation(id, change) {
     if (titled && titled.id === id) {  // (the bar's name, also when the list leaves it out)
       for (const key of ["title", "pinned", "archived", "folder"]) if (key in changed) titled[key] = changed[key];
     }
-  } catch (e) { toast(e.message); }
+  } catch (e) { toast(e.message); loadList(); return false; }
   loadList();
+  return true;
 }
+// Delete and archive happen at once and can be undone for a few seconds (the page asks no
+// question). The server keeps a deleted conversation in its waste folder meanwhile.
+// window.undoSeconds changes the time (tests).
+const undoMs = () => (window.undoSeconds || 10) * 1000;
+const shortName = (title) => { const t = String(title || ""); return t.length > 40 ? t.slice(0, 40).trimEnd() + "…" : t; };
+async function deleteConversation(c) {
+  const base = "/api/conversations/" + c.id, wasOpen = c.id === conversation;
+  try { await api(base, { method: "DELETE" }); } catch (e) { toast(e.message); return; }
+  if (wasOpen) { const d = await api("/api/conversations", { method: "POST" }); await openConversation(d.id); } else loadList();
+  // The draft stays until the time is over, so Undo brings it back too (leaving the open
+  // conversation has saved it).
+  toast(`Deleted "${shortName(c.title)}".`, {
+    action: "Undo", ms: undoMs(),
+    onClose: (why) => { if (why !== "undo") dropDraft(c.id); },
+    onAction: async () => {
+      try { await api(base + "/restore", { method: "POST" }); } catch (e) { toast(e.message); return; }
+      await loadList();
+      if (wasOpen) await openConversation(c.id);
+    },
+  });
+}
+async function archiveConversation(c) {
+  if (!(await changeConversation(c.id, { archived: true }))) return;
+  toast(`Archived "${shortName(c.title)}".`, {
+    action: "Undo", ms: undoMs(), onAction: () => changeConversation(c.id, { archived: false }),
+  });
+}
+// Ctrl+Z takes back the last delete or archive while its toast is shown (not while typing).
+document.addEventListener("keydown", (e) => {
+  if (e.key.toLowerCase() !== "z" || !(e.ctrlKey || e.metaKey) || e.shiftKey || e.altKey) return;
+  if (!toastShown || toastShown.closed || !toastShown.classList.contains("has-action")) return;
+  const t = e.target;
+  if (t && (/^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName) || t.isContentEditable)) return;
+  e.preventDefault();
+  toastShown.querySelector(".toast-action").click();
+});
 function conversationMenu(c, anchor) {
   const base = "/api/conversations/" + c.id;
   popMenu(anchor, [
@@ -156,7 +193,7 @@ function conversationMenu(c, anchor) {
       const folder = await askText("Folder (empty: none)", c.folder || "", { yes: "Save" });
       if (folder !== null) changeConversation(c.id, { folder: folder.trim() });
     }],
-    ["archive", c.archived ? "Take out of the archive" : "Archive", () => changeConversation(c.id, { archived: !c.archived })],
+    ["archive", c.archived ? "Take out of the archive" : "Archive", () => (c.archived ? changeConversation(c.id, { archived: false }) : archiveConversation(c))],
     ["forget", "Forget what it learned here", async () => {
       if (!(await askYesNo("Forget the memories Starlight learned in \"" + c.title + "\"?\n\nThe conversation stays.", { yes: "Forget", danger: true }))) return;
       try {
@@ -168,12 +205,7 @@ function conversationMenu(c, anchor) {
     ["download", "Download as Markdown", () => download(base + "/export")],
     ["download", "Download as a web page", () => download(base + "/export?format=html")],
     ["print", "Print or save as PDF", () => window.open(base + "/export?format=html&show=true", "_blank")],
-    ["trash", "Delete", async () => {
-      if (!(await askYesNo("Delete \"" + c.title + "\"?", { yes: "Delete", danger: true }))) return;
-      await api(base, { method: "DELETE" });
-      dropDraft(c.id);
-      if (c.id === conversation) { const d = await api("/api/conversations", { method: "POST" }); await openConversation(d.id); } else loadList();
-    }],
+    ["trash", "Delete", () => deleteConversation(c)],
   ]);
 }
 

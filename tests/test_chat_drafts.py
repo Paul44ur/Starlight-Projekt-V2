@@ -10,7 +10,7 @@ from typing import Any
 import pytest
 
 from tests.test_chat_app_look import APP, LIST, STATUS  # noqa: F401
-from tests.test_chat_page import answer, static_site  # noqa: F401  (a fixture)
+from tests.test_chat_page import static_site  # noqa: F401  (a fixture)
 from tests.test_feedback_look import browser_page
 
 KEY = "starlight-draft:"
@@ -106,11 +106,12 @@ async def test_sending_or_emptying_the_box_removes_the_draft(
         assert await stored(page, "c1") is None
 
 
-async def test_deleting_a_conversation_removes_its_draft(
+async def test_deleting_a_conversation_removes_its_draft_when_the_undo_time_is_over(
     static_site: str,  # noqa: F811
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    async with chat(static_site, monkeypatch) as page:
+    # (F2: the draft stays while Undo is possible; the time is shortened for the test)
+    async with chat(static_site, monkeypatch, "window.undoSeconds = 1;\n") as page:
         await open_row(page, "Recipe for Sunday")
         await page.fill("#input", "half a sentence")
         await saved(page, "c2", "half a sentence")
@@ -120,8 +121,9 @@ async def test_deleting_a_conversation_removes_its_draft(
             .click(force=True)
         )
         await page.locator(".popmenu button", has_text="Delete").click()
-        await answer(page)
         await page.wait_for_function("() => !document.querySelector('#input').value")
+        assert await stored(page, "c2") == "half a sentence"  # Undo would bring it back
+        await page.wait_for_selector(".toast", state="detached")
         await page.wait_for_timeout(500)  # (a late save would show now)
         assert await stored(page, "c2") is None
 

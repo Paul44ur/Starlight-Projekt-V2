@@ -131,24 +131,19 @@ async def test_the_chat_asks_in_its_own_window_also_in_german(
                 "PATCH", "/api/conversations/c2", {"title": "Sunday roast"}
             ]  # fmt: skip
             await page.wait_for_selector(".conv:has-text('Sunday roast')")
-            # deleting asks first; no leaves it there
+            # deleting asks nothing: it happens at once, and the toast offers Undo (F2)
             row = page.locator(".conv", has_text="Sunday roast")
             await row.hover()
             await row.locator(".acts button").click()
             await menu.filter(has_text="Löschen").click()
-            box = page.locator("dialog.ask")
-            await box.wait_for()
-            assert await box.locator("button").all_inner_texts() == ["Abbrechen", "Löschen"]
-            assert await answer(page, yes=False) == "„Sunday roast“ löschen?"
-            assert await page.evaluate("() => window.calls.length") == 1
-            await row.hover()
-            await row.locator(".acts button").click()
-            await menu.filter(has_text="Löschen").click()
-            await answer(page)
             await page.wait_for_function("() => window.calls.length === 2")
+            assert await page.locator("dialog.ask").count() == 0
             assert await page.evaluate("() => window.calls[1].slice(0, 2)") == [
                 "DELETE", "/api/conversations/c2"
             ]  # fmt: skip
+            toast = page.locator(".toast")
+            assert await toast.locator("span").inner_text() == "„Sunday roast“ gelöscht."
+            assert await toast.locator("button").inner_text() == "Rückgängig"
             assert native == []
         finally:
             await browser.close()

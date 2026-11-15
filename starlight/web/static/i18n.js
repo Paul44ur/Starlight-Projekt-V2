@@ -676,6 +676,9 @@
   const PATTERNS = [
     [/^(\d+) messages$/, "$1 Nachrichten"],  // (the bar of the chat, P2)
     [/^Delete "(.+)"\?$/, "„$1“ löschen?"],
+    // undo for delete and archive (F2): the name stays as it is ("Undo" is in DE)
+    [/^Deleted "(.+)"\.$/, "„$1“ gelöscht."],
+    [/^Archived "(.+)"\.$/, "„$1“ archiviert."],
     [/^Forget the memories Starlight learned in "(.+)"\?$/, "Die Erinnerungen vergessen, die Starlight in „$1“ gelernt hat?"],
     [/^Folder: (.+)$/, "Ordner: $1"],
     [/^context (\d+)$/, "Kontext $1"],

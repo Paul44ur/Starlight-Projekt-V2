@@ -878,6 +878,16 @@ def create_app(paths: Paths | None = None) -> Any:
             raise HTTPException(status_code=404, detail="no such conversation") from exc
         return {"deleted": conversation}
 
+    @app.post("/api/conversations/{conversation}/restore")
+    def restore_conversation(conversation: str, request: Request) -> dict[str, Any]:
+        """Undo a delete: it comes back as it was, while the waste folder still has it."""
+        viewer(request)
+        try:
+            kernel().restore_conversation(conversation)
+        except (KeyError, OSError) as exc:
+            raise HTTPException(status_code=404, detail="nothing to bring back") from exc
+        return {"id": conversation}
+
     # -- files dropped into the chat -------------------------------------------------------
 
     too_large = f"files can be up to {MAX_UPLOAD // MB} MB"

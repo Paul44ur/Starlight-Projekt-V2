@@ -11,6 +11,7 @@ import contextlib
 import json
 import re
 import threading
+import time
 import uuid
 from dataclasses import asdict
 from datetime import datetime
@@ -22,6 +23,13 @@ from starlight.core.model import Message, ToolCall
 
 ID = re.compile(r"^[a-f0-9]{12}$")
 CURRENT = "current.txt"
+# A deleted conversation waits here (next to the others) so that Undo can bring it back, and
+# so that nothing is lost if the page closes first. The name starts with a dot: no list, search,
+# backup or sync of the conversations looks into it.
+WASTE = ".deleted"
+WASTE_SECONDS = 24 * 3600  # how long a deleted conversation is kept
+PRIVATE_WASTE_SECONDS = 120  # a private one only lives in memory: just long enough for Undo
+SWEEP_SECONDS = 3600  # how often ``list`` looks for old waste
 
 
 def _now() -> str:
@@ -65,6 +73,10 @@ class ConversationStore:
         self._summaries: dict[Path, tuple[tuple[int, int, int], dict[str, Any]]] = {}
         self._private: dict[str, dict[str, Any]] = {}  # id -> its data, only in memory
         self._private_changes: dict[str, int] = {}  # its stamp: one more on every save
+        # deleted private ones, for Undo: id -> (when, data, stamp); never written to disk
+        self._private_waste: dict[str, tuple[float, dict[str, Any], int]] = {}
+        self._swept = 0.0
+        self.empty_waste()
 
     def is_private(self, conversation: str) -> bool:
         return conversation in self._private
@@ -204,10 +216,67 @@ class ConversationStore:
         return branch
 
     def delete(self, conversation: str) -> None:
-        if self._private.pop(conversation, None) is not None:
-            self._private_changes.pop(conversation, None)
+        """Take it out of the list at once. The file is not removed but moved to the waste
+        folder with the time (``restore`` brings it back; ``empty_waste`` removes it a day
+        later)."""
+        self._drop_private_waste()
+        data = self._private.pop(conversation, None)
+        if data is not None:
+            stamp = self._private_changes.pop(conversation, 0)
+            self._private_waste[conversation] = (time.monotonic(), data, stamp)
             return
-        self._file(conversation).unlink(missing_ok=False)
+        source = self._file(conversation)
+        with self._lock:
+            target = self.folder / WASTE / f"{conversation}.{int(time.time())}.json"
+            if not source.exists():
+                raise FileNotFoundError(str(source))
+            target.parent.mkdir(parents=True, exist_ok=True)
+            source.replace(target)  # (same folder tree: one rename, nothing half-copied)
+        self._summaries.pop(source, None)
+
+    def restore(self, conversation: str) -> None:
+        """Bring a deleted conversation back exactly as it was. KeyError when the waste no
+        longer has it (it was emptied, or it never was deleted)."""
+        if not ID.match(conversation):
+            raise KeyError(f"no deleted conversation '{conversation}'")
+        self._drop_private_waste()
+        kept = self._private_waste.pop(conversation, None)
+        if kept is not None:
+            self._private[conversation] = kept[1]
+            if kept[2]:
+                self._private_changes[conversation] = kept[2] + 1
+            return
+        with self._lock:
+            found = sorted((self.folder / WASTE).glob(f"{conversation}.*.json"), key=_deleted_at)
+            if not found:
+                raise KeyError(f"no deleted conversation '{conversation}'")
+            target = self._file(conversation)
+            if target.exists():
+                raise KeyError(f"'{conversation}' is already there")
+            found[-1].replace(target)
+            for older in found[:-1]:  # (a second deletion of the same id: the last one wins)
+                with contextlib.suppress(OSError):
+                    older.unlink()
+
+    def empty_waste(self, older_than: float = WASTE_SECONDS) -> None:
+        """Remove what was deleted more than a day ago. Nothing else removes the waste."""
+        self._swept = time.monotonic()
+        self._drop_private_waste()
+        now = time.time()
+        with self._lock:
+            try:
+                files = list((self.folder / WASTE).glob("*.json"))
+            except OSError:
+                return
+            for path in files:
+                if now - _deleted_at(path) > older_than:
+                    with contextlib.suppress(OSError):
+                        path.unlink()
+
+    def _drop_private_waste(self) -> None:
+        late = time.monotonic() - PRIVATE_WASTE_SECONDS
+        for key in [k for k, v in self._private_waste.items() if v[0] < late]:
+            del self._private_waste[key]
 
     def get(self, conversation: str) -> dict[str, Any]:
         data = self._read(conversation)
@@ -243,6 +312,8 @@ class ConversationStore:
         after every answer. Another program may write the files, so the key is the file's own
         modification time, size and inode (``stamp`` uses time and size only)."""
         wanted = search.strip().casefold()
+        if time.monotonic() - self._swept > SWEEP_SECONDS:
+            self.empty_waste()
         found: list[dict[str, Any]] = []
         for conversation, data in self._private.items():
             messages = data.get("messages", [])
@@ -296,6 +367,18 @@ class ConversationStore:
             found.append({**summary, **({"hit": hit} if hit else {})})
         self._summaries = known
         return _ordered(found, archived, limit)
+
+
+def _deleted_at(path: Path) -> float:
+    """When a waste file was deleted: the number in its name (``<id>.<seconds>.json``);
+    a file without one counts from its own time."""
+    parts = path.name.split(".")
+    if len(parts) == 3 and parts[1].isdigit():
+        return float(parts[1])
+    try:
+        return path.stat().st_mtime
+    except OSError:
+        return 0.0
 
 
 def _tokens(value: object) -> int | None:

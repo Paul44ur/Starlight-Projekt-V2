@@ -212,7 +212,12 @@ the kill switch) and are enabled by default. Free or local, no API keys except w
 **Web chat, conversations and remote use.** Conversations are saved in
 `data/conversations/<id>.json` (`core/conversations.py`); `Kernel.ask(...,
 conversation=id)` continues one, with a lock per conversation, and the terminal continues
-the current one. The web app (`web/app.py`) adds the conversation list, file uploads
+the current one. `delete` moves the file to `data/conversations/.deleted/<id>.<time>.json`
+and `restore` (`POST /api/conversations/<id>/restore`) moves it back; the store empties what
+is older than a day at its start and at most once an hour in `list`. A private conversation
+is kept in memory for two minutes instead. The page offers Undo for 10 seconds
+(`deleteConversation` in `chat-list.js`). The dot in the name keeps the waste out of lists,
+search and backups. The web app (`web/app.py`) adds the conversation list, file uploads
 (images go to the model as pictures, documents as text), the settings page (permission
 rules through `save_rule`, modules, devices) and the memory & skills page. A `Gate` decides
 for every request whether it is the local user (a connection from 127.0.0.1/::1, a

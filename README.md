@@ -533,7 +533,9 @@ column and the controls are big enough for a finger. High contrast and "reduce m
 Windows are respected, and every page is also in German.
 
 **The web chat.** Your conversations are saved: the list on the left reopens, renames, searches
-and deletes them (the terminal continues the most recent one). A search also looks into what
+and deletes them (the terminal continues the most recent one). Deleting or archiving one
+asks nothing: a message at the bottom offers **Undo** for 10 seconds (or press Ctrl+Z). A
+deleted conversation is kept for a day in a hidden folder before it is removed. A search also looks into what
 was said: a conversation found that way shows the line with your words under its title, and
 opening it jumps to that message and marks it for a moment. Drop pictures or documents (PDF,
 Word, Excel, text) onto the chat, or press the paperclip, to send them with your message.
@@ -1095,6 +1097,8 @@ Settings has a card "Backup and restore" (at the PC only), and there are two com
   you made yourself, and the loose files in it, with the pictures in `Notes\Attachments`),
   the deleted notes in the trash and the earlier versions of your notes (they are kept with
   the history), the flashcard schedule, memory, skills and your settings.
+- **Not in the file, among your conversations:** the ones you deleted in the last day (they wait
+  in the hidden folder `data\conversations\.deleted`).
 - **Not in the file, among your notes:** hidden files and folders (names that start with a
   dot, such as `.git` or `.obsidian`: a restore leaves the ones in your note folders where
   they are), files with names Windows cannot hold (such as `con`), any single file over

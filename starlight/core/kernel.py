@@ -680,6 +680,11 @@ class Kernel:
         self._taken_back.pop(conversation, None)
         self._conversation_locks.pop(conversation, None)
 
+    def restore_conversation(self, conversation: str) -> None:
+        """Undo ``forget_conversation`` while the store still has it (it reads the file
+        again when it is next opened)."""
+        self.conversations.restore(conversation)
+
     async def _run_request(self, text: str) -> str:
         return (await self.ask(text)).answer
 

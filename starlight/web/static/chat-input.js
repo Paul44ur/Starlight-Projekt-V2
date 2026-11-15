@@ -25,7 +25,7 @@ const COMMANDS = [
     toast(c.pinned ? "Unpinned" : "Pinned to the top");
   }],
   ["/archive", "archive", "Archive this conversation", async () => {
-    await changeConversation(conversation, { archived: true }); toast("Archived (see Archived conversations in the list)");
+    const c = await currentConversation(); await archiveConversation({ id: conversation, title: c.title });
   }],
   ["/export", "download", "Download it as Markdown", () => download(`/api/conversations/${conversation}/export`)],
   ["/pdf", "print", "Print or save it as PDF", () => window.open(`/api/conversations/${conversation}/export?format=html&show=true`, "_blank")],
