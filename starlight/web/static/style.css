@@ -62,6 +62,18 @@
     --hl-k: #d6a0c8; --hl-s: #9ccb9f; --hl-n: #e8a774; --hl-c: #a0977f; --hl-f: #8db6de; --hl-v: #e0c070;
   }
 }
+/* Text size and density (Settings, "Display"; common.js sets both on <html>, per device). Normal
+   and Roomy are the values above. Whole pixels. Only what reads its size from the tokens follows. */
+/* (--text-scale: the reading sizes, an answer and a note, follow the choice too) */
+:root[data-text-size="small"] { --text-scale: .9; --fs-xs: 11px; --fs-sm: 12px; --fs-md: 14px; --fs-lg: 15px; --fs-xl: 18px; }
+:root[data-text-size="large"] { --text-scale: 1.15; --fs-xs: 14px; --fs-sm: 15px; --fs-md: 17px; --fs-lg: 18px; --fs-xl: 23px; }
+/* Compact: tighter list rows with a mouse. A touch screen keeps its 44 px (never below), so the rule
+   is for a fine pointer only. It has more weight than the pages' own row rules (chat.css, notes.css). */
+@media (pointer: fine) {
+  :root[data-density="compact"] :is(.conv, .side-nav a, .item, .quick button, .quick-row) { min-height: 32px; }
+  :root[data-density="compact"] .quick-row { padding-block: var(--s-1); }
+  :root[data-density="compact"] .conv .tx { padding-block: 3px; }
+}
 * { box-sizing: border-box; }
 /* The hidden attribute must win over the display set by a class (.pill below). */
 [hidden] { display: none !important; }

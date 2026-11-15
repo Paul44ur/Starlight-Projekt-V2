@@ -79,6 +79,11 @@
   .seg button.sel.safe { background: var(--ok); color: var(--on-accent); }
   .seg button.sel.confirm { background: var(--warn); color: var(--on-accent); }
   .seg button.sel.blocked { background: var(--danger); color: var(--on-danger); }
+  /* Display: the chosen one is lit in the accent. The labels line up in one column. */
+  .seg.display button { font-size: var(--fs-sm); padding: var(--s-1) var(--s-3); border: 1px solid transparent; }
+  .seg.display button + button { border-left-color: var(--border); }
+  .seg.display button[aria-pressed="true"] { background: var(--accent); color: var(--on-accent); }
+  .display-label { flex: 0 0 7em; }
   /* wide enough for "Zurücksetzen"; the column stays when there is nothing to reset */
   .reset { flex: none; width: 7.5em; text-align: right; font-size: 12px; padding: 0; background: none; border: 0;
            color: var(--accent); }
@@ -187,6 +192,17 @@
     <div class="row"><label for="language">Language</label>
       <select id="language"><option value="">Automatic (like the browser)</option>
         <option value="en">English</option><option value="de">Deutsch</option></select></div>
+  </div>
+
+  <div class="card" id="display-card">
+    <h2>Display</h2>
+    <div class="row"><span id="size-label" class="display-label">Text size</span>
+      <div class="seg display" id="text-size" role="group" aria-labelledby="size-label">
+        <button type="button" data-value="small">Small</button><button type="button" data-value="normal">Normal</button><button type="button" data-value="large">Large</button></div></div>
+    <div class="row"><span id="density-label" class="display-label">Lists</span>
+      <div class="seg display" id="density" role="group" aria-labelledby="density-label">
+        <button type="button" data-value="compact">Compact</button><button type="button" data-value="roomy">Roomy</button></div></div>
+    <p class="dim small">Applies to this device.</p>
   </div>
 
   <div class="card" id="ready-card">
@@ -738,6 +754,29 @@ document.getElementById("ready-allow").onclick = async () => {
 showNotificationState();
 // (Starlight's own window says who it is a moment after the page loaded.)
 window.addEventListener("pywebviewready", showNotificationState);
+
+// Text size and density: per device, so also on a phone (the card is not .local-only). Kept in this
+// browser only, nothing goes to the server; common.js sets them on <html> and follows other tabs.
+function showDisplay() {
+  const now = { "text-size": document.documentElement.dataset.textSize, density: document.documentElement.dataset.density };
+  Object.entries(now).forEach(([id, value]) => {
+    document.querySelectorAll("#" + id + " button").forEach(b => {
+      b.setAttribute("aria-pressed", b.dataset.value === value ? "true" : "false");
+    });
+  });
+}
+[["text-size", "starlight-text-size"], ["density", "starlight-density"]].forEach(([id, key]) => {
+  document.querySelectorAll("#" + id + " button").forEach(b => {
+    b.onclick = () => {
+      try { localStorage.setItem(key, b.dataset.value); } catch (e) { /* private window */ }
+      window.applyDisplay();
+      document.documentElement.dataset[id === "density" ? "density" : "textSize"] = b.dataset.value;
+      showDisplay();
+    };
+  });
+});
+window.addEventListener("storage", showDisplay);
+showDisplay();
 
 // The language of these pages, for this browser (the answers follow what you write).
 const language = document.getElementById("language");

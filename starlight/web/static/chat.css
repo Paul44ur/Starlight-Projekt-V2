@@ -109,7 +109,7 @@
   .msg .when:empty { display: none; }
   /* yours: plain text, no box; Starlight's answers in the serif, a little larger */
   .msg.you .body { font-size: var(--fs-md); line-height: 1.6; }
-  .msg.bot .body { font-family: var(--font-display); font-size: 17px; line-height: 1.65; }
+  .msg.bot .body { font-family: var(--font-display); font-size: calc(17px * var(--text-scale, 1)); line-height: 1.65; }
   .msg .tools { display: flex; flex-wrap: wrap; gap: 4px 16px; margin-top: 6px; }
   /* Copy, Regenerate, Branch, Edit: plain text links in --dim (they stay buttons) */
   .msg .tools button { background: none; border: 0; border-radius: 0; padding: 2px 0; color: var(--dim);

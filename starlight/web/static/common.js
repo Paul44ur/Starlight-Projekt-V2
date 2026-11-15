@@ -4,6 +4,25 @@
   if (saved === "light" || saved === "dark") document.documentElement.dataset.theme = saved;
 })();
 
+// Text size and density (Settings, "Display"): kept per device in this browser, never sent to the
+// server. Set here, as early as the theme, so the first paint is already right; a change in
+// another open tab arrives as a storage event. Anything unknown or unreadable means Normal/Roomy.
+(function () {
+  const root = document.documentElement;
+  const read = (key, allowed, fallback) => {
+    try { const v = localStorage.getItem(key); return allowed.includes(v) ? v : fallback; } catch (e) { return fallback; }
+  };
+  function apply() {
+    root.dataset.textSize = read("starlight-text-size", ["small", "normal", "large"], "normal");
+    root.dataset.density = read("starlight-density", ["compact", "roomy"], "roomy");
+  }
+  apply();
+  window.applyDisplay = apply;
+  window.addEventListener("storage", e => {
+    if (e.key === null || e.key === "starlight-text-size" || e.key === "starlight-density") apply();
+  });
+})();
+
 const THEMES = { system: ["system", "like your system"], light: ["sun", "light"], dark: ["moon", "dark"] };
 // The theme button(s) show the theme in use (an icon); the tooltip says it in words.
 function showTheme() {

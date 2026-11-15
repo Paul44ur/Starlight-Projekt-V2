@@ -319,6 +319,9 @@
     "pairing is for your other devices": "Koppeln ist für deine anderen Geräte gedacht",
     "wrong page": "falsche Seite",
     "wrong or expired code (or too many tries)": "falscher oder abgelaufener Code (oder zu viele Versuche)",
+    // text size and density (F3)
+    "Display": "Darstellung", "Text size": "Textgröße", "Small": "Klein", "Normal": "Normal", "Large": "Groß",
+    "Lists": "Listen", "Compact": "Kompakt", "Roomy": "Luftig", "Applies to this device.": "Gilt für dieses Gerät.",
     // settings
     "Viewing from another device.": "Ansicht von einem anderen Gerät.",
     "Permissions, modules, devices and skills can only be changed on the PC itself.": "Berechtigungen, Module, Geräte und Fähigkeiten lassen sich nur am PC selbst ändern.",

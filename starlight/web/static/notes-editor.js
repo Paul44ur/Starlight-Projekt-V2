@@ -8,7 +8,7 @@
 import * as cm from "/vendor/editor.js";
 
 const look = cm.EditorView.theme({
-  "&": { color: "var(--text)", backgroundColor: "transparent", fontSize: "17px", fontFamily: "var(--font-display)" },
+  "&": { color: "var(--text)", backgroundColor: "transparent", fontSize: "calc(17px * var(--text-scale, 1))", fontFamily: "var(--font-display)" },
   "&.cm-focused": { outline: "none" },
   ".cm-scroller": { fontFamily: "var(--font-display)", lineHeight: "1.7", overflow: "visible" },
   ".cm-content": { padding: "6px 0 120px", caretColor: "var(--accent)", minHeight: "50vh" },

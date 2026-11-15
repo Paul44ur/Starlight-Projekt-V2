@@ -250,6 +250,14 @@ colour is checked at 4.5:1 on `--bg`, `--panel` and `--panel2` in both looks by
 `tests/test_paper_tokens.py`. The brand is the word "Starlight" in the display font, with no
 mark. The plan is `docs/plan-ui-3.md`; the look it replaced is in `docs/plan-ui-2.md`.
 
+Text size and density (F3) are per device. `common.js` reads `starlight-text-size` and
+`starlight-density` from `localStorage` (in `try/catch`) at the top, as it does for the theme,
+and sets `data-text-size` and `data-density` on `<html>`; it follows the `storage` event, so
+other open pages change at once. Nothing goes to the server. In `style.css`, small and large
+only redefine the `--fs-*` tokens (whole pixels), and compact lowers list rows to 32 px for a
+fine pointer only: a touch screen keeps 44 px. A page with a fixed px size in its own CSS
+does not follow (see `tests/test_text_size.py`).
+
 One review checks all the pages together. `tests/test_pages_review.py` opens each page in both
 looks and checks: nothing scrolls sideways at 360 px, touch targets of 44 px, a focus ring in
 `--accent`, every control visible in forced colours and high contrast, no animation with reduced

@@ -96,6 +96,7 @@ and answer you on WhatsApp. It will ask you before it does anything risky. And o
 | **Answer on WhatsApp** | Lets you send tasks from your phone and stop everything with `/kill`. |
 | **Show statistics** | Shows tasks, errors, model speed and GPU use in a separate viewer in your browser. **Models compared** puts every model you used side by side: answers, tokens per second, seconds per answer, how many of its tool calls failed, and its last tool-use exam. |
 | **In German** | The web chat and its pages are in German when your browser is (or choose under **Settings → Language**), and the launcher window when Windows is (or set `STARLIGHT_LANG=de`). Your conversation is never changed: the model answers in the language you write in. |
+| **Text size and lists** | **Settings → Display** sets the text size (small, normal, large) and the lists (compact, roomy). It is kept in the browser of that device only, so your phone can have its own; every page follows it at once. On a touch screen the rows stay at least 44 px high. |
 | **For keyboards and screen readers** | Every button and field has a name a screen reader can say, the conversation is announced as it arrives, Tab shows a clear focus ring, a "Skip to the message box" link comes first, and the pages follow the system's high-contrast and reduced-motion settings. |
 
 ## What you need
