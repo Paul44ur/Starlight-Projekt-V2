@@ -212,7 +212,8 @@ async function openNote(path, heading, editing = false) {
   const past = el("button", "icon"); setIcon(past, "history");
   past.type = "button"; past.title = t("Earlier versions"); past.setAttribute("aria-label", t("Earlier versions"));
   past.onclick = () => showHistory();
-  const ask = el("button", "icon", "✨ Ask");
+  const ask = el("button", "icon", "Ask");  // (a line icon, not a sparkle)
+  setIcon(ask, "talk");
   ask.type = "button"; ask.title = t("Ask Starlight about this note"); ask.setAttribute("aria-haspopup", "menu");
   ask.onclick = (event) => { event.stopPropagation(); askMenu(ask); };
   const out = el("button", "icon"); setIcon(out, "download");

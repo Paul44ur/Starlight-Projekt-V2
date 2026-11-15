@@ -726,7 +726,7 @@ note change. While writing, `#` suggests the tags you already use. In the chat: 
 shopping note with #home", "which notes are tagged work?", "set status of Plan to done",
 "what do I remember tagged hobby?".
 
-**Ask Starlight about a note.** **✨ Ask** on a note offers: summarise, find the tasks,
+**Ask Starlight about a note.** **Ask** on a note offers: summarise, find the tasks,
 suggest links and tags, or translate. It opens the chat in a new conversation with the
 request written out; check it, change it if you like, and press **Send**. When a memory
 links to another memory or a note (`[[Car service]]`), Starlight reads that too when the

@@ -8,9 +8,9 @@
 import * as cm from "/vendor/editor.js";
 
 const look = cm.EditorView.theme({
-  "&": { color: "var(--text)", backgroundColor: "transparent", fontSize: "16.5px" },
+  "&": { color: "var(--text)", backgroundColor: "transparent", fontSize: "17px", fontFamily: "var(--font-display)" },
   "&.cm-focused": { outline: "none" },
-  ".cm-scroller": { fontFamily: "inherit", lineHeight: "1.7", overflow: "visible" },
+  ".cm-scroller": { fontFamily: "var(--font-display)", lineHeight: "1.7", overflow: "visible" },
   ".cm-content": { padding: "6px 0 120px", caretColor: "var(--accent)", minHeight: "50vh" },
   ".cm-line": { padding: "0" },
   ".cm-cursor, .cm-dropCursor": { borderLeftColor: "var(--accent)", borderLeftWidth: "2px" },
@@ -18,12 +18,11 @@ const look = cm.EditorView.theme({
   ".cm-activeLineGutter": { backgroundColor: "transparent", color: "var(--text)" },
   "&.cm-focused > .cm-scroller > .cm-selectionLayer .cm-selectionBackground, .cm-selectionBackground, .cm-content ::selection":
     { backgroundColor: "color-mix(in srgb, var(--accent) 28%, transparent)" },
-  ".cm-activeLine": { backgroundColor: "color-mix(in srgb, var(--text) 4%, transparent)" },
+  ".cm-activeLine": { backgroundColor: "transparent" },
   ".cm-placeholder": { color: "var(--dim)" },
   ".cm-wikilink": { color: "var(--accent)" },
-  ".cm-tag": { color: "var(--accent)", backgroundColor: "color-mix(in srgb, var(--accent) 13%, transparent)",
-               borderRadius: "999px", padding: "0 4px" },
-  ".cm-tooltip": { backgroundColor: "var(--panel2)", border: "1px solid var(--border)", borderRadius: "var(--r-3)",
+  ".cm-tag": { color: "var(--accent)" },  // (plain accent text, as in the reading view)
+  ".cm-tooltip": { backgroundColor: "var(--panel2)", border: "1px solid var(--border)", borderRadius: "var(--r-2)",
                    boxShadow: "var(--shadow-2)", color: "var(--text)", overflow: "hidden" },
   ".cm-tooltip.cm-tooltip-autocomplete > ul": { fontFamily: "inherit", maxHeight: "18em" },
   ".cm-tooltip-autocomplete > ul > li": { padding: "4px 10px !important", lineHeight: "1.5" },
@@ -39,13 +38,13 @@ const look = cm.EditorView.theme({
   ".cm-textfield": { backgroundColor: "var(--panel2)", color: "var(--text)", border: "1px solid var(--border)",
                      borderRadius: "var(--r-2)" },
   ".cm-button": { backgroundImage: "none", backgroundColor: "var(--panel2)", color: "var(--text)",
-                  border: "1px solid var(--border)", borderRadius: "var(--r-pill)" },
+                  border: "1px solid var(--border)", borderRadius: "var(--r-2)" },
   ".cm-button:active": { backgroundImage: "none", backgroundColor: "var(--accent-tint)" },
   ".cm-searchMatch": { backgroundColor: "color-mix(in srgb, var(--warn) 35%, transparent)" },
   ".cm-searchMatch.cm-searchMatch-selected": { backgroundColor: "color-mix(in srgb, var(--accent) 38%, transparent)" },
   ".cm-selectionMatch": { backgroundColor: "color-mix(in srgb, var(--accent) 16%, transparent)" },
   ".cm-bullet": { color: "var(--dim)", display: "inline-block", width: "1.1em" },
-  ".cm-picture": { maxWidth: "100%", maxHeight: "320px", verticalAlign: "bottom", borderRadius: "6px" },
+  ".cm-picture": { maxWidth: "100%", maxHeight: "320px", verticalAlign: "bottom", borderRadius: "0" },
   ".cm-task-box": { width: "1em", height: "1em", margin: "0 .45em 0 0", verticalAlign: "-0.12em",
                     accentColor: "var(--ok)", cursor: "pointer" },  // (a ticked task is green everywhere)
 });

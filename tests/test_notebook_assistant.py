@@ -5,6 +5,7 @@ the Notes page opens the chat with the request written out."""
 
 from __future__ import annotations
 
+import re
 from collections.abc import Callable
 from pathlib import Path
 from typing import Any
@@ -105,7 +106,7 @@ async def test_ask_starlight_opens_the_chat_with_the_request(
 
         await page.route("**/?ask=**", chat)
         await opened(page, f"{static_site}/notes.html?path=Notes%2FShopping.md")
-        await page.locator("button", has_text="✨ Ask").click()
+        await page.locator("button", has_text=re.compile("^Ask$")).click()
         items = page.locator(".ask-menu [role=menuitem]")
         assert await items.all_text_contents() == [
             "Summarise", "Find the tasks", "Suggest links and tags", "Translate",
@@ -122,7 +123,7 @@ async def test_ask_starlight_opens_the_chat_with_the_request(
     async with notes_page(static_site, app, locale="de-DE") as page:
         await page.route("**/?ask=**", chat)
         await opened(page, f"{static_site}/notes.html?path=Notes%2FPlan.md")
-        await page.locator("button", has_text="✨ Fragen").click()
+        await page.locator("button", has_text=re.compile("^Fragen$")).click()
         await page.locator('.ask-menu [data-ask="summary"]').click()
         await page.wait_for_selector("text=the chat")
         asked = parse_qs(urlsplit(reached[-1]).query)["ask"][0]

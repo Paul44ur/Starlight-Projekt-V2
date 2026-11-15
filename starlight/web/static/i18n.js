@@ -336,6 +336,8 @@
     ". Changes are saved in config/permissions.chat.yaml.": ". Änderungen landen in config/permissions.chat.yaml.",
     "Advanced: one rule for several tools": "Erweitert: eine Regel für mehrere Werkzeuge", "A pattern such as": "Ein Muster wie",
     '. "Default" removes the rule again.': '. „Standard" entfernt die Regel wieder.',
+    // the Notes page in the Paper look (P4)
+    "Ask": "Fragen",
     // the Notes page (notes.html)
     "Notes": "Notizen", "Starlight notes": "Starlight-Notizen", "Skip to the note": "Zur Notiz springen",
     "Find a note (Ctrl+K)": "Notiz finden (Strg+K)", "Your notes": "Deine Notizen", "Search notes": "Notizen durchsuchen",

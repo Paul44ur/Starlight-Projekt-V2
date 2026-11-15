@@ -1,7 +1,8 @@
-"""Block V4 of the UI 2 plan (docs/plan-ui-2.md): the Notes page in the Night Sky look. The
-list is a card inset on the night ground, with 44 px rows; titles use the display font; every
-view has one gold button; the editor, the graph and the boards take their colours from the
-tokens (in the night and in the day look); no colour is written into notes.css or the scripts."""
+"""Block P4 of the UI 3 plan (docs/plan-ui-3.md): the Notes page in the Paper look. The list is
+a plain column with 36 px rows; a note is a printed page in the serif; no radius above 2 px and
+no shadow at rest; every view has one main button; the editor, the graph and the boards take
+their colours from the tokens (in both looks); no colour is written into notes.css or the
+scripts."""
 
 from __future__ import annotations
 
@@ -107,43 +108,40 @@ def test_notes_css_has_no_key_style_of_its_own() -> None:
 
 
 @pytest.mark.parametrize("scheme", ["dark", "light"])
-async def test_the_list_is_a_card_with_44_pixel_rows(
+async def test_the_list_is_a_plain_column_with_rows(
     static_site: str, app: Any, showcase: Path, monkeypatch: pytest.MonkeyPatch, scheme: str
 ) -> None:
     monkeypatch.setenv("NO_PROXY", "127.0.0.1")
     async with notes_page(static_site, app, scheme=scheme) as page:
         await open_note(page, static_site)
-        card = await page.evaluate(
+        column = await page.evaluate(
             "() => { const s = getComputedStyle(document.querySelector('.notes > .side'));"
-            " return [s.backgroundColor, s.borderTopLeftRadius, s.borderTopWidth]; }"
+            " return [s.backgroundColor, s.borderTopLeftRadius, s.borderRightWidth,"
+            " s.borderTopWidth, s.boxShadow]; }"
         )
-        assert card == [await token(page, "--panel"), "2px", "1px"]
-        inset = await page.evaluate(
+        assert column == [await token(page, "--bg"), "0px", "1px", "0px", "none"]
+        edge = await page.evaluate(
             "() => document.querySelector('.notes > .side').getBoundingClientRect().left"
         )
-        assert inset == 12  # (inset on the night ground, not against the window's edge)
+        assert edge == 0  # (a column against the window's edge, not a card)
         for selector in (".quick button[data-view=today]", "#folders .item", "#folders summary"):
             height = await page.locator(selector).first.evaluate(
                 "e => [e.getBoundingClientRect().height, getComputedStyle(e).borderTopLeftRadius]"
             )
-            assert height[0] >= 44 and height[1] == "2px", (selector, height)
-        # the open note: --panel2 behind it and a small --accent dot
+            assert height[0] == 36 and height[1] == "0px", (selector, height)
+        # the open note: --panel2 behind it and a 2 px --accent line on its left
         here = page.locator('#folders .item[aria-current="page"]')
-        # (the row's background fades in when it becomes the open one: wait until it is solid,
-        # instead of reading it in the middle of the fade)
         await here.evaluate(
             "e => Promise.all(e.getAnimations().map(a => a.finished.catch(() => null)))"
         )
-        assert rgb(await here.evaluate("e => getComputedStyle(e).backgroundColor")) == await token(
-            page, "--panel2"
+        look = await here.evaluate(
+            "e => { const s = getComputedStyle(e);"
+            " return [s.backgroundColor, s.borderLeftWidth, s.borderLeftColor,"
+            " getComputedStyle(e, '::before').content]; }"
         )
-        dot = await here.evaluate(
-            "e => { const d = getComputedStyle(e, '::before');"
-            " return [d.backgroundColor, d.width, d.borderTopLeftRadius]; }"
-        )
-        assert dot == [await token(page, "--accent"), "6px", "50%"]
-        # the section labels are the shared ones (italic serif, normal case); the brand row is
-        # the word only
+        assert rgb(look[0]) == await token(page, "--panel2")
+        assert look[1] == "2px" and rgb(look[2]) == await token(page, "--accent")
+        assert look[3] in ("none", "normal")  # (no dot)
         label = page.locator(".side h3.section-label").first
         assert await label.evaluate("e => getComputedStyle(e).textTransform") == "none"
         assert await label.evaluate("e => getComputedStyle(e).fontStyle") == "italic"
@@ -221,6 +219,8 @@ async def editor_look(static_site: str, app: Any, scheme: str) -> dict[str, Any]
               return {
                 text: css('.cm-content', 'color'), caret: css('.cm-cursor', 'borderLeftColor'),
                 ground: css('body', 'backgroundColor'),
+                page: css('main.reading', 'backgroundColor'),
+                font: css('.cm-content', 'fontFamily'),
                 editor: css('.cm-editor', 'backgroundColor'),
                 field: css('.cm-search .cm-textfield', 'backgroundColor'),
                 button: css('.cm-search .cm-button', 'backgroundImage'),
@@ -247,6 +247,8 @@ async def test_the_editor_follows_the_tokens_in_both_looks(
         assert look["text"] == tokens["text"], scheme
         assert look["caret"] == tokens["accent"], scheme
         assert look["ground"] == tokens["bg"], scheme
+        assert look["page"] == tokens["panel"], scheme  # (the editor sits on the printed page)
+        assert "Charter" in look["font"], scheme
         assert look["editor"] == "rgba(0, 0, 0, 0)", scheme  # (the page's ground shows through)
         assert look["panel"] == tokens["panel"], scheme
         assert look["field"] == tokens["panel2"], scheme  # (the search panel is not light grey)
@@ -312,6 +314,76 @@ async def test_the_graph_and_boards_take_their_colours_from_tokens(
         assert await own.evaluate("e => e.style.getPropertyValue('--card')") == "#aa5500"
         arrow = page.locator(".board-line").first
         assert await arrow.evaluate("e => getComputedStyle(e).stroke") == await token(page, "--ok")
+
+
+XRAY = """() => {
+  const found = [];
+  for (const e of document.querySelectorAll('body *')) {
+    const s = getComputedStyle(e);
+    if (e.closest('svg') && e.tagName !== 'svg') continue;
+    const r = e.getBoundingClientRect();
+    if (!r.width || !r.height || s.display === 'none' || s.visibility === 'hidden') continue;
+    const name = e.tagName.toLowerCase() + (e.id ? '#' + e.id : '')
+      + '.' + [...e.classList].join('.');
+    const circle = e.matches('.board-dot, .graph-key .swatch');
+    for (const k of ['borderTopLeftRadius', 'borderTopRightRadius', 'borderBottomLeftRadius',
+                     'borderBottomRightRadius']) {
+      const v = s[k];
+      if (v.endsWith('%')) { if (!circle) found.push(name + ' ' + k + ' ' + v); continue; }
+      if (parseFloat(v) > 2) found.push(name + ' ' + k + ' ' + v);
+    }
+    if (s.boxShadow !== 'none') found.push(name + ' shadow ' + s.boxShadow);
+  }
+  return found;
+}"""
+
+
+@pytest.mark.parametrize("scheme", ["dark", "light"])
+async def test_no_radius_above_two_pixels_and_no_shadow_at_rest(
+    static_site: str, app: Any, showcase: Path, monkeypatch: pytest.MonkeyPatch, scheme: str
+) -> None:
+    monkeypatch.setenv("NO_PROXY", "127.0.0.1")
+    async with notes_page(static_site, app, scheme=scheme) as page:
+        await open_note(page, static_site)
+        assert await page.evaluate(XRAY) == [], "a note"
+        await page.locator("#edit-toggle").click()
+        await page.wait_for_selector(".cm-editor .cm-line")
+        assert await page.evaluate(XRAY) == [], "the editor"
+        await opened(page, f"{static_site}/notes.html?board=Boards%2FPlan.canvas")
+        await page.wait_for_selector(".board-card")
+        assert await page.evaluate(XRAY) == [], "a board"
+        await opened(page, f"{static_site}/notes.html?view=graph")
+        await page.wait_for_selector(".whole-graph .node circle")
+        assert await page.evaluate(XRAY) == [], "the graph"
+        for view in ("tasks", "cards", "boards"):
+            await page.locator(f".quick button[data-view={view}]").click()
+            await page.wait_for_selector("h1.title")
+            await page.wait_for_timeout(250)
+            assert await page.evaluate(XRAY) == [], view
+
+
+@pytest.mark.parametrize("scheme", ["dark", "light"])
+async def test_a_note_reads_like_print(
+    static_site: str, app: Any, showcase: Path, monkeypatch: pytest.MonkeyPatch, scheme: str
+) -> None:
+    monkeypatch.setenv("NO_PROXY", "127.0.0.1")
+    (showcase / "Notes" / "Tagged.md").write_text(
+        "---\ntags: [home]\nshop: Rewe\n---\nText #errands here.\n", encoding="utf-8"
+    )
+    async with notes_page(static_site, app, scheme=scheme) as page:
+        await opened(page, f"{static_site}/notes.html?path=Notes%2FTagged.md")
+        await page.wait_for_selector("h1.title")
+        family = "e => getComputedStyle(e).fontFamily"
+        assert "Charter" in await page.locator("h1.title").evaluate(family)
+        assert "Charter" in await page.locator(".note-body").evaluate(family)
+        clear = "rgba(0, 0, 0, 0)"
+        fill = "e => getComputedStyle(e).backgroundColor"
+        for selector in (".chips a.tag", ".chips .chip", ".note-body a.tag"):
+            assert await page.locator(selector).first.evaluate(fill) == clear, selector
+        # the measure: about 70 characters of the serif on a line
+        width = await page.locator(".column").evaluate("e => e.getBoundingClientRect().width")
+        assert 560 <= width <= 660, width
+        assert await page.evaluate("() => document.documentElement.scrollWidth <= innerWidth")
 
 
 async def test_the_big_graph_is_redrawn_when_the_look_changes(

@@ -269,13 +269,17 @@ Windows says so and also when the setting cannot be read. The terminal chat's co
 (`termstyle.COLOURS`) are the same tokens, and answers start with a plain "›" mark.
 `tests/test_launcher_paper.py` checks all of this and compares the colours with `style.css`.
 
-**The Notes page in the Night Sky look.** The list on the left and the info panel are cards
-(radius `--r-4`) inset on the night ground. Their rows are 44 px high with a radius of 12;
-the open note rests on `--panel2` with a small `--accent` dot. Titles use `--font-display`,
-counts and dates use `.num`. The one gold button of a view is the new-note button, unless the
-view has its own main action (New board, Study all, Show answer, Write today's page): then
-`notes-page.js` makes that one gold and the list's button plain. No colour is written into
-`notes.css` or the notes scripts (`tests/test_notes_night_sky.py` checks this). The editor
+**The Notes page in the Paper look.** The list on the left and the info panel are plain columns
+on `--bg` with a thin line; the note is a printed page on `--panel`. Rows are 36 px high (44 px
+on touch and on a phone) with no radius; the open note rests on `--panel2` with a 2 px `--accent`
+line on its left. A note's title and text are set in `--font-display` about 38rem wide (around 70
+characters a line); tags and properties are plain text or 1 px outlined rectangles, callouts and
+quotes have a thin rule at the side, tables have rules and no box. The toolbar is text and line
+icons (Ask uses the `talk` icon). Counts and dates use `.num`. The one main button of a view is the
+new-note button, unless the view has its own main action (New board, Study all, Show answer,
+Write today's page): then `notes-page.js` makes that one main and the list's button plain. No
+colour is written into `notes.css` or the notes scripts, no radius is above 2 px except circles,
+and nothing has a shadow at rest (`tests/test_notes_paper.py` checks this). The editor
 theme in `notes-editor.js`, the search panel, the graph (SVG and canvas) and the board's
 preset colours all use tokens. The canvas graph reads the tokens when it draws and draws
 again when the look changes. The to-do callout is `--warn` with a dashed line. A colour
@@ -700,7 +704,7 @@ only, at most `LINKED_MAX` (5) items, `LINKED_ONE` (600) characters each and `LI
 (2000) in all; a note comes once. `notes.read` returns the path, properties, links and
 backlinks, and `notes._find` takes a path in the Starlight folder ("Journal/2026-11-01"),
 so notes outside Notes can be read; a rename stays in the note's folder. The Notes page's
-"✨ Ask" menu opens `/?ask=<request>`: the chat puts the request in the box of a new
+"Ask" menu opens `/?ask=<request>`: the chat puts the request in the box of a new
 conversation and sends nothing until Send.
 Block C4 adds templates. `notebook/templates.py`: the shipped Meeting, Daily and Project
 (German or English, by the page's language or the PC's locale) are copied to
