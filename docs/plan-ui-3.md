@@ -15,7 +15,7 @@ stays: tokens in `style.css`, shared blocks, German, screenshots, one block per 
 | P4 | The Notes page (editor, graph, boards) | P1 | **done** (0a85eae) |
 | P5 | Today, Memory, Activity, Automations, Kill, Pair, Statistics | P1 | **done** (fe2448a) |
 | P6 | The launcher window, the tray, the terminal's colours | P1 | **done** (525b165) |
-| F1 | Find in the open conversation (Ctrl F) | P2 | open |
+| F1 | Find in the open conversation (Ctrl F) | P2 | **done** (fa21f06) |
 | F2 | Undo instead of a question: delete and archive a conversation | P2 | **done** (6b1c37c) |
 | F3 | Text size and density, per device | P1 | **done** (7cc3bdb) |
 | P7 | Review: phone, German, contrast, screenshots of every page, docs | all | open |
