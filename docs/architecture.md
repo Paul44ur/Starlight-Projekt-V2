@@ -350,6 +350,20 @@ In `chat-list.js` the row shows the line (`withHit`: nodes and `textContent`, th
 `<mark>`), `openConversation(id, hit)` puts the number on each message (`data-n`) and
 `showFound` scrolls to it and sets `.found` for two seconds.
 
+**Find in the conversation.** (`docs/plan-ui-3.md`, block F1; the end of `chat-input.js`.)
+Ctrl+F (Cmd+F) or the search button in the top bar opens `#find`, a bar under the top bar; the
+page's own find is not used and nothing goes to the server. After a 150 ms pause in typing,
+`findRun` walks the text nodes of `.msg.you .body` and `.msg.bot .body` (not the name line,
+buttons or a code block's bar), splits each node at every hit (case-insensitive, a plain
+`RegExp` made from the escaped text) and wraps the hit in `<mark class="find">`; the current
+one also has `.current`. The nodes are split, never rewritten from a string, so a message
+that looks like HTML stays text. `findUnmark` puts every mark back and calls `normalize()`,
+so the text is as before. Enter and Shift+Enter (and the arrows) go on and back, wrapping
+round. While an answer streams it is not marked (it draws itself again on every frame); when
+`handle()` gets the final answer it calls `findRefresh`, which marks again at the same place.
+Esc closes the bar first; with the bar closed it stops the answer as before.
+`openConversation` closes the bar. "N of M" is translated by the existing pattern.
+
 **The chat page in the Paper look.** (`docs/plan-ui-3.md`, block P2.) The sidebar and the
 details pane sit on the ground (`--bg`) with a thin line, not as cards; the conversation is on
 `--panel`. New conversation is the one `button.primary`; the other sidebar buttons and the page

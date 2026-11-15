@@ -103,6 +103,13 @@
     "When is the next train to …?": "Wann fährt der nächste Zug nach …?",
     "Translate this into English: …": "Übersetze das ins Englische: …",
     "What can you do?": "Was kannst du?",
+    // find in the conversation (F1)
+    "Find in this conversation": "In diesem Gespräch suchen",
+    "Find in this conversation (Ctrl F)": "In diesem Gespräch suchen (Strg F)",
+    "Previous match (Shift+Enter)": "Voriger Treffer (Umschalt+Enter)", "Previous match": "Voriger Treffer",
+    "Next match (Enter)": "Nächster Treffer (Enter)", "Next match": "Nächster Treffer",
+    "Close (Esc)": "Schließen (Esc)", "Close the find bar": "Suchleiste schließen",
+    "No matches": "Keine Treffer",
     // the chat in the Paper look (P2)
     "Recently": "Zuletzt", "You can ask:": "Du kannst fragen:",
     "Access in the settings": "Zugänge in den Einstellungen",

@@ -181,6 +181,7 @@ document.addEventListener("keydown", (e) => {
   if (e.key !== "Escape") return;
   if (openMenu) { closeMenu(true); return; }
   if (document.body.classList.contains("drawer")) { setDrawer(false); document.getElementById("menu").focus(); return; }
+  if (findIsOpen()) { e.preventDefault(); findClose(true); return; }  // (the bar first; the answer goes on)
   if ((current || answering) && !e.target.closest(".confirm")) {
     e.preventDefault(); stopAnswer(); toast("Stopping …");
   } else if (editing) { cancelEdit(); input.value = ""; input.oninput(); }
@@ -390,3 +391,118 @@ document.getElementById("shot").onchange = async (e) => {
     box.appendChild(b);
   });
 };
+
+// -- find in the conversation (F1) ---------------------------------------------------------------
+// Ctrl+F (Cmd+F) or the bar's search button opens a bar under the top bar. Every hit in the
+// messages' text is wrapped in <mark class="find">, the current one also has .current. The
+// text nodes are split, never rewritten from a string, so a message that looks like HTML stays
+// text; closing the bar puts every text node back (normalize). Nothing goes to the server.
+const findBar = document.getElementById("find");
+const findField = document.getElementById("find-input");
+const findCount = document.getElementById("find-count");
+let findHits = [], findAt = 0, findTimer = 0;
+function findIsOpen() { return !findBar.hidden; }
+function findOpen() {
+  if (findBar.hidden) {
+    findBar.hidden = false;
+    document.getElementById("find-open").setAttribute("aria-expanded", "true");
+    if (findField.value) findRun(findAt);  // (the words from last time, marked again)
+  }
+  findField.focus(); findField.select();
+}
+function findClose(refocus) {
+  if (findBar.hidden) return;
+  clearTimeout(findTimer); findTimer = 0;
+  findUnmark();
+  findBar.hidden = true;
+  document.getElementById("find-open").setAttribute("aria-expanded", "false");
+  if (refocus) input.focus();
+}
+// Every mark goes back to the plain text it was made from.
+function findUnmark() {
+  const parents = new Set();
+  for (const mark of log.querySelectorAll("mark.find")) {
+    const parent = mark.parentNode;
+    if (!parent) continue;
+    parent.replaceChild(document.createTextNode(mark.textContent), mark);
+    parents.add(parent);
+  }
+  parents.forEach(p => p.normalize());
+  findHits = [];
+}
+// The text of the messages only: not their name and time line, buttons, a code block's bar.
+function findTextNodes() {
+  const nodes = [];
+  for (const body of log.querySelectorAll(".msg.you .body, .msg.bot .body")) {
+    const walker = document.createTreeWalker(body, NodeFilter.SHOW_TEXT, {
+      acceptNode: (n) => n.nodeValue && !n.parentElement.closest("button, .md-code-bar, [hidden]")
+        ? NodeFilter.FILTER_ACCEPT : NodeFilter.FILTER_REJECT,
+    });
+    while (walker.nextNode()) nodes.push(walker.currentNode);
+  }
+  return nodes;
+}
+function findRun(keep) {
+  clearTimeout(findTimer); findTimer = 0;
+  findUnmark();
+  const text = findField.value;
+  if (text) {
+    const pattern = new RegExp(text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "giu");
+    for (const node of findTextNodes()) {
+      const value = node.nodeValue, parts = [];
+      let last = 0;
+      for (const m of value.matchAll(pattern)) {
+        if (!m[0]) continue;
+        if (m.index > last) parts.push(document.createTextNode(value.slice(last, m.index)));
+        const mark = document.createElement("mark");
+        mark.className = "find";
+        mark.textContent = m[0];
+        parts.push(mark);
+        findHits.push(mark);
+        last = m.index + m[0].length;
+      }
+      if (!parts.length) continue;
+      if (last < value.length) parts.push(document.createTextNode(value.slice(last)));
+      node.replaceWith(...parts);
+    }
+  }
+  findAt = findHits.length ? Math.min(Math.max(keep || 0, 0), findHits.length - 1) : 0;
+  findShow(findHits.length > 0);
+}
+// The current hit stands out and is scrolled to the middle; the counter says where we are.
+function findShow(scroll) {
+  findHits.forEach((m, i) => m.classList.toggle("current", i === findAt));
+  findCount.textContent = !findField.value ? ""
+    : findHits.length ? `${findAt + 1} of ${findHits.length}` : "No matches";
+  if (scroll && findHits[findAt]) {
+    pinned = false;  // (reading there, not following the newest message)
+    findHits[findAt].scrollIntoView({ block: "center" });
+  }
+}
+function findStep(by) {
+  if (findTimer) findRun(0);  // (typed a moment ago: the hits first)
+  else if (findHits.some(m => !m.isConnected)) findRun(findAt);  // (an answer drew itself again)
+  if (!findHits.length) return;
+  findAt = (findAt + by + findHits.length) % findHits.length;
+  findShow(true);
+}
+// A new answer is complete: mark it too, at the same place if there still is one.
+function findRefresh() { if (findIsOpen() && findField.value) findRun(findAt); }
+findField.addEventListener("input", () => {
+  clearTimeout(findTimer);
+  findTimer = setTimeout(() => findRun(0), 150);
+});
+findField.addEventListener("keydown", (e) => {
+  if (e.key === "Enter") { e.preventDefault(); findStep(e.shiftKey ? -1 : 1); }
+});
+document.getElementById("find-next").onclick = () => findStep(1);
+document.getElementById("find-prev").onclick = () => findStep(-1);
+document.getElementById("find-close").onclick = () => findClose(true);
+document.getElementById("find-open").onclick = () => { if (findIsOpen()) findClose(true); else findOpen(); };
+// Ctrl+F replaces the browser's find on this page, also while typing in the message box.
+document.addEventListener("keydown", (e) => {
+  if (e.key.toLowerCase() !== "f" || !(e.ctrlKey || e.metaKey) || e.altKey || e.shiftKey) return;
+  if (document.querySelector("dialog[open]")) return;  // (a question or the shortcuts: not now)
+  e.preventDefault();
+  findOpen();
+});

@@ -264,7 +264,7 @@ async function openConversation(id, hit) {
   showAnswerStats(null);
   let data;
   try { data = await api("/api/conversations/" + id); } catch (e) { toast(e.message); return; }
-  conversation = id; log.innerHTML = ""; current = null;
+  conversation = id; findClose(); log.innerHTML = ""; current = null;
   switchDraft(id, Boolean(data.private));
   showContext(data.context_tokens || null);  // (the number kept with it, if it has one)
   if (data.title) { const { messages, ...about } = data; showTitle(about); }  // (also outside a search)

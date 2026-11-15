@@ -552,7 +552,10 @@ included), and the latest one **Regenerate** (asks the same question again and r
 answer); under it you see how fast it was written (tokens per second) and how long it took. With
 a mouse, older answers show **Copy** and **Branch** when you point at them. Scrolled up to read?
 A **↓** button above the box brings you back to the newest message; a dot on it means something
-new arrived below. **Ctrl+/** (or **?** when you are not typing) shows the keyboard shortcuts,
+new arrived below. **Ctrl+F** (Cmd+F on a Mac), or the search button in the top bar, finds words
+in the open conversation: every hit is marked, **Enter** and **Shift+Enter** go to the next and the
+previous one ("3 of 11"), **Esc** closes the bar. Only this page's text is searched; nothing is sent
+anywhere. **Ctrl+/** (or **?** when you are not typing) shows the keyboard shortcuts,
 here and on the Notes page; the conversation list, its ⋯ menus and the phone's drawer (the menu
 button) work with the keyboard too (Tab, Enter, the arrow keys, Esc).
 **Ctrl+K** (Cmd+K on a Mac) opens the quick switcher on every page: one box to jump to a
