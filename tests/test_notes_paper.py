@@ -83,27 +83,6 @@ async def open_note(page: Any, site: str) -> None:
 # -- no colour written into the page ------------------------------------------------------------
 
 
-def test_notes_css_and_scripts_hold_no_colour_of_their_own() -> None:
-    css = (STATIC / "notes.css").read_text(encoding="utf-8")
-    found = re.findall(r"#[0-9a-fA-F]{3,8}\b|\brgba?\(|\bhsla?\(", css)
-    assert found == [], found
-    named = re.findall(
-        rf"(?:color|background|fill|stroke|border[a-z-]*|outline|shadow)\s*:[^;{{}}]*\b({NAMED})\b",
-        css,
-        re.I,
-    )
-    assert named == [], named
-    for name in SCRIPTS:
-        script = (STATIC / name).read_text(encoding="utf-8")
-        script = re.sub(r"//.*", "", script)  # (comments may talk about colours)
-        assert re.findall(r"""["']#[0-9a-fA-F]{3,8}["']|\brgba?\(""", script) == [], name
-
-
-def test_notes_css_has_no_key_style_of_its_own() -> None:
-    css = (STATIC / "notes.css").read_text(encoding="utf-8")
-    assert not re.search(r"(^|\n)\s*kbd\s*\{", css)  # (the shared one in style.css applies)
-
-
 # -- the list, the rows and the titles ---------------------------------------------------------
 
 

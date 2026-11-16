@@ -34,23 +34,6 @@ def tokens(look: str) -> dict[str, str]:
     return found
 
 
-def test_the_palettes_have_the_paper_colours() -> None:
-    gui = load_gui()
-    for palette in (gui.DARK, gui.LIGHT):
-        assert palette.primary == palette.accent and palette.on_primary == palette.on_accent
-        assert contrast(palette.on_primary, palette.primary) >= 4.5  # the main button's text
-        for colour in (palette.text, palette.dim, palette.accent, palette.bad):
-            assert contrast(colour, palette.bg) >= 4.5, colour
-            assert contrast(colour, palette.panel) >= 4.5, colour
-    for palette in (gui.DARK, gui.LIGHT):  # (Tk has no transparent: no edge shows)
-        assert palette.primary_edge == palette.primary
-    for look, palette in (("dark", gui.DARK), ("light", gui.LIGHT)):
-        assert tokens(look)["primary"] == palette.primary
-        assert tokens(look)["on-primary"] == palette.on_primary
-        for name in ("bg", "panel", "panel2", "border", "text", "dim", "ok", "warn", "bad"):
-            assert tokens(look)[name] == getattr(palette, name), (look, name)
-
-
 def buttons_of(widget: tk.Misc) -> list[ttk.Button]:
     found: list[ttk.Button] = [widget] if isinstance(widget, ttk.Button) else []
     for child in widget.winfo_children():

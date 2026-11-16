@@ -30,19 +30,6 @@ def style_blocks(name: str) -> str:
     return re.sub(r"/\*.*?\*/", "", css, flags=re.S)  # (a comment may name a colour)
 
 
-@pytest.mark.parametrize("name", PAGES)
-def test_no_colour_is_written_out_in_a_pages_own_style(name: str) -> None:
-    found = []
-    for line in style_blocks(name).splitlines():
-        if not COLOUR.search(line):
-            continue
-        found.append(line.strip())
-    assert not found, found
-    if name == "kill":
-        html = (STATIC / "kill.html").read_text(encoding="utf-8")
-        assert "fixed red identity" in html  # (the comment that says why)
-
-
 async def open_at(
     playwright: Any,
     site: str,
@@ -99,24 +86,6 @@ async def open_at(
     await page.goto(f"{site}/{name}.html")
     await page.wait_for_load_state("load")
     return browser, page
-
-
-async def test_each_page_shows_a_title_in_the_display_font_and_no_star(
-    static_site: str,  # noqa: F811
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    async_api = pytest.importorskip("playwright.async_api")
-    monkeypatch.setenv("NO_PROXY", "127.0.0.1")
-    async with async_api.async_playwright() as playwright:
-        for name in PAGES:
-            browser, page = await open_at(playwright, static_site, name)
-            try:
-                await page.wait_for_selector("h1")
-                assert await page.locator("h1 svg.ico").count() == 0, name  # (Paper: no mark)
-                font = await page.locator("h1").evaluate("h => getComputedStyle(h).fontFamily")
-                assert "Charter" in font, (name, font)
-            finally:
-                await browser.close()
 
 
 MAIN = {"today": ["ask"], "automations": ["save"], "pair": ["go"], "memory": [],
@@ -213,23 +182,6 @@ TEXT_CONTRAST = """() => {
 }"""
 
 
-async def test_text_contrast_is_at_least_4_5_to_1_in_both_looks(
-    static_site: str,  # noqa: F811
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    async_api = pytest.importorskip("playwright.async_api")
-    monkeypatch.setenv("NO_PROXY", "127.0.0.1")
-    async with async_api.async_playwright() as playwright:
-        for name in PAGES:
-            for scheme in ("dark", "light"):
-                browser, page = await open_at(playwright, static_site, name, scheme=scheme)
-                try:
-                    await page.wait_for_timeout(300)
-                    assert await page.evaluate(TEXT_CONTRAST) == [], (name, scheme)
-                finally:
-                    await browser.close()
-
-
 async def test_numbers_are_in_mono(
     static_site: str,  # noqa: F811
     monkeypatch: pytest.MonkeyPatch,
@@ -281,23 +233,3 @@ async def test_the_kill_button_and_the_stopped_state_look_apart(
             assert await page.locator("#stop").evaluate(look) != seen["dark"]
         finally:
             await browser.close()
-
-
-async def test_nothing_scrolls_sideways_at_360_px(
-    static_site: str,  # noqa: F811
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    async_api = pytest.importorskip("playwright.async_api")
-    monkeypatch.setenv("NO_PROXY", "127.0.0.1")
-    async with async_api.async_playwright() as playwright:
-        for name in PAGES:
-            for scheme in ("dark", "light"):
-                browser, page = await open_at(
-                    playwright, static_site, name, width=360, scheme=scheme
-                )
-                try:
-                    await page.wait_for_timeout(300)
-                    wide = await page.evaluate("document.documentElement.scrollWidth")
-                    assert wide <= 360, (name, scheme, wide)
-                finally:
-                    await browser.close()

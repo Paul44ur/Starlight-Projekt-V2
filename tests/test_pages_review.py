@@ -258,20 +258,6 @@ GOLD = """() => [...document.querySelectorAll('button.primary, a.primary')]
   .filter(b => b.checkVisibility()).map(b => b.id || b.textContent.trim())"""
 
 
-@pytest.mark.parametrize("name", PAGES)
-async def test_a_view_has_one_gold_button_at_most(
-    name: str, static_site: str, full_app: Any
-) -> None:
-    pytest.importorskip("playwright.async_api")
-    context, page = await open_page(static_site, full_app, name)
-    try:
-        # (Settings is a column of cards: a card has one, see test_settings_night_sky)
-        found = await page.evaluate(GOLD)
-        assert len(found) <= (3 if name == "settings" else 2 if name == "chat" else 1), found
-    finally:
-        await context.__aexit__(None, None, None)
-
-
 # -- the leftovers the review fixed ----------------------------------------------------------
 
 

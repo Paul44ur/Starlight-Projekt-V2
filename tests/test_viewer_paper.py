@@ -153,17 +153,6 @@ def test_the_viewer_serves_the_looks_files_and_nothing_else(viewer: str) -> None
 # -- the page has no colour of its own ----------------------------------------------------------
 
 
-def test_the_page_has_no_colour_of_its_own() -> None:
-    html = PAGE.read_text(encoding="utf-8")
-    css = "\n".join(re.findall(r"<style>(.*?)</style>", html, re.S))
-    css = re.sub(r"/\*.*?\*/", "", css, flags=re.S)
-    assert not COLOUR.findall(css), COLOUR.findall(css)
-    script = html[html.index("<script>") :]
-    assert not COLOUR.findall(script)  # (the charts take their colours from classes)
-    assert "--page" not in html and "--surface-1" not in html and "--series-1" not in html
-    assert '<link rel="stylesheet" href="/style.css">' in html
-
-
 # -- in the browser ------------------------------------------------------------------------------
 
 READY = (

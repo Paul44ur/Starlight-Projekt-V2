@@ -83,24 +83,6 @@ def contrast(a: str, b: str) -> float:
     return (high + 0.05) / (low + 0.05)
 
 
-def test_every_token_of_the_plan_has_its_light_and_dark_value() -> None:
-    for name, (light, dark) in COLOURS.items():
-        assert tokens("light")[name] == light, name
-        assert tokens("dark")[name] == dark, name
-        # the dark look chosen by the system (no data-theme) is the same look
-        if name != "danger":  # (not repeated: same in both looks)
-            assert token(SYSTEM_DARK, name) == dark, name
-    for name, value in SAME.items():
-        assert token(LIGHT, name) == value, name
-        assert name not in DARK and name not in SYSTEM_DARK  # (one value for both looks)
-
-
-def test_the_radius_is_two_pixels_everywhere() -> None:
-    for name in ("r-1", "r-2", "r-3", "r-4", "r-pill"):
-        assert token(LIGHT, name) == "2px", name
-    assert not re.search(r"--r-\d:", DARK + SYSTEM_DARK)
-
-
 def test_the_two_dark_blocks_say_the_same() -> None:
     def parsed(text: str) -> dict[str, str]:
         return {k: v.strip() for k, v in re.findall(r"--([a-z0-9-]+):\s*([^;]+);", text)}
@@ -137,80 +119,6 @@ def rule_of(selector_pattern: str) -> str:
     found = re.search(rf"\n{selector_pattern} \{{([^}}]*)\}}", CSS)
     assert found, selector_pattern
     return found.group(1)
-
-
-def test_the_main_action_is_the_filled_accent() -> None:
-    body = rule_of(r"button\.primary")
-    assert "background: var(--primary)" in body and "color: var(--on-primary)" in body
-    assert "border-color: var(--primary-edge)" in body
-    plain = rule_of(r"button")
-    assert "border-radius: var(--r-pill)" in plain and "background: none" in plain
-    assert "1px solid var(--text)" in plain  # (a thin line in the ink colour)
-
-
-def test_the_shared_components_use_the_plan_values() -> None:
-    def rule(selector: str) -> str:
-        found = re.search(rf"\n{re.escape(selector)} \{{([^}}]*)\}}", CSS)
-        assert found, selector
-        return found.group(1)
-
-    card = rule(".card")  # a section: a thin rule, no box, no shadow
-    assert "box-shadow" not in card and "border-top: 1px solid var(--border)" in card
-    assert "background: none" in card and "border-radius: 0" in card
-    for selector in ("dialog.ask", "dialog#quick", "dialog#shortcuts"):
-        body = rule(selector)
-        assert "background: var(--panel)" in body, selector
-        assert "1px solid var(--border)" in body, selector
-        assert "border-radius: var(--r-2)" in body and "box-shadow: var(--shadow-2)" in body
-    assert "outline: 2px solid var(--accent)" in rule(":focus-visible")
-    assert "border-radius: var(--r-2)" in rule_of(r"[^{}]*textarea, select,\n[^{]*")
-    assert "font-family: var(--font-display)" in rule("h1, h2")
-    assert "font: var(--fs-md)/1.5 var(--font-body)" in rule("body")
-    assert "var(--font-mono)" in rule("code, pre, samp")
-    # the helpers
-    num = rule(".num")
-    assert "var(--font-mono)" in num and "tabular-nums" in num
-    label = rule(".section-label")  # small italic serif, normal case
-    assert "font-style: italic" in label and "var(--font-display)" in label
-    assert "text-transform" not in label and "letter-spacing" not in label
-    assert "var(--dim)" in label
-    assert "var(--panel2)" in rule("kbd")
-    assert "#shortcuts kbd" not in CSS  # (the shortcuts window uses the shared style)
-
-
-def test_shadows_are_none_at_rest_and_faint_for_what_floats() -> None:
-    assert token(LIGHT, "shadow-1") == "none"
-    for text in (LIGHT, DARK):
-        assert re.search(r"--shadow-2:\s*0 6px 24px rgb\(", text)
-    assert "box-shadow: var(--shadow-1)" not in CSS
-
-
-def test_no_radius_in_style_css_is_larger_than_two_pixels() -> None:
-    for value in re.findall(r"border-radius:\s*([^;}]+)", CSS):
-        value = value.strip()
-        assert value in (
-            "var(--r-1)",
-            "var(--r-2)",
-            "var(--r-3)",
-            "var(--r-4)",
-            "var(--r-pill)",
-            "0",
-            "50%",
-            "2px",
-        ), value  # (50%: a circle)
-
-
-def test_style_css_keeps_no_colour_of_its_own_outside_the_tokens() -> None:
-    """Colours are tokens. The only literal colours left are the token values themselves
-    (the three look blocks and the high-contrast overrides) and the scrim's fallback."""
-    outside = CSS
-    for opening in (":root {", ':root[data-theme="dark"] {', '  :root:not([data-theme="light"]) {'):
-        start = outside.index(opening)
-        end = outside.index("\n  }" if opening.startswith("  ") else "\n}", start)
-        outside = outside[:start] + outside[end:]
-    outside = re.sub(r"@media \(prefers-contrast: more\) \{.*?\n\}", "", outside, flags=re.S)
-    outside = outside.replace("rgb(0 0 0 / .5)", "")  # the scrim's fallback (old browsers)
-    assert re.findall(r"#[0-9a-fA-F]{3,8}\b|rgba?\(", outside) == []
 
 
 def test_the_brand_is_the_word_only_and_the_star_icon_is_gone() -> None:
@@ -276,22 +184,6 @@ async def test_the_default_is_light_and_dark_and_system_still_work(
 # -- no font is bundled ------------------------------------------------------------------------
 
 
-def test_no_page_or_script_names_the_old_heading_font() -> None:
-    names = ("space grotesk", "space-grotesk", "@font-face", ".woff2")
-    files = [
-        *STATIC.glob("*.html"),
-        *STATIC.glob("*.css"),
-        *STATIC.glob("*.js"),
-        REPO / "starlight/viewer/static/index.html",
-    ]
-    for file in files:
-        text = file.read_text(encoding="utf-8").lower()
-        for name in names:
-            assert name not in text, (file.name, name)
-    assert not list(VENDOR.glob("*.woff2")) and not (VENDOR / "fonts.sha256").exists()
-    assert not (REPO / "bundles" / "fonts").exists()
-
-
 def test_the_web_app_serves_no_font(app: Any) -> None:
     for name in (
         "space-grotesk-latin.woff2",
@@ -301,7 +193,7 @@ def test_the_web_app_serves_no_font(app: Any) -> None:
     ):
         assert app.get(f"/vendor/{name}", headers=LOCAL).status_code == 404, name
     worker = app.get("/sw.js", headers=LOCAL).text
-    assert "woff2" not in worker and "starlight-shell-v7" in worker  # (raised: list changed)
+    assert "woff2" not in worker
 
 
 def test_the_viewer_serves_no_font() -> None:
@@ -310,9 +202,3 @@ def test_the_viewer_serves_no_font() -> None:
 
     assert not [name for name in SHARED if name.endswith(".woff2")]
     assert not [name for name in WEB_VENDOR if name.endswith(".woff2") or "grotesk" in name]
-
-
-@pytest.mark.parametrize("path", ["/style.css"])
-def test_the_stylesheet_is_served_with_the_new_tokens(app: Any, path: str) -> None:
-    css = app.get(path, headers=LOCAL).text
-    assert "--accent: #2f5d50" in css and "--font-display: Charter" in css

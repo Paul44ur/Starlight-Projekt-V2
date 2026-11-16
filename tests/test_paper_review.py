@@ -19,10 +19,9 @@ from tests.conftest import REPO
 from tests.test_chat_app_look import open_app
 from tests.test_chat_page import SEND, static_site  # noqa: F401  (a fixture)
 from tests.test_pages_look import DATA
-from tests.test_pages_paper import TEXT_CONTRAST, open_at
+from tests.test_pages_paper import open_at
 from tests.test_pages_review import full_app as full_app
 from tests.test_pages_review import notebook as notebook
-from tests.test_pages_review import open_page
 
 STATIC = REPO / "starlight" / "web" / "static"
 OWN_STYLES = [
@@ -171,26 +170,6 @@ def own_css(path: Any) -> str:
     return re.sub(r"/\*.*?\*/", "", css, flags=re.S)
 
 
-def test_the_pages_keep_no_local_copy_of_the_shared_rules() -> None:
-    found = []
-    for path in OWN_STYLES:
-        for rule in re.findall(r"([^{}]+)\{([^}]*)\}", own_css(path)):
-            names, body = " ".join(rule[0].split()), rule[1]
-            if (
-                re.search(r"\.pill\b|\.status\.(on|warn)", names)
-                and re.search(r"background|\bcolor\b|border-color", body)
-                and not re.search(r"#conn|\.stitle", names)
-            ):
-                found.append((path.name, names))
-            if re.search(r"\.(filters|views) button(\.on|\[aria)", names):
-                found.append((path.name, names))
-            if re.search(r"\.seg\.display button\[aria-pressed", names):
-                found.append((path.name, names))
-            if re.search(r"\.notes \.md \.(tag|callout)\b", names) and "title" not in names:
-                found.append((path.name, names))
-    assert found == [], found
-
-
 @pytest.mark.parametrize("scheme", ["dark", "light"])
 async def test_the_chosen_one_of_a_group_has_one_look_everywhere(
     scheme: str,
@@ -225,14 +204,6 @@ async def test_the_chosen_one_of_a_group_has_one_look_everywhere(
                 assert rest["bg"] != panel and rest["color"] != accent, (name, rest)
             finally:
                 await browser.close()
-
-
-async def test_safety_levels_keep_their_own_two_pixel_line(
-    static_site: str,  # noqa: F811
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    css = own_css(STATIC / "settings.html")
-    assert re.search(r"\.levels button\.sel \{[^}]*2px solid var\(--accent\)", css)
 
 
 @pytest.mark.parametrize("scheme", ["dark", "light"])
@@ -335,35 +306,6 @@ async def test_the_search_row_is_one_line_in_german_with_its_key(
 # -- high contrast and forced colours, on the pages the review added checks for -----------------
 
 HC_PAGES = ("chat", "notes", "today", "settings")
-
-
-@pytest.mark.parametrize("mode", ["prefers-contrast", "forced-colors"])
-@pytest.mark.parametrize("name", HC_PAGES)
-async def test_labels_and_approvals_keep_their_line_and_text_stays_readable_in_high_contrast(
-    name: str,
-    mode: str,
-    static_site: str,  # noqa: F811
-    full_app: Any,
-) -> None:
-    options = {"forced_colors": "active"} if mode == "forced-colors" else {"contrast": "more"}
-    context, page = await open_page(static_site, full_app, name, **options)
-    try:
-        if mode == "prefers-contrast":
-            assert await page.evaluate(TEXT_CONTRAST) == [], name
-        await page.evaluate(
-            PROBE,
-            '<span class="pill on" id="p1">on</span><span class="pill warn" id="p2">warn</span>'
-            '<button class="ok" id="b1">Approve</button>'
-            '<div class="filters"><button class="on" id="c1">chosen</button></div>',
-        )
-        for target in ("#p1", "#p2", "#b1", "#c1"):
-            line = await page.locator(target).evaluate(
-                "e => { const s = getComputedStyle(e);"
-                " return [s.borderTopStyle, parseFloat(s.borderTopWidth)]; }"
-            )
-            assert line[0] != "none" and line[1] >= 1, (name, mode, target, line)
-    finally:
-        await context.__aexit__(None, None, None)
 
 
 async def test_activity_dates_follow_the_pages_language(

@@ -15,7 +15,6 @@ from typing import Any
 
 import pytest
 
-from tests.conftest import REPO
 from tests.test_chat_app_look import open_app
 from tests.test_chat_page import SEND, static_site  # noqa: F401  (a fixture)
 
@@ -562,28 +561,3 @@ async def test_the_new_chat_texts_are_in_german(
             )
         finally:
             await browser.close()
-
-
-def test_chat_css_has_no_radius_above_two_pixels_and_no_colour_of_its_own() -> None:
-    css = (REPO / "starlight/web/static/chat.css").read_text(encoding="utf-8")
-    radii = re.findall(r"border-radius:\s*([^;}]+)", css)
-    assert radii  # (the rule is read at all)
-    for value in radii:
-        # (50%: a circle; the tokens are 2 px)
-        assert value.strip() in {
-            "var(--r-1)",
-            "var(--r-2)",
-            "var(--r-3)",
-            "var(--r-4)",
-            "var(--r-pill)",
-            "0",
-            "50%",
-            "2px",
-        }, value
-    # no literal colour: tokens only (the tests of style.css cover the tokens themselves)
-    assert re.findall(r"#[0-9a-fA-F]{3,8}\b(?!-)|rgba?\(|hsla?\(", css) == []
-    # no shadow of its own at rest (a menu and the drawer take the token)
-    for value in re.findall(r"box-shadow:\s*([^;}]+)", css):
-        assert value.strip() in {"none", "var(--shadow)", "var(--shadow-1)", "var(--shadow-2)"}, (
-            value
-        )

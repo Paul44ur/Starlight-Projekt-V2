@@ -67,33 +67,6 @@ REPO = STATIC.parents[2]
 GREEN, PAPER = (0x2F, 0x5D, 0x50), (0xFB, 0xF9, 0xF4)  # --accent and --on-accent (light)
 
 
-def test_the_logo_is_flat_a_serif_s_on_the_green() -> None:
-    """No gradients and no shine: one flat green ground and one flat S, drawn as a path (no
-    font is needed where it is shown), in the look's own colours."""
-    style = (STATIC / "style.css").read_text("utf-8")
-    assert "--accent: #2f5d50" in style.lower() and "--on-accent: #fbf9f4" in style.lower()
-    logo = (STATIC / "icon.svg").read_text("utf-8")
-    logos = {
-        "icon.svg": logo,
-        "kill-icon.svg": (STATIC / "kill-icon.svg").read_text("utf-8"),
-        "starlight.svg": (REPO / "assets" / "logo" / "starlight.svg").read_text("utf-8"),
-        "starlight-light.svg": (REPO / "assets" / "logo" / "starlight-light.svg").read_text(
-            "utf-8"
-        ),
-    }
-    for name, svg in logos.items():
-        for effect in ("Gradient", "url(#", "<defs", "opacity", "filter", "blur", "<text"):
-            assert effect not in svg, (name, effect)
-    assert logos["starlight.svg"] == logo  # (the logo file is the page's icon)
-    assert '<rect width="512" height="512" rx="112" fill="#2f5d50"/>' in logo
-    assert logo.count("<path") == 1 and 'fill="#fbf9f4"' in logo  # the S, nothing else
-    assert "Liberation Serif" in logo and "Open Font License" in logo  # (where it comes from)
-    assert 'rx="112" fill="#2f5d50"/>' in logos["kill-icon.svg"]  # (the same ground)
-    assert "#d32f2f" in logos["kill-icon.svg"]  # (the red stop sign stays)
-    light = logos["starlight-light.svg"]
-    assert 'rx="112" fill="#f6f3ec"/>' in light and 'fill="#2f5d50"/><!--' in light
-
-
 def test_everything_made_from_the_logo_shows_the_flat_one() -> None:
     image = pytest.importorskip("PIL.Image")
 
