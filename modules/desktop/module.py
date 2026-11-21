@@ -50,6 +50,18 @@ from .backends import (
     make_dpi_aware,
 )
 from .indicator import Indicator
+from .targets import (
+    VISION_PROMPT,
+    Hit,
+    monitor_of,
+    name_variants,
+    order_windows,
+    parse_vision,
+    search_ocr,
+    search_uia,
+    title,
+    window_at,
+)
 
 if TYPE_CHECKING:  # Pillow is in the optional 'desktop' extra: the module must load without
     from PIL import Image
@@ -73,7 +85,8 @@ class Config(BaseModel):
     # Screenshots never leave this computer. Set true to allow a vision model on another
     # machine in your home network (10.x, 172.16-31.x, 192.168.x, IPv6 fd00::/8).
     vision_allow_lan: bool = False
-    ocr_languages: str = "eng"  # e.g. "eng+deu" (install the German Tesseract data)
+    # empty: "eng+deu" when the German Tesseract data is installed, else "eng"
+    ocr_languages: str = ""
     ocr_command: str = ""  # path to tesseract.exe if not on PATH
     apps: dict[str, list[str]] = Field(default_factory=lambda: dict(DEFAULT_APPS))
     typing_interval: float = 0.03  # seconds between characters
@@ -195,7 +208,10 @@ class DesktopModule(Module):
     @property
     def ocr(self) -> Ocr:
         if self._ocr is None:
-            self._ocr = TesseractOcr(self.config.ocr_languages, self.config.ocr_command)
+            ocr = TesseractOcr(self.config.ocr_languages, self.config.ocr_command)
+            if ocr.warning:
+                self.ctx.logger.warning(ocr.warning)
+            self._ocr = ocr
         return self._ocr
 
     @ocr.setter
@@ -207,6 +223,10 @@ class DesktopModule(Module):
         if self._uia is None:
             self._uia = UiAutomation()
         return self._uia
+
+    @uia.setter
+    def uia(self, value: UiAutomation) -> None:
+        self._uia = value
 
     def vision(self) -> ModelProvider:
         if self._vision is None:
@@ -406,6 +426,87 @@ class DesktopModule(Module):
             "x": int(float(point["x"]) / scale) + left,
             "y": int(float(point["y"]) / scale) + top,
         }
+
+    @tool
+    async def find_target(self, target: str, window: str = "") -> dict[str, Any]:
+        """Where a button, menu or other thing is on the screen, as a box, to point at it.
+        Looks by name in the windows (UI Automation, English and German names), then reads
+        the screen (OCR), then asks the vision model. window: part of a window's title, to
+        look only there. A miss lists the open windows: ask the user which one."""
+        self.ctx.kill_switch.check()
+        variants = name_variants(target)
+        if not variants:
+            raise ToolError("say what to look for")
+        hit, tried, windows, monitors = await asyncio.to_thread(self._find_local, variants, window)
+        if hit is None and self.config.vision is not None:
+            tried.append("vision")
+            self.ctx.kill_switch.check()
+            hit = await self._find_vision(target, windows)
+        if hit is None:
+            return {
+                "found": False,
+                "target": target,
+                "tried": tried,
+                "windows": [title(w.title) for w in order_windows(windows)][:5],
+            }
+        return {
+            "found": True,
+            "box": list(hit.box),
+            "monitor": monitor_of(monitors, hit.box),
+            "method": hit.method,
+            "label": hit.label,
+            "confidence": hit.confidence,
+            "window": hit.window,
+        }
+
+    def _find_local(
+        self, variants: list[str], window: str
+    ) -> tuple[Hit | None, list[str], list[Any], list[tuple[int, int, int, int]]]:
+        """UI Automation, then OCR (in a worker thread: both block)."""
+        tried: list[str] = []
+        windows: list[Any] = []
+        hit: Hit | None = None
+        try:
+            uia = self.uia
+        except DesktopUnavailable:  # not Windows, or the extra is missing
+            uia = None
+        if uia is not None:
+            tried.append("uia")
+            try:
+                with uia.session():  # one COM session for the windows and their controls
+                    windows = uia.windows()
+                    hit = search_uia(uia, order_windows(windows, window), variants)
+            except Exception as exc:  # COM errors: OCR can still find it
+                self.ctx.logger.warning("UI Automation failed", error=str(exc))
+        monitors = self.screen.monitors()
+        if hit is None:
+            try:
+                ocr = self.ocr
+            except DesktopUnavailable as exc:
+                self.ctx.logger.info("no OCR for find_target", reason=str(exc))
+            else:
+                tried.append("ocr")
+                self.ctx.kill_switch.check()
+                named = order_windows(windows, window) if window else []
+                hit = search_ocr(self.screen, ocr, variants, windows, named[0] if named else None)
+        return hit, tried, windows, monitors
+
+    async def _find_vision(self, target: str, windows: list[Any]) -> Hit | None:
+        try:
+            vision = self.vision()
+            png, scale = await asyncio.to_thread(self._encoded)
+            left, top, width, height = self.screen.bounds()
+            prompt = VISION_PROMPT.format(
+                target=target, w=int(width * scale), h=int(height * scale)
+            )
+            response = await vision.chat([Message("user", prompt, images=[png])], [])
+        except Exception as exc:  # no model, or it is not running: a miss, said plainly
+            self.ctx.logger.warning("vision model failed", error=str(exc))
+            return None
+        box = parse_vision(response.content, scale, (left, top))
+        if box is None:
+            return None
+        return Hit(box, "vision", target, "maybe", window_at(windows, box))
 
     @tool
     def list_controls(self, window: str = "") -> list[dict[str, str]]:

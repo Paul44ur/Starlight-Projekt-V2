@@ -14,6 +14,7 @@ import contextlib
 import shutil
 import sys
 import time
+from collections.abc import Iterator
 from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Protocol
@@ -194,7 +195,9 @@ class Ocr(Protocol):
 class TesseractOcr:
     WINDOWS_DEFAULT = Path(r"C:\Program Files\Tesseract-OCR\tesseract.exe")
 
-    def __init__(self, languages: str = "eng", command: str = "") -> None:
+    def __init__(self, languages: str = "", command: str = "") -> None:
+        """``languages`` empty: English and German (``eng+deu``) when the German data is
+        installed, else English, and ``warning`` says so."""
         try:
             import pytesseract
         except ImportError as exc:
@@ -208,7 +211,18 @@ class TesseractOcr:
             raise DesktopUnavailable("Tesseract not found; install it or set ocr_command")
         pytesseract.pytesseract.tesseract_cmd = cmd
         self._tess = pytesseract
-        self.languages = languages
+        self.warning = ""
+        self.languages = languages or self._default_languages()
+
+    def _default_languages(self) -> str:
+        try:
+            installed = set(self._tess.get_languages(config=""))
+        except Exception:  # an old Tesseract, or it cannot list them
+            installed = set()
+        if "deu" in installed:
+            return "eng+deu"
+        self.warning = "German OCR data (deu.traineddata) not installed: reading English only"
+        return "eng"
 
     def boxes(self, image: Image.Image) -> list[Box]:
         data = self._tess.image_to_data(
@@ -278,8 +292,35 @@ def find_phrase(boxes: list[Box], phrase: str) -> list[Box]:
 # -- Windows UI Automation -----------------------------------------------------------------
 
 
+@dataclass
+class WindowInfo:
+    """A visible top-level window."""
+
+    title: str
+    rect: tuple[int, int, int, int]  # x, y, w, h on the virtual desktop
+    foreground: bool = False
+    ref: Any = None  # the backend's own handle on it
+
+
+@dataclass
+class ControlInfo:
+    name: str
+    rect: tuple[int, int, int, int]
+    offscreen: bool = False
+    type: str = ""
+
+
+def _rect(rect: Any) -> tuple[int, int, int, int]:
+    return int(rect.left), int(rect.top), int(rect.width()), int(rect.height())
+
+
 class UiAutomation:
-    """Find controls by name in the foreground (or a named) window. Windows only."""
+    """Find controls by name in the foreground (or a named) window. Windows only.
+
+    UI Automation is COM: every thread that uses it must initialise it first. The sync
+    tools run in a worker thread (``asyncio.to_thread``), so each method here does that
+    itself (``session``); code that keeps controls across calls opens one ``session``
+    around all of them."""
 
     def __init__(self) -> None:
         if sys.platform != "win32":
@@ -289,6 +330,12 @@ class UiAutomation:
         except ImportError as exc:
             raise DesktopUnavailable("install the 'desktop' extra (uiautomation)") from exc
         self._auto: Any = uiautomation
+
+    @contextlib.contextmanager
+    def session(self) -> Iterator[None]:
+        """COM for the calling thread; nested sessions are fine (COM counts them)."""
+        with self._auto.UIAutomationInitializerInThread():
+            yield
 
     def _root(self, window: str) -> Any:
         auto = self._auto
@@ -300,29 +347,70 @@ class UiAutomation:
         return auto.GetForegroundControl().GetTopLevelControl()
 
     def find(self, name: str, control_type: str = "", window: str = "") -> Box | None:
-        root = self._root(window)
-        criteria: dict[str, Any] = {"searchDepth": 15, "Name": name}
-        if control_type:
-            criteria["ControlTypeName"] = control_type
-        control = root.Control(**criteria)
-        if not control.Exists(2):  # seconds to wait (searchDepth is the tree depth)
-            criteria.pop("Name")
-            criteria["SubName"] = name
+        with self.session():
+            root = self._root(window)
+            criteria: dict[str, Any] = {"searchDepth": 15, "Name": name}
+            if control_type:
+                criteria["ControlTypeName"] = control_type
             control = root.Control(**criteria)
-            if not control.Exists(1):
-                return None
-        rect = control.BoundingRectangle
-        return Box(name, rect.left, rect.top, rect.width(), rect.height(), 100.0)
+            if not control.Exists(2):  # seconds to wait (searchDepth is the tree depth)
+                criteria.pop("Name")
+                criteria["SubName"] = name
+                control = root.Control(**criteria)
+                if not control.Exists(1):
+                    return None
+            rect = control.BoundingRectangle
+            return Box(name, rect.left, rect.top, rect.width(), rect.height(), 100.0)
 
     def list_controls(self, window: str = "", limit: int = 150) -> list[dict[str, str]]:
-        root = self._root(window)
-        controls = []
-        for control, _depth in self._auto.WalkControl(root, maxDepth=8):
-            if control.Name:
-                controls.append({"name": control.Name, "type": control.ControlTypeName})
-            if len(controls) >= limit:
-                break
-        return controls
+        with self.session():
+            root = self._root(window)
+            controls = []
+            for control, _depth in self._auto.WalkControl(root, maxDepth=8):
+                if control.Name:
+                    controls.append({"name": control.Name, "type": control.ControlTypeName})
+                if len(controls) >= limit:
+                    break
+            return controls
+
+    def windows(self) -> list[WindowInfo]:
+        """Visible top-level windows with a title. Call inside ``session``."""
+        auto = self._auto
+        try:
+            foreground = auto.GetForegroundControl().GetTopLevelControl()
+            front = foreground.NativeWindowHandle if foreground else 0
+        except Exception:  # no foreground window (the lock screen, a UAC prompt)
+            front = 0
+        out = []
+        for window in auto.GetRootControl().GetChildren():
+            try:
+                if window.IsOffscreen or not window.Name:  # minimised or a hidden helper
+                    continue
+                rect = _rect(window.BoundingRectangle)
+                handle = window.NativeWindowHandle
+            except Exception:  # the window closed while we looked
+                continue
+            out.append(WindowInfo(window.Name, rect, bool(front) and handle == front, window))
+        return out
+
+    def controls(self, window: WindowInfo, deadline: float) -> Iterator[ControlInfo]:
+        """Named controls in a window until ``deadline`` (time.monotonic). Call inside
+        ``session``."""
+        for control, _depth in self._auto.WalkControl(window.ref, maxDepth=12):
+            if time.monotonic() > deadline:
+                return
+            try:
+                name = control.Name
+                if not name:
+                    continue
+                yield ControlInfo(
+                    name,
+                    _rect(control.BoundingRectangle),
+                    bool(control.IsOffscreen),
+                    control.ControlTypeName,
+                )
+            except Exception:  # the control went away while we walked
+                continue
 
 
 def make_dpi_aware() -> None:
