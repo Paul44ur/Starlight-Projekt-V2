@@ -410,11 +410,11 @@ W8's review (2026-11-21, in the container, on the merged `Starlight_Fable`):
   keywords to `modules/overlay/module.yaml`; W7 added `change_settings`,
   `show_test_point`, `_start` and `_stop` to `modules/overlay/module.py` and changed one
   comment in `config/modules/overlay.yaml`. All covered by their tests; nothing to undo.
-- **Open question (ask before clicking):** `desktop.*` is in `permissions.auto_approve`
-  by default (`config/starlight.yaml`). `overlay.click_target` always asks, but if the
-  model answers "Klick drauf" with `desktop.click` directly, it clicks without asking.
-  Test 5 shows whether this happens. A fix would be `desktop.click` in
-  `permissions.confirm` (then every click asks), or the user's choice to leave it.
+- **Ask before clicking, decided by the user (2026-11-21): the model decides.** Not every
+  click has to ask. `desktop.*` stays in `permissions.auto_approve`: `overlay.click_target`
+  asks, a direct `desktop.click` does not. The user chose this over a fixed list of risky
+  buttons (send, delete, buy) that always ask, knowing that a web page could talk the
+  model into a click without asking.
 - Only on Windows (`docs/overlay-windows-test.md`): click-through, the card not taking
   the focus, hiding from screenshots, mixed scaling, CPU (W2); the COM fix in UI
   Automation (W4); a real "ja"/"nein" by microphone and `click_target` (W6).
