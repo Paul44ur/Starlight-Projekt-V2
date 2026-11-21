@@ -59,7 +59,7 @@ SHIPPED = frozenset({
     "docs", "expenses", "files", "filesearch", "finance", "flashcards", "focus",
     "game", "habits", "hello",
     "home", "journal", "lan", "login", "logwatch", "mail", "media", "network", "news",
-    "notes", "notify", "office", "pdf", "podcasts", "recipes", "recon", "reminders",
+    "notes", "notify", "office", "overlay", "pdf", "podcasts", "recipes", "recon", "reminders",
     "research", "sensors", "system", "todo", "trains", "transcripts", "translate", "trips",
     "voice", "watch", "weather", "web", "whatsapp",
 })  # fmt: skip

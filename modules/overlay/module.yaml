@@ -1,0 +1,12 @@
+# The overlay module (docs/plan-overlay.md 4.4): starts and watches the overlay process
+# (python -m starlight.overlay, needs the optional "overlay" extra) and points at things.
+name: overlay
+version: 0.1.0
+description: "Points at things on your screen and shows Starlight's orb: where is a button or menu, show me, zeig mir"
+keywords: ["where is", "where's", "show me", "point", "find on screen", "wo ist", "zeig mir", "zeige", "wo finde ich", "Menü", "Knopf", "Einstellungen"]
+entrypoint: module:OverlayModule
+# Informational only: point_at, clear_pointer and overlay_status are safe; clicking (W6)
+# asks first.
+permissions: [safe, confirm]
+dependencies: []
+enabled_by_default: true
