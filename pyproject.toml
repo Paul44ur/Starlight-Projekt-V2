@@ -47,7 +47,9 @@ voice = ["sounddevice>=0.4"]
 # Starlight in its own window (`starlight app`, WebView2), not in the browser. Windows only:
 # elsewhere the browser opens the chat.
 app = ["pywebview>=6.2; sys_platform == 'win32'"]
-all = ["starlight[hotkey,browser,network,desktop,system,pdf,office,transcripts,voice,app]"]
+# The overlay (orb, pointing, the Yes/No card): its own Qt process (`python -m starlight.overlay`).
+overlay = ["PySide6-Essentials>=6.7"]
+all = ["starlight[hotkey,browser,network,desktop,system,pdf,office,transcripts,overlay,voice,app]"]
 
 [project.scripts]
 starlight = "starlight.cli:main"

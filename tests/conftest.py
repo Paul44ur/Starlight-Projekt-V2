@@ -39,6 +39,7 @@ ONE_WORKER_FILES: dict[str, str] = {
     "test_regressions.py": "tkinter window",
     "test_sweep_fixes.py": "tkinter window",
     "test_ui_layout.py": "tkinter window",
+    "test_overlay_app.py": "Qt windows and overlay child processes",
 }
 
 
