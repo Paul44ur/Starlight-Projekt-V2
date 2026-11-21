@@ -1046,6 +1046,60 @@ def create_app(paths: Paths | None = None) -> Any:
         kernel().audit.record("web.voice", step=action, name=str(data.get("name", "")))
         return done
 
+    # -- the overlay (docs/plan-overlay.md 7) --------------------------------------------------
+
+    def overlay() -> Any:
+        """The overlay module's instance (modules/overlay/module.py). Not typed, like voice()."""
+        record = kernel().modules.records.get("overlay")
+        if record is None or record.instance is None:
+            raise HTTPException(status_code=404, detail="the overlay module is off")
+        return record.instance
+
+    def overlay_view(layer: Any) -> dict[str, Any]:
+        state: dict[str, Any] = layer.overlay_status()
+        settings = layer.config
+        return {
+            **state,
+            "orb": settings.orb,
+            "orb_monitor": settings.orb_monitor,
+            "accent": settings.accent.upper(),
+            "reduce_motion": settings.reduce_motion,
+        }
+
+    @app.get("/api/overlay")
+    def overlay_settings(request: Request) -> dict[str, Any]:
+        local_only(request)  # it draws on this PC's screen: at the PC only
+        return overlay_view(overlay())
+
+    @app.post("/api/overlay")
+    async def set_overlay(request: Request) -> dict[str, Any]:
+        local_only(request)
+        data = await body(request)
+        layer = overlay()
+        try:
+            changed = await layer.change_settings(data)
+        except ToolError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        if changed:
+            kernel().audit.record("web.overlay", **{k: str(v) for k, v in changed.items()})
+        return overlay_view(layer)
+
+    @app.post("/api/overlay/test")
+    async def overlay_test(request: Request) -> dict[str, Any]:
+        local_only(request)
+        box = (await body(request)).get("box")
+        if (
+            not isinstance(box, list)
+            or len(box) != 4
+            or not all(isinstance(v, int | float) and not isinstance(v, bool) for v in box)
+        ):
+            raise HTTPException(status_code=400, detail="send box: [x, y, w, h]")
+        try:
+            shown = await overlay().show_test_point(tuple(round(v) for v in box))
+        except ToolError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        return {"shown": shown}
+
     # -- automations and the approval queue -------------------------------------------------
 
     def module_instance(name: str, label: str) -> Any:

@@ -130,6 +130,19 @@ Then ask: "Is my server up and what is its disk usage?"
 **Stopping it:** Ctrl+Alt+J, moving the mouse into any screen corner, or
 `uv run starlight kill` from another terminal. Then `uv run starlight resume`.
 
+**The overlay** (the orb that points at things on the screen):
+
+1. It comes with Starlight.exe's packages. If **Settings → Overlay** says "Not installed",
+   close Starlight and start Starlight.exe again (about 100 MB more).
+2. Turn on **Show the overlay**. A dim orb appears at the top of monitor 1. The mouse
+   still clicks through everywhere, and it has no taskbar entry.
+3. **Show a test point** draws a line to the Settings page's heading for 3 seconds.
+4. Pointing by voice needs "Hey Starlight" (Settings → Voice). Then ask "Wo sind die
+   Einstellungen?" in an open window.
+
+It cannot draw over exclusive-fullscreen games or the Windows admin prompt (UAC). Its own
+messages go to `data/modules/overlay/overlay.log` if it does not start.
+
 ## 7. Code and skills (Step 9)
 
 1. Install **Docker Desktop** so generated code runs in a container. Without Docker,

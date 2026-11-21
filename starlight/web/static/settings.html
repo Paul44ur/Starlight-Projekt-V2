@@ -32,6 +32,14 @@
   .locked { display: none; }
   body.remote .locked { display: block; }
   body.remote #backup-card { display: none; }  /* PC only: a phone is not shown it at all */
+  body.remote #overlay-card { display: none; }  /* it draws on this PC's screen: PC only */
+  /* the overlay's colours: a row of square swatches (the colour is the overlay's, not the page's) */
+  .swatches { display: inline-flex; gap: var(--s-2); }
+  .swatches button { width: 26px; height: 26px; padding: 0; border: 1px solid var(--border); border-radius: var(--r-2); }
+  .swatches button[aria-checked="true"] { outline: 2px solid var(--text); outline-offset: 2px; }
+  #overlay-card .row { margin-top: var(--s-2); }
+  #overlay-card .practice { margin-top: var(--s-3); }
+  #overlay-card select { min-width: 0; }
   #backup-card .row { margin: 8px 0; }
   #backup-card p { margin: 6px 0; }
   body.remote .local-only button, body.remote .local-only input, body.remote .local-only .switch {
@@ -226,6 +234,30 @@
     <label class="practice"><span class="switch"><input type="checkbox" id="wake" /><span></span></span>
       <span><b>"Hey Starlight"</b> <span class="dim small">— listen on this PC's microphone for the phrase,
       then answer out loud. Only short bits of speech are written down, on this PC, to look for it.</span></span></label>
+  </div>
+
+  <div class="card local-only" id="overlay-card" hidden>
+    <h2 id="overlay-heading">Overlay</h2>
+    <p class="dim small">Starlight's orb on your screen. Ask by voice where something is ("Hey Starlight,
+      where is the settings menu?") and it draws a line to it and frames it. It never takes the mouse or the keyboard.</p>
+    <p class="small" id="overlay-missing" hidden><b>Not installed.</b> <span class="dim">Close Starlight and start
+      Starlight.exe again: it installs the overlay with Starlight's other packages (about 100 MB).</span></p>
+    <label class="practice"><span class="switch"><input type="checkbox" id="overlay-on" /><span></span></span>
+      <span><b>Show the overlay</b> <span class="dim small">— on this PC's screen, on top of every window.</span></span></label>
+    <div id="overlay-settings">
+      <div class="row"><span id="orb-label" class="display-label">Orb</span>
+        <div class="seg display" id="overlay-orb" role="group" aria-labelledby="orb-label">
+          <button type="button" data-value="always">Always</button><button type="button" data-value="awake">Only when awake</button></div></div>
+      <div class="row"><label for="overlay-monitor" class="display-label">Monitor</label>
+        <select id="overlay-monitor"></select></div>
+      <div class="row"><span id="accent-label" class="display-label">Colour</span>
+        <div class="swatches" id="overlay-accent" role="radiogroup" aria-labelledby="accent-label"></div></div>
+      <label class="practice"><span class="switch"><input type="checkbox" id="overlay-motion" /><span></span></span>
+        <span><b>Reduce motion</b> <span class="dim small">— the orb and the line appear without moving.
+        Also on when Windows' animation effects are off.</span></span></label>
+      <div class="row"><button type="button" id="overlay-test">Show a test point</button>
+        <span class="dim small"><span id="overlay-state"></span> <span id="overlay-error" translate="no"></span></span></div>
+    </div>
   </div>
 
   <div class="card plain">
@@ -731,6 +763,66 @@ async function tryVoice(name, code) {
   } catch (e) { toast("Could not speak"); }
 }
 
+// -- the overlay (docs/plan-overlay.md 7): PC only; a phone gets 403 and never sees the card --
+const ACCENTS = [["#4FC8FF", "Cyan"], ["#3DDC97", "Green"], ["#FFB547", "Amber"], ["#A78BFA", "Violet"], ["#E8EEF5", "White"]];
+let overlayNow = null;
+async function loadOverlay() {
+  try { overlayNow = await api("/api/overlay"); } catch (e) { return; }  // off, or not at the PC
+  document.getElementById("overlay-card").hidden = false;
+  showOverlay();
+}
+function overlayLine(o) {
+  if (!o.enabled) return "The overlay is off.";
+  if (o.running) return o.screens.length === 1 ? "Running on 1 monitor." : `Running on ${o.screens.length} monitors.`;
+  if (o.gave_up) return "It stopped after repeated failures. Turn it off and on to try again.";
+  return "Starting …";
+}
+function showOverlay() {
+  const o = overlayNow;
+  document.getElementById("overlay-missing").hidden = o.installed;
+  const on = document.getElementById("overlay-on");
+  on.checked = o.enabled; on.disabled = !o.installed && !o.enabled;
+  document.getElementById("overlay-settings").hidden = !o.enabled;
+  document.querySelectorAll("#overlay-orb button").forEach(b => b.setAttribute("aria-pressed", b.dataset.value === o.orb ? "true" : "false"));
+  const monitors = document.getElementById("overlay-monitor");
+  const count = Math.max(o.screens.length || 2, o.orb_monitor);
+  monitors.replaceChildren(...Array.from({ length: count }, (_, i) => {
+    const option = new Option(String(i + 1), String(i + 1)); option.selected = i + 1 === o.orb_monitor; return option;
+  }));
+  const swatches = document.getElementById("overlay-accent");
+  swatches.replaceChildren(...ACCENTS.map(([colour, name]) => {
+    const b = el("button"); b.type = "button"; b.setAttribute("role", "radio");
+    b.style.background = colour; b.title = name; b.setAttribute("aria-label", name);
+    b.setAttribute("aria-checked", colour === o.accent ? "true" : "false");
+    b.onclick = () => setOverlay({ accent: colour });
+    return b;
+  }));
+  document.getElementById("overlay-motion").checked = o.reduce_motion;
+  document.getElementById("overlay-state").textContent = overlayLine(o);
+  document.getElementById("overlay-error").textContent = o.enabled && !o.running ? o.last_error : "";  // (the server's words)
+  document.getElementById("overlay-test").disabled = !o.running;
+}
+async function setOverlay(change) {
+  try { overlayNow = await api("/api/overlay", { method: "POST", body: change }); showOverlay(); }
+  catch (e) { toast(e.message); showOverlay(); }
+  if (change.enabled) setTimeout(loadOverlay, 2500);  // it says "ready" a moment later
+}
+document.getElementById("overlay-on").onchange = (e) => setOverlay({ enabled: e.target.checked });
+document.getElementById("overlay-motion").onchange = (e) => setOverlay({ reduce_motion: e.target.checked });
+document.getElementById("overlay-monitor").onchange = (e) => setOverlay({ orb_monitor: Number(e.target.value) });
+document.querySelectorAll("#overlay-orb button").forEach(b => { b.onclick = () => setOverlay({ orb: b.dataset.value }); });
+// The test point: the heading of this page, in the screen's pixels (roughly: the window's frame is guessed).
+document.getElementById("overlay-test").onclick = async () => {
+  const r = document.querySelector("header.top h1").getBoundingClientRect(), dpr = window.devicePixelRatio || 1;
+  const side = Math.max(0, (window.outerWidth - window.innerWidth) / 2);
+  const top = Math.max(0, window.outerHeight - window.innerHeight - side);
+  const box = [(window.screenX + side + r.left) * dpr, (window.screenY + top + r.top) * dpr, r.width * dpr, r.height * dpr].map(Math.round);
+  try {
+    const done = await api("/api/overlay/test", { method: "POST", body: { box } });
+    toast(done.shown ? "Look at the heading of this page" : "The overlay is not running");
+  } catch (e) { toast(e.message); }
+};
+
 // A sign when an answer is ready: for this device, on unless switched off.
 const readySign = document.getElementById("ready-sign");
 readySign.checked = readySignOn();
@@ -859,7 +951,7 @@ document.getElementById("backup-cancel").onclick = async () => {
 
 (async () => {
   try { const s = await api("/api/status"); if (!s.local) document.body.classList.add("remote"); } catch (e) { /* */ }
-  load(); loadSafety(); loadModel(); loadDevices(); loadVoices(); loadBackup();
+  load(); loadSafety(); loadModel(); loadDevices(); loadVoices(); loadOverlay(); loadBackup();
 })();
 </script>
 </body>
