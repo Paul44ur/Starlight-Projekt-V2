@@ -401,7 +401,17 @@ MODEL_INFO = {
 }
 # Voice (optional, --voice): speech-to-text with whisper.cpp and text-to-speech with Piper,
 # both running on this PC. The URLs can be changed in config/launcher.json.
-WHISPER_URL = "https://github.com/ggml-org/whisper.cpp/releases/latest/download/whisper-bin-x64.zip"
+# whisper.cpp's versioned release (the one GitHub calls "latest") has no programs: they are
+# on the b#### build releases, so the launcher asks GitHub for the newest one that has the
+# Windows file. WHISPER_URL is only that file on the known build, if GitHub's API is blocked;
+# a whisper_url set in config/launcher.json is used as it is.
+WHISPER_API = "https://api.github.com/repos/ggml-org/whisper.cpp/releases"
+WHISPER_ASSET = "whisper-bin-x64.zip"
+WHISPER_URL = f"https://github.com/ggml-org/whisper.cpp/releases/download/b5907/{WHISPER_ASSET}"
+# The link of earlier versions, which no longer works: treated like the default.
+WHISPER_OLD_URL = (
+    f"https://github.com/ggml-org/whisper.cpp/releases/latest/download/{WHISPER_ASSET}"
+)
 WHISPER_MODEL_URL = "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-small.bin"
 PIPER_URL = "https://github.com/rhasspy/piper/releases/latest/download/piper_windows_amd64.zip"
 PIPER_VOICES = "https://huggingface.co/rhasspy/piper-voices/resolve/main"
@@ -1422,6 +1432,24 @@ def llama_binary(settings: Settings) -> Path:
     return settings.tools / "llama.cpp" / settings.variant / exe("llama-server")
 
 
+def resolve_whisper(settings: Settings) -> str:
+    """The whisper.cpp download: whisper_url when it was changed, else the newest release
+    that carries the Windows programs (WHISPER_URL when GitHub's API cannot be asked)."""
+    if settings.whisper_url not in (WHISPER_URL, WHISPER_OLD_URL):
+        return settings.whisper_url
+    try:
+        releases = json.loads(_read_text(f"{WHISPER_API}?per_page=30", settings.github_token))
+        for release in releases if isinstance(releases, list) else []:
+            if release.get("draft"):
+                continue
+            for asset in release.get("assets") or []:
+                if asset.get("name") == WHISPER_ASSET:
+                    return str(asset["browser_download_url"])
+    except (urllib.error.URLError, TimeoutError, ValueError, KeyError, AttributeError):
+        pass  # blocked, rate-limited or not JSON: the known build below
+    return WHISPER_URL
+
+
 def ensure_llama(settings: Settings, ui: Ui) -> Path:
     binary = llama_binary(settings)
     target = binary.parent
@@ -1488,7 +1516,7 @@ def ensure_voice(settings: Settings, ui: Ui) -> None:
     try:
         if not (whisper / exe("whisper-server")).is_file() or settings.update:
             ui.step("Downloading whisper.cpp (speech to text)")
-            archive = download(settings.whisper_url, settings.tools / "whisper.zip", ui)
+            archive = download(resolve_whisper(settings), settings.tools / "whisper.zip", ui)
             extract_member(archive, exe("whisper-server"), whisper, keep=("models",))
             archive.unlink()
         model = whisper / "models" / _file_name(settings.whisper_model_url)

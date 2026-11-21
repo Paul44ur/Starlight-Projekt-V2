@@ -15,6 +15,7 @@ import subprocess
 import sys
 import tarfile
 import threading
+import urllib.error
 import zipfile
 from collections.abc import Iterator
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -542,6 +543,37 @@ def test_voice_is_installed_only_when_asked(
     L.ensure_voice(settings, ui)  # a failed download is reported, not fatal
     assert any("works without it" in line for line in ui.lines)
     assert L.build_parser().parse_args(["--voice"]).voice is True
+
+
+def test_whisper_download_is_found_on_the_build_releases(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """whisper.cpp's "latest" release has no programs (its /latest/download link answers
+    404): the newest release with the Windows file is used, the known build when GitHub's
+    API cannot be asked, and a whisper_url the user set as it is."""
+    releases = [
+        {"tag_name": "v1.9.5", "assets": []},
+        {"tag_name": "b6000", "draft": True, "assets": [
+            {"name": L.WHISPER_ASSET, "browser_download_url": "draft"},
+        ]},
+        {"tag_name": "b5990", "assets": [
+            {"name": "whisper-bin-Win32.zip", "browser_download_url": "win32"},
+            {"name": L.WHISPER_ASSET, "browser_download_url": "x64"},
+        ]},
+    ]  # fmt: skip
+    monkeypatch.setattr(L, "_read_text", lambda url, token=None: json.dumps(releases))
+    settings = L.Settings(root=tmp_path)
+    assert L.resolve_whisper(settings) == "x64"
+    settings.whisper_url = L.WHISPER_OLD_URL  # saved by an earlier version
+    assert L.resolve_whisper(settings) == "x64"
+
+    def blocked(url: str, token: str | None = None) -> str:
+        raise urllib.error.URLError("rate limited")
+
+    monkeypatch.setattr(L, "_read_text", blocked)
+    assert L.resolve_whisper(settings) == L.WHISPER_URL
+    settings.whisper_url = "https://example.org/mine.zip"
+    assert L.resolve_whisper(settings) == "https://example.org/mine.zip"
 
 
 def test_model_presets_from_file_and_flags(tmp_path: Path) -> None:
