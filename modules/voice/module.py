@@ -18,6 +18,7 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import io
+import re
 import shutil
 import subprocess
 import sys
@@ -34,6 +35,7 @@ from starlight.core import Module, ModuleContext, ToolError, tool
 from starlight.core.config import write_yaml_config
 from starlight.core.safepaths import PathGuard, expand
 
+from .levels import envelope, rms_level
 from .listening import FRAME_SECONDS, WAKE_PHRASES, Segmenter, wake_match
 
 RATE = 16000  # whisper wants 16 kHz mono
@@ -46,6 +48,8 @@ SUMMARY = (
 CHUNK = 12000  # characters of transcript the model reads at once
 PIECE_SECONDS = 300  # of a recording, sent to speech recognition at once
 MAX_SPEAK_CHARS = 4000
+LEVELS_PER_SECOND = 15  # voice.level events at most
+CAPTION_CHARS = 120
 PIPER_VOICES = "https://huggingface.co/rhasspy/piper-voices/resolve/main"
 # Voices that can be installed from here (Piper's names: language-speaker-quality).
 CATALOG = (
@@ -77,6 +81,18 @@ async def summarize_long(model: Any, text: str) -> str:
     parts = [text[i : i + CHUNK] for i in range(0, len(text), CHUNK)]
     notes = [await once(part) for part in parts]
     return await once("Summaries of consecutive parts of one recording:\n\n" + "\n\n".join(notes))
+
+
+def cut(text: str, limit: int = CAPTION_CHARS) -> str:
+    """Text on one line, at most ``limit`` characters (longer ends with "…")."""
+    text = " ".join(text.split())
+    return text if len(text) <= limit else text[: limit - 1].rstrip() + "…"
+
+
+def first_sentence(text: str) -> str:
+    """The first sentence of an answer, on one line and cut to CAPTION_CHARS."""
+    clean = " ".join(text.split())
+    return cut(re.split(r"(?<=[.!?])\s", clean, maxsplit=1)[0])
 
 
 def free_output(folder: Path, name: str) -> Path:
@@ -134,6 +150,11 @@ class VoiceModule(Module):
         self._player: subprocess.Popen[bytes] | None = None
         self._listener: asyncio.Task[Any] | None = None
         self.speaking = False  # (the listener does not hear its own voice)
+        # What the wake-word side is doing, told to the overlay as voice.* events
+        # (docs/plan-overlay.md, section 5): only while the wake word is on.
+        self.state = "asleep"
+        self._clock = time.monotonic
+        self._level_at = -1.0
         if self.config.wake_word:
             self._listener = ctx.background(self._listen, "wake-word")
 
@@ -594,6 +615,8 @@ class VoiceModule(Module):
         elif not on and self._listener is not None:
             self._listener.cancel()
             self._listener = None
+        if not on:
+            await self._set_state("asleep", always=True)
         return {"listening": on, "phrases": self.config.wake_phrases}
 
     async def _listen(self) -> None:
@@ -623,11 +646,13 @@ class VoiceModule(Module):
             self.ctx.logger.warning("wake word: no microphone", error=str(exc))
             return
         with stream:
+            await self._set_state("idle")
             segmenter = Segmenter()
             while True:
                 frame = await frames.get()
                 if self.speaking:
                     continue
+                await self._mic_level(frame)
                 speech = segmenter.feed(frame)
                 if speech is None or self.ctx.kill_switch.engaged:
                     continue
@@ -647,7 +672,9 @@ class VoiceModule(Module):
             async with asyncio.timeout(wait + 20):
                 started = time.monotonic()
                 while True:
-                    speech = segmenter.feed(await frames.get())
+                    frame = await frames.get()
+                    await self._mic_level(frame)
+                    speech = segmenter.feed(frame)
                     if speech is not None:
                         return speech
                     if not segmenter.busy and time.monotonic() - started > wait:
@@ -662,20 +689,56 @@ class VoiceModule(Module):
         woke, request = wake_match(text, tuple(self.config.wake_phrases))
         if not woke:
             return None
-        if not request:
-            if self.config.wake_reply:
-                await self._say(self.config.wake_reply)
-            follow = await next_speech()
-            if follow is None:
+        try:
+            await self._set_state("listening")
+            if not request:
+                if self.config.wake_reply:
+                    await self._say(self.config.wake_reply)
+                    await self._set_state("listening")  # waiting for what you want
+                follow = await next_speech()
+                if follow is None:
+                    return None
+                request = (await self.transcribe_audio(wav_bytes(follow))).strip()
+            if not request:
                 return None
-            request = (await self.transcribe_audio(wav_bytes(follow))).strip()
-        if not request:
-            return None
-        self.ctx.logger.info("wake word", request=request[:200])
-        answer = await self.ctx.run_request(request)
-        await self._say(answer)
-        return request
+            self.ctx.logger.info("wake word", request=request[:200])
+            await self._emit("voice.caption", {"text": cut(request), "who": "you"})
+            await self._set_state("thinking")
+            answer = await self.ctx.run_request(request)
+            await self._emit("voice.caption", {"text": first_sentence(answer), "who": "starlight"})
+            await self._say(answer)
+            return request
+        finally:  # (also after an error or the kill switch)
+            await self._set_state("idle")
 
     async def _say(self, text: str) -> None:
         audio = await self.synthesize_audio(text)
+        await self._emit("voice.speech", {"envelope": envelope(audio), "rate": 20})
+        await self._set_state("speaking")
         await asyncio.to_thread(self._play, audio)
+
+    # -- telling the overlay what it is doing ------------------------------------------------
+
+    async def _emit(self, event: str, data: dict[str, Any]) -> None:
+        """Publish a voice.* event, only while the wake word is on (nobody else needs it)."""
+        if self.config.wake_word:
+            await self.ctx.publish(event, data)
+
+    async def _set_state(self, state: str, always: bool = False) -> None:
+        """idle, listening, thinking, speaking or asleep; published only when it changes
+        (``always``: also with the wake word off, for "asleep")."""
+        # (A request cancelled by "wake word off" ends after "asleep": it changes nothing.)
+        if state == self.state or not (always or self.config.wake_word):
+            return
+        self.state = state
+        await self.ctx.publish("voice.state", {"state": state})
+
+    async def _mic_level(self, frame: bytes) -> None:
+        """The microphone's level while listening, at most LEVELS_PER_SECOND a second."""
+        if self.state != "listening":
+            return
+        now = self._clock()
+        if self._level_at >= 0 and now - self._level_at < 1 / LEVELS_PER_SECOND:
+            return
+        self._level_at = now
+        await self._emit("voice.level", {"level": round(rms_level(frame), 3)})
