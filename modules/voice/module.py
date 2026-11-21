@@ -26,17 +26,19 @@ import tempfile
 import time
 import wave
 from pathlib import Path
-from typing import Any
+from typing import Any, ClassVar
 
 import httpx
 from pydantic import BaseModel, Field
 
-from starlight.core import Module, ModuleContext, ToolError, tool
+from starlight.core import Event, Module, ModuleContext, ToolError, tool
 from starlight.core.config import write_yaml_config
 from starlight.core.safepaths import PathGuard, expand
+from starlight.core.ui import current_ui
 
 from .levels import envelope, rms_level
 from .listening import FRAME_SECONDS, WAKE_PHRASES, Segmenter, wake_match
+from .voiceui import VoiceUI
 
 RATE = 16000  # whisper wants 16 kHz mono
 SUMMARY = (
@@ -137,6 +139,8 @@ def wav_bytes(samples: bytes, rate: int = RATE) -> bytes:
 
 class VoiceModule(Module):
     Config = Config
+    # A click on the overlay's Yes/No card answers a question asked by voice (voiceui.py).
+    subscriptions: ClassVar[list[str]] = ["overlay.answer"]
 
     async def setup(self, ctx: ModuleContext) -> None:
         self.config: Config = ctx.config
@@ -155,6 +159,8 @@ class VoiceModule(Module):
         self.state = "asleep"
         self._clock = time.monotonic
         self._level_at = -1.0
+        self.open_asks: dict[str, asyncio.Future[str | None]] = {}  # (voiceui.py)
+        self.ask_timeout = 20.0  # seconds for a yes or no (voiceui.py)
         if self.config.wake_word:
             self._listener = ctx.background(self._listen, "wake-word")
 
@@ -704,7 +710,12 @@ class VoiceModule(Module):
             self.ctx.logger.info("wake word", request=request[:200])
             await self._emit("voice.caption", {"text": cut(request), "who": "you"})
             await self._set_state("thinking")
-            answer = await self.ctx.run_request(request)
+            # A tool that asks first is asked out loud, and on the overlay's card.
+            token = current_ui.set(VoiceUI(self, next_speech, self.ask_timeout))
+            try:
+                answer = await self.ctx.run_request(request)
+            finally:
+                current_ui.reset(token)
             await self._emit("voice.caption", {"text": first_sentence(answer), "who": "starlight"})
             await self._say(answer)
             return request
@@ -716,6 +727,13 @@ class VoiceModule(Module):
         await self._emit("voice.speech", {"envelope": envelope(audio), "rate": 20})
         await self._set_state("speaking")
         await asyncio.to_thread(self._play, audio)
+
+    async def on_event(self, event: Event) -> None:
+        """``overlay.answer``: the card of a question asked by voice was clicked."""
+        waiting = self.open_asks.get(str(event.data.get("id", "")))
+        if waiting is not None and not waiting.done():
+            choice = event.data.get("choice")
+            waiting.set_result(choice if isinstance(choice, str) else None)
 
     # -- telling the overlay what it is doing ------------------------------------------------
 

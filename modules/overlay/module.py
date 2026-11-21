@@ -15,6 +15,7 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import importlib.util
+import re
 import subprocess
 import sys
 import time
@@ -25,11 +26,14 @@ from typing import Any, ClassVar, Literal
 
 from pydantic import BaseModel, Field
 
-from starlight.core import Event, Module, ModuleContext, ToolError, tool
+from starlight.core import Event, Module, ModuleContext, Permission, ToolError, tool
+from starlight.core.ui import current_ui
 from starlight.overlay import protocol
 
 QUEUE_SIZE = 200  # forwarded events waiting for the child; more are dropped
 LOG_LIMIT = 1_000_000  # bytes: overlay.log (the child's own output) starts afresh above this
+TARGET_SECONDS = 60.0  # click_target without a target clicks a point at most this old
+CLICK_TOOL = "overlay.click_target"
 
 
 class Config(BaseModel):
@@ -62,6 +66,35 @@ CAPTIONS: dict[protocol.Language, dict[protocol.Confidence, str]] = {
     "de": {"sure": "Hier ist es", "maybe": "Vielleicht hier"},
     "en": {"sure": "Here you go", "maybe": "Maybe here"},
 }
+
+
+CLICK_QUESTION: dict[protocol.Language, str] = {
+    "de": "„{label}“ anklicken?",
+    "en": "Click “{label}”?",
+}
+
+
+class ApprovedOnce:
+    """The user already said yes to clicking: yes to one call of that one tool, no to all
+    else (the same idea as ApprovedUI in modules/approvals; modules do not import each
+    other)."""
+
+    def __init__(self, tool: str) -> None:
+        self.tool = tool
+        self.used = False
+
+    async def confirm(self, question: str) -> bool:
+        match = re.search(r"Run (\S+) with", question)
+        if self.used or match is None or match.group(1) != self.tool:
+            return False
+        self.used = True
+        return True
+
+    async def ask(self, question: str, secret: bool = False) -> str | None:
+        return None
+
+    async def notify(self, text: str) -> None:
+        return None
 
 
 class OverlayModule(Module):
@@ -317,10 +350,34 @@ class OverlayModule(Module):
         message = self._message_for(event)
         if message is None:
             return
-        try:
-            self._queue.put_nowait(message)
-        except asyncio.QueueFull:
-            self.ctx.logger.info("overlay busy, message dropped", type=message.type)
+        messages = [message]
+        if isinstance(message, protocol.Ask) and event.data.get("tool") == CLICK_TOOL:
+            messages = self._click_ask(message)
+        for each in messages:
+            try:
+                self._queue.put_nowait(each)
+            except asyncio.QueueFull:
+                self.ctx.logger.info("overlay busy, message dropped", type=each.type)
+
+    def _recent_target(self) -> dict[str, Any] | None:
+        target = self.last_target
+        if target is None or time.time() - float(target.get("at", 0)) > TARGET_SECONDS:
+            return None
+        return target
+
+    def _click_ask(self, ask: protocol.Ask) -> list[protocol.Message]:
+        """ "Shall I click it?": the line and the frame on the target again, and the card
+        names it ("„Einstellungen“ anklicken?")."""
+        target = self._recent_target()
+        if target is None:
+            return [ask]
+        shown = self._point_messages(target)
+        messages: list[protocol.Message] = [shown[0]] if shown else []
+        label = str(target.get("label", "")).strip()
+        if label:
+            words = CLICK_QUESTION[language_of(self.ctx.profile())].format(label=label[:80])
+            ask = protocol.Ask(id=ask.id, question=words, choices=ask.choices, timeout=ask.timeout)
+        return [*messages, ask]
 
     async def _forward(self) -> None:
         while True:
@@ -405,6 +462,17 @@ class OverlayModule(Module):
     async def _show(self, hit: dict[str, Any]) -> bool:
         if not self.running:
             return False
+        shown = self._point_messages(hit)
+        if shown is None:
+            return False
+        point, caption = shown
+        return await self._send(point) and await self._send(caption)
+
+    def _point_messages(
+        self, hit: dict[str, Any]
+    ) -> tuple[protocol.Point, protocol.Caption] | None:
+        """The line and frame for a hit, and its caption (None for a box that cannot be
+        shown)."""
         confidence: protocol.Confidence = "sure" if hit.get("confidence") == "sure" else "maybe"
         label = str(hit.get("label", ""))
         box = hit.get("box")
@@ -419,14 +487,48 @@ class OverlayModule(Module):
             protocol.encode(point)  # (a bad box from find_target: not shown)
         except (TypeError, ValueError) as exc:
             self.ctx.logger.info("target not shown", reason=str(exc)[:200])
-            return False
+            return None
         words = CAPTIONS[language_of(self.ctx.profile())][confidence]
         caption = protocol.Caption(
             text=f"{words}: {label}" if label else words,
             who="starlight",
             seconds=self.config.point_seconds,
         )
-        return await self._send(point) and await self._send(caption)
+        return point, caption
+
+    @tool(permission=Permission.CONFIRM)
+    async def click_target(self, target: str = "") -> dict[str, Any]:
+        """Click what was just pointed at (or find `target` and point first). Asks the
+        user first."""
+        if self.ctx.kill_switch.engaged:
+            raise ToolError("Starlight is stopped (kill switch)")
+        if target.strip():
+            hit = await self.point_at(target)
+            if not hit.get("found"):
+                return {**hit, "clicked": False}
+        chosen = self._recent_target()
+        if chosen is None:
+            raise ToolError("nothing was pointed at in the last minute: point at it first")
+        try:
+            x, y, w, h = (int(v) for v in chosen["box"])
+        except (KeyError, TypeError, ValueError):
+            raise ToolError("the target has no usable box: point at it again") from None
+        centre = {"x": x + w // 2, "y": y + h // 2}
+        # The user said yes to click_target: do not ask again for desktop.click.
+        token = current_ui.set(ApprovedOnce("desktop.click"))
+        try:
+            result = await self.ctx.call("desktop.click", centre)
+        finally:
+            current_ui.reset(token)
+        if not result.ok:
+            raise ToolError(result.error or "the click failed")
+        await self._send(protocol.Clear())
+        return {
+            "clicked": True,
+            "label": chosen.get("label", ""),
+            **centre,
+            "result": result.output,
+        }
 
     @tool
     async def clear_pointer(self) -> dict[str, Any]:
