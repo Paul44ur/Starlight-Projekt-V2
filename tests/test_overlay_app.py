@@ -24,7 +24,13 @@ from typing import Any
 
 import pytest
 
-pytest.importorskip("PySide6.QtGui", reason="Qt (the overlay extra) or its libraries missing")
+# exc_type=ImportError: without Qt's system libraries (libEGL ...) the import fails with a
+# plain ImportError, which pytest 9 no longer turns into a skip by default.
+pytest.importorskip(
+    "PySide6.QtGui",
+    reason="Qt (the overlay extra) or its libraries missing",
+    exc_type=ImportError,
+)
 
 from PySide6.QtCore import QPoint, Qt
 from PySide6.QtGui import QColor, QImage, QPainter

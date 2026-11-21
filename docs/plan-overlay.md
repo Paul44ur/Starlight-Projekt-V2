@@ -27,14 +27,14 @@ Defaults the user has not answered yet (easy to change later, do not block on th
 
 | Pkg | Block | What | Needs | State |
 |---|---|---|---|---|
-| W1 | O1 | Protocol and geometry: the messages, monitors, where the orb, line, frame and caption go (pure Python) | – | open |
-| W2 | O1 | The overlay process (Qt): windows per monitor, drawing, animation, the Yes/No card | W1's interface (section 4, fixed here) | open |
-| W3 | O1 | The `overlay` module: starts and watches the process, kill switch, config, events, `point_at` | W1 | open |
-| W4 | O2 | `desktop.find_target`: UI Automation, then OCR, then the vision model, returning a box | – | open |
-| W5 | O3 | Voice states: the voice module tells what it is doing (listening, thinking, speaking), the mic level, captions | – | open |
-| W6 | O4 | Ask before clicking: Yes/No by voice or click; "click it" after a point | W3, W4, W5 (and W2 for the card) | open |
-| W7 | O5 | Settings section, German, launcher install, README and architecture docs | W2, W3 | open |
-| W8 | O6 | Review and the user's Windows test list | all | open |
+| W1 | O1 | Protocol and geometry: the messages, monitors, where the orb, line, frame and caption go (pure Python) | – | done (b560e39) |
+| W2 | O1 | The overlay process (Qt): windows per monitor, drawing, animation, the Yes/No card | W1's interface (section 4, fixed here) | done (4e0bd55) |
+| W3 | O1 | The `overlay` module: starts and watches the process, kill switch, config, events, `point_at` | W1 | done (993efb0) |
+| W4 | O2 | `desktop.find_target`: UI Automation, then OCR, then the vision model, returning a box | – | done (fc688fc) |
+| W5 | O3 | Voice states: the voice module tells what it is doing (listening, thinking, speaking), the mic level, captions | – | done (03ed29d) |
+| W6 | O4 | Ask before clicking: Yes/No by voice or click; "click it" after a point | W3, W4, W5 (and W2 for the card) | done (74d0e97) |
+| W7 | O5 | Settings section, German, launcher install, README and architecture docs | W2, W3 | done (3af4a35) |
+| W8 | O6 | Review and the user's Windows test list | all | done (this commit); the Windows test is open |
 
 W1, W4 and W5 start at once, side by side. W2 and W3 start as soon as W1 is merged (or
 at once, against the fixed interface in section 4). Then W6, then W7, then W8.
@@ -395,7 +395,31 @@ The user's results go into section 9 below, and fixes become new rows in the Sta
 
 ## 9. Findings
 
-(empty: filled in by W8 and the user's test)
+W8's review (2026-11-21, in the container, on the merged `Starlight_Fable`):
+
+- The static checks pass (ruff, ruff format, mypy on both platforms, the launcher's
+  strict mypy). The full suite: 2300 passed, 3 skipped (11:40 min, `-n 4`).
+- `--demo` under Qt's offscreen platform, German and English: asleep, idle, listening,
+  thinking, point (solid), maybe (dashed), and the Yes/No card all look right over light
+  and dark windows. Only one monitor can be shown here; two monitors are test 3.
+- Fixed: `tests/test_overlay_app.py` failed to load (instead of being skipped) where
+  PySide6 is installed but Qt's system libraries are missing. pytest 9 only skips on
+  `ModuleNotFoundError` by default; the test now passes `exc_type=ImportError`.
+- Checked the files packages changed outside their row in section 1: W3 added "overlay"
+  to `SHIPPED` in `starlight/core/modules.py` (one word, needed); W6 added "click it"
+  keywords to `modules/overlay/module.yaml`; W7 added `change_settings`,
+  `show_test_point`, `_start` and `_stop` to `modules/overlay/module.py` and changed one
+  comment in `config/modules/overlay.yaml`. All covered by their tests; nothing to undo.
+- **Open question (ask before clicking):** `desktop.*` is in `permissions.auto_approve`
+  by default (`config/starlight.yaml`). `overlay.click_target` always asks, but if the
+  model answers "Klick drauf" with `desktop.click` directly, it clicks without asking.
+  Test 5 shows whether this happens. A fix would be `desktop.click` in
+  `permissions.confirm` (then every click asks), or the user's choice to leave it.
+- Only on Windows (`docs/overlay-windows-test.md`): click-through, the card not taking
+  the focus, hiding from screenshots, mixed scaling, CPU (W2); the COM fix in UI
+  Automation (W4); a real "ja"/"nein" by microphone and `click_target` (W6).
+
+The user's test results: (not yet)
 
 ## 10. Limits (said plainly to the user)
 
