@@ -22,12 +22,13 @@ why things are the way they are:
   the user's decisions and what was verified. Read it before changing that area.
 - `docs/plan-ui.md`: the look before Night Sky (its structure still holds).
 
-New work goes on `Starlight_Fable` (below). For a larger piece, agree a plan with the user
+New work goes on `starlight-v2.5` (below). For a larger piece, agree a plan with the user
 first and keep it in `docs/plan-<topic>.md` with a Status table, as these do.
 
 ## How we work
-- Branch `Starlight_Fable` (started 2026-11-10 from `main`; `main` and
-  `Starlight-V2-LM-Studio` stay as they are until the user says to merge); commit and push
+- Branch `starlight-v2.5`, the default branch since 2026-11-21 (it holds everything from
+  `Starlight_Fable`, `main` and `Starlight-V2-LM-Studio`; those stay as they are until the
+  user says to delete them); commit and push
   when a piece of work is done; no pull request unless asked. GitHub Actions minutes are used
   up: don't trigger CI runs.
 - A fresh container: `uv python install 3.12 && uv sync --extra all --locked --python 3.12

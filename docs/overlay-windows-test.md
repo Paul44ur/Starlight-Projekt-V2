@@ -7,7 +7,7 @@ Write each result (ok, or what happened instead) into section 9 of `docs/plan-ov
 
 **Before you start**
 
-- Starlight runs from the newest `Starlight_Fable`, started with Starlight.exe (it
+- Starlight runs from the newest `starlight-v2.5`, started with Starlight.exe (it
   installs the overlay's packages).
 - Settings → Voice: "Hey Starlight" is on, the microphone works.
 - Keep `data/modules/overlay/overlay.log` and `logs/` at hand if something goes wrong.
