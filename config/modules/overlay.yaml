@@ -1,0 +1,9 @@
+# The overlay (modules/overlay): a see-through layer over the screen with Starlight's orb,
+# which points at things ("where is the settings menu?"). It never takes the mouse or the
+# keyboard. Needs the optional "overlay" extra (PySide6).
+enabled: false        # Starlight.exe turns it on after installing the overlay extra
+orb: always           # always: a dim orb at the top edge; awake: only while it listens or talks
+orb_monitor: 1        # which monitor (1, 2 ...) holds the orb
+accent: "#4FC8FF"     # the overlay's colour
+reduce_motion: false  # also on when Windows' animation effects are off
+point_seconds: 6      # how long a point stays
