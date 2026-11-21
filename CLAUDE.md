@@ -5,7 +5,11 @@ A local AI assistant: Python core (`starlight/`), modules (`modules/`), a FastAP
 on Windows 11; the pages have German translations (`starlight/web/static/i18n.js`).
 
 ## Plans
-No plan is open. Five plans are finished (every block done) and are kept as a reference for
+**Open: `docs/plan-overlay.md`** (agreed 2026-11-21; split into packages W1-W8 for helpers): an
+always-on-top overlay with an orb that answers by voice and points at things on the screen.
+Read it before working on the overlay, pointing, or the desktop module's finding of targets.
+
+Five plans are finished (every block done) and are kept as a reference for
 why things are the way they are:
 - `docs/plan-ui-3.md`: the Paper look of every page and the launcher (P1-P7), the current
   look, with find in a conversation, undo for delete and archive, and text size (F1-F3).
