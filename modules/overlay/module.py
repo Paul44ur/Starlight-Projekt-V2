@@ -15,6 +15,7 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import importlib.util
+import json
 import re
 import subprocess
 import sys
@@ -24,9 +25,10 @@ from collections import deque
 from pathlib import Path
 from typing import Any, ClassVar, Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ValidationError
 
 from starlight.core import Event, Module, ModuleContext, Permission, ToolError, tool
+from starlight.core.fsutil import write_atomic
 from starlight.core.ui import current_ui
 from starlight.overlay import protocol
 
@@ -61,6 +63,23 @@ def language_of(profile: dict[str, str]) -> protocol.Language:
     said = profile.get("language", "").strip().lower()
     return "en" if said.startswith(("en", "engl")) else "de"
 
+
+# The settings the Settings page changes (docs/plan-overlay.md 7), and how the file is
+# written then: every line keeps its comment.
+SETTINGS = ("enabled", "orb", "orb_monitor", "accent", "reduce_motion")
+CONFIG_FILE = """\
+# The overlay (modules/overlay): a see-through layer over the screen with Starlight's orb,
+# which points at things ("where is the settings menu?"). It never takes the mouse or the
+# keyboard. Needs the optional "overlay" extra (PySide6). Changed on the Settings page.
+enabled: {enabled}  # on or off (Settings, Overlay)
+orb: {orb}  # always: a dim orb at the top edge; awake: only while it listens or talks
+orb_monitor: {orb_monitor}  # which monitor (1, 2 ...) holds the orb
+accent: {accent}  # the overlay's colour
+reduce_motion: {reduce_motion}  # also on when Windows' animation effects are off
+point_seconds: {point_seconds}  # how long a point stays
+"""
+TEST_SECONDS = 3.0  # how long the Settings page's test point stays
+HEADING = {"de": "Einstellungen", "en": "Settings"}  # the test point's label
 
 CAPTIONS: dict[protocol.Language, dict[protocol.Confidence, str]] = {
     "de": {"sure": "Hier ist es", "maybe": "Vielleicht hier"},
@@ -136,18 +155,35 @@ class OverlayModule(Module):
         self._write_lock = asyncio.Lock()
         self._queue: asyncio.Queue[protocol.Message] = asyncio.Queue(maxsize=QUEUE_SIZE)
         self._task: asyncio.Task[Any] | None = None
+        self._forwarder: asyncio.Task[Any] | None = None
 
         ctx.kill_switch.add_cleanup(self._on_kill, owner=ctx.name)
-        if not self.config.enabled:
+        if self.config.enabled:
+            self._start()
+
+    def _start(self) -> None:
+        """Start watching the child (it starts it at once), unless it already runs."""
+        if self._task is not None and not self._task.done():
             return
         if not overlay_installed():
             self.last_error = "the overlay extra (PySide6) is not installed"
-            ctx.logger.warning("overlay is on but not installed", hint="Starlight.exe installs it")
+            self.ctx.logger.warning(
+                "overlay is on but not installed", hint="Starlight.exe installs it"
+            )
             return
-        self._task = ctx.background(self._supervise, "overlay")
-        ctx.background(self._forward, "overlay events")
+        self._stopping = False
+        self._failures.clear()
+        self._gave_up = False
+        self.last_error = ""
+        self._task = self.ctx.background(self._supervise, "overlay")
+        if self._forwarder is None or self._forwarder.done():
+            self._forwarder = self.ctx.background(self._forward, "overlay events")
 
     async def shutdown(self) -> None:
+        await self._stop()
+
+    async def _stop(self) -> None:
+        """Say "quit" to the child (kill it after 2 s) and stop watching it."""
         self._stopping = True
         proc = self._proc
         if proc is not None and proc.returncode is None:
@@ -163,6 +199,7 @@ class OverlayModule(Module):
             self._task.cancel()
             with contextlib.suppress(asyncio.CancelledError, Exception):
                 await self._task
+        self._task = None
 
     # -- the child process ----------------------------------------------------------------
 
@@ -264,6 +301,66 @@ class OverlayModule(Module):
             reduce_motion=self.config.reduce_motion,
             language=language_of(self.ctx.profile()),
         )
+
+    # -- the Settings page (W7) ------------------------------------------------------------
+
+    async def change_settings(self, changes: dict[str, Any]) -> dict[str, Any]:
+        """Check and save settings from the Settings page (config/modules/overlay.yaml).
+        A running overlay gets a "config" message (no restart); on and off start or stop
+        it. Returns what changed."""
+        unknown = sorted(set(changes) - set(SETTINGS))
+        if unknown:
+            raise ToolError(f"not an overlay setting: {', '.join(unknown)}")
+        try:
+            new = Config.model_validate({**self.config.model_dump(), **changes})
+        except ValidationError as exc:
+            problems = "; ".join(f"{e['loc'][0]}: {e['msg']}" for e in exc.errors())
+            raise ToolError(problems) from exc
+        old = self.config
+        changed = {k: getattr(new, k) for k in SETTINGS if getattr(new, k) != getattr(old, k)}
+        self.config = new
+        self.ctx.config = new
+        self._save_config()
+        if "enabled" in changed:
+            if new.enabled:
+                self._start()  # (its "hello" carries the other settings)
+            else:
+                await self._stop()
+            return changed
+        shown = {k: v for k, v in changed.items() if k != "enabled"}
+        if shown and self.running:
+            await self._send(protocol.Config(**shown))
+        return changed
+
+    def _save_config(self) -> None:
+        values = {k: json.dumps(v) for k, v in self.config.model_dump().items()}
+        values["point_seconds"] = f"{self.config.point_seconds:g}"
+        write_atomic(self.ctx.paths.module_configs / "overlay.yaml", CONFIG_FILE.format(**values))
+
+    async def show_test_point(self, box: tuple[int, int, int, int]) -> bool:
+        """The Settings page's "Show a test point": a line to its own heading for 3 s.
+        False if the overlay is not running."""
+        if self.ctx.kill_switch.engaged:
+            raise ToolError("Starlight is stopped (kill switch)")
+        if not self.running:
+            return False
+        language = language_of(self.ctx.profile())
+        label = HEADING[language]
+        try:
+            point = protocol.Point(
+                id=uuid.uuid4().hex[:12],
+                box=box,
+                label=label,
+                confidence="sure",
+                seconds=TEST_SECONDS,
+            )
+            protocol.encode(point)
+        except (TypeError, ValueError) as exc:
+            raise ToolError(f"not a place on the screen: {exc}") from exc
+        caption = protocol.Caption(
+            text=f"{CAPTIONS[language]['sure']}: {label}", who="starlight", seconds=TEST_SECONDS
+        )
+        return await self._send(point) and await self._send(caption)
 
     async def _read(self, proc: asyncio.subprocess.Process) -> None:
         stdout = proc.stdout

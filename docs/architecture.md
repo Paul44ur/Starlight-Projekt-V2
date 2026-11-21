@@ -29,6 +29,8 @@ starlight/notebook/ notes as a notebook (docs/plan-notes-app.md): history and sa
 starlight/skills/   skill drafting, approval, git history
 starlight/sandbox/  Docker and process sandboxes for generated code
 starlight/viewer/   the statistics viewer (separate, read-only app)
+starlight/overlay/  the overlay process (Qt, `python -m starlight.overlay`): the orb, the line,
+                    the frame, the caption and the Yes/No card; protocol.py and geometry.py are pure
 starlight/app_window.py  `starlight app`: the web pages in Starlight's own window (WebView2)
 starlight/web/      the local web chat (FastAPI + a WebSocket chat page); client.py is a
                     terminal that joins the same backend, so --both shares one brain
@@ -46,7 +48,7 @@ modules/            hello, web, login, network, recon, cve, certs, breach, deskt
                     reminders, mail, pdf, code, files, access, whatsapp, todo,
                     calendar, briefing, calc, translate, automations, apps, media,
                     commands, office, dev, research, docs, notes, transcripts,
-                    voice, home, lan, backup, watch, focus, boards (+ _template)
+                    voice, home, lan, backup, watch, focus, boards, overlay (+ _template)
 skills/             skills it learns (one folder each)
 scripts/            install.ps1, install.sh, e2e_chat.py (the end-to-end chat test CI runs)
 memory/             what the AI learns (one Markdown file per fact)
@@ -1114,6 +1116,32 @@ agenda for 5 minutes, the weather for 30 (a new day or place is a new answer; fa
 kept). With the kill switch on, no tool runs and the card answers "Starlight is stopped". The
 weather's place is the briefing's `place`, else the weather module's own. The routes give data,
 not sentences: the page writes the fixed words, so `i18n.js` can make them German.
+
+**The overlay** (`docs/plan-overlay.md`). It is its own process, `python -m
+starlight.overlay`, started by the `overlay` module with the core's own Python. Qt wants the
+main thread, and a crash in drawing must not take the core down. Only `starlight/overlay/`
+imports Qt (PySide6-Essentials, the optional `overlay` extra, part of `all`). Only the
+primary Starlight process runs it.
+
+- **Messages.** JSON lines over the child's stdin and stdout (`starlight/overlay/protocol.py`):
+  no port, no token, and the child ends when stdin closes. The core sends `hello` (the
+  settings and the language), then `config`, `point`, `clear`, `state`, `level`, `speech`,
+  `caption`, `ask`, `cancel_ask` and `quit`. The child answers `ready` (its screens, and
+  whether it is hidden from screenshots), `answer` and `error`. Boxes are in physical
+  pixels; `geometry.py` turns them into each monitor's logical pixels.
+- **The module** (`modules/overlay/module.py`) restarts a child that dies (2, 4, 8 … 60 s;
+  it gives up after 5 failures in 10 minutes) and writes its output to `overlay.log` in
+  the module's data folder. `point_at` finds a target with `desktop.find_target` and sends
+  `point` and `caption`. The kill switch sends `clear`, cancels an open question (as "no")
+  and puts the orb to sleep.
+- **Events.** The voice module publishes `voice.state`, `voice.level` (at most 15 a second),
+  `voice.speech` (the answer's loudness in 50 ms steps) and `voice.caption`; a question
+  goes out as `overlay.ask` and comes back as `overlay.answer`. The overlay module forwards
+  them to the child through a queue, so a slow overlay never holds up the voice module.
+- **Settings.** `GET` and `POST /api/overlay`, and `POST /api/overlay/test` (the test point
+  at the Settings page's heading, 3 s), are `local_only`: a paired phone gets 403. A change
+  is checked, written to `config/modules/overlay.yaml` (its comments kept) and sent as a
+  `config` message, without a restart. On and off start or stop the child.
 
 ## Build plan status
 

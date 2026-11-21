@@ -643,6 +643,25 @@
     "The kill switch is on: Starlight does nothing until you resume": "Der Not-Aus ist an: Starlight tut nichts, bis du fortsetzt",
     "Release the kill switch on the PC": "Gib den Not-Aus am PC wieder frei",
     "Asked the PC to wake up; give it a minute": "Den PC gebeten aufzuwachen; gib ihm eine Minute",
+    // overlay (plan-overlay W7)
+    "Overlay": "Overlay",
+    "Starlight's orb on your screen. Ask by voice where something is (\"Hey Starlight, where is the settings menu?\") and it draws a line to it and frames it. It never takes the mouse or the keyboard.":
+      "Starlights Kugel auf deinem Bildschirm. Frag per Stimme, wo etwas ist („Hey Starlight, wo sind die Einstellungen?“), und sie zieht eine Linie dorthin und rahmt es ein. Maus und Tastatur nimmt sie dir nie weg.",
+    "Not installed.": "Nicht installiert.",
+    "Close Starlight and start Starlight.exe again: it installs the overlay with Starlight's other packages (about 100 MB).":
+      "Schließ Starlight und starte Starlight.exe noch einmal: Es installiert das Overlay mit Starlights anderen Paketen (etwa 100 MB).",
+    "Show the overlay": "Overlay zeigen", "— on this PC's screen, on top of every window.": "— auf dem Bildschirm dieses PCs, über allen Fenstern.",
+    "Orb": "Kugel", "Always": "Immer", "Only when awake": "Nur wenn wach", "Monitor": "Monitor", "Colour": "Farbe",
+    "Cyan": "Cyan", "Green": "Grün", "Amber": "Bernstein", "Violet": "Violett", "White": "Weiß",
+    "Reduce motion": "Weniger Bewegung",
+    "— the orb and the line appear without moving. Also on when Windows' animation effects are off.":
+      "— Kugel und Linie erscheinen, ohne sich zu bewegen. Auch an, wenn die Animationseffekte von Windows aus sind.",
+    "Show a test point": "Testpunkt zeigen", "The overlay is off.": "Das Overlay ist aus.",
+    "Running on 1 monitor.": "Läuft auf 1 Monitor.", "Starting …": "Startet …",
+    "It stopped after repeated failures. Turn it off and on to try again.":
+      "Es hat nach mehreren Fehlern aufgehört. Schalte es aus und wieder an, um es neu zu versuchen.",
+    "Look at the heading of this page": "Schau auf die Überschrift dieser Seite",
+    "The overlay is not running": "Das Overlay läuft nicht",
   };
 
   // An automation's description comes from the server in English ("every day at 07:30: run
@@ -837,6 +856,8 @@
     [/^overdue since (.+)$/, "überfällig seit $1"],
     [/^feels like (.+)$/, "gefühlt $1"],
     [/^today (.+) to (.+), (.+) chance of rain$/, "heute $1 bis $2, $3 Regenwahrscheinlichkeit"],
+    // overlay (plan-overlay W7)
+    [/^Running on (\d+) monitors\.$/, "Läuft auf $1 Monitoren."],
   ];
   // Never translated: the conversation, code, and what you type.
   const KEEP = ".msg .body, pre, code, textarea, [translate=no], .notranslate";
